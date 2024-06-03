@@ -8,7 +8,9 @@ setup(
 	],
 	install_requires=[
         'transformers',
-        'torch',
+        'ipfs_transformers@git+https://github.com/endomorphosis/ipfs_transformers.git',
+        'ipfs_model_manager@git+https://github.com/endomorphosis/ipfs_model_manager.git',
+		'torch',
         'torchvision',
         'numpy',
         'torchtext',
