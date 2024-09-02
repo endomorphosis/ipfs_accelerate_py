@@ -1,6 +1,6 @@
-ipfs_kit@git+https://github.com/endomorphosis/ipfs_kit.git
-ipfs_transformers@git+https://github.com/endomorphosis/ipfs_transformers.git
-ipfs_model_manager@git+https://github.com/endomorphosis/ipfs_model_manager.git
+ipfs_kit_py
+ipfs_transformers_py
+ipfs_model_manager_py
 transformers
 torch
 torchvision

@@ -1,15 +1,15 @@
 from setuptools import setup
 
 setup(
-	name='ipfs_accelerate',
+	name='ipfs_accelerate_py',
 	version='0.0.1',
 	packages=[
-        'ipfs_accelerate',
+        'ipfs_accelerate_py',
 	],
 	install_requires=[
         'transformers',
-        'ipfs_transformers@git+https://github.com/endomorphosis/ipfs_transformers.git',
-        'ipfs_model_manager@git+https://github.com/endomorphosis/ipfs_model_manager.git',
+        'ipfs_transformers_py',
+        'ipfs_model_manager_py',
 		'torch',
         'torchvision',
         'numpy',
