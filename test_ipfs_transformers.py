@@ -3,7 +3,7 @@ from transformers import AutoModel
 from ipfs_transformers import AutoModel
 #from accelerate import load_checkpoint_and_dispatch
 from accelerate import init_empty_weights
-from ipfs_accelerate import load_checkpoint_and_dispatch
+from ipfs_accelerate_py import load_checkpoint_and_dispatch
 
 checkpoint = "bge-small-en-v1.5"
 weights_location = hf_hub_download(checkpoint, "pytorch_model.bin")
