@@ -1,5 +1,13 @@
-from .akash import akash
-from .lilypad import lilypad
+class backends:
+    def __init__(self, model, checkpoint):
+        self.model = model
+        self.checkpoint = checkpoint
+        self.backends = {
+            "lilypad": None,
+            "akash": None,
+            "libp2p": None,
+            "hallucinate": None
+        }
 
 class marketplace:
     def __init__(self, model, checkpoint):

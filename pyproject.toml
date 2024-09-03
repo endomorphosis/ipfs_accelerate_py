@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "libp2p_accelerate_py"
-version = "0.0.3"
+name = "ipfs_accelerate_py"
+version = "0.0.4"
 authors = [
   { name="Benjamin Barber", email="starworks5@gmail.com" },
 ]
@@ -17,5 +17,5 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
 ]
 [project.urls]
-Homepage = "https://github.com/endomorphosis/libp2p_kit_py"
-Issues = "https://github.com/endomorphosis/libp2p_kit_py/issues"
+Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
+Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
