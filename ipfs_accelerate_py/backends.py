@@ -1,3 +1,4 @@
+from hugs_kit import lilypad, akash
 class backends:
     def __init__(self, model, checkpoint):
         self.model = model
