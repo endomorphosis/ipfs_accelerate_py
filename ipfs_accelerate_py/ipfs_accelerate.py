@@ -28,17 +28,13 @@ class ipfs_accelerate_py:
         else:
             self.install_depends = install_depends_py(resources, metadata)
         if "worker" not in globals():
-            import worker
             from worker import worker
-            self.worker = worker(resources, metadata)
-        self.tei_endpoints = {}
-        self.openvino_endpoints = {}
-        self.libp2p_endpoints = {}
-        self.local_endpoints = {}
+            self.worker = worker.worker_py(resources, metadata)
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.batch_sizes = {}
         self.tokenizer = {}
+        self.local_queues = {}
         self.queues = {}
         self.local_endpoints = {}
         self.tei_endpoints = {}
@@ -47,6 +43,7 @@ class ipfs_accelerate_py:
         self.endpoint_types = ["tei_endpoints", "openvino_endpoints", "libp2p_endpoints", "local_endpoints"]
         self.add_endpoint = self.add_endpoint
         self.rm_endpoint = self.rm_endpoint
+        self.get_endpoints = self.get_endpoints
         self.init_endpoints = self.init_endpoints
         self.get_https_endpoint = self.get_https_endpoint
         self.get_libp2p_endpoint = self.get_libp2p_endpoint

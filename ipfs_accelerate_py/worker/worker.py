@@ -30,7 +30,7 @@ class worker_py:
     
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
-            
+    
     async def init_worker(self, models):
         local = self.endpoint_types["local_endpoints"]
         if "hwtest" not in dir(self):
@@ -171,12 +171,14 @@ class worker_py:
     def __test__(self):
         return self 
     
+export = worker_py
+    
 if __name__ == '__main__':
     # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
     resources = {}
     metadata = {}
     try:
-        this_worker = worker(resources, metadata)
+        this_worker = worker_py(resources, metadata)
         this_test = this_worker.__test__(resources, metadata)
     except Exception as e:
         print(e)
