@@ -17,5 +17,6 @@ setup(
 		'urllib3',
 		'requests',
 		'boto3',
+		'trio',
 	]
 )
