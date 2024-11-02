@@ -65,6 +65,22 @@ class ipfs_accelerate_py:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
 
+    async def query_endpoints(self, model):
+        endpoints = self.get_endpoints(model)
+        local = self.get_endpoints(model, "local")
+        openvino = self.get_endpoints(model, "openvino")
+        libp2p = self.get_endpoints(model, "libp2p")
+        tei = self.get_endpoints(model, "tei")
+        endpoints =  { "tei" : tei , "local" : local , "openvino": openvino , "libp2p": libp2p }
+        endpoints_set = set(endpoints["tei"] + endpoints["local"] + endpoints["openvino"] + endpoints["libp2p"] )
+        self.endpoints = endpoints
+        self.endpoints_list = list(endpoints.keys())
+        self.endpoints_set = endpoints_set
+        return {
+            endpoints: endpoints,
+            endpoints_set: endpoints_set
+        }
+
     async def init_endpoints(self, models=None, endpoint_list=None):
         for endpoint_type in self.endpoint_types:
             if endpoint_type in resources.keys():
@@ -77,28 +93,6 @@ class ipfs_accelerate_py:
         for model in models:
             if model not in self.queues:
                 self.queues[model] = {}
-        if endpoint_list is None:    
-            endpoints = self.get_endpoints(model)
-            local = self.get_endpoints(model, "local")
-            openvino = self.get_endpoints(model, "openvino")
-            libp2p = self.get_endpoints(model, "libp2p")
-            tei = self.get_endpoints(model, "tei")
-            cuda = self.get_endpoints(model, "cuda")
-            endpoints =  { "tei" : tei , "local" : local , "openvino": openvino , "libp2p": libp2p , "cuda": cuda }
-            endpoints_set = set(endpoints["tei"] + endpoints["local"] + endpoints["openvino"] + endpoints["libp2p"] + endpoints["cuda"])
-        else:
-            endpoints = endpoint_list
-            self.endpoints = endpoints
-            endpoints_list = [ k for k in endpoints.keys() ]
-            self.endpoints_list = endpoints_list
-            self.endpoints = { k : v for k, v in enumerate(endpoints_list) }
-            endpoints_set = set(endpoints_list)
-            self.endpoint_set = endpoints_set
-            local = [ endpoint for endpoint in endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
-            openvino = [endpoint for endpoint in endpoints["openvino_endpoints"] ]
-            libp2p = []
-            tei = [endpoint for endpoint in endpoints["tei_endpoints"]]
-            pass
         if type(endpoint_list) == list:
             self.endpoints = { k : v for k, v in enumerate(endpoint_list) }
             endpoints = endpoint_list
@@ -110,8 +104,30 @@ class ipfs_accelerate_py:
             endpoints_list = list(endpoint_list.keys())
             endpoints_set = set(endpoints_list)
             self.endpoint_set = endpoints_set
+        if endpoint_list is None:    
+            query_endpoints = self.query_endpoints(model)
+            endpoints = query_endpoints["endpoints"]
+            endpoints_set = query_endpoints["endpoints_set"]
+            endpoints_list = [ k for k in endpoints.keys() ]
+            self.endpoints = endpoints
+            self.endpoint_list = endpoints_list
+            self.endpoint_set = endpoints_set
+        else:
+            endpoints = endpoint_list
+            self.endpoints = endpoints
+            endpoints_list = [ k for k in endpoints.keys() ]
+            self.endpoints_list = endpoints_list
+            self.endpoints = { k : v for k, v in enumerate(endpoints_list) }
+            endpoints_set = set(endpoints_list)
+            self.endpoint_set = endpoints_set
+            pass
         if not endpoints_set:
             raise ValueError("No endpoints available for model " + model)
+        else:
+            local = [ endpoint for endpoint in endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
+            openvino = [endpoint for endpoint in endpoints["openvino_endpoints"]]
+            libp2p = []
+            tei = [endpoint for endpoint in endpoints["tei_endpoints"]]
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
