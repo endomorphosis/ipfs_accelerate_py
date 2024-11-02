@@ -2,6 +2,11 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from test_ipfs_accelerate import test_ipfs_accelerate
+import torch 
+import asyncio
+import transformers
+from transformers import AutoTokenizer, AutoModel
+
 class worker:
     def __init__(self, metadata, resources):
         self.metadata = metadata
@@ -23,7 +28,8 @@ class worker:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
             
-    def init_worker(models)
+    async def init_worker(self, models):
+        local = self.endpoint_types["local_endpoints"]
         if "hwtest" not in dir(self):
             hwtest = await self.test_hardware()
             self.hwtest = hwtest
