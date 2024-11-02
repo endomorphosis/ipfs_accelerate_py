@@ -2,6 +2,7 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from test_ipfs_accelerate import test_ipfs_accelerate
+from install_depends import install_depends_py
 import torch 
 import asyncio
 import transformers
@@ -16,6 +17,8 @@ class worker:
         if "test_ipfs_accelerate" not in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
             self.hwtest = self.test_ipfs_accelerate
+        if "install_depends" not in globals():
+            self.install_depends = install_depends_py(resources, metadata)
         for endpoint in self.endpoint_types:
             if endpoint not in dir(self):
                 self.__dict__[endpoint] = {}        
