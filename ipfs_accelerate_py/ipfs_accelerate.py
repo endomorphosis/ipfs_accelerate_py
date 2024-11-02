@@ -1,4 +1,4 @@
-from .backends import backends
+from backends import backends
 
 class load_checkpoint_and_dispatch:
     def __init__(self, model, checkpoint, device_map):
@@ -16,6 +16,7 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
+
 class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
         self.resources = resources
