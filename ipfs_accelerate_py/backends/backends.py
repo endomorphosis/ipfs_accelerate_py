@@ -18,10 +18,12 @@ class marketplace:
         self.cpu_models = []
         self.markets = {
             "lilypad": {},
-            "akash": {}
+            "akash": {},
+            "vast": {},
+            "coreweave": {},
+            "hallucinate": {}
         }
         self.marketplace = {}
-
 
     def __call__(self):
         return self
@@ -34,12 +36,16 @@ class marketplace:
     def query_marketplace(self):
         lilypad_instances = lilypad()
         akash_instances = akash()
-        return lilypad_instances, akash_instances
+        vast_instances = vast()
+        coreweave_instances = coreweave()
+        return lilypad_instances, akash_instances , vast_instances, coreweave_instances
     
     def marketplace_by_gpu_model(self):
         marketplace = self.query_marketplace()
         lilypad_instances = marketplace[0]
         akash_instances = marketplace[1]
+        vast_instances = marketplace[2]
+        coreweave_instances = marketplace[3]
 
         for instance in lilypad_instances:
             this_model = instance.gpu_model
