@@ -1,15 +1,19 @@
-from hugs_kit import lilypad, akash
 class backends:
     def __init__(self, model, checkpoint):
         self.model = model
         self.checkpoint = checkpoint
         self.endpoint_types = {
-        # self.backends = {
-        #     "lilypad": None,
-        #     "akash": None,
-        #     "libp2p": None,
-        #     "hallucinate": None
-        # }
+            "tei_endpoints": [],
+            "openvino_endpoints": [],
+            "libp2p_endpoints": [],
+            "local_endpoints": []
+        }
+        self.backends = {
+            "lilypad": None,
+            "akash": None,
+            "libp2p": None,
+            "hallucinate": None
+        }
 
 class marketplace:
     def __init__(self, model, checkpoint):
@@ -17,10 +21,11 @@ class marketplace:
         self.cpu_models = []
         self.markets = {
             "lilypad": {},
-            "akash": {}
+            "akash": {},
+            "libp2p": {},
+            "vast": {},
         }
         self.marketplace = {}
-
 
     def __call__(self):
         return self
@@ -29,11 +34,15 @@ class marketplace:
         for model in self.gpu_models:
             self.markets["lilypad"][model] = []
             self.markets["akash"][model] = []
-
+            self.markets["vast"][model] = []
+            self.markets["coreweave"][model] = []
+            
     def query_marketplace(self):
         lilypad_instances = lilypad()
         akash_instances = akash()
-        return lilypad_instances, akash_instances
+        vast_instances = vast()
+        coreweave_instances = coreweave()
+        return lilypad_instances, akash_instances, vast_instances, coreweave_instances
     
     def marketplace_by_gpu_model(self):
         marketplace = self.query_marketplace()
