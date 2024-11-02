@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import inference_mode, float16, Tensor
 from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteriaList
 from transformers.generation.streamers import TextStreamer
-from cloudkit_worker import dispatch_result
+from worker import dispatch_result
 from sentence_transformers import SentenceTransformer
 from InstructorEmbedding import INSTRUCTOR
 from FlagEmbedding import FlagModel

@@ -9,3 +9,7 @@ torchtext
 urllib3
 requests
 boto3
+torch
+transformers 
+sentence_transformers 
+InstructorEmbedding
