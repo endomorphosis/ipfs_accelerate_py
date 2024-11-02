@@ -62,7 +62,7 @@ class ipfs_accelerate_py:
         return None
     
     async def test_hardware(self):
-        return await self.test_ipfs_embeddings.test_hardware()
+        return await self.install_depends.test_hardware()
 
     async def init_endpoints(self, models=None, endpoint_list=None):
         for endpoint_type in self.endpoint_types:

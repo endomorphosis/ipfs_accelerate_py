@@ -61,6 +61,157 @@ class install_depends_py():
         
         return None
     
+    
+    
+    async def test_llama_cpp(self):
+        test_llama_cpp_cmd = "pip show llama-cpp-python"
+        test_results = {}
+        try:
+            test_llama_cpp = subprocess.check_output(test_llama_cpp_cmd, shell=True)
+            test_llama_cpp = test_llama_cpp.decode("utf-8")
+            test_results["llama_cpp"] = test_llama_cpp
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        try:
+            test_ollama = subprocess.check_output("ollama", shell=True)
+            test_ollama = test_ollama.decode("utf-8")
+            test_results["ollama"] = test_ollama
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        
+        test_pass = False
+        test_pass = all(isinstance(value, str) for value in test_results.values() if not isinstance(value, ValueError))
+        return test_pass
+        
+    
+    async def test_local_openvino(self):
+        test_openvino_cmd = "python3 -c 'import openvino; print(openvino.__version__)'"
+        try:
+            test_openvino = subprocess.check_output(test_openvino_cmd, shell=True).decode("utf-8")              
+            if type(test_openvino) == str and type(test_openvino) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_ipex(self):        
+        test_ipex_cmd = 'python -c "import torch; import intel_extension_for_pytorch as ipex; print(torch.__version__); print(ipex.__version__);"'
+        try:
+            test_ipex = subprocess.check_output(test_ipex_cmd, shell=True)
+            return test_ipex
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_cuda(self):
+        try:
+            import torch
+            gpus = torch.cuda.device_count()
+            if type(gpus) == int and type(gpus) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+    
+    async def test_hardware(self):
+        cuda_test = None
+        openvino_test = None
+        llama_cpp_test = None
+        ipex_test = None
+        cuda_install = None
+        openvino_install = None
+        llama_cpp_install = None
+        ipex_install = None
+        
+        try:
+            openvino_test = await self.test_local_openvino()
+        except Exception as e:
+            openvino_test = e
+            print(e)
+            try:
+                openvino_install = await self.install_openvino()
+                try:
+                    openvino_test = await self.test_local_openvino()
+                except Exception as e:
+                    openvino_test = e
+                    print(e)
+            except Exception as e:
+                openvino_install = e
+                print(e)        
+            pass
+            
+        try:
+            llama_cpp_test = await self.test_llama_cpp()
+        except Exception as e:
+            llama_cpp_test = e
+            try:
+                llama_cpp_install = await self.install_llama_cpp()
+                try:
+                    llama_cpp_test = await self.test_llama_cpp()
+                except:
+                    llama_cpp_test = e
+            except Exception as e:
+                print(e)
+                llama_cpp_install = e
+            pass
+        try:
+            ipex_test = await self.test_ipex()
+        except Exception as e:
+            ipex_test = e
+            print(e)
+            try:
+                ipex_install = await self.install_ipex()
+                try:
+                    ipex_test = await self.test_ipex()
+                except Exception as e:
+                    ipex_test = e
+                    print(e)
+            except Exception as e:
+                ipex_install = e
+                print(e)
+            pass
+        try:
+            cuda_test = await self.test_cuda()
+        except Exception as e:
+            try:
+                cuda_install = await self.install_cuda()
+                try:
+                    cuda_test = await self.test_cuda()
+                except Exception as e:
+                    cuda_test = e
+                    print(e)                    
+            except Exception as e:
+                cuda_install = e
+                print(e)
+            pass
+                
+        print("local_endpoint_test")
+        install_results = {
+            "cuda": cuda_install,
+            "openvino": openvino_install,
+            "llama_cpp": llama_cpp_install,
+            "ipex": ipex_install
+        }
+        print(install_results)
+        test_results = {
+            "cuda": cuda_test,
+            "openvino": openvino_test,
+            "llama_cpp": llama_cpp_test,
+            "ipex": ipex_test
+        }
+        print(test_results)
+        return test_results
+    
+    
+    
     async def install_ollama(self):
         cmd = "curl -fsSL https://ollama.com/install.sh | sh"
         install_results = {}
