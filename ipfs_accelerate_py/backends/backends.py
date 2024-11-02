@@ -21,7 +21,7 @@ class marketplace:
             "akash": {},
             "vast": {},
             "coreweave": {},
-            "hallucinate": {}
+            "huggingface": {}
         }
         self.marketplace = {}
 
@@ -75,3 +75,12 @@ class docker_tunnel:
         import torch
         self.model.load_state_dict(torch.load(self.checkpoint, map_location="cpu"))
         return self.model
+    
+class load_model_and_dispatch:
+    def __init__(self, model, endpoint, backend):
+        self.model = model
+        self.endpoint = endpoint
+        self.backend = backend
+        self.load_model = self.load_model
+        return None
+    

@@ -1,10 +1,4 @@
-from backends import backends
-
-class load_checkpoint_and_dispatch:
-    def __init__(self, model, checkpoint, device_map):
-        self.model = model
-        self.checkpoint = checkpoint
-        self.device_map = device_map
+from backends import backends       
 import torch
 import requests
 import json
@@ -128,13 +122,7 @@ class ipfs_accelerate_py:
             openvino = [endpoint for endpoint in endpoints["openvino_endpoints"]]
             libp2p = []
             tei = [endpoint for endpoint in endpoints["tei_endpoints"]]
-        cuda_test = self.hwtest["cuda"]
-        openvino_test = self.hwtest["openvino"]
-        llama_cpp_test = self.hwtest["llama_cpp"]
-        ipex_test = self.hwtest["ipex"]
-        cpus = os.cpu_count()
-        cuda = torch.cuda.is_available()
-        gpus = torch.cuda.device_count()
+            
         for model in models:
             if model not in self.tokenizer:
                 self.tokenizer[model] = {}
@@ -149,7 +137,16 @@ class ipfs_accelerate_py:
             if "cpu" not in self.queues[model]:
                 self.queues[model]["cpu"] = ""
             if "cpu" not in self.batch_sizes[model]:
-                self.batch_sizes[model]["cpu"] = 1
+                self.batch_sizes[model]["cpu"] = 1    
+            
+            
+        cuda_test = self.hwtest["cuda"]
+        openvino_test = self.hwtest["openvino"]
+        llama_cpp_test = self.hwtest["llama_cpp"]
+        ipex_test = self.hwtest["ipex"]
+        cpus = os.cpu_count()
+        cuda = torch.cuda.is_available()
+        gpus = torch.cuda.device_count()
         for model in models:
             if cuda and gpus > 0:
                 if cuda_test and type(cuda_test) != ValueError:
