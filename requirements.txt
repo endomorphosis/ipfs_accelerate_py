@@ -13,3 +13,4 @@ torch
 transformers 
 sentence_transformers 
 InstructorEmbedding
+trio

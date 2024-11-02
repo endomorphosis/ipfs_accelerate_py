@@ -17,7 +17,7 @@ from libp2p.typing import (
 )
 
 class libp2p_kit():
-    def __init__(self,  resources=None, meta=None):
+    def __init__(self,  resources=None, metadata=None):
         self.PROTOCOL_ID = TProtocol("/chat/1.0.0")
         self.MAX_READ_LEN = 2**32 - 1
 
