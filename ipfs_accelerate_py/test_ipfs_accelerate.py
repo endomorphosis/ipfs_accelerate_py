@@ -22,7 +22,7 @@ class test_backend:
     
     
     
-class test_ipfs_accelerate_py:
+class test_ipfs_accelerate:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata

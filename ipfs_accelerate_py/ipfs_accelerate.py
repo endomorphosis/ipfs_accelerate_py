@@ -21,11 +21,11 @@ class ipfs_accelerate_py:
         self.resources = resources
         self.metadata = metadata
         if "test_ipfs_embeddings_py" not in globals():
-            import test_ipfs_embeddings
-            from test_ipfs_embeddings import test_ipfs_embeddings_py
-            self.test_ipfs_embeddings = test_ipfs_embeddings_py(resources, metadata)
+            import test
+            from test_ipfs_accelerate import test_ipfs_accelerate
+            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
         else:
-            self.test_ipfs_embeddings = test_ipfs_embeddings(resources, metadata) 
+            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
         if "install_depends_py" not in globals():
             import install_depends
             from install_depends import install_depends_py
