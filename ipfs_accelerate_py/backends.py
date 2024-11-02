@@ -38,10 +38,10 @@ class marketplace:
             self.markets["coreweave"][model] = []
             
     def query_marketplace(self):
-        lilypad_instances = lilypad()
-        akash_instances = akash()
-        vast_instances = vast()
-        coreweave_instances = coreweave()
+        lilypad_instances = self.backends.lilypad()
+        akash_instances = self.backends.akash()
+        vast_instances = self.backends.vast()
+        coreweave_instances = self.backends.coreweave()
         return lilypad_instances, akash_instances, vast_instances, coreweave_instances
     
     def marketplace_by_gpu_model(self):
