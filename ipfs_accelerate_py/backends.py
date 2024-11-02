@@ -1,13 +1,12 @@
 class backends:
-    def __init__(self, model, checkpoint):
-        self.model = model
-        self.checkpoint = checkpoint
-        self.endpoint_types = {
-            "tei_endpoints": [],
-            "openvino_endpoints": [],
-            "libp2p_endpoints": [],
-            "local_endpoints": []
-        }
+    def __init__(self,resources, metadata):
+        self.models = metadata["models"]
+        self.endpoint_types = [
+            "tei_endpoints",
+            "openvino_endpoints",
+            "libp2p_endpoints",
+            "local_endpoints"
+        ]
         self.backends = {
             "lilypad": None,
             "akash": None,
@@ -16,7 +15,7 @@ class backends:
         }
 
 class marketplace:
-    def __init__(self, model, checkpoint):
+    def __init__(self, models):
         self.gpu_models = []
         self.cpu_models = []
         self.markets = {
@@ -51,12 +50,10 @@ class marketplace:
 
         for instance in lilypad_instances:
             this_model = instance.gpu_model
-            self.market["lilypad"][this_model]
         for instance in akash_instances:
             model = instance.gpu_model
 
         return self.gpu_models
-
 
 class start_container:
     def __init__(self, model, checkpoint):
