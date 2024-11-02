@@ -5,8 +5,9 @@ import ipfs_accelerate
 from ipfs_accelerate import ipfs_accelerate_py
 
 class test_backend:
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, resources, metadata):
+        self.resources = resources
+        self.metadata = metadata
 
     def get(self, key):
         return None
@@ -32,9 +33,7 @@ class test_ipfs_accelerate:
             self.ipfs_accelerate = ipfs_accelerate_py(resources, metadata)
         if "test_backend" not in globals():
             self.test_backend = test_backend(resources, metadata)
-            
-        self.test_backend = test_backend(resources, metadata)
-        self.ipfs_accelerate = ipfs_accelerate(resources, metadata)
+        
 
     def __test__(self):
         test_results = {}

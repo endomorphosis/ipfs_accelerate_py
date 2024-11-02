@@ -28,6 +28,7 @@ class ipfs_accelerate_py:
         else:
             self.install_depends = install_depends_py(resources, metadata)
         if "worker" not in globals():
+            import worker
             from worker import worker
             self.worker = worker(resources, metadata)
         self.tei_endpoints = {}

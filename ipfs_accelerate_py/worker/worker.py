@@ -8,7 +8,7 @@ import asyncio
 import transformers
 from transformers import AutoTokenizer, AutoModel
 
-class worker:
+class worker_py:
     def __init__(self, metadata, resources):
         self.metadata = metadata
         self.resources = resources
