@@ -6,8 +6,11 @@ class backends:
             "lilypad": None,
             "akash": None,
             "libp2p": None,
+            "vast": None,
             "hallucinate": None
         }
+        self.endpoint_types = ["tei_endpoints", "openvino_endpoints", "libp2p_endpoints", "local_endpoints"]
+
 
 class marketplace:
     def __init__(self, model, checkpoint):
