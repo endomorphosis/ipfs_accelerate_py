@@ -50,10 +50,6 @@ class install_depends_py():
     async def install_package(self, package):
         if package == "cuda":
             return await self.install_cuda()
-        elif package == "optimum":
-            return await self.install_huggingface_optimum()
-        elif package == "optimum-intel":
-            return await self.install_huggingface_optimum_intel()
         elif package == "openvino":
             return await self.install_openvino()
         elif package == "llama_cpp":
@@ -72,6 +68,38 @@ class install_depends_py():
             return await self.install_libp2p_kit()
         elif package == "faiss":
             return await self.install_faiss()
+        elif package == "faiss-cuda":
+            return await self.install_faiss_cuda()
+        elif package == "faiss-amx":
+            return await self.install_faiss_amx()
+        elif package == "qdrant":
+            return await self.install_qdrant()
+        elif package == "elasticsearch":
+            return await self.install_elasticsearch()
+        elif package == "oneccl_bind_pt":
+            return await self.install_oneccl_bind_pt()
+        elif package == "oneccl_bind_pt_git":
+            return await self.install_oneccl_bind_pt_git()
+        elif package == "huggingface_optimum":
+            return await self.install_huggingface_optimum()
+        elif package == "huggingface_optimum_intel":
+            return await self.install_huggingface_optimum_intel()
+        elif package == "huggingface_optimum_openvino":
+            return await self.install_huggingface_optimum_openvino()
+        elif package == "huggingface_optimum_ipex":
+            return await self.install_huggingface_optimum_ipex()
+        elif package == "huggingface_optimum_habana":
+            return await self.install_huggingface_optimum_habana()
+        elif package == "huggingface_optimum_onnx":
+            return await self.intstall_huggingface_optimum_onnx()
+        elif package == "huggingface_optimum_cuda":
+            return await self.install_huggingface_optimum_cuda()
+        elif package == "optimum":          
+            return await self.install_huggingface_optimum()
+        elif package == "all":
+            return [ all(await self.install_package(package) for package in self.resources["packages"]) ]
+        elif type(package) == list:
+            return [ all(await self.install_package(package) for package in self.resources["packages"]) ]
         else:
             return None
         
@@ -100,6 +128,32 @@ class install_depends_py():
             return await self.test_libp2p_kit()
         elif package == "faiss":
             return await self.test_faiss()
+        elif package == "faiss-cuda":
+            return await self.test_faiss_cuda()
+        elif package == "faiss-amx":
+            return await self.test_faiss_amx()
+        elif package == "qdrant":
+            return await self.test_qdrant()
+        elif package == "elasticsearch":
+            return await self.test_elasticsearch()
+        elif package == "oneccl_bind_pt":
+            return await self.test_oneccl_bind_pt()
+        elif package == "oneccl_bind_pt_git":
+            return await self.test_oneccl_bind_pt_git()
+        elif package == "huggingface_optimum":
+            return await self.test_huggingface_optimum()
+        elif package == "huggingface_optimum_intel":
+            return await self.test_huggingface_optimum_intel()
+        elif package == "huggingface_optimum_openvino":
+            return await self.test_huggingface_optimum_openvino()
+        elif package == "huggingface_optimum_ipex":
+            return await self.test_huggingface_optimum_ipex()
+        elif package == "huggingface_optimum_habana":
+            return await self.test_huggingface_optimum_habana()
+        elif package == "huggingface_optimum_onnx":
+            return await self.test_huggingface_optimum_onnx()
+        elif package == "huggingface_optimum_cuda":
+            return await self.test_huggingface_optimum_cuda()
         else:
             return None
         
@@ -118,7 +172,7 @@ class install_depends_py():
             print(e)
             raise ValueError(e)
         try:
-            test_ollama = subprocess.check_output("ollama", shell=True)
+            test_ollama = subprocess.check_output("ollama -v", shell=True)
             test_ollama = test_ollama.decode("utf-8")
             test_results["ollama"] = test_ollama
         except Exception as e:
@@ -167,7 +221,47 @@ class install_depends_py():
             raise ValueError(e)
         return None
    
-    async def test_huggingface_optimum_intel(self):
+    async def test_huggingface_optimum_habana(self):
+        test_optimum_habana_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_habana = subprocess.check_output(test_optimum_habana_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_habana) == str and type(test_optimum_habana) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_huggingface_optimum_neural_compressor(self):
+        test_optimum_neural_compressor_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_neural_compressor = subprocess.check_output(test_optimum_neural_compressor_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_neural_compressor) == str and type(test_optimum_neural_compressor) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_huggingface_optimum_openvino(self):
+        test_optimum_openvino_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_openvino = subprocess.check_output(test_optimum_openvino_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_openvino) == str and type(test_optimum_openvino) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+   
+    async def test_huggingface_optimum_ipex(self):
         test_optimum_intel_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
         try:
             test_optimum_intel = subprocess.check_output(test_optimum_intel_cmd, shell=True).decode("utf-8")
@@ -215,6 +309,42 @@ class install_depends_py():
         optimum_neural_compressor_install = None
         optimum_openvino_install = None
         optimum_onnx_install = None
+    
+        try:
+            onnx_test = await self.test_onnx()
+        except Exception as e:
+            onnx_test = e
+            print(e)
+            try:
+                onnx_install = await self.install_onnx()
+                try:
+                    onnx_test = await self.test_onnx()
+                except Exception as e:
+                    onnx_test = e
+                    print(e)
+            except Exception as e:
+                onnx_install = e
+                print(e)
+            pass
+        
+        try:
+            onnx_install = await self.install_onnx()
+        except Exception as e:
+            onnx_install = e
+            print(e)
+            try:
+                onnx_test = await self.test_onnx()
+                try:
+                    onnx_install = await self.install_onnx()
+                except Exception as e:
+                    onnx_install = e
+                    print(e)
+            except Exception as e:
+                onnx_test = e
+                print(e)
+            pass
+        
+        
         try:
             optimum_test = await self.test_huggingface_optimum()
         except Exception as e:
@@ -231,6 +361,75 @@ class install_depends_py():
                 optimum_install = e
                 print(e)
                 
+        try:
+            optimum_openvino_test = await self.test_huggingface_optimum_openvino()
+        except Exception as e:
+            optimum_openvino_test = e
+            print(e)
+            try:
+                optimum_openvino_install = await self.install_huggingface_optimum_openvino()
+                try:
+                    optimum_openvino_test = await self.test_huggingface_optimum_openvino()
+                except Exception as e:
+                    optimum_openvino_test = e
+                    print(e)
+            except Exception as e:
+                optimum_openvino_install = e
+                print(e)
+            pass
+
+        try:
+            optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+        except Exception as e:
+            optimum_neural_compressor = e
+            print(e)
+            try:
+                optimum_neural_compressor_install = await self.install_huggingface_optimum_neural_compressor()
+                try:
+                    optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+                except Exception as e:
+                    optimum_neural_compressor = e
+                    print(e)
+            except Exception as e:
+                optimum_neural_compressor_install = e
+                print(e)
+            pass
+        
+        try:
+            optimum_habana_test = await self.test_huggingface_optimum_habana()
+        except Exception as e:
+            optimum_habana_test = e
+            print(e)
+            try:
+                optimum_habana_install = await self.install_huggingface_optimum_habana()
+                try:
+                    optimum_habana_test = await self.test_huggingface_optimum_habana()
+                except Exception as e:
+                    optimum_habana_test = e
+                    print(e)
+            except Exception as e:
+                optimum_habana_install = e
+                print(e)
+            pass
+        
+        try:
+            optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
+        except Exception as e:
+            optimum_onnx_test = e
+            print(e)
+            try:
+                optimum_onnx_install = await self.intstall_huggingface_optimum_onnx()
+                try:
+                    optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
+                except Exception as e:
+                    optimum_onnx_test = e
+                    print(e)
+            except Exception as e:
+                optimum_onnx_install = e
+                print(e)
+            pass
+        
+        
         try:
             optimum_ipex_test = await self.test_huggingface_optimum_ipex()
         except Exception as e:
@@ -320,7 +519,8 @@ class install_depends_py():
             "optimum-openvino": optimum_openvino_install,
             "optimum-neural-compressor": optimum_neural_compressor_install,
             "optimum-habana": optimum_habana_install,
-            "optimum-onnx": optimum_onnx_install
+            "onnx": onnx_install,  
+            "optimum-onnx": optimum_onnx_install,
         }
         print(install_results)
         test_results = {
@@ -333,12 +533,80 @@ class install_depends_py():
             "optimum-openvino": optimum_openvino_test,
             "optimum-neural-compressor": optimum_neural_compressor,
             "optimum-habana": optimum_habana_test,
-            "optimum-onnx": optimum_onnx_test
+            "onnx": onnx_test,
+            "optimum-onnx": optimum_onnx_test,
         }
         print(test_results)
         return test_results
     
+    async def test_onnx(self):
+        test_onnx_cmd = "python3 -c 'import onnx; print(onnx.__version__)'"
+        try:
+            test_onnx = subprocess.check_output(test_onnx_cmd, shell=True).decode("utf-8")
+            if type(test_onnx) == str and type(test_onnx) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
     
+    async def install_onnx(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "onnx", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["onnx"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["onnx"] = e.stderr
+            print(f"Failed to install ONNX: {e.stderr}")
+        return install_results
+    
+    async def install_cuda(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
+            print(install_cmd)
+            install_results["cuda"] = subprocess.run(install_cmd, check=True)
+        except Exception as e:
+            install_results["cuda"] = e
+            print(e)
+        return install_results
+    
+    async def test_cuda(self):
+        try:
+            import torch
+            gpus = torch.cuda.device_count()
+            if type(gpus) == int and type(gpus) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+    
+    async def install_faiss(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "faiss", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["faiss"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["faiss"] = e.stderr
+            print(f"Failed to install Faiss: {e.stderr}")
+        return install_results
+    
+    async def install_faiss_cuda(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "faiss-cuda", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["faiss_cuda"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["faiss_cuda"] = e.stderr
+            print(f"Failed to install Faiss CUDA: {e.stderr}")
+        return install_results
     
     async def install_ollama(self):
         cmd = "curl -fsSL https://ollama.com/install.sh | sh"
@@ -496,6 +764,16 @@ class install_depends_py():
         
         return install_results              
         
+    async def install_huggingface_optimum_neural_compressor(self):
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[neural-compressor]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_neural_compressor"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_neural_compressor"] = e.stderr
+            print(f"Failed to install Optimum Neural Compressor: {e.stderr}")
+        return install_results
     
     async def install_huggingface_optimum_cuda(self):   
         install_results = {}
@@ -544,7 +822,7 @@ class install_depends_py():
     async def intstall_huggingface_optimum_onnx(self):
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[onnx]"
+            install_cmd = ["pip","install","--upgrade","--upgrade-strategy","eager","optimum[onnx]","--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_onnx"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -644,18 +922,58 @@ class install_depends_py():
         return None
     
     async def install_faiss(self):
-        return None
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "faiss", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["faiss"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["faiss"] = e.stderr
+            print(f"Failed to install Faiss: {e.stderr}")
+        return install_results
     
     async def install_faiss_cuda(self):
-        return None
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "faiss-cuda", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["faiss_cuda"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["faiss_cuda"] = e.stderr
+            print(f"Failed to install Faiss CUDA: {e.stderr}")
+        return install_results
     
     async def install_faiss_amx(self):
-        return None
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "faiss-amx", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["faiss_amx"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["faiss_amx"] = e.stderr
+            print(f"Failed to install Faiss AMX: {e.stderr}")
+        return install_results
     
     async def install_qdrant(self):
-        return None
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "qdrant", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["qdrant"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["qdrant"] = e.stderr
+            print(f"Failed to install Qdrant: {e.stderr}")
+        return install_results
     
     async def install_elasticsearch(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "elasticsearch", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["elasticsearch"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["elasticsearch"] = e.stderr
+            print(f"Failed to install Elasticsearch: {e.stderr}")
         return None
 
     def __call__(self, request):

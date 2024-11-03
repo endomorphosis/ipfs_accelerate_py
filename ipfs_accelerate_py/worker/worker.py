@@ -31,8 +31,18 @@ class worker_py:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
     
-    async def init_worker(self, models):
-        local = self.endpoint_types["local_endpoints"]
+    async def init_worker(self, models, local_endpoints, test_hardware):
+        if local_endpoints is None or len(local_endpoints) == 0:
+            if "local_endpoints" in list(self.__dict__.keys()):
+                local_endpoints = self.local_endpoints
+            elif "local_endpoints" in list(self.resources.keys()):
+                local_endpoints = self.resources["local_endpoints"]
+            else:
+                local_endpoints = []
+        else:
+            pass
+        self.local_endpoints  = local_endpoints
+        local = len(local_endpoints) > 0 if isinstance(local_endpoints, dict) else len(local_endpoints.keys()) > 0
         if "hwtest" not in dir(self):
             hwtest = await self.test_hardware()
             self.hwtest = hwtest
