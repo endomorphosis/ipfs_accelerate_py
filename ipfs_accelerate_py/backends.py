@@ -13,6 +13,9 @@ class backends:
             "libp2p": None,
             "hallucinate": None
         }
+    
+    def __call__(self):
+        return self
 
 class marketplace:
     def __init__(self, models):

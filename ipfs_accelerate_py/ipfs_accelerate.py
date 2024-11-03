@@ -15,9 +15,12 @@ class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
+        self.ipfs_accelerate = self
+        self.ipfs_accelerate_py = self
         if "test_ipfs_embeddings_py" not in globals():
-            import test
             from test_ipfs_accelerate import test_ipfs_accelerate
+            self.resources["ipfs_accelerate"] = self
+            self.resources["ipfs_accelerate_py"] = self
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
         else:
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 

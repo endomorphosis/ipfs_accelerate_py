@@ -290,7 +290,6 @@ class install_depends_py():
                 cuda_install = e
                 print(e)
             pass
-                
         print("local_endpoint_test")
         install_results = {
             "cuda": cuda_install,
