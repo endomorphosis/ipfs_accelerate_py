@@ -145,8 +145,9 @@ class install_depends_py():
     
     async def test_ipex(self):        
         test_ipex_cmd = 'python -c "import torch; import intel_extension_for_pytorch as ipex; print(torch.__version__); print(ipex.__version__);"'
+        test_ipex = None
         try:
-            test_ipex = subprocess.check_output(test_ipex_cmd, shell=True)
+            # test_ipex = subprocess.check_output(test_ipex_cmd, shell=True)
             return test_ipex
         except Exception as e:
             print(e)
@@ -195,16 +196,25 @@ class install_depends_py():
         cuda_test = None
         openvino_test = None
         llama_cpp_test = None
+        onnx_test = None
         ipex_test = None
         optimum_test = None
-        optimum_intel_test = None
+        optimum_ipex_test = None
+        optimum_openvino_test = None
+        optimum_neural_compressor = None
+        optimum_habana_test = None
+        optimum_onnx_test = None
         cuda_install = None
         openvino_install = None
+        onnx_install = None
         llama_cpp_install = None
         ipex_install = None
         optimum_install = None
-        optimum_intel_install = None
-        
+        optimum_ipex_install = None
+        optimum_habana_install = None
+        optimum_neural_compressor_install = None
+        optimum_openvino_install = None
+        optimum_onnx_install = None
         try:
             optimum_test = await self.test_huggingface_optimum()
         except Exception as e:
@@ -222,19 +232,19 @@ class install_depends_py():
                 print(e)
                 
         try:
-            optimum_intel_test = await self.test_huggingface_optimum_intel()
+            optimum_ipex_test = await self.test_huggingface_optimum_ipex()
         except Exception as e:
-            optimum_intel_test = e
+            optimum_ipex_test = e
             print(e)
             try:
-                optimum_intel_install = await self.install_huggingface_optimum_intel()
+                optimum_ipex_install = await self.install_huggingface_optimum_ipex()
                 try:
-                    optimum_intel_test = await self.test_huggingface_optimum_intel()
+                    optimum_ipex_test = await self.test_huggingface_optimum_ipex()
                 except Exception as e:
-                    optimum_intel_test = e
+                    optimum_ipex_test = e
                     print(e)
             except Exception as e:
-                optimum_intel_install = e
+                optimum_ipex_install = e
                 print(e)
             pass
         
@@ -306,7 +316,11 @@ class install_depends_py():
             "llama_cpp": llama_cpp_install,
             "ipex": ipex_install,
             "optimum": optimum_install,
-            "optimum-intel": optimum_intel_install
+            "optimum-ipex": optimum_ipex_install,
+            "optimum-openvino": optimum_openvino_install,
+            "optimum-neural-compressor": optimum_neural_compressor_install,
+            "optimum-habana": optimum_habana_install,
+            "optimum-onnx": optimum_onnx_install
         }
         print(install_results)
         test_results = {
@@ -315,7 +329,11 @@ class install_depends_py():
             "llama_cpp": llama_cpp_test,
             "ipex": ipex_test,
             "optimum": optimum_test,
-            "optimum-intel": optimum_intel_test
+            "optimum-ipex": optimum_ipex_test,
+            "optimum-openvino": optimum_openvino_test,
+            "optimum-neural-compressor": optimum_neural_compressor,
+            "optimum-habana": optimum_habana_test,
+            "optimum-onnx": optimum_onnx_test
         }
         print(test_results)
         return test_results
@@ -398,6 +416,7 @@ class install_depends_py():
         except subprocess.CalledProcessError as e:
             install_results["openvino"] = e.stderr
             print(f"Failed to install OpenVINO: {e.stderr}")
+
         return install_results
 
     async def install_dependencies(self, dependencies=None):
@@ -414,6 +433,13 @@ class install_depends_py():
     
     async def install_ipex(self):
         install_results = {}
+        install_ipex_cmd = "pip install --upgrade --upgrade-strategy eager optimum[ipex]"
+        try:
+            install_results["install_ipex"] = subprocess.run(install_ipex_cmd, check=True)
+        except Exception as e:
+            install_results["install_ipex"] = e
+            print(e)
+        
         # python -m pip install intel-extension-for-pytorch
         # python -m pip install oneccl_bind_pt --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
         # install_results["install_torch"] = await self.install_torch()
@@ -456,36 +482,76 @@ class install_depends_py():
                 print(e)    
                 
             try:
-                install_results["install_huggingface_optimum_gaudi"] = await self.install_huggingface_optimum_gaudi()
+                install_results["install_huggingface_optimum_habana"] = await self.install_huggingface_optimum_habana()
             except Exception as e:
-                install_results["install_huggingface_optimum_gaudi"] = e
+                install_results["install_huggingface_optimum_habana"] = e
                 print(e)
             pass
         else:
             install_results["install_huggingface_optimum_cuda"] = None
             install_results["install_huggingface_optimum_openvino"] = None
             install_results["install_huggingface_optimum_intel"] = None
-            install_results["install_huggingface_optimum_gaudi"] = None
+            install_results["install_huggingface_optimum_habana"] = None
             pass
         
         return install_results              
         
     
     async def install_huggingface_optimum_cuda(self):   
-        
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[cuda]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_cuda"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_cuda"] = e.stderr
+            print(f"Failed to install Optimum CUDA: {e.stderr}")
         return None
     
     async def install_huggingface_optimum_openvino(self):
-        
-        return None
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[openvino]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_openvino"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_openvino"] = e.stderr
+            print(f"Failed to install Optimum OpenVINO: {e.stderr}")
+        return install_results
     
-    async def install_huggingface_optimum_intel(self):
-            
-            return None 
+    async def install_huggingface_optimum_ipex(self):
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[ipex]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)    
+            install_results["install_optimum_ipex"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_ipex"] = e.stderr
+            print(f"Failed to install Optimum IPEX: {e.stderr}")
+        return install_results            
 
-    async def install_huggingface_optimum_gaudi(self):
-            
-            return None 
+    async def install_huggingface_optimum_habana(self):
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[habana]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_habana"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_habana"] = e.stderr
+            print(f"Failed to install Optimum Habana: {e.stderr}")
+        return install_results
+        
+    async def intstall_huggingface_optimum_onnx(self):
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[onnx]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_onnx"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_onnx"] = e.stderr
+            print(f"Failed to install Optimum ONNX: {e.stderr}")
+        return install_results
+        
     async def install_oneccl_bind_pt_git(self):
         install_results = {}
         commands = [
