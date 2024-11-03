@@ -14,3 +14,6 @@ transformers
 sentence_transformers 
 InstructorEmbedding
 trio
+numpy
+optimum
+optimum[openvino]

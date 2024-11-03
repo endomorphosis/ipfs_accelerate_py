@@ -631,7 +631,8 @@ class install_depends_py():
     async def install_huggingface_optimum_openvino(self):
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[openvino]"
+            install_cmd = 'pip install --upgrade --upgrade-strategy eager "optimum[openvino]" --break-system-packages'
+            install_cmd = ["pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[openvino]", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_openvino"] = result.stdout
         except subprocess.CalledProcessError as e:
