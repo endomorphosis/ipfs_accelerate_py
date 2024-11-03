@@ -78,42 +78,43 @@ class worker_py:
         if model_type == "bert":
             model_type = "text-classification"
             from optimum.intel import OVModelForSequenceClassification
-            results = OVModelForSequenceClassification.from_pretrained(model_name)
+            results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
         elif model_type == "text-classification":
             from optimum.intel import OVModelForSequenceClassification
-            results = OVModelForSequenceClassification.from_pretrained(model_name)
+            results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
         elif model_type == "token-classification":
             from optimum.intel import OVModelForTokenClassification
-            results = OVModelForTokenClassification.from_pretrained(model_name)
+            results = OVModelForTokenClassification.from_pretrained(model_name, compile=False)
         elif model_type == "question-answering":
             from optimum.intel import OVModelForQuestionAnswering
-            results = OVModelForQuestionAnswering.from_pretrained(model_name)
+            results = OVModelForQuestionAnswering.from_pretrained(model_name, compile=False)
         elif model_type == "audio-classification":
             from optimum.intel import OVModelForAudioClassification
-            results = OVModelForAudioClassification.from_pretrained(model_name)
+            results = OVModelForAudioClassification.from_pretrained(model_name,  compile=False)
         elif model_type == "image-classification":
             from optimum.intel import OVModelForImageClassification
-            results = OVModelForImageClassification.from_pretrained(model_name) 
+            results = OVModelForImageClassification.from_pretrained(model_name, compile=False) 
         elif model_type == "feature-extraction":
             from optimum.intel import OVModelForFeatureExtraction
-            results = OVModelForFeatureExtraction.from_pretrained(model_name)
+            results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
         elif model_type == "fill-mask":
             from optimum.intel import OVModelForMaskedLM
-            results = OVModelForMaskedLM.from_pretrained(model_name)
+            results = OVModelForMaskedLM.from_pretrained(model_name, compile=False)
         elif model_type == "text-generation-with-past":
             from optimum.intel import OVModelForCausalLM
-            results = OVModelForCausalLM.from_pretrained(model_name)
+            results = OVModelForCausalLM.from_pretrained(model_name, compile=False)
         elif model_type == "text2text-generation-with-past":
             from optimum.intel import OVModelForSeq2SeqLM
-            results = OVModelForSeq2SeqLM.from_pretrained(model_name)
+            results = OVModelForSeq2SeqLM.from_pretrained(model_name, compile=False)
         elif model_type == "automatic-speech-recognition":
             from optimum.intel import OVModelForSpeechSeq2Seq
-            results = OVModelForSpeechSeq2Seq.from_pretrained(model_name)
+            results = OVModelForSpeechSeq2Seq.from_pretrained(model_name, compile=False)
         elif model_type == "image-to-text":
             from optimum.intel import OVModelForVision2Seq
-            results = OVModelForVision2Seq.from_pretrained(model_name)
+            results = OVModelForVision2Seq.from_pretrained(model_name, compile=False)
         else:
             return None
+        await results.compile()
         return results
     
     async def get_openvino_pipeline_type(self, model_name, model_type=None):
@@ -198,9 +199,9 @@ class worker_py:
                     openvino_index = self.local_endpoint_types.index("openvino")
                     openvino_model = self.local_endpoint_models[openvino_index]
                     openvino_label = self.local_endpoint_types[openvino_index]
+                    save_model_path = Path("./models/model.xml")
                     ## use openvino to call huggingface transformers
                     if self.hwtest["optimum-openvino"] == True: 
-                            save_model_path = Path("./models/model.xml")
                             self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                             model_type =  str(await self.get_openvino_pipeline_type(model))
                             self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
