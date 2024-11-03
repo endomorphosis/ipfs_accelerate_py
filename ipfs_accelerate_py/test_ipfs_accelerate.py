@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 
-   
 class test_ipfs_accelerate:
     def __init__(self, resources, metadata):
         self.resources = resources
