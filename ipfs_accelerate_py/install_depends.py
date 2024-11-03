@@ -429,29 +429,44 @@ class install_depends_py():
     
     async def install_huggingface_optimum(self):
         install_results = {}
+        install_optiumum_cmd = ["pip", "install", "transformers", "--extra-index-url", "https://huggingface.co/transformers", "--break-system-packages"]
+        test_results = {}        
         try:
-            install_results["install_huggingface_optimum_cuda"] = await self.install_huggingface_optimum_cuda()
+            install_results["install_huggingface_optimum"] = subprocess.run(install_optiumum_cmd, check=True)
         except Exception as e:
-            install_results["install_huggingface_optimum_cuda"] = e
+            install_results["install_huggingface_optimum"] = e
             print(e)
-            
-        try:
-            install_results["install_huggingface_optimum_openvino"] = await self.install_huggingface_optimum_openvino()
-        except Exception as e:
-            install_results["install_huggingface_optimum_openvino"] = e
-            print(e)
-            
-        try:
-            install_results["install_huggingface_optimum_intel"] = await self.install_huggingface_optimum_intel()
-        except Exception as e:
-            install_results["install_huggingface_optimum_intel"] = e
-            print(e)    
-            
-        try:
-            install_results["install_huggingface_optimum_gaudi"] = await self.install_huggingface_optimum_gaudi()
-        except Exception as e:
-            install_results["install_huggingface_optimum_gaudi"] = e
-            print(e)
+        if len(list(test_results.keys())) > 0:
+            try:
+                install_results["install_huggingface_optimum_cuda"] = await self.install_huggingface_optimum_cuda()
+            except Exception as e:
+                install_results["install_huggingface_optimum_cuda"] = e
+                print(e)
+                
+            try:
+                install_results["install_huggingface_optimum_openvino"] = await self.install_huggingface_optimum_openvino()
+            except Exception as e:
+                install_results["install_huggingface_optimum_openvino"] = e
+                print(e)
+                
+            try:
+                install_results["install_huggingface_optimum_intel"] = await self.install_huggingface_optimum_intel()
+            except Exception as e:
+                install_results["install_huggingface_optimum_intel"] = e
+                print(e)    
+                
+            try:
+                install_results["install_huggingface_optimum_gaudi"] = await self.install_huggingface_optimum_gaudi()
+            except Exception as e:
+                install_results["install_huggingface_optimum_gaudi"] = e
+                print(e)
+            pass
+        else:
+            install_results["install_huggingface_optimum_cuda"] = None
+            install_results["install_huggingface_optimum_openvino"] = None
+            install_results["install_huggingface_optimum_intel"] = None
+            install_results["install_huggingface_optimum_gaudi"] = None
+            pass
         
         return install_results              
         
