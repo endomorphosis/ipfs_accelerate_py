@@ -640,6 +640,17 @@ class install_depends_py():
             print(f"Failed to install Optimum OpenVINO: {e.stderr}")
         return install_results
     
+    async def install_ollama_intel_gpu(self):
+        install_results = {}
+        try:
+            install_cmd = "./install_ipex.sh"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_ollama_intel_gpu"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_ollama_intel_gpu"] = e.stderr
+            print(f"Failed to install Ollama Intel GPU: {e.stderr}")
+        return install_results
+    
     async def install_huggingface_optimum_ipex(self):
         install_results = {}
         try:
