@@ -68,6 +68,12 @@ class worker_py:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
     
+    async def get_model_type(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        return model_type
+    
     async def get_openvino_model(self, model_name, model_type=None):
         if model_type is None:
             config = AutoConfig.from_pretrained(model_name)
@@ -163,6 +169,7 @@ class worker_py:
         gpus = torch.cuda.device_count()
         
         for model in models:
+            model_type = await self.get_model_type(model)
             if model not in self.tokenizer:
                 self.tokenizer[model] = {}
             if model not in self.local_endpoints:
@@ -189,12 +196,12 @@ class worker_py:
                 all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
                 all_tests_ValueError = all(x is ValueError for x in all_test_types)
                 all_tests_none = all(x is None for x in all_test_types)
-                if all_tests_ValueError or all_tests_none:  
+                if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
                     self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model).to("cpu")
                     self.queues[model]["cpu"] = asyncio.Queue(4)
                     self.endpoint_handler[(model, "cpu")] = ""
                     # consumer_tasks[(model, "cpu")] = asyncio.create_task(self.chunk_consumer( 1, model, "cpu"))
-                elif openvino_test and type(openvino_test) != ValueError:
+                elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                     ov_count = 0
                     openvino_index = self.local_endpoint_types.index("openvino")
                     openvino_model = self.local_endpoint_models[openvino_index]
@@ -240,7 +247,7 @@ class worker_py:
                     #     self.endpoint_handler[(model, endpoint_name)] = ""
                     #     consumer_tasks[(model, endpoint_name )] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
                     ov_count = ov_count + 1
-                elif llama_cpp_test and type(llama_cpp_test) != ValueError:
+                elif llama_cpp_test and type(llama_cpp_test) != ValueError and model_type == "llama_cpp":
                     llama_count = 0
                     for endpoint in local:
                         if "llama_cpp" in endpoint:
