@@ -818,6 +818,75 @@ class install_depends_py():
             print(f"Failed to install Elasticsearch: {e.stderr}")
         return None
 
+    async def install_numpy(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "numpy", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["numpy"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["numpy"] = e.stderr
+            print(f"Failed to install NumPy: {e.stderr}")
+        return install_results
+    
+    async def install_onnx(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "onnx", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["onnx"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["onnx"] = e.stderr
+            print(f"Failed to install ONNX: {e.stderr}")
+        return install_results
+    
+    async def install_torch_vision(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "torchvision", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["torch_vision"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["torch_vision"] = e.stderr
+            print(f"Failed to install Torch Vision: {e.stderr}")
+        return install_results
+    
+    async def install_torch(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "torch", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["torch"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["torch"] = e.stderr
+            print(f"Failed to install Torch: {e.stderr}")
+        return install_results
+    
+    async def install_numpy(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "numpy", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["numpy"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["numpy"] = e.stderr
+            print(f"Failed to install NumPy: {e.stderr}")
+        return install_results
+    
+    async def test_numpy(self):
+        test_numpy_cmd = "python3 -c 'import numpy; print(numpy.__version__)'"
+        try:
+            test_numpy = subprocess.check_output(test_numpy_cmd, shell=True).decode("utf-8")
+            if type(test_numpy) == str and type(test_numpy) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+
+
     def __call__(self, request):
         return self.install(request)
 
@@ -827,6 +896,9 @@ class install_depends_py():
         llama_cpp_test = None
         onnx_test = None
         ipex_test = None
+        torch_test = None
+        numpy_test = None
+        torch_vision_test = None
         optimum_test = None
         optimum_ipex_test = None
         optimum_openvino_test = None
@@ -836,6 +908,9 @@ class install_depends_py():
         cuda_install = None
         openvino_install = None
         onnx_install = None
+        numpy_install = None
+        torch_install = None
+        torch_vision_install = None
         llama_cpp_install = None
         ipex_install = None
         optimum_install = None
@@ -859,6 +934,23 @@ class install_depends_py():
                     print(e)
             except Exception as e:
                 onnx_install = e
+                print(e)
+            pass
+        
+        try:
+            numpy_test = await self.test_numpy()
+        except Exception as e:
+            numpy_test = e
+            print(e)
+            try:
+                numpy_install = await self.install_numpy()
+                try:
+                    numpy_test = await self.test_numpy()
+                except Exception as e:
+                    numpy_test = e
+                    print(e)
+            except Exception as e:
+                numpy_install = e
                 print(e)
             pass
         
@@ -1029,8 +1121,6 @@ class install_depends_py():
                 torch_vision_install = e
                 print(e)
             pass
-        
-        
         try:
             ipex_test = await self.test_ipex()
         except Exception as e:
