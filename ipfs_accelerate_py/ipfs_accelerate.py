@@ -733,6 +733,7 @@ class ipfs_accelerate_py:
         test_ipfs_accelerate = self.__init__(resources, metadata)
         test_ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init, "test_ipfs_accelerate": test_ipfs_accelerate}
+        print(results)
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
