@@ -98,15 +98,18 @@ class ipfs_accelerate_py:
             if model not in self.queues:
                 self.queues[model] = {}
         if type(endpoint_list) == list:
-            self.endpoints = { k : v for k, v in enumerate(endpoint_list) }
-            endpoints = endpoint_list
-            self.endpoint_list = endpoint_list
-            endpoints_set = set(endpoints)
+            self.endpoints = { k : v for k, v in enumerate(endpoint_list) if endpoint_list[v] in self.endpoint_types or endpoint_list[k] in self.endpoint_types }
+            self.endpoint_list = new_endpoints_list
+            endpoints_set = set(new_endpoints_list)
             self.endpoint_set = endpoints_set
-        if type(endpoint_list) == dict:
-            self.endpoints = endpoint_list
-            endpoints_list = list(endpoint_list.keys())
-            endpoints_set = set(endpoints_list)
+        if type(endpoint_list) == dict:                
+            new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
+            new_endpoints = {}
+            endpoints_set = set(new_endpoints_list)
+            for new_endpoint in new_endpoints_list:
+                new_endpoints[new_endpoint] = endpoint_list[new_endpoint]
+            self.endpoints = new_endpoints
+            self.endpoints_list = new_endpoints_list
             self.endpoint_set = endpoints_set
         if endpoint_list is None:    
             query_endpoints = self.query_endpoints(model)
@@ -117,21 +120,14 @@ class ipfs_accelerate_py:
             self.endpoint_list = endpoints_list
             self.endpoint_set = endpoints_set
         else:
-            endpoints = endpoint_list
-            self.endpoints = endpoints
-            endpoints_list = [ k for k in endpoints.keys() ]
-            self.endpoints_list = endpoints_list
-            self.endpoints = { k : v for k, v in enumerate(endpoints_list) }
-            endpoints_set = set(endpoints_list)
-            self.endpoint_set = endpoints_set
             pass
         if not endpoints_set:
             raise ValueError("No endpoints available for model " + model)
         else:
-            local = [ endpoint for endpoint in endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
-            openvino = [endpoint for endpoint in endpoints["openvino_endpoints"]]
+            local = [ endpoint for endpoint in self.endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
+            openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
             libp2p = []
-            tei = [endpoint for endpoint in endpoints["tei_endpoints"]]
+            tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]
             
         for model in models:
             if model not in self.tokenizer:
@@ -545,6 +541,7 @@ class ipfs_accelerate_py:
                     parsed_knn_embeddings = await self.parse_knn(request_knn_results, model, endpoint, endpoint_type)
                 if parsed_knn_embeddings is not None:
                     embeddings = parsed_knn_embeddings
+                embed_fail = True
                 
         self.endpoint_status[endpoint] = 2**(exponent-1)
         if exponent == 0:
