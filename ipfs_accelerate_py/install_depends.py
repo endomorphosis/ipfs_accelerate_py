@@ -113,8 +113,10 @@ class install_depends_py():
             return await self.test_ollama()
         elif package == "ipex":
             return await self.test_ipex()
-        elif package == "tortch":
+        elif package == "torch":
             return await self.test_torch()
+        elif package == "torch_vision":
+            return await self.test_torch_vision()
         elif package == "storacha":
             return await self.test_storacha()
         elif package == "ipfs":
@@ -153,6 +155,54 @@ class install_depends_py():
     async def install_libp2p_kit(self):
         
         return None
+    
+    async def test_torch_vision(self):
+        test_torch_vision_cmd = "python3 -c 'import torchvision; print(torchvision.__version__)'"
+        try:
+            test_torch_vision = subprocess.check_output(test_torch_vision_cmd, shell=True).decode("utf-8")
+            if type(test_torch_vision) == str and type(test_torch_vision) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_torch(self):
+        test_torch_cmd = "python3 -c 'import torch; print(torch.__version__)'"
+        try:
+            test_torch = subprocess.check_output(test_torch_cmd, shell=True).decode("utf-8")
+            if type(test_torch) == str and type(test_torch) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def install_torch_vision(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "torchvision", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["torch_vision"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["torch_vision"] = e.stderr
+            print(f"Failed to install Torch Vision: {e.stderr}")
+        return install_results
+    
+    async def install_torch(self):
+        install_results = {}
+        try:
+            install_cmd = ["pip", "install", "torch", "--break-system-packages"]
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["torch"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["torch"] = e.stderr
+            print(f"Failed to install Torch: {e.stderr}")
+        return install_results
     
     async def test_ollama(self):
         test_ollama_cmd = "ollama -v"
@@ -945,6 +995,42 @@ class install_depends_py():
                 print(e)
                 llama_cpp_install = e
             pass
+        
+        try:
+            torch_test = await self.test_torch()
+        except Exception as e:
+            torch_test = e
+            print(e)
+            try:
+                torch_install = await self.install_torch()
+                try:
+                    torch_test = await self.test_torch()
+                except Exception as e:
+                    torch_test = e
+                    print(e)
+            except Exception as e:
+                torch_install = e
+                print(e)
+            pass
+        
+        try:
+            torch_vision_test = await self.test_torch_vision()
+        except Exception as e:
+            torch_vision_test = e
+            print(e)
+            try:
+                torch_vision_install = await self.install_torch_vision()
+                try:
+                    torch_vision_test = await self.test_torch_vision()
+                except Exception as e:
+                    torch_vision_test = e
+                    print(e)
+            except Exception as e:
+                torch_vision_install = e
+                print(e)
+            pass
+        
+        
         try:
             ipex_test = await self.test_ipex()
         except Exception as e:
@@ -988,6 +1074,8 @@ class install_depends_py():
             "optimum-habana": optimum_habana_install,
             "onnx": onnx_install,  
             "optimum-onnx": optimum_onnx_install,
+            "torch": torch_install,
+            "torch_vision": torch_vision_install,
         }
         print(install_results)
         test_results = {
@@ -1002,6 +1090,8 @@ class install_depends_py():
             "optimum-habana": optimum_habana_test,
             "onnx": onnx_test,
             "optimum-onnx": optimum_onnx_test,
+            "torch": torch_test,
+            "torch_vision": torch_vision_test,
         }
         print(test_results)
         return test_results
