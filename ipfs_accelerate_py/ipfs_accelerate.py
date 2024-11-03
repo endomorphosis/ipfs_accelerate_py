@@ -144,8 +144,17 @@ class ipfs_accelerate_py:
                 self.queues[model]["cpu"] = ""
             if "cpu" not in self.batch_sizes[model]:
                 self.batch_sizes[model]["cpu"] = 1    
+        try:
+            new_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], self.hwtest)
+            if type(new_resources) == dict:
+                for key in new_resources.keys():
+                    self.resources[key] = new_resources[key]
+            if type(new_resources) == ValueError:
+                raise new_resources
+        except Exception as e:
+            print(e)
+            pass
             
-        new_worker = await self.worker.init_worker(models, self.endpoints["local_endpoints"], self.hwtest)
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]

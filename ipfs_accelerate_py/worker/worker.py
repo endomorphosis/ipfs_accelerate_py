@@ -3,6 +3,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from test_ipfs_accelerate import test_ipfs_accelerate
 from install_depends import install_depends_py
+import optimum
 import torch 
 import asyncio
 import transformers
@@ -67,6 +68,68 @@ class worker_py:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
     
+    async def get_openvino_model(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text", "bert"]
+        if model_type not in model_mapping_list:
+            return None
+        if model_type == "bert":
+            model_type = "text-classification"
+            from optimum.intel import OVModelForSequenceClassification
+            results = OVModelForSequenceClassification.from_pretrained(model_name)
+        elif model_type == "text-classification":
+            from optimum.intel import OVModelForSequenceClassification
+            results = OVModelForSequenceClassification.from_pretrained(model_name)
+        elif model_type == "token-classification":
+            from optimum.intel import OVModelForTokenClassification
+            results = OVModelForTokenClassification.from_pretrained(model_name)
+        elif model_type == "question-answering":
+            from optimum.intel import OVModelForQuestionAnswering
+            results = OVModelForQuestionAnswering.from_pretrained(model_name)
+        elif model_type == "audio-classification":
+            from optimum.intel import OVModelForAudioClassification
+            results = OVModelForAudioClassification.from_pretrained(model_name)
+        elif model_type == "image-classification":
+            from optimum.intel import OVModelForImageClassification
+            results = OVModelForImageClassification.from_pretrained(model_name) 
+        elif model_type == "feature-extraction":
+            from optimum.intel import OVModelForFeatureExtraction
+            results = OVModelForFeatureExtraction.from_pretrained(model_name)
+        elif model_type == "fill-mask":
+            from optimum.intel import OVModelForMaskedLM
+            results = OVModelForMaskedLM.from_pretrained(model_name)
+        elif model_type == "text-generation-with-past":
+            from optimum.intel import OVModelForCausalLM
+            results = OVModelForCausalLM.from_pretrained(model_name)
+        elif model_type == "text2text-generation-with-past":
+            from optimum.intel import OVModelForSeq2SeqLM
+            results = OVModelForSeq2SeqLM.from_pretrained(model_name)
+        elif model_type == "automatic-speech-recognition":
+            from optimum.intel import OVModelForSpeechSeq2Seq
+            results = OVModelForSpeechSeq2Seq.from_pretrained(model_name)
+        elif model_type == "image-to-text":
+            from optimum.intel import OVModelForVision2Seq
+            results = OVModelForVision2Seq.from_pretrained(model_name)
+        else:
+            return None
+        return results
+    
+    async def get_openvino_pipeline_type(self, model_name, model_type=None):
+        model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        if model_type not in model_mapping_list:
+            if model_type == "bert":
+                model_type = "text-classification"
+            else:
+                return None
+        if model_type == None:
+            return None
+        return model_type
+
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
@@ -136,76 +199,26 @@ class worker_py:
                     openvino_model = self.local_endpoint_models[openvino_index]
                     openvino_label = self.local_endpoint_types[openvino_index]
                     ## use openvino to call huggingface transformers
-                    if "openvino" in openvino_label:
-                        # from optimum import openvino
-                        # from optimum import intel
-                        # from openvino import OVConfig
-                        # from openvino import OVModel
-                        # from openvino import OVTokenizer
-                        openvino_methods = {
-                            "OVModelForSequenceClassification"	: "text-classification",
-                            "OVModelForTokenClassification"	    : "token-classification",
-                            "OVModelForQuestionAnswering"	    : "question-answering",
-                            "OVModelForAudioClassification"	    : "audio-classification",
-                            "OVModelForImageClassification"	    : "image-classification",
-                            "OVModelForFeatureExtraction"	    : "feature-extraction",
-                            "OVModelForMaskedLM"                : "fill-mask",
-                            "OVModelForImageClassification"	    : "image-classification",
-                            "OVModelForAudioClassification"     : "audio-classification",
-                            "OVModelForCausalLM"	            : "text-generation-with-past",
-                            "OVModelForSeq2SeqLM"	            : "text2text-generation-with-past",
-                            "OVModelForSpeechSeq2Seq"       	: "automatic-speech-recognition",
-                            "OVModelForVision2Seq"	            : "image-to-text",
-                        }
-                        import optimum
-                        from optimum.intel import OVModelForSequenceClassification
-                        from optimum.intel import OVModelForTokenClassification
-                        from optimum.intel import OVModelForQuestionAnswering
-                        from optimum.intel import OVModelForAudioClassification
-                        from optimum.intel import OVModelForImageClassification
-                        from optimum.intel import OVModelForFeatureExtraction
-                        from optimum.intel import OVModelForMaskedLM
-                        from optimum.intel import OVModelForCausalLM
-                        from optimum.intel import OVModelForSeq2SeqLM
-                        from optimum.intel import OVModelForSpeechSeq2Seq
-                        from optimum.intel import OVModelForVision2Seq
-                        from openvino.runtime import Core
-
-                        def get_openvino_model(model_name, model_type):
-                            model_mapping = {
-                                "text-classification": OVModelForSequenceClassification,
-                                "token-classification": OVModelForTokenClassification,
-                                "question-answering": OVModelForQuestionAnswering,
-                                "audio-classification": OVModelForAudioClassification,
-                                "image-classification": OVModelForImageClassification,
-                                "feature-extraction": OVModelForFeatureExtraction,
-                                "fill-mask": OVModelForMaskedLM,
-                                "text-generation-with-past": OVModelForCausalLM,
-                                "text2text-generation-with-past": OVModelForSeq2SeqLM,
-                                "automatic-speech-recognition": OVModelForSpeechSeq2Seq,
-                                "image-to-text": OVModelForVision2Seq,
-                            }
-                            return model_mapping.get(model_type, None)
-
-                        save_model_path = Path("./models/model.xml")
-                        text = "HF models run perfectly with OpenVINO!"
-                        self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
-                        config = AutoConfig.from_pretrained(model)
-                        model_type = config.__class__.model_type
-                        model_class = get_openvino_model(model, config.model_type)
-                        if model_class:
-                            self.local_endpoints[openvino_model][openvino_label] = model_class.from_pretrained(model)
-                        encoded_input = self.tokenizer[openvino_model][openvino_label](text, return_tensors="pt")
-                        self.endpoint_handler[(openvino_model, openvino_label)] = pipeline(openvino_methods[config.model_type], model=self.local_endpoints[openvino_model][openvino_label], tokenizer=self.tokenizer[openvino_model][openvino_label])
-                        output = self.local_endpoints[openvino_model][openvino_label](**encoded_input).last_hidden_state
-                        if not save_model_path.exists():
-                            ov_model = Core().compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
-                            ov_model.export_model(save_model_path)
-                        core = Core()
-                        compiled_model = core.compile_model(save_model_path, "CPU")
-                        scores_ov = compiled_model(encoded_input.data)[0]
-                        scores_ov = torch.softmax(torch.tensor(scores_ov[0]), dim=0).detach().numpy()
-                        print_prediction(scores_ov)
+                    if self.hwtest["optimum-openvino"] == True: 
+                            save_model_path = Path("./models/model.xml")
+                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
+                            model_type =  str(await self.get_openvino_pipeline_type(model))
+                            self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
+                            self.endpoint_handler[(openvino_model, openvino_label)] = pipe
+                    elif self.hwtest["openvino"] == True:
+                            import openvino as ov
+                            from ov import Core
+                            self.endpoint_handler[(openvino_model, openvino_label)] = pipeline( model=self.local_endpoints[openvino_model][openvino_label], tokenizer=self.tokenizer[openvino_model][openvino_label])
+                            if not save_model_path.exists():
+                                ov_model = Core().compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
+                                ov_model.export_model(save_model_path)
+                            core = Core()
+                            compiled_model = core.compile_model(save_model_path, "CPU")
+                            encoded_input = self.tokenizer[openvino_model][openvino_label]("Hello, this one sentence!", return_tensors="pt")
+                            scores_ov = compiled_model(encoded_input.data)[0]
+                            scores_ov = torch.softmax(torch.tensor(scores_ov[0]), dim=0).detach().numpy()
+                            print(scores_ov)
+                    else:
                         # self.tokenizer[openvino_model][openvino_label] = OpenVinoTokenizer.from_pretrained(model, use_fast=True)
                         # self.local_endpoints[openvino_model][openvino_label] = OpenVinoModel.from_pretrained(model).to("cpu")
                         # self.queues[openvino_model][openvino_label] = asyncio.Queue(64)
@@ -216,13 +229,15 @@ class worker_py:
                         # batch_size = await self.max_batch_size(openvino_model, openvino_label)
                         # self.batch_sizes[openvino_model][openvino_label] = batch_size
                         # consumer_tasks[(model, "openvino")] = asyncio.create_task(self.chunk_consumer(batch_size, model, "openvino"))
-                    if endpoint not in list(self.batch_sizes[model].keys()):
-                        batch_size = await self.max_batch_size(model, endpoint)
-                        self.batch_sizes[model][endpoint_name] = batch_size
-                    if self.batch_sizes[model][endpoint_name] > 0:
-                        self.queues[model][endpoint_name] = asyncio.Queue(64)
-                        self.endpoint_handler[(model, endpoint_name)] = ""
-                        # consumer_tasks[(model, endpoint_name )] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
+                        pass
+                        
+                    # if endpoint not in list(self.batch_sizes[model].keys()):
+                    #     batch_size = await self.max_batch_size(model, endpoint)
+                    #     self.batch_sizes[model][endpoint_name] = batch_size
+                    # if self.batch_sizes[model][endpoint_name] > 0:
+                    #     self.queues[model][endpoint_name] = asyncio.Queue(64)
+                    #     self.endpoint_handler[(model, endpoint_name)] = ""
+                    #     consumer_tasks[(model, endpoint_name )] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
                     ov_count = ov_count + 1
                 elif llama_cpp_test and type(llama_cpp_test) != ValueError:
                     llama_count = 0
@@ -260,58 +275,10 @@ class worker_py:
                                 self.endpoint_handler[(model, endpoint_name)] = ""
                                 # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
                             ipex_count = ipex_count + 1
-            if "openvino_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["openvino_endpoints"]) > 0 :
-                    for endpoint in self.endpoints["openvino_endpoints"]:
-                        batch_size = 0
-                        if model not in self.batch_sizes:
-                            self.batch_sizes[model] = {}
-                        if model not in self.queues:
-                            self.queues[model] = {}
-                        if endpoint not in list(self.batch_sizes[model].keys()):
-                            batch_size = await self.max_batch_size(model, endpoint)
-                            self.batch_sizes[model][endpoint] = batch_size
-                        if self.batch_sizes[model][endpoint] > 0:
-                            self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.endpoint_handler[(model, endpoint)] = ""
-                            # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
-            if "tei_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["tei_endpoints"]) > 0:
-                    for endpoint in self.endpoints["tei_endpoints"]:
-                        this_model = endpoint[0]
-                        this_endpoint = endpoint[1]
-                        context_length = endpoint[2]
-                        batch_size = 0
-                        if this_model not in self.batch_sizes:
-                            self.batch_sizes[this_model] = {}
-                        if this_model not in self.queues:
-                            self.queues[model] = {}
-                        if endpoint not in list(self.batch_sizes[model].keys()):
-                            batch_size = await self.max_batch_size(model, endpoint)
-                            self.batch_sizes[model][this_endpoint] = batch_size
-                        if self.batch_sizes[model][this_endpoint] > 0:
-                            self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.endpoint_handler[(model, this_endpoint)] = ""
-                            # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint)) 
-            if "libp2p_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["libp2p_endpoints"]) > 0:
-                    for endpoint in self.endpoints["libp2p_endpoints"]:
-                        batch_size = 0
-                        if model not in self.batch_sizes:
-                            self.batch_sizes[model] = {}
-                        if model not in self.queues:
-                            self.queues[model] = {}
-                        if endpoint not in list(self.batch_sizes[model].keys()):
-                            batch_size = await self.max_batch_size(model, endpoint)
-                            self.batch_sizes[model][endpoint] = batch_size
-                        if self.batch_sizes[model][endpoint] > 0:
-                            self.queues[model][endpoint] = asyncio.Queue(64)
-        return None
     
     async def max_batch_size(self, model, endpoint):
         
         return None
-    
     
     def __test__(self):
         return self 
