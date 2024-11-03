@@ -1,4 +1,4 @@
-class test_backends:
+class test_backends_py:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata

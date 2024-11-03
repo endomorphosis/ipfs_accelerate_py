@@ -17,22 +17,28 @@ class ipfs_accelerate_py:
         self.metadata = metadata
         self.ipfs_accelerate = self
         self.ipfs_accelerate_py = self
-        if "test_ipfs_embeddings_py" not in globals():
+        self.resources["ipfs_accelerate"] = self
+        self.resources["ipfs_accelerate_py"] = self
+        if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
             from test_ipfs_accelerate import test_ipfs_accelerate
-            self.resources["ipfs_accelerate"] = self
-            self.resources["ipfs_accelerate_py"] = self
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
-        else:
+            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
+        elif "test_ipfs_accelerate" in list(self.resources.keys()):
+            self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
+        elif "test_ipfs_accelerate" in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
+            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         if "install_depends_py" not in globals():
             import install_depends
             from install_depends import install_depends_py
-            self.install_depends = install_depends_py(resources, metadata) 
+            self.install_depends = install_depends_py(resources, metadata)
+            resources["install_depends"] = self.install_depends 
         else:
             self.install_depends = install_depends_py(resources, metadata)
         if "worker" not in globals():
             from worker import worker
             self.worker = worker.worker_py(resources, metadata)
+            resources["worker"] = self.worker
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.batch_sizes = {}

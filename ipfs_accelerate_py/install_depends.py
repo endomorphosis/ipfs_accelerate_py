@@ -9,12 +9,21 @@ class install_depends_py():
         self.results = {}
         self.stdout = {}
         self.stderr = {}
-        self.install_results = {}
-        if "test_ipfs_accelerate" not in globals():
+        self.install_results = {}   
+        if "test_ipfs_accelerate" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             import test_ipfs_accelerate
+            self.test_ipfs_accelerate = test_ipfs_accelerate.test_ipfs_accelerate(resources, metadata)
+        elif "test_ipfs_accelerate" in list(self.resources.keys()): 
+            self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
+        elif "test_ipfs_accelerate" in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
-        if "test_backend" not in globals():
+        if "test_backend" not in globals() and "test_backend" not in list(self.resources.keys()):
             import test_backend
+            from test_backend import test_backend_py
+            self.test_backend = test_backend_py(resources, metadata)
+        elif "test_backend" in list(self.resources.keys()):
+            self.test_backend = self.resources["test_backend"]
+        elif "test_backend" in globals():
             self.test_backend = test_backend(resources, metadata)
         return None
     
