@@ -25,7 +25,6 @@ class install_depends_py():
             self.test_backend = self.resources["test_backend"]
         elif "test_backend" in globals():
             self.test_backend = test_backend(resources, metadata)
-        return None
     
     async def install(self, resources=None):        
         if resources is None:
@@ -82,8 +81,6 @@ class install_depends_py():
             return await self.install_oneccl_bind_pt_git()
         elif package == "huggingface_optimum":
             return await self.install_huggingface_optimum()
-        elif package == "huggingface_optimum_intel":
-            return await self.install_huggingface_optimum_intel()
         elif package == "huggingface_optimum_openvino":
             return await self.install_huggingface_optimum_openvino()
         elif package == "huggingface_optimum_ipex":
@@ -108,8 +105,6 @@ class install_depends_py():
             return await self.test_cuda()
         elif package == "optimum":
             return await self.test_ipfs_accelerate()
-        elif package == "optimum-intel":
-            return await self.test_huggingface_optimum_intel()
         elif package == "openvino":
             return await self.test_openvino()
         elif package == "llama_cpp":
@@ -142,8 +137,6 @@ class install_depends_py():
             return await self.test_oneccl_bind_pt_git()
         elif package == "huggingface_optimum":
             return await self.test_huggingface_optimum()
-        elif package == "huggingface_optimum_intel":
-            return await self.test_huggingface_optimum_intel()
         elif package == "huggingface_optimum_openvino":
             return await self.test_huggingface_optimum_openvino()
         elif package == "huggingface_optimum_ipex":
@@ -159,6 +152,58 @@ class install_depends_py():
         
     async def install_libp2p_kit(self):
         
+        return None
+    
+    async def test_ollama(self):
+        test_ollama_cmd = "ollama -v"
+        try:
+            test_ollama = subprocess.check_output(test_ollama_cmd, shell=True).decode("utf-8")
+            if type(test_ollama) == str and type(test_ollama) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_openvino(self):
+        test_openvino_cmd = "python3 -c 'import openvino; print(openvino.__version__)'"
+        try:
+            test_openvino = subprocess.check_output(test_openvino_cmd, shell=True).decode("utf-8")              
+            if type(test_openvino) == str and type(test_openvino) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_huggingface_optimum_cuda(self):
+        test_optimum_cuda_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_cuda = subprocess.check_output(test_optimum_cuda_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_cuda) == str and type(test_optimum_cuda) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+    
+    async def test_huggingface_optimum_onnx(self):
+        test_optimum_onnx_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_onnx = subprocess.check_output(test_optimum_onnx_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_onnx) == str and type(test_optimum_onnx) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
         return None
     
     async def test_llama_cpp(self):
@@ -285,259 +330,6 @@ class install_depends_py():
         except Exception as e:
             print(e)
             raise ValueError(e)
-    
-    async def test_hardware(self):
-        cuda_test = None
-        openvino_test = None
-        llama_cpp_test = None
-        onnx_test = None
-        ipex_test = None
-        optimum_test = None
-        optimum_ipex_test = None
-        optimum_openvino_test = None
-        optimum_neural_compressor = None
-        optimum_habana_test = None
-        optimum_onnx_test = None
-        cuda_install = None
-        openvino_install = None
-        onnx_install = None
-        llama_cpp_install = None
-        ipex_install = None
-        optimum_install = None
-        optimum_ipex_install = None
-        optimum_habana_install = None
-        optimum_neural_compressor_install = None
-        optimum_openvino_install = None
-        optimum_onnx_install = None
-    
-        try:
-            onnx_test = await self.test_onnx()
-        except Exception as e:
-            onnx_test = e
-            print(e)
-            try:
-                onnx_install = await self.install_onnx()
-                try:
-                    onnx_test = await self.test_onnx()
-                except Exception as e:
-                    onnx_test = e
-                    print(e)
-            except Exception as e:
-                onnx_install = e
-                print(e)
-            pass
-        
-        try:
-            onnx_install = await self.install_onnx()
-        except Exception as e:
-            onnx_install = e
-            print(e)
-            try:
-                onnx_test = await self.test_onnx()
-                try:
-                    onnx_install = await self.install_onnx()
-                except Exception as e:
-                    onnx_install = e
-                    print(e)
-            except Exception as e:
-                onnx_test = e
-                print(e)
-            pass
-        
-        
-        try:
-            optimum_test = await self.test_huggingface_optimum()
-        except Exception as e:
-            optimum_test = e
-            print(e)
-            try:
-                optimum_install = await self.install_huggingface_optimum()
-                try:
-                    optimum_test = await self.test_huggingface_optimum()
-                except Exception as e:
-                    optimum_test = e
-                    print(e)
-            except Exception as e:
-                optimum_install = e
-                print(e)
-                
-        try:
-            optimum_openvino_test = await self.test_huggingface_optimum_openvino()
-        except Exception as e:
-            optimum_openvino_test = e
-            print(e)
-            try:
-                optimum_openvino_install = await self.install_huggingface_optimum_openvino()
-                try:
-                    optimum_openvino_test = await self.test_huggingface_optimum_openvino()
-                except Exception as e:
-                    optimum_openvino_test = e
-                    print(e)
-            except Exception as e:
-                optimum_openvino_install = e
-                print(e)
-            pass
-
-        try:
-            optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
-        except Exception as e:
-            optimum_neural_compressor = e
-            print(e)
-            try:
-                optimum_neural_compressor_install = await self.install_huggingface_optimum_neural_compressor()
-                try:
-                    optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
-                except Exception as e:
-                    optimum_neural_compressor = e
-                    print(e)
-            except Exception as e:
-                optimum_neural_compressor_install = e
-                print(e)
-            pass
-        
-        try:
-            optimum_habana_test = await self.test_huggingface_optimum_habana()
-        except Exception as e:
-            optimum_habana_test = e
-            print(e)
-            try:
-                optimum_habana_install = await self.install_huggingface_optimum_habana()
-                try:
-                    optimum_habana_test = await self.test_huggingface_optimum_habana()
-                except Exception as e:
-                    optimum_habana_test = e
-                    print(e)
-            except Exception as e:
-                optimum_habana_install = e
-                print(e)
-            pass
-        
-        try:
-            optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
-        except Exception as e:
-            optimum_onnx_test = e
-            print(e)
-            try:
-                optimum_onnx_install = await self.intstall_huggingface_optimum_onnx()
-                try:
-                    optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
-                except Exception as e:
-                    optimum_onnx_test = e
-                    print(e)
-            except Exception as e:
-                optimum_onnx_install = e
-                print(e)
-            pass
-        
-        
-        try:
-            optimum_ipex_test = await self.test_huggingface_optimum_ipex()
-        except Exception as e:
-            optimum_ipex_test = e
-            print(e)
-            try:
-                optimum_ipex_install = await self.install_huggingface_optimum_ipex()
-                try:
-                    optimum_ipex_test = await self.test_huggingface_optimum_ipex()
-                except Exception as e:
-                    optimum_ipex_test = e
-                    print(e)
-            except Exception as e:
-                optimum_ipex_install = e
-                print(e)
-            pass
-        
-        try:
-            openvino_test = await self.test_local_openvino()
-        except Exception as e:
-            openvino_test = e
-            print(e)
-            try:
-                openvino_install = await self.install_openvino()
-                try:
-                    openvino_test = await self.test_local_openvino()
-                except Exception as e:
-                    openvino_test = e
-                    print(e)
-            except Exception as e:
-                openvino_install = e
-                print(e)        
-            pass
-            
-        try:
-            llama_cpp_test = await self.test_llama_cpp()
-        except Exception as e:
-            llama_cpp_test = e
-            try:
-                llama_cpp_install = await self.install_llama_cpp()
-                try:
-                    llama_cpp_test = await self.test_llama_cpp()
-                except:
-                    llama_cpp_test = e
-            except Exception as e:
-                print(e)
-                llama_cpp_install = e
-            pass
-        try:
-            ipex_test = await self.test_ipex()
-        except Exception as e:
-            ipex_test = e
-            print(e)
-            try:
-                ipex_install = await self.install_ipex()
-                try:
-                    ipex_test = await self.test_ipex()
-                except Exception as e:
-                    ipex_test = e
-                    print(e)
-            except Exception as e:
-                ipex_install = e
-                print(e)
-            pass
-        try:
-            cuda_test = await self.test_cuda()
-        except Exception as e:
-            try:
-                cuda_install = await self.install_cuda()
-                try:
-                    cuda_test = await self.test_cuda()
-                except Exception as e:
-                    cuda_test = e
-                    print(e)                    
-            except Exception as e:
-                cuda_install = e
-                print(e)
-            pass
-        print("local_endpoint_test")
-        install_results = {
-            "cuda": cuda_install,
-            "openvino": openvino_install,
-            "llama_cpp": llama_cpp_install,
-            "ipex": ipex_install,
-            "optimum": optimum_install,
-            "optimum-ipex": optimum_ipex_install,
-            "optimum-openvino": optimum_openvino_install,
-            "optimum-neural-compressor": optimum_neural_compressor_install,
-            "optimum-habana": optimum_habana_install,
-            "onnx": onnx_install,  
-            "optimum-onnx": optimum_onnx_install,
-        }
-        print(install_results)
-        test_results = {
-            "cuda": cuda_test,
-            "openvino": openvino_test,
-            "llama_cpp": llama_cpp_test,
-            "ipex": ipex_test,
-            "optimum": optimum_test,
-            "optimum-ipex": optimum_ipex_test,
-            "optimum-openvino": optimum_openvino_test,
-            "optimum-neural-compressor": optimum_neural_compressor,
-            "optimum-habana": optimum_habana_test,
-            "onnx": onnx_test,
-            "optimum-onnx": optimum_onnx_test,
-        }
-        print(test_results)
-        return test_results
     
     async def test_onnx(self):
         test_onnx_cmd = "python3 -c 'import onnx; print(onnx.__version__)'"
@@ -978,5 +770,262 @@ class install_depends_py():
 
     def __call__(self, request):
         return self.install(request)
+
+
+
+    async def test_hardware(self):
+        cuda_test = None
+        openvino_test = None
+        llama_cpp_test = None
+        onnx_test = None
+        ipex_test = None
+        optimum_test = None
+        optimum_ipex_test = None
+        optimum_openvino_test = None
+        optimum_neural_compressor = None
+        optimum_habana_test = None
+        optimum_onnx_test = None
+        cuda_install = None
+        openvino_install = None
+        onnx_install = None
+        llama_cpp_install = None
+        ipex_install = None
+        optimum_install = None
+        optimum_ipex_install = None
+        optimum_habana_install = None
+        optimum_neural_compressor_install = None
+        optimum_openvino_install = None
+        optimum_onnx_install = None
+    
+        try:
+            onnx_test = await self.test_onnx()
+        except Exception as e:
+            onnx_test = e
+            print(e)
+            try:
+                onnx_install = await self.install_onnx()
+                try:
+                    onnx_test = await self.test_onnx()
+                except Exception as e:
+                    onnx_test = e
+                    print(e)
+            except Exception as e:
+                onnx_install = e
+                print(e)
+            pass
+        
+        try:
+            onnx_install = await self.install_onnx()
+        except Exception as e:
+            onnx_install = e
+            print(e)
+            try:
+                onnx_test = await self.test_onnx()
+                try:
+                    onnx_install = await self.install_onnx()
+                except Exception as e:
+                    onnx_install = e
+                    print(e)
+            except Exception as e:
+                onnx_test = e
+                print(e)
+            pass
+        
+        
+        try:
+            optimum_test = await self.test_huggingface_optimum()
+        except Exception as e:
+            optimum_test = e
+            print(e)
+            try:
+                optimum_install = await self.install_huggingface_optimum()
+                try:
+                    optimum_test = await self.test_huggingface_optimum()
+                except Exception as e:
+                    optimum_test = e
+                    print(e)
+            except Exception as e:
+                optimum_install = e
+                print(e)
+                
+        try:
+            optimum_openvino_test = await self.test_huggingface_optimum_openvino()
+        except Exception as e:
+            optimum_openvino_test = e
+            print(e)
+            try:
+                optimum_openvino_install = await self.install_huggingface_optimum_openvino()
+                try:
+                    optimum_openvino_test = await self.test_huggingface_optimum_openvino()
+                except Exception as e:
+                    optimum_openvino_test = e
+                    print(e)
+            except Exception as e:
+                optimum_openvino_install = e
+                print(e)
+            pass
+
+        try:
+            optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+        except Exception as e:
+            optimum_neural_compressor = e
+            print(e)
+            try:
+                optimum_neural_compressor_install = await self.install_huggingface_optimum_neural_compressor()
+                try:
+                    optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+                except Exception as e:
+                    optimum_neural_compressor = e
+                    print(e)
+            except Exception as e:
+                optimum_neural_compressor_install = e
+                print(e)
+            pass
+        
+        try:
+            optimum_habana_test = await self.test_huggingface_optimum_habana()
+        except Exception as e:
+            optimum_habana_test = e
+            print(e)
+            try:
+                optimum_habana_install = await self.install_huggingface_optimum_habana()
+                try:
+                    optimum_habana_test = await self.test_huggingface_optimum_habana()
+                except Exception as e:
+                    optimum_habana_test = e
+                    print(e)
+            except Exception as e:
+                optimum_habana_install = e
+                print(e)
+            pass
+        
+        try:
+            optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
+        except Exception as e:
+            optimum_onnx_test = e
+            print(e)
+            try:
+                optimum_onnx_install = await self.intstall_huggingface_optimum_onnx()
+                try:
+                    optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
+                except Exception as e:
+                    optimum_onnx_test = e
+                    print(e)
+            except Exception as e:
+                optimum_onnx_install = e
+                print(e)
+            pass
+        
+        
+        try:
+            optimum_ipex_test = await self.test_huggingface_optimum_ipex()
+        except Exception as e:
+            optimum_ipex_test = e
+            print(e)
+            try:
+                optimum_ipex_install = await self.install_huggingface_optimum_ipex()
+                try:
+                    optimum_ipex_test = await self.test_huggingface_optimum_ipex()
+                except Exception as e:
+                    optimum_ipex_test = e
+                    print(e)
+            except Exception as e:
+                optimum_ipex_install = e
+                print(e)
+            pass
+        
+        try:
+            openvino_test = await self.test_local_openvino()
+        except Exception as e:
+            openvino_test = e
+            print(e)
+            try:
+                openvino_install = await self.install_openvino()
+                try:
+                    openvino_test = await self.test_local_openvino()
+                except Exception as e:
+                    openvino_test = e
+                    print(e)
+            except Exception as e:
+                openvino_install = e
+                print(e)        
+            pass
+            
+        try:
+            llama_cpp_test = await self.test_llama_cpp()
+        except Exception as e:
+            llama_cpp_test = e
+            try:
+                llama_cpp_install = await self.install_llama_cpp()
+                try:
+                    llama_cpp_test = await self.test_llama_cpp()
+                except:
+                    llama_cpp_test = e
+            except Exception as e:
+                print(e)
+                llama_cpp_install = e
+            pass
+        try:
+            ipex_test = await self.test_ipex()
+        except Exception as e:
+            ipex_test = e
+            print(e)
+            try:
+                ipex_install = await self.install_ipex()
+                try:
+                    ipex_test = await self.test_ipex()
+                except Exception as e:
+                    ipex_test = e
+                    print(e)
+            except Exception as e:
+                ipex_install = e
+                print(e)
+            pass
+        try:
+            cuda_test = await self.test_cuda()
+        except Exception as e:
+            try:
+                cuda_install = await self.install_cuda()
+                try:
+                    cuda_test = await self.test_cuda()
+                except Exception as e:
+                    cuda_test = e
+                    print(e)                    
+            except Exception as e:
+                cuda_install = e
+                print(e)
+            pass
+        print("local_endpoint_test")
+        install_results = {
+            "cuda": cuda_install,
+            "openvino": openvino_install,
+            "llama_cpp": llama_cpp_install,
+            "ipex": ipex_install,
+            "optimum": optimum_install,
+            "optimum-ipex": optimum_ipex_install,
+            "optimum-openvino": optimum_openvino_install,
+            "optimum-neural-compressor": optimum_neural_compressor_install,
+            "optimum-habana": optimum_habana_install,
+            "onnx": onnx_install,  
+            "optimum-onnx": optimum_onnx_install,
+        }
+        print(install_results)
+        test_results = {
+            "cuda": cuda_test,
+            "openvino": openvino_test,
+            "llama_cpp": llama_cpp_test,
+            "ipex": ipex_test,
+            "optimum": optimum_test,
+            "optimum-ipex": optimum_ipex_test,
+            "optimum-openvino": optimum_openvino_test,
+            "optimum-neural-compressor": optimum_neural_compressor,
+            "optimum-habana": optimum_habana_test,
+            "onnx": onnx_test,
+            "optimum-onnx": optimum_onnx_test,
+        }
+        print(test_results)
+        return test_results
+    
+
 
 install_depends_py = install_depends_py
