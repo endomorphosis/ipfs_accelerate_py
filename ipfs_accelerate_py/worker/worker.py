@@ -158,8 +158,17 @@ class worker_py:
                             "OVModelForVision2Seq"	            : "image-to-text",
                         }
                         import optimum
-                        from optimum.intel import OVModelForSequenceClassification, OVModelForTokenClassification, OVModelForQuestionAnswering, OVModelForAudioClassification, OVModelForImageClassification, OVModelForFeatureExtraction, OVModelForMaskedLM, OVModelForCausalLM, OVModelForSeq2SeqLM, OVModelForSpeechSeq2Seq, OVModelForVision2Seq
-                        from optimum.intel.openvino import OVConfig
+                        from optimum.intel import OVModelForSequenceClassification
+                        from optimum.intel import OVModelForTokenClassification
+                        from optimum.intel import OVModelForQuestionAnswering
+                        from optimum.intel import OVModelForAudioClassification
+                        from optimum.intel import OVModelForImageClassification
+                        from optimum.intel import OVModelForFeatureExtraction
+                        from optimum.intel import OVModelForMaskedLM
+                        from optimum.intel import OVModelForCausalLM
+                        from optimum.intel import OVModelForSeq2SeqLM
+                        from optimum.intel import OVModelForSpeechSeq2Seq
+                        from optimum.intel import OVModelForVision2Seq
                         from openvino.runtime import Core
 
                         def get_openvino_model(model_name, model_type):
