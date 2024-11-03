@@ -24,7 +24,7 @@ class worker_py:
         self.endpoints = {}
         self.endpoint_types = ["local_endpoints"]
         self.local_endpoints = {}
-        self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_cpp", "optimum_intel","ipex"]
+        self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
         if "test_ipfs_accelerate" not in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
             self.hwtest = self.test_ipfs_accelerate
