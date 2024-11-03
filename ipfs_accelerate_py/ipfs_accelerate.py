@@ -492,51 +492,51 @@ class ipfs_accelerate_py:
             else:
                 pass
                   
-        for this_endpoint in self.endpoints[endpoint_type]:
-            if "cuda" in this_endpoint[1] or "cpu" in this_endpoint[1] or "local" in this_endpoint[1]:
-                this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
-                token_length_size = round(self.endpoints["local_endpoints"][this_endpoint_index][2] * 0.99)
-            elif model is this_endpoint[0]:
-                this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
-                token_length_size = round(self.endpoints[endpoint_type][this_endpoint_index][2] * 0.99) 
-        
-        test_tokens = []
-        if model not in self.tokenizer.keys():
-            self.tokenizer[model] = {}
-        if "cpu" not in self.tokenizer[model].keys():
-            self.tokenizer[model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
-        find_token_str = str("z")
-        find_token_int = self.tokenizer[model]["cpu"].encode(find_token_str)
-        if len(find_token_int) == 3:
-            find_token_int = find_token_int[1]
-        elif len(find_token_int) == 2:
-            find_token_int = find_token_int[1]
-        elif len(find_token_int) == 1:
-            find_token_int = find_token_int[0]
-        for i in range(token_length_size):
-             test_tokens.append(find_token_int)
-        test_text = self.tokenizer[model]["cpu"].decode(test_tokens)
-        if endpoint is None:
-            endpoint = self.choose_endpoint(model)
-        while not embed_fail:
-            test_batch = []
-            for i in range(batch_size):
-                test_batch.append(test_text)
-            parsed_knn_embeddings = None
-            embeddings = None
-            request_knn_results = None
-            try:
-                request_knn_results = await self.request_knn(test_batch, model, endpoint, endpoint_type)
-            except Exception as e:
-                try:
-                    embeddings = await self.index_knn(test_batch, model, endpoint)
-                except Exception as e:
-                        pass
-            if request_knn_results != None and parsed_knn_embeddings == None:
-                parsed_knn_embeddings = await self.parse_knn(request_knn_results, model, endpoint, endpoint_type)
-            if parsed_knn_embeddings is not None:
-               embeddings = parsed_knn_embeddings
+            for this_endpoint in self.endpoints[endpoint_type]:
+                if "cuda" in this_endpoint[1] or "cpu" in this_endpoint[1] or "local" in this_endpoint[1]:
+                    this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
+                    token_length_size = round(self.endpoints["local_endpoints"][this_endpoint_index][2] * 0.99)
+                elif model is this_endpoint[0]:
+                    this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
+                    token_length_size = round(self.endpoints[endpoint_type][this_endpoint_index][2] * 0.99) 
             
+            test_tokens = []
+            if model not in self.tokenizer.keys():
+                self.tokenizer[model] = {}
+            if "cpu" not in self.tokenizer[model].keys():
+                self.tokenizer[model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
+            find_token_str = str("z")
+            find_token_int = self.tokenizer[model]["cpu"].encode(find_token_str)
+            if len(find_token_int) == 3:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 2:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 1:
+                find_token_int = find_token_int[0]
+            for i in range(token_length_size):
+                test_tokens.append(find_token_int)
+            test_text = self.tokenizer[model]["cpu"].decode(test_tokens)
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model)
+            while not embed_fail:
+                test_batch = []
+                for i in range(batch_size):
+                    test_batch.append(test_text)
+                parsed_knn_embeddings = None
+                embeddings = None
+                request_knn_results = None
+                try:
+                    request_knn_results = await self.request_knn(test_batch, model, endpoint, endpoint_type)
+                except Exception as e:
+                    try:
+                        embeddings = await self.index_knn(test_batch, model, endpoint)
+                    except Exception as e:
+                            pass
+                if request_knn_results != None and parsed_knn_embeddings == None:
+                    parsed_knn_embeddings = await self.parse_knn(request_knn_results, model, endpoint, endpoint_type)
+                if parsed_knn_embeddings is not None:
+                    embeddings = parsed_knn_embeddings
+                
         self.endpoint_status[endpoint] = 2**(exponent-1)
         if exponent == 0:
             return 1

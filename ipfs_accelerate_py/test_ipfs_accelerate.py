@@ -33,26 +33,26 @@ class test_ipfs_accelerate:
             self.ipfs_accelerate = ipfs_accelerate_py(resources, metadata)
         if "test_backend" not in globals():
             self.test_backend = test_backend(resources, metadata)
-        
-
-    def __test__(self):
+        return None
+    
+    async def test(self):
         test_results = {}
         try:
-            test_results["test_ipfs_accelerate"] = self.ipfs_accelerate(resources, metadata)
+            test_results["test_ipfs_accelerate"] = self.ipfs_accelerate.__test__(resources, metadata)
         except Exception as e:
             test_results["test_ipfs_accelerate"] = e
         
         try:
-            test_results["test_backend"] = self.test_backend.list()
+            test_results["test_backend"] = self.test_backend.__test__(resources, metadata)
         except Exception as e:
             test_results["test_backend"] = e
             
         return test_results
     
-    def test_ipfs_accelerate(self):
+    async def test_ipfs_accelerate(self):
         test_results = {}
         try:
-            test_results["test_ipfs_accelerate"] = self.ipfs_accelerate(resources, metadata)
+            test_results["test_ipfs_accelerate"] = self.ipfs_acclerate.__test__(resources, metadata)
             return test_results 
         except Exception as e:
             test_results["test_ipfs_accelerate"] = e

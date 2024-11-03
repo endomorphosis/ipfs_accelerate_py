@@ -1,6 +1,7 @@
 import subprocess
 import os
 import sys
+
 class install_depends_py():
     def __init__(self, resources, metadata):
         self.resources = resources
@@ -9,6 +10,12 @@ class install_depends_py():
         self.stdout = {}
         self.stderr = {}
         self.install_results = {}
+        if "test_ipfs_accelerate" not in globals():
+            import test_ipfs_accelerate
+            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
+        if "test_backend" not in globals():
+            import test_backend
+            self.test_backend = test_backend(resources, metadata)
         return None
     
     async def install(self, resources=None):        
@@ -54,14 +61,42 @@ class install_depends_py():
             return await self.install_ipfs_kit()
         elif package == "libp2p":
             return await self.install_libp2p_kit()
+        elif package == "faiss":
+            return await self.install_faiss()
+        else:
+            return None
+        
+    async def test_package(self, package):
+        if package == "cuda":
+            return await self.test_cuda()
+        elif package == "optimum":
+            return await self.test_ipfs_accelerate()
+        elif package == "optimum-intel":
+            return await self.test_huggingface_optimum_intel()
+        elif package == "openvino":
+            return await self.test_openvino()
+        elif package == "llama_cpp":
+            return await self.test_llama_cpp()
+        elif package == "ollama":
+            return await self.test_ollama()
+        elif package == "ipex":
+            return await self.test_ipex()
+        elif package == "tortch":
+            return await self.test_torch()
+        elif package == "storacha":
+            return await self.test_storacha()
+        elif package == "ipfs":
+            return await self.test_ipfs_kit()
+        elif package == "libp2p":
+            return await self.test_libp2p_kit()
+        elif package == "faiss":
+            return await self.test_faiss()
         else:
             return None
         
     async def install_libp2p_kit(self):
         
         return None
-    
-    
     
     async def test_llama_cpp(self):
         test_llama_cpp_cmd = "pip show llama-cpp-python"
@@ -109,6 +144,32 @@ class install_depends_py():
             raise ValueError(e)
         return None
     
+    async def test_huggingface_optimum(self):
+        test_optimum_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum = subprocess.check_output(test_optimum_cmd, shell=True).decode("utf-8")
+            if type(test_optimum) == str and type(test_optimum) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+   
+    async def test_huggingface_optimum_intel(self):
+        test_optimum_intel_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        try:
+            test_optimum_intel = subprocess.check_output(test_optimum_intel_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_intel) == str and type(test_optimum_intel) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None 
+    
     async def test_cuda(self):
         try:
             import torch
@@ -126,10 +187,47 @@ class install_depends_py():
         openvino_test = None
         llama_cpp_test = None
         ipex_test = None
+        optimum_test = None
+        optimum_intel_test = None
         cuda_install = None
         openvino_install = None
         llama_cpp_install = None
         ipex_install = None
+        optimum_install = None
+        optimum_intel_install = None
+        
+        try:
+            optimum_test = await self.test_huggingface_optimum()
+        except Exception as e:
+            optimum_test = e
+            print(e)
+            try:
+                optimum_install = await self.install_huggingface_optimum()
+                try:
+                    optimum_test = await self.test_huggingface_optimum()
+                except Exception as e:
+                    optimum_test = e
+                    print(e)
+            except Exception as e:
+                optimum_install = e
+                print(e)
+                
+        try:
+            optimum_intel_test = await self.test_huggingface_optimum_intel()
+        except Exception as e:
+            optimum_intel_test = e
+            print(e)
+            try:
+                optimum_intel_install = await self.install_huggingface_optimum_intel()
+                try:
+                    optimum_intel_test = await self.test_huggingface_optimum_intel()
+                except Exception as e:
+                    optimum_intel_test = e
+                    print(e)
+            except Exception as e:
+                optimum_intel_install = e
+                print(e)
+            pass
         
         try:
             openvino_test = await self.test_local_openvino()
@@ -198,14 +296,18 @@ class install_depends_py():
             "cuda": cuda_install,
             "openvino": openvino_install,
             "llama_cpp": llama_cpp_install,
-            "ipex": ipex_install
+            "ipex": ipex_install,
+            "optimum": optimum_install,
+            "optimum-intel": optimum_intel_install
         }
         print(install_results)
         test_results = {
             "cuda": cuda_test,
             "openvino": openvino_test,
             "llama_cpp": llama_cpp_test,
-            "ipex": ipex_test
+            "ipex": ipex_test,
+            "optimum": optimum_test,
+            "optimum-intel": optimum_intel_test
         }
         print(test_results)
         return test_results
@@ -306,8 +408,8 @@ class install_depends_py():
         install_results = {}
         # python -m pip install intel-extension-for-pytorch
         # python -m pip install oneccl_bind_pt --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
-        install_results["install_torch"] = await self.install_torch()
-        install_results["install_oneccl_bind_pt"] = await self.install_oneccl_bind_pt()
+        # install_results["install_torch"] = await self.install_torch()
+        # install_results["install_oneccl_bind_pt"] = await self.install_oneccl_bind_pt()
         try:
             install_cmd = ["pip", "install", "intel-pytorch-extension", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
