@@ -3,10 +3,8 @@ from torch import inference_mode, float16
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.generation.streamers import TextStreamer
-from cloudkit_worker import dispatch_result
+from worker import dispatch_result
 from transformers import T5Tokenizer, T5ForConditionalGeneration
-
-## need to install https://github.com/NVIDIA/apex#quick-start
 
 class hf_t5:
 	def __init__(self, resources, meta=None):

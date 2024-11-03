@@ -4,7 +4,7 @@ import gc
 from llama_cpp import Llama
 import json
 from chat_format import chat_format
-
+from worker import should_abort, TaskAbortion
 class llama_cpp:
 	def __init__(self, resources, meta=None):
 		if meta is not None and type(meta) is dict:

@@ -2,8 +2,10 @@ import re
 from torch import inference_mode, float16
 from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteriaList
 from transformers.generation.streamers import TextStreamer
-from cloudkit_worker import dispatch_result
+import os
+import sys
 from transformers import T5Tokenizer, T5ForConditionalGeneration
+from worker import dispatch_result, should_abort, TaskAbortion
 
 chat_templates = [
 	{
@@ -39,7 +41,7 @@ chat_templates = [
 ]
 
 class hf_lm:
-	def __init__(self, resources, meta=None):
+	def __init__(self, resources, metadata=None):
 		self.tokenizer = AutoTokenizer.from_pretrained(
 			resources['checkpoint'], 
 			local_files_only=True,
@@ -52,7 +54,11 @@ class hf_lm:
 			device_map='auto',
 			torch_dtype=float16,
 		).eval()
-
+		if "dispatch_result" in resources:
+			dispatch_result = resources["dispatch_result"]
+			self.dispatch_result = resources["dispatch_result"]
+		else:
+			self.dispatch_result = None	
 
 	def __call__(self, method, **kwargs):
 		if method == 'text_complete':

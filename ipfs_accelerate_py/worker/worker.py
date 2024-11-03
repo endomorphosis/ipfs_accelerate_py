@@ -7,16 +7,47 @@ import optimum
 import torch 
 import asyncio
 import transformers
+from skillset import run
+from ipfs_multiformats import ipfs_multiformats_py
 from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
 import ipfs_transformers_py
 from pathlib import Path
 import numpy as np
 import torch
 
+class should_abort:
+    def __init__(self, resources, metadata):
+        self.abort = False
+        return None
+    
+    async def should_abort(self):
+        return self.abort
+
+class TaskAbortion:
+    def __init__(self, resources, metadata):
+        self.abort = False
+        return None
+    
+    async def TaskAbortion(self):
+        self.abort = True
+        return self.abort
+
+class dispatch_result:
+    def __init__(self, resources, metadata):        
+        self.inbox = {}
+        self.outbox = {}
+        self.queue = {}
+        return None
+    
+    async def dispatch_result(self, result):
+        return result    
+    
 class worker_py:
     def __init__(self, metadata, resources):
         self.metadata = metadata
         self.resources = resources
+        self.inbox = {}
+        self.outbox = {}
         self.tokenizer = {}
         self.queues = {}
         self.batch_sizes = {}
@@ -24,6 +55,7 @@ class worker_py:
         self.endpoints = {}
         self.endpoint_types = ["local_endpoints"]
         self.local_endpoints = {}
+        self.dispatch_result = self.dispatch_result
         self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
         if "test_ipfs_accelerate" not in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
@@ -54,8 +86,23 @@ class worker_py:
             self.torch = self.resources["torch"]
         elif "torch" in globals():
             self.torch = torch
+        if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
+            ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
+            self.ipfs_multiformats = ipfs_multiformats
+        elif "ipfs_multiformats_py" in list(self.resources.keys()):
+            self.ipfs_multiformats = self.resources["ipfs_multiformats_py"]
+        elif "ipfs_multiformats_py" in globals():
+            ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
+            self.ipfs_multiformats = ipfs_multiformats
+
+        if "dispatch_result" not in globals() and "dispatch_result" not in list(self.resources.keys()):
+            self.dispatch_result = dispatch_result
+        elif "dispatch_result" in list(self.resources.keys()):
+            self.dispatch_result = self.resources["dispatch_result"]
         else:
+            self.dispatch_result = dispatch_result
             pass
+
         for endpoint in self.endpoint_types:
             if endpoint not in dir(self):
                 self.__dict__[endpoint] = {}        
@@ -64,6 +111,11 @@ class worker_py:
                     self.__dict__[endpoint][backend] = {}
         print(self.__dict__)
         return None
+    
+    async def dispatch_result(self, result):
+        result_cid = self.ipfs_multiformats.get_cid(result)
+        self.outbox[result_cid] = result
+        return result
     
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
@@ -228,27 +280,19 @@ class worker_py:
                                 scores_ov = torch.softmax(torch.tensor(scores_ov[0]), dim=0).detach().numpy()
                                 print(scores_ov)
                         else:
-                            # self.tokenizer[openvino_model][openvino_label] = OpenVinoTokenizer.from_pretrained(model, use_fast=True)
-                            # self.local_endpoints[openvino_model][openvino_label] = OpenVinoModel.from_pretrained(model).to("cpu")
-                            # self.queues[openvino_model][openvino_label] = asyncio.Queue(64)
-                            # self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
-                            # self.local_endpoints[openvino_model][openvino_label] = AutoModel.from_pretrained(model).to("cpu")
-                            # self.queues[openvino_model][openvino_label] = asyncio.Queue(64)
-                            # self.endpoint_handler[(openvino_model, openvino_label)] = ""
-                            # batch_size = await self.max_batch_size(openvino_model, openvino_label)
-                            # self.batch_sizes[openvino_model][openvino_label] = batch_size
-                            # consumer_tasks[(model, "openvino")] = asyncio.create_task(self.chunk_consumer(batch_size, model, "openvino"))
-                            pass
-                            
-                        # if endpoint not in list(self.batch_sizes[model].keys()):
-                        #     batch_size = await self.max_batch_size(model, endpoint)
-                        #     self.batch_sizes[model][endpoint_name] = batch_size
-                        # if self.batch_sizes[model][endpoint_name] > 0:
-                        #     self.queues[model][endpoint_name] = asyncio.Queue(64)
-                        #     self.endpoint_handler[(model, endpoint_name)] = ""
-                        #     consumer_tasks[(model, endpoint_name )] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
+                            pass                            
                         ov_count = ov_count + 1
                 elif llama_cpp_test and type(llama_cpp_test) != ValueError and model_type == "llama_cpp":
+                    test_amx = optimum.AMX()
+                    
+                    if len(local) > 0 and gpus > 1:
+                        for gpu in range(gpus):
+                            
+                            pass
+                    elif len(local) > 0 and cpus > 0:
+                        
+                        pass
+                    break
                     llama_count = 0
                     for endpoint in local:
                         if ipex_test and type(ipex_test) != ValueError:
