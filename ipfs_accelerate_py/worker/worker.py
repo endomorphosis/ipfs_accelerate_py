@@ -7,18 +7,51 @@ import torch
 import asyncio
 import transformers
 from transformers import AutoTokenizer, AutoModel
+import ipfs_transformers_py
 
 class worker_py:
     def __init__(self, metadata, resources):
         self.metadata = metadata
         self.resources = resources
+        self.tokenizer = {}
+        self.queues = {}
+        self.batch_sizes = {}
+        self.endpoint_handler = {}
+        self.endpoints = {}
         self.endpoint_types = ["local_endpoints"]
+        self.local_endpoints = {}
         self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_cpp", "optimum_intel","ipex"]
         if "test_ipfs_accelerate" not in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
             self.hwtest = self.test_ipfs_accelerate
         if "install_depends" not in globals():
             self.install_depends = install_depends_py(resources, metadata)
+        if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
+            from ipfs_transformers_py import ipfs_transformers
+            self.ipfs_transformers = { 
+                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
+            }        
+        elif "ipfs_transformers_py" in list(self.resources.keys()):
+            self.ipfs_transformers_py = self.resources["ipfs_transformers_py"]
+        elif "ipfs_transformers_py" in globals():
+            from ipfs_transformers_py import ipfs_transformers
+            self.ipfs_transformers = { 
+                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
+            }
+        if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
+            self.transformers = transformers   
+        elif "transformers" in list(self.resources.keys()):
+            self.transformers = self.resources["transformers"]
+        elif "transformers" in globals():
+            self.transformers = transformers
+        if "torch" not in globals() and "torch" not in list(self.resources.keys()):
+            self.torch = torch
+        elif "torch" in list(self.resources.keys()):
+            self.torch = self.resources["torch"]
+        elif "torch" in globals():
+            self.torch = torch
+        else:
+            pass
         for endpoint in self.endpoint_types:
             if endpoint not in dir(self):
                 self.__dict__[endpoint] = {}        
@@ -42,7 +75,10 @@ class worker_py:
         else:
             pass
         self.local_endpoints  = local_endpoints
-        local = len(local_endpoints) > 0 if isinstance(local_endpoints, dict) else len(local_endpoints.keys()) > 0
+        self.local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
+        self.local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
+        self.local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
+        local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
                 hwtest = self.hwtest
@@ -58,19 +94,30 @@ class worker_py:
         cpus = os.cpu_count()
         cuda = torch.cuda.is_available()
         gpus = torch.cuda.device_count()
+        
         for model in models:
+            if model not in self.tokenizer:
+                self.tokenizer[model] = {}
+            if model not in self.local_endpoints:
+                self.local_endpoints[model] = {}
+            if model not in self.queues:
+                self.queues[model] = {}
+            if model not in self.batch_sizes:
+                self.batch_sizes[model] = {}
             if cuda and gpus > 0:
                 if cuda_test and type(cuda_test) != ValueError:
-                    self.local_endpoints[model] = {"cuda:" + str(gpu) : None for gpu in range(gpus) } if gpus > 0 else {"cpu": None}
                     for gpu in range(gpus):
-                        self.tokenizer[model]["cuda:" + str(gpu)] = AutoTokenizer.from_pretrained(model, device='cuda:' + str(gpu), use_fast=True)
-                        self.local_endpoints[model]["cuda:" + str(gpu)] = AutoModel.from_pretrained(model).to("cuda:" + str(gpu))
+                        cuda_index = self.local_endpoint_types.index("cuda:"+str(gpu))
+                        endpoint_model = self.local_endpoint_models[cuda_index]
+                        cuda_label = self.local_endpoint_types[cuda_index]
+                        self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device='cuda:' + str(gpu), use_fast=True)
+                        self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model).to("cuda:" + str(gpu))
                         torch.cuda.empty_cache()
-                        self.queues[model]["cuda:" + str(gpu)] = asyncio.Queue(64)
-                        batch_size = await self.max_batch_size(model, "cuda:" + str(gpu))
-                        self.local_endpoints[model]["cuda:" + str(gpu)] = batch_size
-                        self.batch_sizes[model]["cuda:" + str(gpu)] = batch_size
-                        self.endpoint_handler[(model, "cuda:" + str(gpu))] = ""
+                        self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
+                        batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+                        self.local_endpoints[endpoint_model][cuda_label] = batch_size
+                        self.batch_sizes[endpoint_model][cuda_label] = batch_size
+                        self.endpoint_handler[(endpoint_model, cuda_label)] = ""
                         # consumer_tasks[(model, "cuda:" + str(gpu))] = asyncio.create_task(self.chunk_consumer(batch_size, model, "cuda:" + str(gpu)))
             if len(local) > 0 and cpus > 0:
                 all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
@@ -182,6 +229,11 @@ class worker_py:
                         if self.batch_sizes[model][endpoint] > 0:
                             self.queues[model][endpoint] = asyncio.Queue(64)
         return None
+    
+    async def max_batch_size(self, model, endpoint):
+        
+        return None
+    
     
     def __test__(self):
         return self 

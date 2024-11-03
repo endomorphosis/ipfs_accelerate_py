@@ -145,7 +145,7 @@ class ipfs_accelerate_py:
             if "cpu" not in self.batch_sizes[model]:
                 self.batch_sizes[model]["cpu"] = 1    
             
-        new_worker = self.worker.init_worker(models, self.endpoints["local_endpoints"], self.hwtest)
+        new_worker = await self.worker.init_worker(models, self.endpoints["local_endpoints"], self.hwtest)
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
