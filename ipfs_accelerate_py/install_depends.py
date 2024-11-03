@@ -418,21 +418,21 @@ class install_depends_py():
         # python -m pip install oneccl_bind_pt --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
         # install_results["install_torch"] = await self.install_torch()
         # install_results["install_oneccl_bind_pt"] = await self.install_oneccl_bind_pt()
-        try:
-            install_cmd = ["pip", "install", "intel-pytorch-extension", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
-            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
-            install_results["ipex"] = result.stdout
-        except subprocess.CalledProcessError as e:
-            install_results["ipex"] = e.stderr
-            print(f"Failed to install IPEX: {e.stderr}")
+        # try:
+        #     install_cmd = ["pip", "install", "intel-pytorch-extension", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
+        #     result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+        #     install_results["ipex"] = result.stdout
+        # except subprocess.CalledProcessError as e:
+        #     install_results["ipex"] = e.stderr
+        #     print(f"Failed to install IPEX: {e.stderr}")
         return install_results
     
     async def install_huggingface_optimum(self):
         install_results = {}
-        install_optiumum_cmd = ["pip", "install", "transformers", "--extra-index-url", "https://huggingface.co/transformers", "--break-system-packages"]
+        install_optimum_cmd = ["python", "-m", "pip", "install", "optimum"]
         test_results = {}        
         try:
-            install_results["install_huggingface_optimum"] = subprocess.run(install_optiumum_cmd, check=True)
+            install_results["install_huggingface_optimum"] = subprocess.run(install_optimum_cmd, check=True)
         except Exception as e:
             install_results["install_huggingface_optimum"] = e
             print(e)
