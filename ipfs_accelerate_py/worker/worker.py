@@ -182,6 +182,7 @@ class worker_py:
                         text = "HF models run perfectly with OpenVINO!"
                         self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                         config = AutoConfig.from_pretrained(model)
+                        model_type = config.__class__.model_type
                         model_class = get_openvino_model(model, config.model_type)
                         if model_class:
                             self.local_endpoints[openvino_model][openvino_label] = model_class.from_pretrained(model)
