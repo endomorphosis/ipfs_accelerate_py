@@ -114,7 +114,7 @@ class worker_py:
             results = OVModelForVision2Seq.from_pretrained(model_name, compile=False)
         else:
             return None
-        await results.compile()
+        # await results.compile()
         return results
     
     async def get_openvino_pipeline_type(self, model_name, model_type=None):
@@ -276,6 +276,8 @@ class worker_py:
                                 self.endpoint_handler[(model, endpoint_name)] = ""
                                 # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
                             ipex_count = ipex_count + 1
+        metadata = {"local_endpoints": self.local_endpoints, "local_endpoint_types": self.local_endpoint_types, "local_endpoint_models": self.local_endpoint_models, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler}
+        return metadata    
     
     async def max_batch_size(self, model, endpoint):
         
