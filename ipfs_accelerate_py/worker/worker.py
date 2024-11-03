@@ -31,7 +31,7 @@ class worker_py:
     async def test_hardware(self):
         return await self.install_depends.test_hardware()
     
-    async def init_worker(self, models, local_endpoints, test_hardware):
+    async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
                 local_endpoints = self.local_endpoints
@@ -43,9 +43,14 @@ class worker_py:
             pass
         self.local_endpoints  = local_endpoints
         local = len(local_endpoints) > 0 if isinstance(local_endpoints, dict) else len(local_endpoints.keys()) > 0
-        if "hwtest" not in dir(self):
-            hwtest = await self.test_hardware()
-            self.hwtest = hwtest
+        if hwtest is None:
+            if "hwtest" in list(self.__dict__.keys()):
+                hwtest = self.hwtest
+            elif "hwtest" in list(self.resources.keys()):
+                hwtest = self.resources["hwtest"]
+            else:
+                hwtest = await self.hwtest()
+        self.hwtest = hwtest
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]

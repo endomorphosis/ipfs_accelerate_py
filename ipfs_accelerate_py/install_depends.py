@@ -771,8 +771,6 @@ class install_depends_py():
     def __call__(self, request):
         return self.install(request)
 
-
-
     async def test_hardware(self):
         cuda_test = None
         openvino_test = None
@@ -782,7 +780,7 @@ class install_depends_py():
         optimum_test = None
         optimum_ipex_test = None
         optimum_openvino_test = None
-        optimum_neural_compressor = None
+        optimum_neural_compressor_test = None
         optimum_habana_test = None
         optimum_onnx_test = None
         cuda_install = None
@@ -813,24 +811,6 @@ class install_depends_py():
                 onnx_install = e
                 print(e)
             pass
-        
-        try:
-            onnx_install = await self.install_onnx()
-        except Exception as e:
-            onnx_install = e
-            print(e)
-            try:
-                onnx_test = await self.test_onnx()
-                try:
-                    onnx_install = await self.install_onnx()
-                except Exception as e:
-                    onnx_install = e
-                    print(e)
-            except Exception as e:
-                onnx_test = e
-                print(e)
-            pass
-        
         
         try:
             optimum_test = await self.test_huggingface_optimum()
@@ -866,16 +846,16 @@ class install_depends_py():
             pass
 
         try:
-            optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+            optimum_neural_compressor_test = await self.test_huggingface_optimum_neural_compressor()
         except Exception as e:
-            optimum_neural_compressor = e
+            optimum_neural_compressor_test = e
             print(e)
             try:
                 optimum_neural_compressor_install = await self.install_huggingface_optimum_neural_compressor()
                 try:
-                    optimum_neural_compressor = await self.test_huggingface_optimum_neural_compressor()
+                    optimum_neural_compressor_test = await self.test_huggingface_optimum_neural_compressor()
                 except Exception as e:
-                    optimum_neural_compressor = e
+                    optimum_neural_compressor_test = e
                     print(e)
             except Exception as e:
                 optimum_neural_compressor_install = e
@@ -900,7 +880,7 @@ class install_depends_py():
             pass
         
         try:
-            optimum_onnx_test = await self.intstall_huggingface_optimum_onnx()
+            optimum_onnx_test = await self.test_huggingface_optimum_onnx()
         except Exception as e:
             optimum_onnx_test = e
             print(e)
@@ -1018,7 +998,7 @@ class install_depends_py():
             "optimum": optimum_test,
             "optimum-ipex": optimum_ipex_test,
             "optimum-openvino": optimum_openvino_test,
-            "optimum-neural-compressor": optimum_neural_compressor,
+            "optimum-neural-compressor": optimum_neural_compressor_test,
             "optimum-habana": optimum_habana_test,
             "onnx": onnx_test,
             "optimum-onnx": optimum_onnx_test,
