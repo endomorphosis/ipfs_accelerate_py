@@ -165,8 +165,7 @@ class ipfs_accelerate_py:
                         self.batch_sizes[model][endpoint] = batch_size
                     if self.batch_sizes[model][endpoint] > 0:
                         self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                        self.endpoint_handler[(model, endpoint)] = ""
-                        # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
+                        self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint())
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint in self.endpoints["tei_endpoints"]:
@@ -179,12 +178,10 @@ class ipfs_accelerate_py:
                     if this_model not in self.queues:
                         self.queues[model] = {}
                     if endpoint not in list(self.batch_sizes[model].keys()):
-                        batch_size = await self.max_batch_size(model, endpoint)
                         self.batch_sizes[model][this_endpoint] = batch_size
                     if self.batch_sizes[model][this_endpoint] > 0:
                         self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                        self.endpoint_handler[(model, this_endpoint)] = ""
-                        # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint)) 
+                        self.endpoint_handler[(model, this_endpoint)] = self.make_post_request(self.request_tei_endpoint())
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -198,7 +195,7 @@ class ipfs_accelerate_py:
                         self.batch_sizes[model][endpoint] = batch_size
                     if self.batch_sizes[model][endpoint] > 0:
                         self.queues[model][endpoint] = asyncio.Queue(64)
-                        self.endpoint_handler[(model, endpoint)] = ""
+                        self.endpoint_handler[(model, endpoint)] = self.make_post_request_libp2p(self.request_libp2p_endpoint())
         return self
 
     
@@ -317,32 +314,36 @@ class ipfs_accelerate_py:
                     if self.endpoint_status[endpoint] >= incoming_batch_size:
                         return endpoint
             return None
-    
-    async def request_openvino_endpoint(self, model, batch_size):
+        
+    async def request_openvino_endpoint(self, model, endpoint, endpoint_type, batch):
+        batch_size = len(batch)
         if model in self.openvino_endpoints:
             for endpoint in self.openvino_endpoints[model]:
-                if self.endpoint_status[endpoint] >= batch_size:
+                if self.batch_sizes[endpoint] >= batch_size:
                     return endpoint
         return None
     
-    async def request_llama_cpp_endpoint(self, model, batch_size):
-        if model in self.llama_cpp_endpoints:
-            for endpoint in self.llama_cpp_endpoints[model]:
-                if self.endpoint_status[endpoint] >= batch_size:
-                    return endpoint
-        return None
-    
-    async def request_libp2p_endpoint(self, model, batch_size):
-        if model in self.libp2p_endpoints:
-            for endpoint in self.libp2p_endpoints[model]:
-                if self.endpoint_status[endpoint] >= batch_size:
-                    return endpoint
-        return None
-    
-    async def request_local_endpoint(self, model, batch_size):
+    async def request_llama_cpp_endpoint(self, model, endpoint, endpoint_type, batch):
+        batch_size = len(batch)
         if model in self.local_endpoints:
             for endpoint in self.local_endpoints[model]:
-                if self.endpoint_status[endpoint] >= batch_size:
+                if self.batch_sizes[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
+    async def request_libp2p_endpoint(self, model, endpoint, endpoint_type, batch):
+        batch_size = len(batch)
+        if model in self.libp2p_endpoints:
+            for endpoint in self.libp2p_endpoints[model]:
+                if self.batch_sizes[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
+    async def request_local_endpoint(self, model, endpoint, endpoint_type, batch):
+        batch_size = len(batch)
+        if model in self.local_endpoints:
+            for endpoint in self.local_endpoints[model]:
+                if self.batch_sizes[endpoint] >= batch_size:
                     return endpoint
         return None
 
@@ -480,8 +481,8 @@ class ipfs_accelerate_py:
         return None
     
     async def request_llama_cpp_endpoint(self, model, batch_size):
-        if model in self.llama_cpp_endpoints:
-            for endpoint in self.llama_cpp_endpoints[model]:
+        if model in self.local_endpoints:
+            for endpoint in self.local_endpoints[model]:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
