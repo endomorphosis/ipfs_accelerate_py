@@ -194,7 +194,7 @@ class ipfs_accelerate_py:
                         batch_size = await self.max_batch_size(model, endpoint)
                         self.batch_sizes[model][endpoint] = batch_size
                     if self.batch_sizes[model][endpoint] > 0:
-                        self.queues[model][endpoint] = asyncio.Queue(64)
+                        self.queues[model][endpoint] = asyncio.Queue(64) # Unbounded queue
                         self.endpoint_handler[(model, endpoint)] = self.make_post_request_libp2p(self.request_libp2p_endpoint())
         return self
 
