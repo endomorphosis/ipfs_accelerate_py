@@ -1,5 +1,6 @@
 import os
 import sys
+import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from test_ipfs_accelerate import test_ipfs_accelerate
 from install_depends import install_depends_py
@@ -121,6 +122,12 @@ class worker_py:
         return await self.install_depends.test_hardware()
     
     async def get_model_type(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        return model_type
+    
+    async def get_model_format(self, model_name, model_type=None):
         if model_type is None:
             config = AutoConfig.from_pretrained(model_name)
             model_type = config.__class__.model_type
@@ -266,18 +273,49 @@ class worker_py:
                                 model_type =  str(await self.get_openvino_pipeline_type(model))
                                 self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                                 self.endpoint_handler[(openvino_model, openvino_label)] = pipe
-                        elif self.hwtest["openvino"] == True:
-                                import openvino as ov
-                                from ov import Core
-                                self.endpoint_handler[(openvino_model, openvino_label)] = pipeline( model=self.local_endpoints[openvino_model][openvino_label], tokenizer=self.tokenizer[openvino_model][openvino_label])
+                        elif self.hwtest["openvino"] == True:                            
+                                text = "Replace me by any text you'd like."
+                                import openvino as ov                                
+                                core = ov.Core()
+                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
+                                self.local_endpoints[openvino_model][openvino_label] = AutoModel.from_pretrained(model)
+                                encoded_input = self.tokenizer[openvino_model][openvino_label](text, return_tensors='pt')
+                                ov_model = ov.convert_model(model, example_input={**encoded_input})
+                                ov.save_model(ov_model, 'model.xml')
+                                compiled_model = ov.compile_model(ov_model)
+                                result = compiled_model({**encoded_input})
+                                ##download model from huggingface and convert to openvino
+                                huggingface_pull_model_cmd = "transformers-cli convert --model " + model + " --framework onnx --pipeline " + model_type
+                                convert_onnx_results = {}
+                                try:
+                                    convert_onnx_results["results"] = subprocess.check_output(huggingface_pull_model_cmd, shell=True)
+                                except Exception as e:
+                                    convert_onnx_results["results"] = e
+                                        
+                                huggingface_cache_directory = os.path.expanduser("~/.cache/huggingface")
+                                huggingface_cache_model_directory = os.path.join(huggingface_cache_directory, model)
+                                cache_save_model_path = os.path.join(huggingface_cache_model_directory, "model.xml")
+                                if cache_save_model_path.exists():
+                                    cached_model_ls = os.listdir(huggingface_cache_model_directory)
+                                    if "model.xml" in cached_model_ls:
+                                        compiled_model = core.compile_model(cache_save_model_path, "CPU")
+                                        ov_model = core.compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
+                                        ov_model.export_model(cache_save_model_path)
+                                    else:
+                                        converted_model = core.convert_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
+                                        converted_model.export_model(cache_save_model_path)
+                                else:
+                                    os.makedirs(huggingface_cache_model_directory)
+                                    converted_model = core.convert_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
+                                    converted_model.export_model(cache_save_model_path)
                                 if not save_model_path.exists():
-                                    ov_model = Core().compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
+                                    compiled_model = core.compile_model(cache_save_model_path, "CPU")
+                                    ov_model = core.compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
                                     ov_model.export_model(save_model_path)
-                                core = Core()
-                                compiled_model = core.compile_model(save_model_path, "CPU")
                                 encoded_input = self.tokenizer[openvino_model][openvino_label]("Hello, this one sentence!", return_tensors="pt")
                                 scores_ov = compiled_model(encoded_input.data)[0]
                                 scores_ov = torch.softmax(torch.tensor(scores_ov[0]), dim=0).detach().numpy()
+                                self.endpoint_handler[(openvino_model, openvino_label)] = pipeline( model=self.local_endpoints[openvino_model][openvino_label], tokenizer=self.tokenizer[openvino_model][openvino_label])
                                 print(scores_ov)
                         else:
                             pass                            

@@ -799,6 +799,7 @@ class install_depends_py():
     
     async def install_faiss_amx(self):
         install_results = {}
+        git_src="https://github.com/guangzegu/faiss/tree/main"
         try:
             install_cmd = ["pip", "install", "faiss-amx", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
