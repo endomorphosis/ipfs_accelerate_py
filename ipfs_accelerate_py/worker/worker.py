@@ -134,6 +134,22 @@ class worker_py:
         return model_type
     
     async def get_openvino_model(self, model_name, model_type=None):
+        homedir = os.path.expanduser("~")
+        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache_models = os.path.join(huggingface_cache, "models")
+        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+        model_src_path = ""
+        model_dst_path = ""
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        import openvino as ov
+        ov_model = ov.convert_model(model_name, example_input={})
+        ov.save_model(ov_model, 'model.xml')
+        return ov.compile_model(ov_model)
+    
+    async def get_optimum_openvino_model(self, model_name, model_type=None):
         if model_type is None:
             config = AutoConfig.from_pretrained(model_name)
             model_type = config.__class__.model_type
@@ -271,7 +287,7 @@ class worker_py:
                         if self.hwtest["optimum-openvino"] == True: 
                                 self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                                 model_type =  str(await self.get_openvino_pipeline_type(model))
-                                self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
+                                self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                                 self.endpoint_handler[(openvino_model, openvino_label)] = pipe
                         elif self.hwtest["openvino"] == True:                            
                                 text = "Replace me by any text you'd like."
