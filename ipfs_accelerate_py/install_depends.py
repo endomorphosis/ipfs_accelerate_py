@@ -316,6 +316,20 @@ class install_depends_py():
             raise ValueError(e)
         return None
    
+    async def test_huggingface_optimum_amx(self):
+        import optimum
+        test_optimum_amx_cmd = optimum.AMX()
+        try:
+            test_optimum_amx = subprocess.check_output(test_optimum_amx_cmd, shell=True).decode("utf-8")
+            if type(test_optimum_amx) == str and type(test_optimum_amx) != ValueError:
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(e)
+            raise ValueError(e)
+        return None
+   
     async def test_huggingface_optimum_habana(self):
         test_optimum_habana_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
         try:
@@ -660,6 +674,17 @@ class install_depends_py():
         except subprocess.CalledProcessError as e:
             install_results["install_optimum_ipex"] = e.stderr
             print(f"Failed to install Optimum IPEX: {e.stderr}")
+        return install_results
+    
+    async def install_huggingface_optimum_amx(self):
+        install_results = {}
+        try:
+            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[amx]"
+            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
+            install_results["install_optimum_amx"] = result.stdout
+        except subprocess.CalledProcessError as e:
+            install_results["install_optimum_amx"] = e.stderr
+            print(f"Failed to install Optimum AMX: {e.stderr}")
         return install_results            
 
     async def install_huggingface_optimum_habana(self):
@@ -932,7 +957,21 @@ class install_depends_py():
         optimum_neural_compressor_install = None
         optimum_openvino_install = None
         optimum_onnx_install = None
-    
+        optimum_amx_install = None
+        optimum_amx_test = None
+        
+        try:
+            optimum_amx_test = await self.test_huggingface_optimum_amx()
+        except Exception as e:
+            optimum_amx_test = e
+            print(e)
+            try:
+                optimum_amx_install = await self.install_huggingface_optimum_amx()
+            except Exception as e:
+                optimum_amx_install = e
+                print(e)
+            pass
+        
         try:
             onnx_test = await self.test_onnx()
         except Exception as e:

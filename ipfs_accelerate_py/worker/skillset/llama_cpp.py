@@ -7,7 +7,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
 from chat_format import chat_format
-import worker 
+import worker
+import llama_cpp
+from llama_cpp import Llama
 # from worker import TaskAbortion, should_abort
 class llama_cpp:
 	def __init__(self, resources, meta=None):
@@ -103,7 +105,7 @@ class llama_cpp:
 		print("chat_format")
 		print("Prompt: ")
 		print(prompt)
-		return self.complete(prompt, stop=stop, **kwargs)
+		return self.llm_complete(prompt, stop=stop, **kwargs)
 	
 
 	def llama_cpp_chat(self, messages, system=None, **kwargs):
@@ -196,8 +198,8 @@ class llama_cpp:
 			)
 
 		for chunk in streamer:
-			if should_abort():
-				raise TaskAbortion
+			if self.should_abort():
+				raise self.TaskAbortion
 
 			text = chunk['choices'][0]['text']
 
@@ -310,8 +312,8 @@ class llama_cpp:
 		)
 
 		for chunk in streamer:
-			if should_abort():
-				raise TaskAbortion
+			if self.should_abort():
+				raise self.TaskAbortion
 
 			text = chunk['choices'][0]['text']
 

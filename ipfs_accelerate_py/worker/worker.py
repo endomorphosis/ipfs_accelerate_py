@@ -220,6 +220,13 @@ class worker_py:
         if model_type == None:
             return None
         return model_type
+    
+    async def get_llama_cpp_model(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name)
+            model_type = config.__class__.model_type
+        llama_cpp_model = llama_cpp(model_name, model_type)
+        return llama_cpp_model
 
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
@@ -307,52 +314,58 @@ class worker_py:
                             pass                            
                         ov_count = ov_count + 1
                 elif llama_cpp_test and type(llama_cpp_test) != ValueError and model_type == "llama_cpp":
-                    test_amx = optimum.AMX()
-                    
+                    llama_model = None
                     if len(local) > 0 and gpus > 1:
                         for gpu in range(gpus):
-                            
+                            llama_model = await self.get_llama_cpp_model(model, model_type)
                             pass
                     elif len(local) > 0 and cpus > 0:
-                        
+                        llama_model = await self.get_llama_cpp_model(model, model_type)
                         pass
+                    self.tokenizer[model]["llama_cpp"] = AutoTokenizer.from_pretrained(model, use_fast=True)
+                    self.local_endpoints[model]["llama_cpp"] = llama_model
+                    self.queues[model]["llama_cpp"] = asyncio.Queue(64)
+                    self.endpoint_handler[(model, "llama_cpp")] = llama_model
+                    llama_count = llama_count + 1
                     break
-                    llama_count = 0
-                    for endpoint in local:
-                        if ipex_test and type(ipex_test) != ValueError:
-                            ipex_count = 0
-                            for endpoint in local:
-                                if "ipex" in endpoint:
-                                    endpoint_name = "ipex:"+str(ipex_count)
-                                    batch_size = 0
-                                    if model not in self.batch_sizes:
-                                        self.batch_sizes[model] = {}
-                                    if model not in self.queues:
-                                        self.queues[model] = {}
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        batch_size = await self.max_batch_size(model, endpoint)
-                                        self.batch_sizes[model][endpoint] = batch_size
-                                    if self.batch_sizes[model][endpoint] > 0:
-                                        self.queues[model][endpoint] = asyncio.Queue(64)
-                                        self.endpoint_handler[(model, endpoint_name)] = ""
-                                        # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
-                                    ipex_count = ipex_count + 1
-                            else:
-                                if "llama_cpp" in endpoint:
-                                    endpoint_name = "llama:"+str(ov_count)
-                                    batch_size = 0                            
-                                    if model not in self.batch_sizes:
-                                        self.batch_sizes[model] = {}
-                                    if model not in self.queues:
-                                        self.queues[model] = {}
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        batch_size = await self.max_batch_size(model, endpoint)
-                                        self.batch_sizes[model][endpoint] = batch_size
-                                    if self.batch_sizes[model][endpoint] > 0:
-                                        self.queues[model][endpoint] = asyncio.Queue(64)
-                                        self.endpoint_handler[(model, endpoint_name)] = ""
-                                        # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
-                                    llama_count = llama_count + 1
+                else:
+                    pass
+                    # llama_count = 0
+                    # for endpoint in local:
+                    #     if ipex_test and type(ipex_test) != ValueError:
+                    #         ipex_count = 0
+                    #         for endpoint in local:
+                    #             if "ipex" in endpoint:
+                    #                 endpoint_name = "ipex:"+str(ipex_count)
+                    #                 batch_size = 0
+                    #                 if model not in self.batch_sizes:
+                    #                     self.batch_sizes[model] = {}
+                    #                 if model not in self.queues:
+                    #                     self.queues[model] = {}
+                    #                 if endpoint not in list(self.batch_sizes[model].keys()):
+                    #                     batch_size = await self.max_batch_size(model, endpoint)
+                    #                     self.batch_sizes[model][endpoint] = batch_size
+                    #                 if self.batch_sizes[model][endpoint] > 0:
+                    #                     self.queues[model][endpoint] = asyncio.Queue(64)
+                    #                     self.endpoint_handler[(model, endpoint_name)] = ""
+                    #                     # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(self.queues[model][endpoint], column, batch_size, model, endpoint))
+                    #                 ipex_count = ipex_count + 1
+                    #         else:
+                    #             if "llama_cpp" in endpoint:
+                    #                 endpoint_name = "llama:"+str(ov_count)
+                    #                 batch_size = 0                            
+                    #                 if model not in self.batch_sizes:
+                    #                     self.batch_sizes[model] = {}
+                    #                 if model not in self.queues:
+                    #                     self.queues[model] = {}
+                    #                 if endpoint not in list(self.batch_sizes[model].keys()):
+                    #                     batch_size = await self.max_batch_size(model, endpoint)
+                    #                     self.batch_sizes[model][endpoint] = batch_size
+                    #                 if self.batch_sizes[model][endpoint] > 0:
+                    #                     self.queues[model][endpoint] = asyncio.Queue(64)
+                    #                     self.endpoint_handler[(model, endpoint_name)] = ""
+                    #                     # consumer_tasks[(model, endpoint)] = asyncio.create_task(self.chunk_consumer(batch_size, model, endpoint_name))
+                    #                 llama_count = llama_count + 1
         metadata = {"local_endpoints": self.local_endpoints, "local_endpoint_types": self.local_endpoint_types, "local_endpoint_models": self.local_endpoint_models, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler}
         return metadata    
     
