@@ -93,6 +93,8 @@ class install_depends_py():
             return await self.install_huggingface_optimum_cuda()
         elif package == "optimum":          
             return await self.install_huggingface_optimum()
+        elif package == "optimum_amx":
+            return await self.install_huggingface_optimum_amx()
         elif package == "all":
             return [ all(await self.install_package(package) for package in self.resources["packages"]) ]
         elif type(package) == list:
@@ -149,6 +151,8 @@ class install_depends_py():
             return await self.test_huggingface_optimum_onnx()
         elif package == "huggingface_optimum_cuda":
             return await self.test_huggingface_optimum_cuda()
+        elif package == "huggingface_optimum_amx":
+            return await self.test_huggingface_optimum_amx()
         else:
             return None
         
