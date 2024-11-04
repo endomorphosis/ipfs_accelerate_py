@@ -269,7 +269,7 @@ class worker_py:
                 self.queues[model] = {}
             if model not in self.batch_sizes:
                 self.batch_sizes[model] = {}
-            if model_type is not "llama_cpp":
+            if model_type != "llama_cpp":
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
@@ -283,7 +283,6 @@ class worker_py:
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
                             batch_size = await self.max_batch_size(endpoint_model, cuda_label)
                             self.batch_sizes[endpoint_model][cuda_label] = batch_size
-                            # consumer_tasks[(model, "cuda:" + str(gpu))] = asyncio.create_task(self.chunk_consumer(batch_size, model, "cuda:" + str(gpu)))
                 if local > 0 and cpus > 0:
                     all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
                     all_tests_ValueError = all(x is ValueError for x in all_test_types)
@@ -292,24 +291,24 @@ class worker_py:
                         self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model).to("cpu")
                         self.queues[model]["cpu"] = asyncio.Queue(4)
                         self.endpoint_handler[(model, "cpu")] = ""
-                        # consumer_tasks[(model, "cpu")] = asyncio.create_task(self.chunk_consumer( 1, model, "cpu"))
                     elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                         ov_count = 0
                         openvino_index = self.local_endpoint_types.index("openvino")
                         openvino_model = self.local_endpoint_models[openvino_index]
                         openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
-                        save_model_path = Path("./models/model.xml")
-                        # use openvino to call huggingface transformers
+                        # to disable openvino to calling huggingface transformers uncomment
                         # self.hwtest["optimum-openvino"] = False
                         if self.hwtest["optimum-openvino"] == True: 
                                 self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                                 model_type =  str(await self.get_openvino_pipeline_type(model))
                                 self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                                 self.endpoint_handler[(openvino_model, openvino_label)] = pipe
+                                self.batch_sizes[openvino_model][openvino_label] = None
                         elif self.hwtest["openvino"] == True:                            
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
                                 self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
                                 self.endpoint_handler[(openvino_model, openvino_label)] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
+                                self.batch_sizes[openvino_model][openvino_label] = None
                         else:
                             pass                            
                         ov_count = ov_count + 1
@@ -348,8 +347,28 @@ class worker_py:
                     break
                 else:
                     pass
-        metadata = {"local_endpoints": self.local_endpoints, "local_endpoint_types": self.local_endpoint_types, "local_endpoint_models": self.local_endpoint_models, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler}
-        return metadata    
+        worker_endpoint_types = []
+        worker_model_types = []
+        for endpoint in self.endpoint_handler:
+            worker_model_types.append(endpoint[0])
+            worker_endpoint_types.append(endpoint[1])
+        worker_endpoint_types = set(worker_endpoint_types)
+        worker_model_types = set(worker_model_types)
+        local_endpoint_keys = set(list(self.local_endpoints.keys()))
+        for model in local_endpoint_keys:
+            if model not in worker_model_types:
+                del self.local_endpoints[model]
+            else:
+                model_endpoint_types = set(list(self.local_endpoints[model].keys()))
+                for endpoint_type in model_endpoint_types:
+                    if endpoint_type not in worker_endpoint_types:
+                        del self.local_endpoints[model][endpoint_type]
+                    else:
+                        pass
+                pass
+
+        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types) }
+        return resources    
     
     async def max_batch_size(self, model, endpoint):
         
