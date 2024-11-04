@@ -107,7 +107,7 @@ class hf_lm:
 			skip_special_tokens=True,
 			skip_prompt=True,
 			stopping_regex=stopping_regex,
-			emit_chunk=lambda text: dispatch_result({
+			emit_chunk=lambda text: self.dispatch_result({
 				'text': text,
 				'done': False
 			}) if stream else None

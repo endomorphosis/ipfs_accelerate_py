@@ -134,19 +134,28 @@ class worker_py:
         return model_type
     
     async def get_openvino_model(self, model_name, model_type=None):
+        import openvino as ov                                
+        core = ov.Core()
         homedir = os.path.expanduser("~")
+        model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
-        huggingface_cache_models = os.path.join(huggingface_cache, "models")
+        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
         huggingface_cache_models_files = os.listdir(huggingface_cache_models)
         huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
-        model_src_path = ""
-        model_dst_path = ""
+        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+        model_dst_path = os.path.join(model_src_path, "model.xml")
         if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
+            config = AutoConfig.from_pretrained(model_src_path)
             model_type = config.__class__.model_type
+        hftokenizer = AutoTokenizer.from_pretrained(model_name)
+        hfmodel = AutoModel.from_pretrained(model_name)
+        text = "Replace me by any text you'd like."
+        encoded_input = hftokenizer(text, return_tensors='pt')
         import openvino as ov
-        ov_model = ov.convert_model(model_name, example_input={})
-        ov.save_model(ov_model, 'model.xml')
+        ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
+        ov.save_model(ov_model, model_dst_path)
         return ov.compile_model(ov_model)
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):
@@ -157,9 +166,9 @@ class worker_py:
         if model_type not in model_mapping_list:
             return None
         if model_type == "bert":
-            model_type = "text-classification"
-            from optimum.intel import OVModelForSequenceClassification
-            results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
+            model_type = "feature-extraction"
+            from optimum.intel import OVModelForFeatureExtraction
+            results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
         elif model_type == "text-classification":
             from optimum.intel import OVModelForSequenceClassification
             results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
@@ -205,7 +214,7 @@ class worker_py:
             model_type = config.__class__.model_type
         if model_type not in model_mapping_list:
             if model_type == "bert":
-                model_type = "text-classification"
+                model_type = "feature-extraction"
             else:
                 return None
         if model_type == None:
@@ -281,58 +290,19 @@ class worker_py:
                         ov_count = 0
                         openvino_index = self.local_endpoint_types.index("openvino")
                         openvino_model = self.local_endpoint_models[openvino_index]
-                        openvino_label = self.local_endpoint_types[openvino_index]
+                        openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
                         save_model_path = Path("./models/model.xml")
-                        ## use openvino to call huggingface transformers
+                        # use openvino to call huggingface transformers
+                        # self.hwtest["optimum-openvino"] = False
                         if self.hwtest["optimum-openvino"] == True: 
                                 self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                                 model_type =  str(await self.get_openvino_pipeline_type(model))
                                 self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                                 self.endpoint_handler[(openvino_model, openvino_label)] = pipe
                         elif self.hwtest["openvino"] == True:                            
-                                text = "Replace me by any text you'd like."
-                                import openvino as ov                                
-                                core = ov.Core()
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
-                                self.local_endpoints[openvino_model][openvino_label] = AutoModel.from_pretrained(model)
-                                encoded_input = self.tokenizer[openvino_model][openvino_label](text, return_tensors='pt')
-                                ov_model = ov.convert_model(model, example_input={**encoded_input})
-                                ov.save_model(ov_model, 'model.xml')
-                                compiled_model = ov.compile_model(ov_model)
-                                result = compiled_model({**encoded_input})
-                                ##download model from huggingface and convert to openvino
-                                huggingface_pull_model_cmd = "transformers-cli convert --model " + model + " --framework onnx --pipeline " + model_type
-                                convert_onnx_results = {}
-                                try:
-                                    convert_onnx_results["results"] = subprocess.check_output(huggingface_pull_model_cmd, shell=True)
-                                except Exception as e:
-                                    convert_onnx_results["results"] = e
-                                        
-                                huggingface_cache_directory = os.path.expanduser("~/.cache/huggingface")
-                                huggingface_cache_model_directory = os.path.join(huggingface_cache_directory, model)
-                                cache_save_model_path = os.path.join(huggingface_cache_model_directory, "model.xml")
-                                if cache_save_model_path.exists():
-                                    cached_model_ls = os.listdir(huggingface_cache_model_directory)
-                                    if "model.xml" in cached_model_ls:
-                                        compiled_model = core.compile_model(cache_save_model_path, "CPU")
-                                        ov_model = core.compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
-                                        ov_model.export_model(cache_save_model_path)
-                                    else:
-                                        converted_model = core.convert_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
-                                        converted_model.export_model(cache_save_model_path)
-                                else:
-                                    os.makedirs(huggingface_cache_model_directory)
-                                    converted_model = core.convert_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
-                                    converted_model.export_model(cache_save_model_path)
-                                if not save_model_path.exists():
-                                    compiled_model = core.compile_model(cache_save_model_path, "CPU")
-                                    ov_model = core.compile_model(self.local_endpoints[openvino_model][openvino_label], "CPU")
-                                    ov_model.export_model(save_model_path)
-                                encoded_input = self.tokenizer[openvino_model][openvino_label]("Hello, this one sentence!", return_tensors="pt")
-                                scores_ov = compiled_model(encoded_input.data)[0]
-                                scores_ov = torch.softmax(torch.tensor(scores_ov[0]), dim=0).detach().numpy()
-                                self.endpoint_handler[(openvino_model, openvino_label)] = pipeline( model=self.local_endpoints[openvino_model][openvino_label], tokenizer=self.tokenizer[openvino_model][openvino_label])
-                                print(scores_ov)
+                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
+                                self.endpoint_handler[(openvino_model, openvino_label)] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
                         else:
                             pass                            
                         ov_count = ov_count + 1
