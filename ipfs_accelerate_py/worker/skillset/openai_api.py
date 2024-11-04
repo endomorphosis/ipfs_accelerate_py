@@ -2,7 +2,13 @@ import time
 import re
 import os
 import openai
-from cloudkit_worker import dispatch_result
+import sys
+import json
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
+from chat_format import chat_format
+import worker 
 import tiktoken
 import tempfile
 import base64
@@ -97,6 +103,8 @@ class OpenAIAPI:
         self.method = None
         self.temperature = None
         self.api_key = None
+        self.worker = worker
+        self.dispatch_result = self.worker.dispatch_result
         if meta is not None:
             if "openai_api_key" in meta:
                 if meta['openai_api_key'] is not None:

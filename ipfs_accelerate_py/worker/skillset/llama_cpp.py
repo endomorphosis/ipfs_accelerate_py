@@ -2,12 +2,13 @@ import os
 import sys
 import re
 import gc
-from llama_cpp import Llama
 import json
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'worker')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'worker', 'skillset')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
 from chat_format import chat_format
-from worker.worker import TaskAbortion, should_abort
+import worker 
+# from worker import TaskAbortion, should_abort
 class llama_cpp:
 	def __init__(self, resources, meta=None):
 		if meta is not None and type(meta) is dict:
@@ -23,6 +24,9 @@ class llama_cpp:
 		self.llm_complete = self.llm_complete
 		n_ctx = None
 		n_gqa = None
+		self.worker = worker
+		self.TaskAbortion = self.worker.TaskAbortion
+		self.should_abort = self.worker.should_abort
 		if meta is not None and type(meta) is dict:
 			if "contextSize" in list(meta.keys()):
 				n_ctx = meta['contextSize']

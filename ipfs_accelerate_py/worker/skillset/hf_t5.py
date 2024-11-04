@@ -3,7 +3,14 @@ from torch import inference_mode, float16
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.generation.streamers import TextStreamer
-from worker import dispatch_result
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
+import worker 
+
+from chat_format import chat_format
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 
 class hf_t5:
@@ -21,6 +28,9 @@ class hf_t5:
 			device_map='auto',
 			torch_dtype=float16,
 		).eval()
+		self.worker = worker
+		self.TaskAbortion = self.worker.TaskAbortion
+		self.should_abort = self.worker.should_abort
 
 	def __call__(self, method, **kwargs):
 		if method == 'instruct_t5':
