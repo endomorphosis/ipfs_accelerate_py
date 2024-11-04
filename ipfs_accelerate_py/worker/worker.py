@@ -8,7 +8,7 @@ import optimum
 import torch 
 import asyncio
 import transformers
-from skillset import run
+from .skillset import llama_cpp
 from ipfs_multiformats import ipfs_multiformats_py
 from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
 import ipfs_transformers_py

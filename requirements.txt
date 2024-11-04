@@ -16,4 +16,5 @@ InstructorEmbedding
 trio
 numpy
 optimum
+FlagEmbedding
 optimum[openvino]
