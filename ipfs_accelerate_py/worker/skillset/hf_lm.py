@@ -5,7 +5,9 @@ from transformers.generation.streamers import TextStreamer
 import os
 import sys
 from transformers import T5Tokenizer, T5ForConditionalGeneration
-from worker import dispatch_result, should_abort, TaskAbortion
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'worker')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'worker', 'skillset')))
+import worker.worker as worker
 
 chat_templates = [
 	{
@@ -55,10 +57,9 @@ class hf_lm:
 			torch_dtype=float16,
 		).eval()
 		if "dispatch_result" in resources:
-			dispatch_result = resources["dispatch_result"]
 			self.dispatch_result = resources["dispatch_result"]
 		else:
-			self.dispatch_result = None	
+			self.dispatch_result = worker.dispatch_result
 
 	def __call__(self, method, **kwargs):
 		if method == 'text_complete':
