@@ -168,29 +168,48 @@ class ipfs_accelerate_py:
         if "openvino_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["openvino_endpoints"]) > 0 :
                 for endpoint in self.endpoints["openvino_endpoints"]:
-                    this_model, this_endpoint, context_length = endpoint
-                    if endpoint not in list(self.batch_sizes[model].keys()):
-                        self.batch_sizes[model][this_endpoint] = 0
-                    self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                    self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint())
+                    if len(endpoint) == 3:
+                        this_model = endpoint[0]
+                        this_endpoint = endpoint[1]
+                        context_length = endpoint[2]
+                        if model == this_model:
+                            if endpoint not in list(self.batch_sizes[model].keys()):
+                                self.batch_sizes[model][this_endpoint] = 0
+                                self.resources["batch_sizes"][model][this_endpoint] = 0
+                            self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
+                            self.resources["endpoint_handler"][(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint in self.endpoints["tei_endpoints"]:
-                    this_model, this_endpoint, context_length = endpoint
-                    if endpoint not in list(self.batch_sizes[model].keys()):
-                        self.batch_sizes[model][this_endpoint] =  0
-                    self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                    self.endpoint_handler[(model, this_endpoint)] = self.make_post_request(self.request_tei_endpoint())
+                    if len(endpoint) == 3:
+                        this_model = endpoint[0]
+                        this_endpoint = endpoint[1]
+                        context_length = endpoint[2]
+                        if model == this_model:
+                            if endpoint not in list(self.batch_sizes[model].keys()):
+                                self.batch_sizes[model][this_endpoint] =  0
+                                self.resources["batch_sizes"][model][this_endpoint] = 0
+                            self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.endpoint_handler[(model, this_endpoint)] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
+                            self.resources["endpoint_handler"][(model, this_endpoint)] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
-                    this_model, this_endpoint, context_length = endpoint
-                    if endpoint not in list(self.batch_sizes[model].keys()):
-                        self.batch_sizes[model][endpoint] = 0
-                    if self.batch_sizes[model][endpoint] > 0:
-                        self.queues[model][endpoint] = asyncio.Queue(64) # Unbounded queue
-                        self.endpoint_handler[(model, endpoint)] = self.make_post_request_libp2p(self.request_libp2p_endpoint())
-
+                    if len(endpoint) == 3:
+                        this_model = endpoint[0]
+                        this_endpoint = endpoint[1]
+                        context_length = endpoint[2]
+                        if model == this_model:
+                            if endpoint not in list(self.batch_sizes[model].keys()):
+                                self.batch_sizes[model][this_endpoint] =  0
+                                self.resources["batch_sizes"][model][this_endpoint] = 0
+                            self.queues[model][endpoint] = asyncio.Queue(64) # Unbounded queue
+                            self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.endpoint_handler[(model, endpoint)] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
+                            self.resources["endpoint_handler"][(model, endpoint)] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
         return self.resources
 
     
@@ -224,7 +243,7 @@ class ipfs_accelerate_py:
             return self.libp2p_endpoints[model]
         return None
 
-    def request_tei_endpoint(self, model, endpoint, endpoint_type, batch):
+    def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
         endpoint_batch_size = 0
         if endpoint in self.endpoint_status:
@@ -267,7 +286,7 @@ class ipfs_accelerate_py:
                         return endpoint
             return None
     
-    def request_tgi_endpoint(self, model, endpoint, endpoint_type, batch):
+    def request_tgi_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
         endpoint_batch_size = 0
         if endpoint in self.endpoint_status:
@@ -310,7 +329,7 @@ class ipfs_accelerate_py:
                         return endpoint
             return None
         
-    async def request_openvino_endpoint(self, model, endpoint, endpoint_type, batch):
+    async def request_openvino_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         batch_size = len(batch)
         if model in self.openvino_endpoints:
             for endpoint in self.openvino_endpoints[model]:
@@ -318,7 +337,7 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
     
-    async def request_llama_cpp_endpoint(self, model, endpoint, endpoint_type, batch):
+    async def request_llama_cpp_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         batch_size = len(batch)
         if model in self.local_endpoints:
             for endpoint in self.local_endpoints[model]:
@@ -526,8 +545,11 @@ class ipfs_accelerate_py:
             return self.libp2p_endpoints[model]
         return None
 
-    def request_tei_endpoint(self, model, endpoint, endpoint_type, batch):
-        incoming_batch_size = len(batch)
+    def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+        if batch == None:
+            incoming_batch_size = 0
+        else:
+            incoming_batch_size = len(batch)
         endpoint_batch_size = 0
         if endpoint in self.endpoint_status:
             endpoint_batch_size = self.endpoint_status[endpoint]
@@ -569,7 +591,11 @@ class ipfs_accelerate_py:
                         return endpoint
             return None
     
-    async def make_post_request(self, endpoint, data):
+    async def make_post_request(self, endpoint, data=None):
+        if data is None:
+            return None
+        else:
+            pass
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:
