@@ -1,0 +1,2 @@
+from ipfs_accelerate_py import ipfs_accelerate_py
+export = ipfs_accelerate_py.ipfs_accelerate_py
