@@ -1,1 +1,1 @@
-export = None
+from .endpoints import endpoints_py
