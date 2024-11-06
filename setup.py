@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.10',
+	version='0.0.11',
 	packages=[
         'ipfs_accelerate_py',
 	],
