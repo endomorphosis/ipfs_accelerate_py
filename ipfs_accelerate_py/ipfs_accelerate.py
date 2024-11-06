@@ -10,6 +10,7 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
+import hashlib
 
 class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
@@ -48,6 +49,8 @@ class ipfs_accelerate_py:
         self.tokenizer = {}
         self.local_queues = {}
         self.queues = {}
+        self.queue = {}
+        self.request = {}
         self.local_endpoints = {}
         self.tei_endpoints = {}
         self.openvino_endpoints = {}
@@ -70,7 +73,43 @@ class ipfs_accelerate_py:
         return None
     
     async def test_hardware(self):
-        return await self.install_depends.test_hardware()
+        install_file_hash = None
+        test_results_file = None
+        install_depends_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "install_depends.py")
+        if os.path.exists(install_depends_filename):
+            ## get the sha256 hash of the file
+            sha256 = hashlib.sha256()
+            with open(install_depends_filename, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096),b""):
+                    sha256.update(byte_block)
+            install_file_hash = sha256.hexdigest()
+            test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"test", install_file_hash + ".json")
+            if os.path.exists(test_results_file):
+                try:
+                    with open(test_results_file, "r") as f:
+                        test_results = json.load(f)
+                        return test_results
+                except Exception as e:
+                    try:
+                        test_results = await self.install_depends.test_hardware()
+                        with open(test_results_file, "w") as f:
+                            json.dump(test_results, f)
+                        return test_results
+                    except Exception as e:
+                        print(e)
+                        return e
+            else:
+                try:
+                    test_results = await self.install_depends.test_hardware()
+                    with open(test_results_file, "w") as f:
+                        json.dump(test_results, f)
+                    return test_results
+                except Exception as e:
+                    print(e)
+                    return e
+        else: 
+            raise ValueError("install_depends.py not found")
+        return test_results
 
     async def query_endpoints(self, model):
         endpoints = self.get_endpoints(model)
@@ -94,9 +133,6 @@ class ipfs_accelerate_py:
                 for endpoint_info in resources[endpoint_type]:
                     model, endpoint, context_length = endpoint_info
                     await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
-        if "hwtest" not in dir(self):
-            hwtest = await self.test_hardware()
-            self.hwtest = hwtest
         for model in models:
             if model not in self.queues:
                 self.queues[model] = {}
@@ -148,7 +184,7 @@ class ipfs_accelerate_py:
                 self.batch_sizes[model]["cpu"] = 1
         new_resources = {}    
         try:
-            self.worker_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], self.hwtest)
+            self.worker_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], None)
         except Exception as e:
             print(e)
             self.worker_resources = e

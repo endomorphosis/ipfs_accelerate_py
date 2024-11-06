@@ -15,6 +15,8 @@ import ipfs_transformers_py
 from pathlib import Path
 import numpy as np
 import torch
+import json
+import hashlib
 
 class should_abort:
     def __init__(self, resources, metadata):
@@ -60,7 +62,7 @@ class worker_py:
         self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
         if "test_ipfs_accelerate" not in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
-            self.hwtest = self.test_ipfs_accelerate
+            # self.hwtest = self.test_ipfs_accelerate
         if "install_depends" not in globals():
             self.install_depends = install_depends_py(resources, metadata)
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
@@ -118,8 +120,45 @@ class worker_py:
         self.outbox[result_cid] = result
         return result
     
+    
     async def test_hardware(self):
-        return await self.install_depends.test_hardware()
+        install_file_hash = None
+        test_results_file = None
+        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends.py")
+        if os.path.exists(install_depends_filename):
+            ## get the sha256 hash of the file
+            sha256 = hashlib.sha256()
+            with open(install_depends_filename, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096),b""):
+                    sha256.update(byte_block)
+            install_file_hash = sha256.hexdigest()
+            test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
+            if os.path.exists(test_results_file):
+                try:
+                    with open(test_results_file, "r") as f:
+                        test_results = json.load(f)
+                        return test_results
+                except Exception as e:
+                    try:
+                        test_results = await self.install_depends.test_hardware()
+                        with open(test_results_file, "w") as f:
+                            json.dump(test_results, f)
+                        return test_results
+                    except Exception as e:
+                        print(e)
+                        return e
+            else:
+                try:
+                    test_results = await self.install_depends.test_hardware()
+                    with open(test_results_file, "w") as f:
+                        json.dump(test_results, f)
+                    return test_results
+                except Exception as e:
+                    print(e)
+                    return e
+        else: 
+            raise ValueError("install_depends.py not found")
+        return test_results
     
     async def get_model_type(self, model_name, model_type=None):
         if model_type is None:
@@ -245,11 +284,11 @@ class worker_py:
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
-                hwtest = self.hwtest
+                hwtest = self.test_hardware()
             elif "hwtest" in list(self.resources.keys()):
                 hwtest = self.resources["hwtest"]
             else:
-                hwtest = await self.hwtest()
+                hwtest = await self.test_hardware()
         self.hwtest = hwtest
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]

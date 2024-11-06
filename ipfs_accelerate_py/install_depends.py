@@ -95,6 +95,8 @@ class install_depends_py():
             return await self.install_huggingface_optimum()
         elif package == "optimum_amx":
             return await self.install_huggingface_optimum_amx()
+        elif package == "webnn":
+            return await self.install_webnn()
         elif package == "all":
             return [ all(await self.install_package(package) for package in self.resources["packages"]) ]
         elif type(package) == list:
@@ -153,6 +155,8 @@ class install_depends_py():
             return await self.test_huggingface_optimum_cuda()
         elif package == "huggingface_optimum_amx":
             return await self.test_huggingface_optimum_amx()
+        elif package == "webnn":
+            return await self.test_webnn()
         else:
             return None
         
