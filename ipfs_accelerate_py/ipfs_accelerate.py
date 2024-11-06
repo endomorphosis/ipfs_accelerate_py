@@ -128,11 +128,30 @@ class ipfs_accelerate_py:
         }
 
     async def init_endpoints(self, models=None, endpoint_list=None):
+        if "queues" not in list(self.resources.keys()):
+            self.resources["queues"] = {}
+        if "batch_sizes" not in list(self.resources.keys()):
+            self.resources["batch_sizes"] = {}
+        if "endpoint_handler" not in list(self.resources.keys()):
+            self.resources["endpoint_handler"] = {}
         for endpoint_type in self.endpoint_types:
-            if endpoint_type in resources.keys():
-                for endpoint_info in resources[endpoint_type]:
+            if endpoint_type in list(endpoint_list.keys()):
+                for endpoint_info in endpoint_list[endpoint_type]:
                     model, endpoint, context_length = endpoint_info
+                    if model not in list(self.resources["batch_sizes"].keys()):
+                        self.resources["batch_sizes"][model] = {}
+                    if model not in list(self.resources["queues"].keys()):
+                        self.resources["queues"][model] = {}
+                    # if endpoint not in list(self.resources["queues"][model].keys()):
+                    #     self.resources["queues"][model][endpoint] = 0
+                    if endpoint not in list(self.resources["batch_sizes"][model].keys()):
+                        self.resources["batch_sizes"][model][endpoint] = 0
                     await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
+        # for endpoint_type in self.endpoint_types:
+        #     if endpoint_type in resources.keys():
+        #         for endpoint_info in resources[endpoint_type]:
+        #             model, endpoint, context_length = endpoint_info
+        #             await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
         for model in models:
             if model not in self.queues:
                 self.queues[model] = {}

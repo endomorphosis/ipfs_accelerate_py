@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.16',
+	version='0.0.17',
     packages=find_packages(),
 	install_requires=[
         'transformers',
