@@ -2,9 +2,23 @@ from setuptools import setup
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.11',
+	version='0.0.12',
 	packages=[
         'ipfs_accelerate_py',
+        'ipfs_accelerate_py.install_depends',
+        'ipfs_accelerate_py.endpoints',
+        'ipfs_accelerate_py.config',
+        'ipfs_accelerate_py.worker',
+		'ipfs_accelerate_py.worker.ipfs_multiformats',
+        'ipfs_accelerate_py.worker.skillset',
+        'ipfs_accelerate_py.worker.skillset.hf_embed',
+		'ipfs_accelerate_py.worker.skillset.llama_cpp',
+  	  	'ipfs_accelerate_py.worker.skillset.openai',
+		'ipfs_accelerate_py.worker.skillset.s3_kit',
+		'ipfs_accelerate_py.worker.skillset.hf_t5'
+		'ipfs_accelerate_py.worker.skillset.hf_lm'
+  		'ipfs_accelerate_py.worker.skillset.chat_format',
+		'ipfs_accelerate_py.backends',        
 	],
 	install_requires=[
         'transformers',
