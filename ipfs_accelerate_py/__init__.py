@@ -1,5 +1,7 @@
 import backends
 from .backends import backends
+import worker
+from .worker import worker
 import config
 from .config import config
 import endpoints
