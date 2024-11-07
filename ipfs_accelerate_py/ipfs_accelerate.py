@@ -732,9 +732,60 @@ class ipfs_accelerate_py:
         return test_results
 
     async def test_local_endpoint(self, model, endpoint=None):
-        if model in self.local_endpoints and endpoint in self.local_endpoints[model]:
-            return True
-        return False
+        this_endpoint = None
+        filtered_list = []
+        test_results = {}
+        if type(model) is str:
+            model = [model]
+        if endpoint is not None:
+            for endpoint in self.resources["local_endpoints"]:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model[0] == model and this_endpoint == endpoint:
+                    filtered_list.append(endpoint)
+        if this_endpoint is not None:
+            endpoint_list = [model[0],endpoint,""]
+            for endpoint in self.resources["local_endpoints"]:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model[0] == endpoint_list[0] and this_endpoint == endpoint_list[1]:
+                    filtered_list.append(endpoint)            
+        else:
+            endpoint_list = [model[0],"",""]
+            for endpoint in self.resources["local_endpoints"]:
+                print(endpoint)
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model == endpoint_list[0]:
+                    filtered_list.append(endpoint)
+        endpoint_handlers = []
+        if len(filtered_list) > 0:
+            for endpoint in filtered_list:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                endpoint_handler = self.endpoint_handler[(this_model, this_endpoint)]
+                endpoint_handlers.append((this_model, this_endpoint, endpoint_handler))
+        else:
+            return ValueError("No endpoints found")
+        if len(endpoint_handlers) > 0:
+            for i in endpoint_handlers:
+                model = i[0]
+                endpoint = i[1]
+                endpoint_handler = i[2]
+                test_endpoint = False
+                try:
+                    test_endpoint = endpoint_handler("hello world")
+                    test_results[endpoint] = test_endpoint
+                except Exception as e:
+                    test_results[endpoint] = e
+                    pass
+        else:
+            return ValueError("No endpoint_handlers found")
+        return test_results
 
     async def get_https_endpoint(self, model):
         if model in self.tei_endpoints:
