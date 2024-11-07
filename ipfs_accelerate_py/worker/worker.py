@@ -112,7 +112,6 @@ class worker_py:
             for backend in self.hardware_backends:
                 if backend not in list(self.__dict__[endpoint].keys()):
                     self.__dict__[endpoint][backend] = {}
-        print(self.__dict__)
         return None
     
     async def dispatch_result(self, result):
@@ -124,7 +123,7 @@ class worker_py:
     async def test_hardware(self):
         install_file_hash = None
         test_results_file = None
-        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends.py")
+        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends", "install_depends.py")
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
@@ -413,20 +412,20 @@ class worker_py:
         
         return None
     
-    def __test__(self):
-        return self 
+    # def __test__(self):
+    #     return self 
     
 export = worker_py
     
-if __name__ == '__main__':
-    # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
-    resources = {}
-    metadata = {}
-    try:
-        this_worker = worker_py(resources, metadata)
-        this_test = this_worker.__test__(resources, metadata)
-    except Exception as e:
-        print(e)
-        pass
+# if __name__ == '__main__':
+#     # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
+#     resources = {}
+#     metadata = {}
+#     try:
+#         this_worker = worker_py(resources, metadata)
+#         this_test = this_worker.__test__(resources, metadata)
+#     except Exception as e:
+#         print(e)
+#         pass
     
     

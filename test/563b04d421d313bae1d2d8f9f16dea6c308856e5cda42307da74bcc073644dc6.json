@@ -1,0 +1,1 @@
+{"cuda": true, "openvino": true, "llama_cpp": true, "ipex": null, "optimum": true, "optimum-ipex": true, "optimum-openvino": true, "optimum-neural-compressor": true, "optimum-habana": true, "onnx": true, "optimum-onnx": true, "torch": true, "torch_vision": true}

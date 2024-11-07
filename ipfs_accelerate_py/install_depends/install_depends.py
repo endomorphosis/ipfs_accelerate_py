@@ -1211,7 +1211,7 @@ class install_depends_py():
                 cuda_install = e
                 print(e)
             pass
-        print("local_endpoint_test")
+        # print("local_endpoint_test")
         install_results = {
             "cuda": cuda_install,
             "openvino": openvino_install,
@@ -1227,7 +1227,7 @@ class install_depends_py():
             "torch": torch_install,
             "torch_vision": torch_vision_install,
         }
-        print(install_results)
+        # print(install_results)
         test_results = {
             "cuda": cuda_test,
             "openvino": openvino_test,
@@ -1243,7 +1243,7 @@ class install_depends_py():
             "torch": torch_test,
             "torch_vision": torch_vision_test,
         }
-        print(test_results)
+        # print(test_results)
         return test_results
     
 

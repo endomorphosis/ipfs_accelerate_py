@@ -953,10 +953,9 @@ class ipfs_accelerate_py:
     
     async def __test__(self, resources, metadata):
         results = {}
-        test_ipfs_accelerate = self.__init__(resources, metadata)
         test_ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_ipfs_accelerate_test_endpoints = await self.test_endpoints(metadata['models'])        
-        results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init, "test_ipfs_accelerate": test_ipfs_accelerate}
+        results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init,"test_ipfs_accelerate_test_endpoints": test_ipfs_accelerate_test_endpoints}
         print(results)
         return results
 
