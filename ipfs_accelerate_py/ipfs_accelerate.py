@@ -622,18 +622,18 @@ class ipfs_accelerate_py:
                 this_model = endpoint[0]
                 this_endpoint = endpoint[1]
                 this_data = endpoint[2]
-                if this_model == model and this_endpoint == endpoint:
+                if this_model[0] == model and this_endpoint == endpoint:
                     filtered_list.append(endpoint)
         if this_endpoint is not None:
-            endpoint_list = [model,endpoint,""]
+            endpoint_list = [model[0],endpoint,""]
             for endpoint in self.resources["tei_endpoints"]:
                 this_model = endpoint[0]
                 this_endpoint = endpoint[1]
                 this_data = endpoint[2]
-                if this_model == endpoint_list[0] and this_endpoint == endpoint_list[1]:
+                if this_model[0] == endpoint_list[0] and this_endpoint == endpoint_list[1]:
                     filtered_list.append(endpoint)            
         else:
-            endpoint_list = [model,"",""]
+            endpoint_list = [model[0],"",""]
             for endpoint in self.resources["tei_endpoints"]:
                 print(endpoint)
                 this_model = endpoint[0]
