@@ -617,6 +617,8 @@ class ipfs_accelerate_py:
         this_endpoint = None
         filtered_list = []
         test_results = {}
+        if type(model) is str:
+            model = [model]
         if endpoint is not None:
             for endpoint in self.resources["tei_endpoints"]:
                 this_model = endpoint[0]
