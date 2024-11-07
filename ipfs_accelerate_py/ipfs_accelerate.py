@@ -576,7 +576,7 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
 
-    def test_tei_endpoint(self, model, endpoint=None):
+    async def test_tei_endpoint(self, model, endpoint=None):
         this_endpoint = None
         filtered_list = []
         test_results = {}
@@ -621,32 +621,32 @@ class ipfs_accelerate_py:
                     pass
         return test_results
     
-    def test_libp2p_endpoint(self, model, endpoint=None):
+    async def test_libp2p_endpoint(self, model, endpoint=None):
         if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
             return True
         return False
     
-    def test_openvino_endpoint(self, model, endpoint=None):
+    async def test_openvino_endpoint(self, model, endpoint=None):
         if model in self.openvino_endpoints and endpoint in self.openvino_endpoints[model]:
             return True
         return False
     
-    def test_local_endpoint(self, model, endpoint=None):
+    async def test_local_endpoint(self, model, endpoint=None):
         if model in self.local_endpoints and endpoint in self.local_endpoints[model]:
             return True
         return False
 
-    def get_https_endpoint(self, model):
+    async def get_https_endpoint(self, model):
         if model in self.tei_endpoints:
             return self.tei_endpoints[model]
         return None
 
-    def get_libp2p_endpoint(self, model):
+    async def get_libp2p_endpoint(self, model):
         if model in self.libp2p_endpoints:
             return self.libp2p_endpoints[model]
         return None
 
-    def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+    async def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         if batch == None:
             incoming_batch_size = 0
         else:
