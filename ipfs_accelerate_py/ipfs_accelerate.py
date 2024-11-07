@@ -670,10 +670,7 @@ class ipfs_accelerate_py:
         return test_results
     
     async def test_libp2p_endpoint(self, model, endpoint=None):
-        if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
-            return True
-        return False
-    
+        return ValueError("Not implemented")
 
     async def test_openvino_endpoint(self, model, endpoint=None):
         this_endpoint = None
@@ -1005,8 +1002,25 @@ class ipfs_accelerate_py:
     async def __test__(self, resources, metadata):
         results = {}
         test_ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
-        test_ipfs_accelerate_test_endpoints = await self.test_endpoints(metadata['models'])        
-        results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init,"test_ipfs_accelerate_test_endpoints": test_ipfs_accelerate_test_endpoints}
+        test_ipfs_accelerate_test_endpoints = await self.test_endpoints(metadata['models'])
+        batch_sizes = test_ipfs_accelerate_init["batch_sizes"]
+        endpoint_handler = test_ipfs_accelerate_init["endpoint_handler"]
+        endpoint_tests = {}
+        for endpoint in endpoint_handler:
+            print(endpoint)
+            this_model = endpoint[0]
+            this_endpoint = endpoint[1]
+            if this_model not in list(endpoint_tests.keys()):
+                endpoint_tests[this_model] = {}
+            if this_endpoint not in list(endpoint_tests[this_model].keys()):
+                endpoint_tests[this_model][this_endpoint] = ""
+            try:
+                test_batch_size = await self.max_batch_size(metadata['models'][0])
+            except Exception as e:
+                test_batch_size = e
+            endpoint_tests[this_model][this_endpoint] = test_batch_size           
+        
+        results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init,"test_ipfs_accelerate_test_endpoints": test_ipfs_accelerate_test_endpoints , "endpoint_tests": endpoint_tests}
         print(results)
         return results
 
