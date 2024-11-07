@@ -1,4 +1,7 @@
-from .backends import backends       
+try:
+    from .backends import backends
+except:
+    from backends import backends       
 import torch
 import requests
 import json
@@ -19,7 +22,10 @@ class ipfs_accelerate_py:
         self.resources["ipfs_accelerate"] = self
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
-            from .test_ipfs_accelerate import test_ipfs_accelerate
+            try:
+                from .test_ipfs_accelerate import test_ipfs_accelerate
+            except:
+                from test_ipfs_accelerate import test_ipfs_accelerate
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         elif "test_ipfs_accelerate" in list(self.resources.keys()):
@@ -28,13 +34,19 @@ class ipfs_accelerate_py:
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         if "install_depends_py" not in globals():
-            from .install_depends import install_depends_py
+            try:
+                from .install_depends import install_depends_py
+            except:
+                from install_depends import install_depends_py
             self.install_depends = install_depends_py(resources, metadata)
             resources["install_depends"] = self.install_depends 
         else:
             self.install_depends = install_depends_py(resources, metadata)
         if "worker" not in globals():
-            from .worker import worker
+            try:
+                from .worker import worker
+            except:
+                from worker import worker
             self.worker = worker.worker_py(resources, metadata)
             resources["worker"] = self.worker
         self.endpoint_status = {}
@@ -576,12 +588,42 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
 
+    async def test_endpoints(self, models):
+        test_results = {}
+        try: 
+            test_results["local_endpoint"] = await self.test_local_endpoint(models)
+        except Exception as e:
+            test_results["local_endpoint"] = e
+        try:
+            test_results["libp2p_endpoint"] = await self.test_libp2p_endpoint(models)
+        except Exception as e:
+            test_results["libp2p_endpoint"] = e
+        try:
+            test_results["openvino_endpoint"] = await self.test_openvino_endpoint(models)
+        except Exception as e:
+            test_results["openvino_endpoint"] = e
+        try:
+            test_results["tei_endpoint"] = await self.test_tei_endpoint(models)
+        except Exception as e:
+            test_results["tei_endpoint"] = e
+        try:
+            test_results["webnn_endpoint"] = "not implemented"
+        except Exception as e:
+            test_results["webnn_endpoint"] = e
+            
+        return test_results
+    
     async def test_tei_endpoint(self, model, endpoint=None):
         this_endpoint = None
         filtered_list = []
         test_results = {}
         if endpoint is not None:
-            this_endpoint = self.resources["tei_endpoints"].index(endpoint)
+            for endpoint in self.resources["tei_endpoints"]:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model == model and this_endpoint == endpoint:
+                    filtered_list.append(endpoint)
         if this_endpoint is not None:
             endpoint_list = [model,endpoint,""]
             for endpoint in self.resources["tei_endpoints"]:
@@ -593,7 +635,7 @@ class ipfs_accelerate_py:
         else:
             endpoint_list = [model,"",""]
             for endpoint in self.resources["tei_endpoints"]:
-                # model, endpoint, context_length = endpoint
+                print(endpoint)
                 this_model = endpoint[0]
                 this_endpoint = endpoint[1]
                 this_data = endpoint[2]
@@ -607,6 +649,8 @@ class ipfs_accelerate_py:
                 this_data = endpoint[2]
                 endpoint_handler = self.endpoint_handler[(this_model, this_endpoint)]
                 endpoint_handlers.append((this_model, this_endpoint, endpoint_handler))
+        else:
+            return ValueError("No endpoints found")
         if len(endpoint_handlers) > 0:
             for i in endpoint_handlers:
                 model = i[0]
@@ -619,6 +663,8 @@ class ipfs_accelerate_py:
                 except Exception as e:
                     test_results[endpoint] = e
                     pass
+        else:
+            return ValueError("No endpoint_handlers found")
         return test_results
     
     async def test_libp2p_endpoint(self, model, endpoint=None):
@@ -855,6 +901,7 @@ class ipfs_accelerate_py:
         results = {}
         test_ipfs_accelerate = self.__init__(resources, metadata)
         test_ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
+        test_ipfs_accelerate_test_endpoints = await self.test_endpoints(metadata['models'])        
         results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init, "test_ipfs_accelerate": test_ipfs_accelerate}
         print(results)
         return results
