@@ -16,8 +16,6 @@ class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
-        self.ipfs_accelerate = self
-        self.ipfs_accelerate_py = self
         self.resources["ipfs_accelerate"] = self
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
@@ -570,22 +568,22 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
 
-    def test_tei_https_endpoint(self, model, endpoint):
+    def test_tei_endpoint(self, model, endpoint=None):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
             return True
         return False
 
-    def test_libp2p_endpoint(self, model, endpoint):
+    def test_libp2p_endpoint(self, model, endpoint=None):
         if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
             return True
         return False
     
-    def test_openvino_endpoint(self, model, endpoint):
+    def test_openvino_endpoint(self, model, endpoint=None):
         if model in self.openvino_endpoints and endpoint in self.openvino_endpoints[model]:
             return True
         return False
     
-    def test_local_endpoint(self, model, endpoint):
+    def test_local_endpoint(self, model, endpoint=None):
         if model in self.local_endpoints and endpoint in self.local_endpoints[model]:
             return True
         return False
@@ -888,3 +886,4 @@ if __name__ == "__main__":
     ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")
+    
