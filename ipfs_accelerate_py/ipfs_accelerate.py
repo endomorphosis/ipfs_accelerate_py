@@ -1,4 +1,4 @@
-from backends import backends       
+from .backends import backends       
 import torch
 import requests
 import json
@@ -19,7 +19,7 @@ class ipfs_accelerate_py:
         self.resources["ipfs_accelerate"] = self
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
-            from test_ipfs_accelerate import test_ipfs_accelerate
+            from .test_ipfs_accelerate import test_ipfs_accelerate
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         elif "test_ipfs_accelerate" in list(self.resources.keys()):
@@ -28,14 +28,13 @@ class ipfs_accelerate_py:
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         if "install_depends_py" not in globals():
-            import install_depends
-            from install_depends import install_depends_py
+            from .install_depends import install_depends_py
             self.install_depends = install_depends_py(resources, metadata)
             resources["install_depends"] = self.install_depends 
         else:
             self.install_depends = install_depends_py(resources, metadata)
         if "worker" not in globals():
-            from worker import worker
+            from .worker import worker
             self.worker = worker.worker_py(resources, metadata)
             resources["worker"] = self.worker
         self.endpoint_status = {}
@@ -64,10 +63,19 @@ class ipfs_accelerate_py:
         self.request_libp2p_endpoint = self.request_libp2p_endpoint
         self.request_openvino_endpoint = self.request_openvino_endpoint
         self.request_local_endpoint = self.request_local_endpoint
-        self.test_tei_https_endpoint = self.test_tei_https_endpoint
+        self.request_llama_cpp_endpoint = self.request_llama_cpp_endpoint
+        self.request_local_endpoint = self.request_local_endpoint
+        self.make_local_request = self.make_local_request
+        self.add_endpoint = self.add_endpoint
+        self.rm_endpoint = self.rm_endpoint
+        self.get_endpoints = self.get_endpoints
+        self.get_https_endpoint = self.get_https_endpoint
+        self.get_libp2p_endpoint = self.get_libp2p_endpoint
+        self.init_endpoints = self.init_endpoints
         self.test_libp2p_endpoint = self.test_libp2p_endpoint
         self.test_openvino_endpoint = self.test_openvino_endpoint
         self.test_local_endpoint = self.test_local_endpoint
+        self.test_tei_endpoint = self.test_tei_endpoint
         return None
     
     async def test_hardware(self):
@@ -569,10 +577,50 @@ class ipfs_accelerate_py:
         return None
 
     def test_tei_endpoint(self, model, endpoint=None):
-        if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
-            return True
-        return False
-
+        this_endpoint = None
+        filtered_list = []
+        test_results = {}
+        if endpoint is not None:
+            this_endpoint = self.resources["tei_endpoints"].index(endpoint)
+        if this_endpoint is not None:
+            endpoint_list = [model,endpoint,""]
+            for endpoint in self.resources["tei_endpoints"]:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model == endpoint_list[0] and this_endpoint == endpoint_list[1]:
+                    filtered_list.append(endpoint)            
+        else:
+            endpoint_list = [model,"",""]
+            for endpoint in self.resources["tei_endpoints"]:
+                # model, endpoint, context_length = endpoint
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                if this_model == endpoint_list[0]:
+                    filtered_list.append(endpoint)
+        endpoint_handlers = []
+        if len(filtered_list) > 0:
+            for endpoint in filtered_list:
+                this_model = endpoint[0]
+                this_endpoint = endpoint[1]
+                this_data = endpoint[2]
+                endpoint_handler = self.endpoint_handler[(this_model, this_endpoint)]
+                endpoint_handlers.append((this_model, this_endpoint, endpoint_handler))
+        if len(endpoint_handlers) > 0:
+            for i in endpoint_handlers:
+                model = i[0]
+                endpoint = i[1]
+                endpoint_handler = i[2]
+                test_endpoint = False
+                try:
+                    test_endpoint = endpoint_handler("hello world")
+                    test_results[endpoint] = test_endpoint
+                except Exception as e:
+                    test_results[endpoint] = e
+                    pass
+        return test_results
+    
     def test_libp2p_endpoint(self, model, endpoint=None):
         if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
             return True
@@ -886,4 +934,3 @@ if __name__ == "__main__":
     ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")
-    
