@@ -352,19 +352,23 @@ class worker_py:
                         openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
                         # to disable openvino to calling huggingface transformers uncomment
                         # self.hwtest["optimum-openvino"] = False
-                        if self.hwtest["optimum-openvino"] == True: 
-                                self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
-                                model_type =  str(await self.get_openvino_pipeline_type(model))
-                                self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
-                                self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
-                                self.batch_sizes[openvino_model][openvino_label] = None
-                        elif self.hwtest["openvino"] == True:                            
+                        # if self.hwtest["optimum-openvino"] == True: 
+                        try:
+                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
+                            model_type =  str(await self.get_openvino_pipeline_type(model))
+                            self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
+                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
+                            self.batch_sizes[openvino_model][openvino_label] = None
+                        # elif self.hwtest["openvino"] == True:                            
+                        except Exception as e:
+                            try:
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
                                 self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
                                 self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
                                 self.batch_sizes[openvino_model][openvino_label] = None
-                        else:
-                            pass                            
+                            except Exception as e:
+                                print(e)
+                                pass
                         ov_count = ov_count + 1
                     elif ipex_test and type(ipex_test) != ValueError and model_type != "llama_cpp":
                             ipex_count = 0
