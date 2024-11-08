@@ -145,21 +145,19 @@ class ipfs_accelerate_py:
             endpoints_set: endpoints_set
         }
 
-    async def create_tei_endpoint_handler(self, model, endpoint, context_length):
-        def handler(x):
-            remote_endpoint = self.endpoint_handler[model][endpoint]
-            request_results = self.request_tei_endpoint(model, endpoint, "tei_endpoints", x)
-            return request_results
+    def create_tei_endpoint_handler(self, model, endpoint, context_length):
+        async def handler(x):
+            remote_endpoint = await self.make_post_request_tei(endpoint, x)
+            return remote_endpoint
         return handler
     
-    async def create_openvino_endpoint_handler(self, model, endpoint, context_length):
+    def create_openvino_endpoint_handler(self, model, endpoint, context_length):
         def handler(x):
-            remote_endpoint = self.endpoint_handler[model][endpoint]
-            request_results = self.request_openvino_endpoint(model, endpoint, "openvino_endpoints", x)
-            return request_results
+            remote_endpoint = self.make_post_request_openvino(endpoint, x)
+            return remote_endpoint
         return handler
     
-    async def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
+    def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
         def handler(x):
             remote_endpoint = self.endpoint_handler[model][endpoint]
             request_results = self.request_libp2p_endpoint(model, endpoint, "libp2p_endpoints", x)
@@ -630,55 +628,50 @@ class ipfs_accelerate_py:
                 test_results[model]["webnn_endpoint"] = e
         return test_results
     
-    async def test_tei_endpoint(self, model, endpoint=None):
+    async def test_tei_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
-        filtered_list = []
+        filtered_list = {}
         test_results = {}
-        if type(model) is str:
-            model = [model]
-        if endpoint is not None:
-            for endpoint in self.resources["tei_endpoints"]:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model[0] == model and this_endpoint == endpoint:
-                    filtered_list.append(endpoint)
+        tei_endpoints = self.endpoints["tei_endpoints"]
+        tei_endpoints_by_model = list(self.tei_endpoints.keys())
+        endpoint_handlers_by_model = list(self.resources["endpoint_handler"][model].keys())
+        if endpoint_list is not None:            
+            for endpoint in tei_endpoints:
+                    this_model = endpoint[0]
+                    this_endpoint = endpoint[1]
+                    this_data = endpoint[2]
+                    if this_model == model and this_endpoint == endpoint:
+                        filtered_list[this_endpoint] = endpoint
         if this_endpoint is not None:
-            endpoint_list = [model[0],endpoint,""]
-            for endpoint in self.resources["tei_endpoints"]:
+            endpoint_list = [model,endpoint,""]
+            for endpoint in tei_endpoints:
                 this_model = endpoint[0]
                 this_endpoint = endpoint[1]
                 this_data = endpoint[2]
-                if this_model[0] == endpoint_list[0] and this_endpoint == endpoint_list[1]:
-                    filtered_list.append(endpoint)            
+                if this_model == endpoint_list[0] and this_endpoint == endpoint_list[1]:
+                    filtered_list[this_endpoint] = endpoint
         else:
-            endpoint_list = [model[0],"",""]
-            for endpoint in self.resources["tei_endpoints"]:
+            endpoint_list = [model,"",""]
+            for endpoint in tei_endpoints:
                 print(endpoint)
                 this_model = endpoint[0]
                 this_endpoint = endpoint[1]
                 this_data = endpoint[2]
-                if this_model == endpoint_list[0]:
-                    filtered_list.append(endpoint)
-        endpoint_handlers = []
-        if len(filtered_list) > 0:
-            for endpoint in filtered_list:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                endpoint_handler = self.endpoint_handler[(this_model, this_endpoint)]
-                endpoint_handlers.append((this_model, this_endpoint, endpoint_handler))
+                if this_model == model:
+                    filtered_list[this_endpoint] = endpoint
+        endpoint_handlers = {}
+        if len(filtered_list.keys()) > 0:
+            for endpoint in list(filtered_list.keys()):
+                if endpoint in endpoint_handlers_by_model:
+                    endpoint_handlers[endpoint] = self.resources["endpoint_handler"][model][endpoint]
         else:
             return ValueError("No endpoints found")
         if len(endpoint_handlers) > 0:
-            for i in endpoint_handlers:
-                model = i[0]
-                endpoint = i[1]
-                endpoint_handler = i[2]
-                test_endpoint = False
+            for endpoint in list(endpoint_handlers.keys()):
                 try:
-                    test_endpoint = await endpoint_handler("hello world")
-                    test_results[endpoint] = test_endpoint
+                    endpoint_handler = endpoint_handlers[endpoint]
+                    test = await endpoint_handlers[endpoint]({"inputs": "hello world"})
+                    test_results[endpoint] = test
                 except Exception as e:
                     test_results[endpoint] = e
                     pass
@@ -847,7 +840,7 @@ class ipfs_accelerate_py:
                         return endpoint
             return None
     
-    async def make_post_request(self, endpoint, data=None):
+    async def make_post_request_tei(self, endpoint, data=None):
         if data is None:
             return None
         else:
@@ -1028,7 +1021,6 @@ class ipfs_accelerate_py:
             endpoint_tests[this_model][this_endpoint] = test_batch_size           
         
         results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init,"test_ipfs_accelerate_test_endpoints": test_ipfs_accelerate_test_endpoints , "endpoint_tests": endpoint_tests}
-        print(results)
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
