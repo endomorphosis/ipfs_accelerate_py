@@ -267,7 +267,6 @@ class worker_py:
         return handler
     
     def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
-   
         def handler(x):
             return self.local_endpoints[endpoint_model][openvino_label](x)
         return handler
@@ -355,7 +354,7 @@ class worker_py:
                                 self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
                                 model_type =  str(await self.get_openvino_pipeline_type(model))
                                 self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
-                                self.endpoint_handler[openvino_model][openvino_label] = self.create_endpoint_handler(openvino_model, openvino_label)
+                                self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
                                 self.batch_sizes[openvino_model][openvino_label] = None
                         elif self.hwtest["openvino"] == True:                            
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
