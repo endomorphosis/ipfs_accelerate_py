@@ -145,6 +145,27 @@ class ipfs_accelerate_py:
             endpoints_set: endpoints_set
         }
 
+    async def create_tei_endpoint_handler(self, model, endpoint, context_length):
+        def handler(x):
+            remote_endpoint = self.endpoint_handler[model][endpoint]
+            request_results = self.request_tei_endpoint(model, endpoint, "tei_endpoints", x)
+            return request_results
+        return handler
+    
+    async def create_openvino_endpoint_handler(self, model, endpoint, context_length):
+        def handler(x):
+            remote_endpoint = self.endpoint_handler[model][endpoint]
+            request_results = self.request_openvino_endpoint(model, endpoint, "openvino_endpoints", x)
+            return request_results
+        return handler
+    
+    async def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
+        def handler(x):
+            remote_endpoint = self.endpoint_handler[model][endpoint]
+            request_results = self.request_libp2p_endpoint(model, endpoint, "libp2p_endpoints", x)
+            return request_results
+        return handler
+
     async def init_endpoints(self, models=None, endpoint_list=None):
         if "queues" not in list(self.resources.keys()):
             self.resources["queues"] = {}
@@ -250,7 +271,7 @@ class ipfs_accelerate_py:
                             # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
-                            self.resources["endpoint_handler"][model][endpoint] = self.make_post_request(self.request_openvino_endpoint(model))
+                            self.resources["endpoint_handler"][model][endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint in self.endpoints["tei_endpoints"]:
@@ -265,7 +286,7 @@ class ipfs_accelerate_py:
                             # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
-                            self.resources["endpoint_handler"][model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
+                            self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -280,7 +301,7 @@ class ipfs_accelerate_py:
                             # self.queues[model][endpoint] = asyncio.Queue(64) # Unbounded queue
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[model][endpoint] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
-                            self.resources["endpoint_handler"][model][endpoint] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
+                            self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
         return self.resources
 
     
@@ -607,7 +628,6 @@ class ipfs_accelerate_py:
                 test_results[model]["webnn_endpoint"] = "not implemented"
             except Exception as e:
                 test_results[model]["webnn_endpoint"] = e
-                
         return test_results
     
     async def test_tei_endpoint(self, model, endpoint=None):
@@ -762,7 +782,7 @@ class ipfs_accelerate_py:
             for endpoint in list(endpoint_handlers.keys()):
                 try:
                     endpoint_handler = endpoint_handlers[endpoint]
-                    test = await endpoint_handler("hello world")
+                    test = endpoint_handler("hello world")
                     test_results[endpoint] = test
                 except Exception as e:
                     test_results[endpoint] = e
