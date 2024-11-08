@@ -495,7 +495,84 @@ class ipfs_accelerate_py:
             return success
         return None
     
-    async def max_batch_size(self, model, endpoint=None, endpoint_type=None ):
+    async def max_batch_size(self, model, endpoint, endpoint_handler):
+        embed_fail = False
+        context_length = None
+        exponent = int(0)
+        batch = []
+        token_length_size = 0
+        batch_size = 2**exponent
+        test_tokens = []
+        endpoint_types = list(self.endpoints.keys())
+        find_token_str = str("z")
+        this_tokenizer = self.resources["tokenizer"][model][endpoint]
+        for endpoint_type in endpoint_types:
+            endpoints = self.endpoints[endpoint_type]
+            for this_endpoint in endpoints:
+                if model in this_endpoint[0] and endpoint in this_endpoint[1]:
+                    context_length = this_endpoint[2]
+                    token_length_size = round(context_length * 0.99)
+        find_token_int = this_tokenizer.encode(find_token_str)
+        if len(find_token_int) == 3:
+            find_token_int = find_token_int[1]
+        elif len(find_token_int) == 2:
+            find_token_int = find_token_int[1]
+        elif len(find_token_int) == 1:
+            find_token_int = find_token_int[0]
+        for i in range(token_length_size):
+            test_tokens.append(find_token_int)
+        test_text = this_tokenizer.decode(test_tokens)
+        while not embed_fail:
+            test_batch = []
+            exponent += 1
+            for i in range(2**(exponent)):
+                test_batch.append(test_text)
+            parsed_knn_embeddings = None
+            embeddings = None
+            request_knn_results = None
+            try:
+                if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
+                    request_knn_results = await endpoint_handler({"inputs": test_batch})
+                elif "cuda" in endpoint or "cpu" in endpoint:
+                    try:
+                        request_knn_results = await endpoint_handler(test_batch)
+                    except Exception as e:
+                        pass
+                    if request_knn_results == None:
+                        try:
+                            request_knn_results = endpoint_handler(test_batch)
+                        except Exception as e:
+                            request_knn_results = e
+                            embed_fail = True
+                            pass
+                        pass
+                elif "openvino" in endpoint:
+                    try:
+                        request_knn_results = await endpoint_handler(test_batch)
+                    except Exception as e:
+                        pass
+                    if request_knn_results == None:
+                        try:
+                            request_knn_results = endpoint_handler(test_batch)
+                        except Exception as e:
+                            request_knn_results = e
+                            embed_fail = True
+                            pass
+                    pass
+            except Exception as e:
+                request_knn_results = e
+                embed_fail = True
+                pass
+            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError:
+                embed_fail = True
+            batch_size = 2**(exponent-1)
+            self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
+        if exponent == 0:
+            return 1
+        else:
+            return 2**(exponent-1)
+
+    async def max_batch_size_bak(self, model, endpoint=None, endpoint_type=None ):
         embed_fail = False
         exponent = 0
         batch = []
@@ -1001,26 +1078,21 @@ class ipfs_accelerate_py:
     
     async def __test__(self, resources, metadata):
         results = {}
-        test_ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
-        test_ipfs_accelerate_test_endpoints = await self.test_endpoints(metadata['models'])
-        batch_sizes = test_ipfs_accelerate_init["batch_sizes"]
-        endpoint_handler = test_ipfs_accelerate_init["endpoint_handler"]
+        ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
+        test_endpoints = await self.test_endpoints(metadata['models'])
+        batch_sizes = ipfs_accelerate_init["batch_sizes"]
+        endpoint_handler = ipfs_accelerate_init["endpoint_handler"]
         endpoint_tests = {}
         for endpoint in endpoint_handler:
-            print(endpoint)
-            this_model = endpoint[0]
-            this_endpoint = endpoint[1]
-            if this_model not in list(endpoint_tests.keys()):
-                endpoint_tests[this_model] = {}
-            if this_endpoint not in list(endpoint_tests[this_model].keys()):
-                endpoint_tests[this_model][this_endpoint] = ""
-            try:
-                test_batch_size = await self.max_batch_size(metadata['models'][0])
-            except Exception as e:
-                test_batch_size = e
-            endpoint_tests[this_model][this_endpoint] = test_batch_size           
-        
-        results = {"test_ipfs_accelerate_init": test_ipfs_accelerate_init,"test_ipfs_accelerate_test_endpoints": test_ipfs_accelerate_test_endpoints , "endpoint_tests": endpoint_tests}
+            this_model = endpoint
+            endpoints_by_model = endpoint_handler[this_model]
+            for endpoint_type in list(endpoints_by_model.keys()):
+                this_endpoint = endpoints_by_model[endpoint_type]
+                batch_size = batch_sizes[this_model][endpoint_type]
+                test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
+                test_endpoints[this_model][this_endpoint] = test_batch_size           
+
+        results = {"ipfs_accelerate_init": ipfs_accelerate_init,"test_endpoints": test_endpoints , "endpoint_tests": endpoint_tests}
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
