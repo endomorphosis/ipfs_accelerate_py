@@ -726,6 +726,8 @@ class ipfs_accelerate_py:
                     self.resources["batch_sizes"][this_model][endpoint_type] = test_batch_size
                     batch_sizes[this_model][endpoint_type] = test_batch_size
                     endpoint_tests[this_model][endpoint_type] = this_endpoint
+            test_results["batch_sizes"] = batch_sizes
+            test_results["endpoint_handler"] = endpoint_tests
         except Exception as e:
             test_results["batch_sizes"] = e
             test_results["endpoint_handler"] = e
