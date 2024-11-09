@@ -509,9 +509,13 @@ class ipfs_accelerate_py:
         for endpoint_type in endpoint_types:
             endpoints = self.endpoints[endpoint_type]
             for this_endpoint in endpoints:
-                if model in this_endpoint[0] and endpoint in this_endpoint[1]:
+                if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
                     context_length = this_endpoint[2]
                     token_length_size = round(context_length * 0.99)
+                    break
+            if token_length_size > 0:
+                break
+                        
         find_token_int = this_tokenizer.encode(find_token_str)
         if len(find_token_int) == 3:
             find_token_int = find_token_int[1]
@@ -563,7 +567,7 @@ class ipfs_accelerate_py:
                 request_knn_results = e
                 embed_fail = True
                 pass
-            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError:
+            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
             batch_size = 2**(exponent-1)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
@@ -678,7 +682,7 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
 
-    async def test_endpoints(self, models):
+    async def test_endpoints(self, models, endpoint_handler_object=None):
         test_results = {}
         for model in models:
             if model not in list(test_results.keys()):
@@ -703,6 +707,39 @@ class ipfs_accelerate_py:
                 test_results[model]["webnn_endpoint"] = "not implemented"
             except Exception as e:
                 test_results[model]["webnn_endpoint"] = e
+        try:
+            test_results[model]["endpoint_handler_resources"] = endpoint_handler_object
+        except Exception as e:
+            test_results[model]["endpoint_handler_resources"] = e
+            test_results["batch_sizes"] = {}
+            test_results["endpoint_handler"] = {}            
+        try:    
+            batch_sizes = self.resources["batch_sizes"]
+            endpoint_handler = self.resources["endpoint_handler"]
+            endpoint_tests = {}
+            batch_sizes = {}
+            for endpoint in endpoint_handler:
+                this_model = endpoint
+                if this_model not in list(endpoint_tests.keys()):
+                    endpoint_tests[this_model] = {}
+                if this_model not in list(batch_sizes.keys()):
+                    batch_sizes[this_model] = {}
+                endpoints_by_model = endpoint_handler[this_model]
+                for endpoint_type in list(endpoints_by_model.keys()):
+                    if endpoint_type not in list(endpoint_tests[this_model].keys()):
+                        endpoint_tests[this_model][endpoint_type] = {}
+                    if endpoint_type not in list(batch_sizes[this_model].keys()):
+                        batch_sizes[this_model][endpoint_type] = {}
+                    this_endpoint = endpoints_by_model[endpoint_type]
+                    batch_size = batch_sizes[this_model][endpoint_type]
+                    test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
+                    self.resources["batch_sizes"][this_model][endpoint_type] = test_batch_size
+                    batch_sizes[this_model][endpoint_type] = test_batch_size
+                    endpoint_tests[this_model][endpoint_type] = this_endpoint
+        except Exception as e:
+            test_results["batch_sizes"] = e
+            test_results["endpoint_handler"] = e
+            pass
         return test_results
     
     async def test_tei_endpoint(self, model, endpoint_list=None):
@@ -1079,19 +1116,28 @@ class ipfs_accelerate_py:
     async def __test__(self, resources, metadata):
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
-        test_endpoints = await self.test_endpoints(metadata['models'])
+        test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
         batch_sizes = ipfs_accelerate_init["batch_sizes"]
         endpoint_handler = ipfs_accelerate_init["endpoint_handler"]
         endpoint_tests = {}
+        batch_sizes = {}
         for endpoint in endpoint_handler:
             this_model = endpoint
+            if this_model not in list(endpoint_tests.keys()):
+                endpoint_tests[this_model] = {}
+            if this_model not in list(batch_sizes.keys()):
+                batch_sizes[this_model] = {}
             endpoints_by_model = endpoint_handler[this_model]
             for endpoint_type in list(endpoints_by_model.keys()):
+                if endpoint_type not in list(endpoint_tests[this_model].keys()):
+                    endpoint_tests[this_model][endpoint_type] = {}
+                if endpoint_type not in list(batch_sizes[this_model].keys()):
+                    batch_sizes[this_model][endpoint_type] = {}
                 this_endpoint = endpoints_by_model[endpoint_type]
                 batch_size = batch_sizes[this_model][endpoint_type]
                 test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
-                test_endpoints[this_model][this_endpoint] = test_batch_size           
-
+                batch_sizes[this_model][endpoint_type] = test_batch_size
+                
         results = {"ipfs_accelerate_init": ipfs_accelerate_init,"test_endpoints": test_endpoints , "endpoint_tests": endpoint_tests}
         return results
 
