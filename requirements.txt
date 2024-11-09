@@ -18,3 +18,5 @@ numpy
 optimum
 FlagEmbedding
 optimum[openvino]
+InstructorEmbedding
+llama-cpp-python

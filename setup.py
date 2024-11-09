@@ -16,5 +16,8 @@ setup(
 		'requests',
 		'boto3',
 		'trio',
+		'InstructorEmbedding',
+		'FlagEmbedding',
+		'llama-cpp-python'
 	]
 )
