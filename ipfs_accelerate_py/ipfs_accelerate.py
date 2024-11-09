@@ -537,7 +537,7 @@ class ipfs_accelerate_py:
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
-                elif "cuda" in endpoint or "cpu" in endpoint:
+                elif "cuda" in endpoint or "cpu" in endpoint or "openvino:" in endpoint:
                     try:
                         request_knn_results = await endpoint_handler(test_batch)
                     except Exception as e:
@@ -550,19 +550,6 @@ class ipfs_accelerate_py:
                             embed_fail = True
                             pass
                         pass
-                elif "openvino" in endpoint:
-                    try:
-                        request_knn_results = await endpoint_handler(test_batch)
-                    except Exception as e:
-                        pass
-                    if request_knn_results == None:
-                        try:
-                            request_knn_results = endpoint_handler(test_batch)
-                        except Exception as e:
-                            request_knn_results = e
-                            embed_fail = True
-                            pass
-                    pass
             except Exception as e:
                 request_knn_results = e
                 embed_fail = True
