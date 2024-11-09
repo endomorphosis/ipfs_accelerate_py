@@ -558,6 +558,9 @@ class ipfs_accelerate_py:
                 embed_fail = True
             batch_size = 2**(exponent-1)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
+            if batch_size >= 4096:
+                embed_fail = True
+                pass
         if exponent == 0:
             return 1
         else:
@@ -1104,27 +1107,26 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
-        batch_sizes = ipfs_accelerate_init["batch_sizes"]
-        endpoint_handler = ipfs_accelerate_init["endpoint_handler"]
-        endpoint_tests = {}
-        batch_sizes = {}
-        for endpoint in endpoint_handler:
-            this_model = endpoint
-            if this_model not in list(endpoint_tests.keys()):
-                endpoint_tests[this_model] = {}
-            if this_model not in list(batch_sizes.keys()):
-                batch_sizes[this_model] = {}
-            endpoints_by_model = endpoint_handler[this_model]
-            for endpoint_type in list(endpoints_by_model.keys()):
-                if endpoint_type not in list(endpoint_tests[this_model].keys()):
-                    endpoint_tests[this_model][endpoint_type] = {}
-                if endpoint_type not in list(batch_sizes[this_model].keys()):
-                    batch_sizes[this_model][endpoint_type] = {}
-                this_endpoint = endpoints_by_model[endpoint_type]
-                batch_size = batch_sizes[this_model][endpoint_type]
-                test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
-                batch_sizes[this_model][endpoint_type] = test_batch_size
-                
+        # batch_sizes = ipfs_accelerate_init["batch_sizes"]
+        # endpoint_handler = ipfs_accelerate_init["endpoint_handler"]
+        # endpoint_tests = {}
+        # batch_sizes = {}
+        # for endpoint in endpoint_handler:
+        #     this_model = endpoint
+        #     if this_model not in list(endpoint_tests.keys()):
+        #         endpoint_tests[this_model] = {}
+        #     if this_model not in list(batch_sizes.keys()):
+        #         batch_sizes[this_model] = {}
+        #     endpoints_by_model = endpoint_handler[this_model]
+        #     for endpoint_type in list(endpoints_by_model.keys()):
+        #         if endpoint_type not in list(endpoint_tests[this_model].keys()):
+        #             endpoint_tests[this_model][endpoint_type] = {}
+        #         if endpoint_type not in list(batch_sizes[this_model].keys()):
+        #             batch_sizes[this_model][endpoint_type] = {}
+        #         this_endpoint = endpoints_by_model[endpoint_type]
+        #         batch_size = batch_sizes[this_model][endpoint_type]
+        #         test_batch_size = await self.max_batch_size(this_model, endpoint_type, this_endpoint)
+        #         batch_sizes[this_model][endpoint_type] = test_batch_size
         results = {"ipfs_accelerate_init": ipfs_accelerate_init,"test_endpoints": test_endpoints , "endpoint_tests": endpoint_tests}
         return results
 
