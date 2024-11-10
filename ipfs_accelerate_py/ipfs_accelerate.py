@@ -497,6 +497,8 @@ class ipfs_accelerate_py:
         return None
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):
+        import psutil
+        process = psutil.Process(os.getpid())
         embed_fail = False
         context_length = None
         exponent = int(0)
@@ -536,6 +538,8 @@ class ipfs_accelerate_py:
             embeddings = None
             request_knn_results = None
             start_time = time.time()
+
+            start_mem = process.memory_info().rss
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
@@ -559,13 +563,16 @@ class ipfs_accelerate_py:
             if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
             end_time = time.time()
+            end_memory = process.memory_info().rss
             batch_size = 2**(exponent-1)
             elapsed_time = end_time - start_time
+            memory_increase = end_memory - start_mem
+            free_memory = psutil.virtual_memory().free
             log = {
             "batch size": batch_size,
-            # "start time": start_time,
-            # "end_time": end_time,
             "elapsed_time": elapsed_time,
+            "memory_increase": memory_increase,
+            "free_memory": free_memory
             }
 
             print(log)
