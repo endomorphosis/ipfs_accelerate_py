@@ -535,8 +535,7 @@ class ipfs_accelerate_py:
             parsed_knn_embeddings = None
             embeddings = None
             request_knn_results = None
-            start_time = time.gmtime
-            # start_time = time.mktime(start_time)
+            start_time = time.time()
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
@@ -559,12 +558,14 @@ class ipfs_accelerate_py:
                 pass
             if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
-            end_time = time.gmtime
+            end_time = time.time()
             batch_size = 2**(exponent-1)
+            elapsed_time = end_time - start_time
             log = {
             "batch size": batch_size,
             "start time": start_time,
-            "end_time": end_time
+            "end_time": end_time,
+            "elapsed_time": elapsed_time,
             }
 
             print(log)
