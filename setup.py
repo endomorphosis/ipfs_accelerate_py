@@ -20,5 +20,9 @@ setup(
 		'FlagEmbedding',
 		'llama-cpp-python',
 		'gguf',
+		"optimum",
+		"optimum[openvino]",
+		'ipfs_kit_py',
+		'sentence_transformers'
 	]
 )
