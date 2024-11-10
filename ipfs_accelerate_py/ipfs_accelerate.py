@@ -563,8 +563,8 @@ class ipfs_accelerate_py:
             elapsed_time = end_time - start_time
             log = {
             "batch size": batch_size,
-            "start time": start_time,
-            "end_time": end_time,
+            # "start time": start_time,
+            # "end_time": end_time,
             "elapsed_time": elapsed_time,
             }
 
