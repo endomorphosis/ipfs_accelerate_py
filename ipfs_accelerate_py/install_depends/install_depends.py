@@ -544,7 +544,7 @@ class install_depends_py():
                     result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
                     install_results["llama_cpp"] = result.stdout
                 elif num_gpus > 0 and "amx" not in list(filtered_results.keys()):
-                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make  GGML_CUDA=1 GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 "
                     result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
                     install_results["llama_cpp"] = result.stdout
                 elif num_gpus > 0 and "amx" in list(filtered_results.keys()):

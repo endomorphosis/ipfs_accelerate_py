@@ -18,6 +18,7 @@ setup(
 		'trio',
 		'InstructorEmbedding',
 		'FlagEmbedding',
-		'llama-cpp-python'
+		'llama-cpp-python',
+		'gguf',
 	]
 )

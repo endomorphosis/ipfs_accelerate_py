@@ -20,3 +20,5 @@ FlagEmbedding
 optimum[openvino]
 InstructorEmbedding
 llama-cpp-python
+gguf
+chatformat @ git+https://github.com/Mwni/chatformat.git
