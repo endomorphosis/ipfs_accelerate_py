@@ -543,27 +543,32 @@ class ipfs_accelerate_py:
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
+                    end_memory = process.memory_info().rss
+
                 elif "cuda" in endpoint or "cpu" in endpoint or "openvino:" in endpoint:
                     try:
                         request_knn_results = await endpoint_handler(test_batch)
+                        end_memory = process.memory_info().rss
                     except Exception as e:
                         pass
                     if request_knn_results == None:
                         try:
                             request_knn_results = endpoint_handler(test_batch)
+                            end_memory = process.memory_info().rss
                         except Exception as e:
                             request_knn_results = e
                             embed_fail = True
+                            end_memory = process.memory_info().rss
                             pass
                         pass
             except Exception as e:
                 request_knn_results = e
                 embed_fail = True
+                end_memory = process.memory_info().rss
                 pass
             if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
             end_time = time.time()
-            end_memory = process.memory_info().rss
             batch_size = 2**(exponent-1)
             elapsed_time = end_time - start_time
             memory_increase = end_memory - start_mem
