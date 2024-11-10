@@ -5,6 +5,8 @@ setup(
 	version='0.0.17',
     packages=find_packages(),
 	install_requires=[
+		'ipfs_kit_py',
+		'sentence_transformers'
         'transformers',
         'ipfs_transformers_py',
         'ipfs_model_manager_py',
@@ -22,7 +24,5 @@ setup(
 		'gguf',
 		"optimum",
 		"optimum[openvino]",
-		'ipfs_kit_py',
-		'sentence_transformers'
 	]
 )
