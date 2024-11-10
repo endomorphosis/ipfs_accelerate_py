@@ -490,6 +490,24 @@ class install_depends_py():
     async def install_llama_cpp(self):
         install_results = {}
         try:
+            lscpu_cmd = "lscpu"
+            lscpu = subprocess.check_output(lscpu_cmd, shell=True, text=True)
+            print(lscpu)
+            inst_avx_cmd = "lscpu | grep avx"
+            inst_avx2_cmd = "lscpu | grep avx2"
+            inst_avx_vnni = "lscpu | grep avx_vnni"
+            inst_amx_cmd = "lscpu | grep amx"
+            inst_cuda_cmd = "lscpu | grep cuda"
+            inst_openvino_cmd = "lscpu | grep openvino"
+            inst_avx = subprocess.check_output(inst_avx_cmd, shell=True, text=True)
+            inst_avx2 = subprocess.check_output(inst_avx2_cmd, shell=True, text=True)
+            inst_avx_vnni = subprocess.check_output(inst_avx_vnni, shell=True, text=True)
+            inst_amx = subprocess.check_output(inst_amx_cmd, shell=True, text=True)
+            inst_cuda_cmd = subprocess.check_output(inst_cuda_cmd, shell=True, text=True)
+            inst_oneapi = subprocess.check_output(inst_openvino_cmd, shell=True, text=True)
+            pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+            result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+            install_results["llama_cpp"] = result.stdout
             install_cmd = ["pip", "install", "llama-cpp-python", "--break-system-packages"]
             install_cnd = "pip  install  llama-cpp-python  --break-system-packages"
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
