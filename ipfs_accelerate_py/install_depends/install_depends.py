@@ -490,29 +490,72 @@ class install_depends_py():
     async def install_llama_cpp(self):
         install_results = {}
         try:
-            lscpu_cmd = "lscpu"
-            lscpu = subprocess.check_output(lscpu_cmd, shell=True, text=True)
-            print(lscpu)
+            # lscpu_cmd = "lscpu"
+            # lscpu = subprocess.check_output(lscpu_cmd, shell=True, text=True)
+            # print(lscpu)
             inst_avx_cmd = "lscpu | grep avx"
             inst_avx2_cmd = "lscpu | grep avx2"
             inst_avx_vnni = "lscpu | grep avx_vnni"
             inst_amx_cmd = "lscpu | grep amx"
-            inst_cuda_cmd = "lscpu | grep cuda"
-            inst_openvino_cmd = "lscpu | grep openvino"
-            inst_avx = subprocess.check_output(inst_avx_cmd, shell=True, text=True)
-            inst_avx2 = subprocess.check_output(inst_avx2_cmd, shell=True, text=True)
-            inst_avx_vnni = subprocess.check_output(inst_avx_vnni, shell=True, text=True)
-            inst_amx = subprocess.check_output(inst_amx_cmd, shell=True, text=True)
-            inst_cuda_cmd = subprocess.check_output(inst_cuda_cmd, shell=True, text=True)
-            inst_oneapi = subprocess.check_output(inst_openvino_cmd, shell=True, text=True)
-            pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
-            result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+            inst_cuda_cmd = "nvidia-smi"
+            inst_openvino_cmd = "openvino --version"
+            try:
+                inst_avx = subprocess.check_output(inst_avx_cmd, shell=True, text=True)
+            except Exception as e:
+                inst_avx = e
+                print(e)
+            try:
+                inst_avx2 = subprocess.check_output(inst_avx2_cmd, shell=True, text=True)
+            except Exception as e:
+                inst_avx2 = e
+                print(e)
+            try:
+                inst_avx_vnni = subprocess.check_output(inst_avx_vnni, shell=True, text=True)
+            except Exception as e:
+                inst_avx_vnni = e
+                print(e)
+            try:
+                inst_amx = subprocess.check_output(inst_amx_cmd, shell=True, text=True)
+            except Exception as e:
+                inst_amx = e
+                print(e)
+            try:
+                inst_cuda_cmd = subprocess.check_output(inst_cuda_cmd, shell=True, text=True)
+            except Exception as e:
+                inst_cuda_cmd = e
+                print(e)
+            try:    
+                inst_oneapi = subprocess.check_output(inst_openvino_cmd, shell=True, text=True)
+            except Exception as e:
+                inst_oneapi = e
+                print(e)
+            results = { "avx": inst_avx, "avx2": inst_avx2, "avx_vnni": inst_avx_vnni, "amx": inst_amx, "cuda": inst_cuda_cmd, "openvino": inst_oneapi }
+            filtered_results = { key: value for key, value in results.items() if type(value) != subprocess.CalledProcessError }
+            num_gpus = 0
+            if "cuda" in list(filtered_results.keys()):
+                num_gpus = len(filtered_results["cuda"])
+            try:
+                if num_gpus == 0 and "amx" not in list(filtered_results.keys()):              
+                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+                    result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+                    install_results["llama_cpp"] = result.stdout
+                elif num_gpus == 0 and "amx" in list(filtered_results.keys()):              
+                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+                    result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+                    install_results["llama_cpp"] = result.stdout
+                elif num_gpus > 0 and "amx" not in list(filtered_results.keys()):
+                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+                    result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+                    install_results["llama_cpp"] = result.stdout
+                elif num_gpus > 0 and "amx" in list(filtered_results.keys()):
+                    pull_cmd = "git clone https://github.com/ggerganov/llama.cpp ; cd llama.cpp ; make "
+                    result = subprocess.run(pull_cmd, check=True, capture_output=True, text=True)
+                    install_results["llama_cpp"] = result.stdout            
+            except Exception as e:
+                install_results["llama_cpp"] = e.stderr
+                print(f"Failed to install Llama C++: {e.stderr}")
+        except Exception as e:
             install_results["llama_cpp"] = result.stdout
-            install_cmd = ["pip", "install", "llama-cpp-python", "--break-system-packages"]
-            install_cnd = "pip  install  llama-cpp-python  --break-system-packages"
-            result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
-            install_results["llama_cpp"] = result.stdout
-        except subprocess.CalledProcessError as e:
             install_results["llama_cpp"] = ValueError( f"Failed to install Llama C++: {e.stderr}")
             print(e)
             
@@ -1153,6 +1196,7 @@ class install_depends_py():
             
         try:
             llama_cpp_test = await self.test_llama_cpp()
+            raise ValueError("Test Llama C++")
         except Exception as e:
             llama_cpp_test = e
             try:
@@ -1263,7 +1307,5 @@ class install_depends_py():
         }
         # print(test_results)
         return test_results
-    
-
 
 install_depends_py = install_depends_py
