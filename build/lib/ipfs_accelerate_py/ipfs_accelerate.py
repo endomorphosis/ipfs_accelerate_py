@@ -14,7 +14,6 @@ from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
 import hashlib
-import time
 
 class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
@@ -535,8 +534,6 @@ class ipfs_accelerate_py:
             parsed_knn_embeddings = None
             embeddings = None
             request_knn_results = None
-            start_time = time.gmtime
-            # start_time = time.mktime(start_time)
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
@@ -559,18 +556,9 @@ class ipfs_accelerate_py:
                 pass
             if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
-            end_time = time.gmtime
             batch_size = 2**(exponent-1)
-            log = {
-            "batch size": batch_size,
-            "start time": start_time,
-            "end_time": end_time
-            }
-
-            print(log)
-
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
-            if batch_size >= 2048:
+            if batch_size >= 4096:
                 embed_fail = True
                 pass
         if exponent == 0:

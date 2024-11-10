@@ -18,6 +18,4 @@ optimum
 optimum[openvino]
 FlagEmbedding
 InstructorEmbedding
-llama-cpp-python
-gguf
-chatformat @ git+https://github.com/Mwni/chatformat.git
+boto3

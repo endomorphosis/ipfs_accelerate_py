@@ -8,10 +8,8 @@ import optimum
 import torch 
 import asyncio
 import transformers
-try:
-    from ipfs_multiformats import ipfs_multiformats_py
-except:
-    from .ipfs_multiformats import ipfs_multiformats_py
+from .skillset import llama_cpp
+from ipfs_multiformats import ipfs_multiformats_py
 from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
 import ipfs_transformers_py
 from pathlib import Path
@@ -45,7 +43,7 @@ class dispatch_result:
         return None
     
     async def dispatch_result(self, result):
-        return None    
+        return result    
     
 class worker_py:
     def __init__(self, metadata, resources):
@@ -117,8 +115,9 @@ class worker_py:
         return None
     
     async def dispatch_result(self, result):
-
-        return None
+        result_cid = self.ipfs_multiformats.get_cid(result)
+        self.outbox[result_cid] = result
+        return result
     
     
     async def test_hardware(self):
@@ -428,6 +427,10 @@ class worker_py:
 
         resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types) }
         return resources    
+    
+    async def max_batch_size(self, model, endpoint):
+        
+        return None
     
     # def __test__(self):
     #     return self 
