@@ -12,6 +12,10 @@ class InitEndpointsRequest(BaseModel):
     models: list
     resources: dict[str, list[str]]
     
+class InferEndpointRequest(BaseModel):
+    models: list
+    batch_data: list
+    
 metadata = {
     "dataset": "TeraflopAI/Caselaw_Access_Project",
     "column": "text",
@@ -91,6 +95,10 @@ def testEndpointTask(BaseModel):
         
     return None
 
+def inferTask(BaseModel):
+    
+    return None
+
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(initEndpointsTask, request.dataset, request.knn_index, request.dataset_split, request.knn_index_split, request.columns)
@@ -100,6 +108,11 @@ async def load_index_post(request: InitEndpointsRequest, background_tasks: Backg
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(testEndpointTask, request.collection, request.text, request.n)
     return {"message": "Search started in the background"}
+
+@app.post("/infer")
+async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(inferTask, request.models, request.resources)
+    return {"message": "Inference started in the background"}
 
 @app.post("/")
 async def help():
