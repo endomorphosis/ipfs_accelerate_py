@@ -32,28 +32,34 @@ resources = {}
 metadata = {}
 ipfs_accelererate = ipfs_accelerate_py(resources, metadata)
 
-def initEndpointsTask(models: list, resources: dict):
-    ipfs_accelerate_py.init_endpoints(models, resources)
-    return None
+class ModelServer:
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources
+        self.metadata = metadata
+        self.ipfs_accelerate = ipfs_accelerate_py(self.resources, self.metadata)
 
-def testEndpointTask(models: list, resources: dict):
-    ipfs_accelerate_py.test_endpoints(models, resources)
-    return None
+    def initEndpointsTask(models: list, resources: dict):
+        ipfs_accelerate_py.init_endpoints(models, resources)
+        return None
 
-def inferTask(models: list, batch_data: list):
-    ipfs_accelerate_py.infer(models, batch_data)
-    return None
+    def testEndpointTask(models: list, resources: dict):
+        ipfs_accelerate_py.test_endpoints(models, resources)
+        return None
 
-def statusTask(models: list):
-    return ipfs_accelerate_py.status(models)
+    def inferTask(models: list, batch_data: list):
+        ipfs_accelerate_py.infer(models, batch_data)
+        return None
 
-def addEndpointTask(models: list, endpoint_type: str, endpoint: list):
-    ipfs_accelerate_py.add_endpoint(models, endpoint_type, endpoint)
-    return None
+    def statusTask(models: list):
+        return ipfs_accelerate_py.status(models)
 
-def rmEndpointTask(models: list, endpoint_type: str, index: int):
-    ipfs_accelerate_py.rm_endpoint(models, endpoint_type, index)
-    return None
+    def addEndpointTask(models: list, endpoint_type: str, endpoint: list):
+        ipfs_accelerate_py.add_endpoint(models, endpoint_type, endpoint)
+        return None
+
+    def rmEndpointTask(models: list, endpoint_type: str, index: int):
+        ipfs_accelerate_py.rm_endpoint(models, endpoint_type, index)
+        return None
 
 @app.get("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
@@ -72,8 +78,11 @@ async def status_post(request: InitStatusRequest, background_tasks: BackgroundTa
 
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(initEndpointsTask, request.models , request.resources)
-    return {"message": "init loading started in the background"}
+    results = {}
+    results["init"] = await initEndpointsTask
+    await initEndpointsTask(request.models , request.resources)
+    # BackgroundTasks.add_task(initEndpointsTask, request.models , request.resources)
+    # return {"message": "init loading started in the background"}
 
 @app.post("/test")
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
