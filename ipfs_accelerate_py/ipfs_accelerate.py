@@ -529,6 +529,7 @@ class ipfs_accelerate_py:
         for i in range(token_length_size):
             test_tokens.append(find_token_int)
         test_text = this_tokenizer.decode(test_tokens)
+        memory_increase = None
         while not embed_fail:
             test_batch = []
             exponent += 1
@@ -538,9 +539,12 @@ class ipfs_accelerate_py:
             embeddings = None
             request_knn_results = None
             start_time = time.time()
-
             start_mem = process.memory_info().rss
+            free_memory = psutil.virtual_memory().free
             try:
+                if memory_increase is not None:
+                    if free_memory < (memory_increase * 2):
+                        raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
                     end_memory = process.memory_info().rss
@@ -579,9 +583,7 @@ class ipfs_accelerate_py:
             "memory_increase": memory_increase,
             "free_memory": free_memory
             }
-
-            print(log)
-
+            # print(log)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
             if batch_size >= 2048:
                 embed_fail = True
