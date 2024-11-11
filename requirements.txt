@@ -18,4 +18,5 @@ optimum
 optimum[openvino]
 FlagEmbedding
 InstructorEmbedding
+toml
 boto3

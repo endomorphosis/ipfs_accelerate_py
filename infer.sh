@@ -1,3 +1,4 @@
+#!/bin/bash
 curl 127.0.0.1:9999/infer \
     -X POST \
     -d '{"models":["thenlper/gte-small"], "batch_data": ["This is a test sentence.", "This is another test sentence."]}' \
