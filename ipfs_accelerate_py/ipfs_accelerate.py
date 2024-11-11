@@ -246,7 +246,7 @@ class ipfs_accelerate_py:
             query_endpoints = await self.query_endpoints(model)                
             new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
             new_endpoints = {}
-            endpoints_set = set()
+            endpoints_set = query_endpoints["endpoints_set"]
             for endpoint_type in new_endpoints_list:
                 if endpoint_type in list(endpoint_list.keys()):
                     if endpoint_type not in list(new_endpoints.keys()):
