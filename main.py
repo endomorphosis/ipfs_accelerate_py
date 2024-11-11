@@ -70,32 +70,32 @@ def rmEndpointTask(BaseModel):
 
 @app.get("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(addEndpointTask, request.models, request.resources)
+    BackgroundTasks.add_task(addEndpointTask, request.models, request.resources)
     return {"message": "add endpoint started in the background"}
 
 @app.get("/rm_endpoint")
 async def rm_endpoint(request: RmEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(rmEndpointTask, request.models)
+    BackgroundTasks.add_task(rmEndpointTask, request.models)
     return {"message": "rm endpoint started in the background"}
 
 @app.get("/status")
 async def status_post(request: InitStatusRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(statusTask, request.models)
+    BackgroundTasks.add_task(statusTask, request.models)
     return {"message": "status started in the background"}
 
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(initEndpointsTask, request.models , request.resources)
+    BackgroundTasks.add_task(initEndpointsTask, request.models , request.resources)
     return {"message": "init loading started in the background"}
 
 @app.post("/test")
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(testEndpointTask, request.models, request.resources)
+    BackgroundTasks.add_task(testEndpointTask, request.models, request.resources)
     return {"message": "test started in the background"}
 
 @app.post("/infer")
 async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(inferTask, request.models, request.batch_data)
+    BackgroundTasks.add_task(inferTask, request.models, request.batch_data)
     return {"message": "infer started in the background"}
 
 @app.post("/")
