@@ -138,19 +138,58 @@ class ipfs_accelerate_py:
         return test_results
 
     async def query_endpoints(self, model):
-        endpoints = self.get_endpoints(model)
-        local = self.get_endpoints(model, "local")
-        openvino = self.get_endpoints(model, "openvino")
-        libp2p = self.get_endpoints(model, "libp2p")
-        tei = self.get_endpoints(model, "tei")
+        endpoints = None
+        local = None
+        openvino = None
+        tei = None
+        libp2p = None
+        try:
+            endpoints = await self.get_endpoints(model)
+        except Exception as e:
+            endpoints = e
+        try:
+            local = await self.get_endpoints(model, "local")
+        except Exception as e:
+            local = e
+        try:
+            openvino = await self.get_endpoints(model, "openvino")
+        except Exception as e:
+            openvino = e
+        try:
+            libp2p = await self.get_endpoints(model, "libp2p")
+        except Exception as e:
+            libp2p = e
+        try:
+            tei = await self.get_endpoints(model, "tei")
+        except Exception as e:
+            tei = e
+        if type(tei) == list:
+            tei_set = set(endpoints["tei"])
+        else:
+            tei_set = set()
+        if type(local) == list:
+            local_set = set(endpoints["local"])
+        else:
+            local_set = set()
+        if type(libp2p) == list:
+            libp2p_set = set(endpoints["libp2p"])
+        else:
+            libp2p_set = set()
+        if type(openvino) == list:
+            openvino_set = set(endpoints["openvino"])
+        else:
+            openvino_set = set()
+
+        endpoints_set = set.union(tei_set, local_set, openvino_set, libp2p_set)
         endpoints =  { "tei" : tei , "local" : local , "openvino": openvino , "libp2p": libp2p }
-        endpoints_set = set(endpoints["tei"] + endpoints["local"] + endpoints["openvino"] + endpoints["libp2p"] )
-        self.endpoints = endpoints
-        self.endpoints_list = list(endpoints.keys())
-        self.endpoints_set = endpoints_set
+
+        # endpoints_set = set(set(endpoints["tei"]),set(endpoints["local"]),set(endpoints["openvino"]),set(endpoints["libp2p"]))
+        # self.endpoints = endpoints
+        # self.endpoints_list = list(endpoints.keys())
+        # self.endpoints_set = endpoints_set
         return {
-            endpoints: endpoints,
-            endpoints_set: endpoints_set
+            "endpoints": endpoints,
+            "endpoints_set": endpoints_set
         }
 
     def create_tei_endpoint_handler(self, model, endpoint, context_length):
@@ -203,23 +242,22 @@ class ipfs_accelerate_py:
             self.endpoint_list = new_endpoints_list
             endpoints_set = set(new_endpoints_list)
             self.endpoint_set = endpoints_set
-        if type(endpoint_list) == dict:                
+        if type(endpoint_list) == dict:
+            query_endpoints = await self.query_endpoints(model)                
             new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
             new_endpoints = {}
             endpoints_set = set()
             for endpoint_type in new_endpoints_list:
-                if endpoint_type in list(self.endpoints_list.keys()):
+                if endpoint_type in list(endpoint_list.keys()):
                     if endpoint_type not in list(new_endpoints.keys()):
                         new_endpoints[endpoint_type] = {}
-
             for endpoint_type in new_endpoints_list:
                 for model in models:
                     if model not in new_endpoints[endpoint_type]:
                         new_endpoints[endpoint_type][model] = []
-            
             for endpoint_type in new_endpoints_list:
                 if endpoint_type in endpoint_list:
-                    this_list = endpoints_list[endpoint_type]
+                    this_list = endpoint_list[endpoint_type]
                     for item in this_list:
                         this_model = item[0]
                         this_endpoint = item[1]
