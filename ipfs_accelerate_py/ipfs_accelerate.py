@@ -219,8 +219,8 @@ class ipfs_accelerate_py:
         if "endpoint_handler" not in list(self.resources.keys()):
             self.resources["endpoint_handler"] = {}
         for endpoint_type in self.endpoint_types:
-            if endpoint_type in list(endpoint_list.keys()):
-                for endpoint_info in endpoint_list[endpoint_type]:
+            if endpoint_type in list(endpoints_list.keys()):
+                for endpoint_info in self.endpoints[endpoint_type]:
                     model, endpoint, context_length = endpoint_info
                     if model not in list(self.resources["batch_sizes"].keys()):
                         self.resources["batch_sizes"][model] = {}

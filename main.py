@@ -45,11 +45,27 @@ class ModelServer:
     async def initEndpointsTask(self, models: list, resources: dict):
         results = {}
         try:
-            results["init"] = await model_server.resources["ipfs_accelerate_py"].init_endpoints(models, resources)
+            results["init"] = await self.init_endpoints(models, resources)
         except Exception as e:
             results["init"] = e
+            
+        try:
+            results["test"] = await self.testEndpointTask(models, resources)
+        except Exception as e:
+            results["test"] = e
+        
+        try:
+            results["status"] = await self.statusTask(models)
+        except Exception as e:
+            results["status"] = e
         return results
 
+    async def init_endpoints (self, models: list, resources: dict):
+        try:
+            return await self.resources["ipfs_accelerate_py"].init_endpoints(models, resources)
+        except Exception as e:
+            return e
+        
     async def testEndpointTask(self, models: list, resources: dict):
         ipfs_accelerate_py.test_endpoints(models, resources)
         return None
