@@ -379,7 +379,7 @@ class ipfs_accelerate_py:
         new_resources = {}
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
-        return new_resources
+        return True
 
     def test_tei_https_endpoint(self, model, endpoint):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
