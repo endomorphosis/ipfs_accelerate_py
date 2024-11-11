@@ -6,11 +6,11 @@ from pydantic import BaseModel
     
 class InitEndpointsRequest(BaseModel):
     models: list
-    resources: dict[str, list[list[tuple[str, str, int]]]]
+    resources: dict[str, list[list[str]]]
     
 class TestEndpointRequest(BaseModel):
     models: list[str]
-    resources: dict[str, list[list[tuple[str,str,int]]]]
+    resources: dict[str, list[list[str]]]
 
 class InferEndpointRequest(BaseModel):
     models: list
@@ -18,7 +18,7 @@ class InferEndpointRequest(BaseModel):
 
 class AddEndpointRequest(BaseModel):
     models: str
-    resources: dict[str, list[list[tuple[str,str,int]]]]
+    resources: dict[str, list[list[str]]]
 
 class RmEndpointRequest(BaseModel):
     models: str
