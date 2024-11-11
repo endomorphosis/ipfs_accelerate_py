@@ -206,9 +206,26 @@ class ipfs_accelerate_py:
         if type(endpoint_list) == dict:                
             new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
             new_endpoints = {}
-            endpoints_set = set(new_endpoints_list)
-            for new_endpoint in new_endpoints_list:
-                new_endpoints[new_endpoint] = endpoint_list[new_endpoint]
+            endpoints_set = set()
+            for endpoint_type in new_endpoints_list:
+                if endpoint_type in list(self.endpoints_list.keys()):
+                    if endpoint_type not in list(new_endpoints.keys()):
+                        new_endpoints[endpoint_type] = {}
+
+            for endpoint_type in new_endpoints_list:
+                for model in models:
+                    if model not in new_endpoints[endpoint_type]:
+                        new_endpoints[endpoint_type][model] = []
+            
+            for endpoint_type in new_endpoints_list:
+                if endpoint_type in endpoint_list:
+                    this_list = endpoints_list[endpoint_type]
+                    for item in this_list:
+                        this_model = item[0]
+                        this_endpoint = item[1]
+                        this_context_length = item[2]
+                        if this_model in list(new_endpoints[endpoint_type].keys()):
+                            new_endpoints[endpoint_type][model].append(item)                
             self.endpoints = new_endpoints
             self.endpoints_list = new_endpoints_list
             self.endpoint_set = endpoints_set
