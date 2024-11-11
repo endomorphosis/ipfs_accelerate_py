@@ -67,8 +67,10 @@ class ModelServer:
             return e
         
     async def testEndpointTask(self, models: list, resources: dict):
-        ipfs_accelerate_py.test_endpoints(models, resources)
-        return None
+        try:
+            return await self.resources["ipfs_accelerate_py"].test_endpoints(models, resources)
+        except Exception as e:
+            return e
 
     async def inferTask(self, models: list, batch_data: list):
         ipfs_accelerate_py.infer(models, batch_data)
