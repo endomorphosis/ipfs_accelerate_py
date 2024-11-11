@@ -287,13 +287,33 @@ class worker_py:
             elif "local_endpoints" in list(self.resources.keys()):
                 local_endpoints = self.resources["local_endpoints"]
             else:
-                local_endpoints = []
+                local_endpoints = {}
         else:
             pass
         self.local_endpoints  = local_endpoints
-        self.local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
-        self.local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
-        self.local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
+        # local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
+        # local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
+        local_endpoint_models = list(local_endpoints.keys())
+        local_endpoint_types = []
+        for model in local_endpoint_models:
+            for endpoints in local_endpoints[model]:
+                endpoint_type = endpoints[1]
+                local_endpoint_types.append(endpoint_type)
+        new_endpoints_list = {}
+        for model in list(local_endpoints.keys()):
+            if model not in list(new_endpoints_list.keys()):
+                new_endpoints_list[model] = {}
+            for endpoint in local_endpoints[model]:
+                endpoint_type = endpoint[1]
+                if endpoint_type not in list(new_endpoints_list[model].keys()):
+                    new_endpoints_list[model][endpoint_type] = endpoint[2]
+        
+        print(new_endpoints_list)
+        self.local_endpoints = new_endpoints_list
+
+        # local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
+        self.local_endpoint_types = local_endpoint_types
+        self.local_endpoint_models = local_endpoint_models
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
@@ -310,7 +330,6 @@ class worker_py:
         cpus = os.cpu_count()
         cuda = torch.cuda.is_available()
         gpus = torch.cuda.device_count()
-        
         for model in models:
             model_type = await self.get_model_type(model)
             if model not in self.tokenizer:
@@ -348,9 +367,16 @@ class worker_py:
                         self.endpoint_handler[model]["cpu"] = ""
                     elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                         ov_count = 0
-                        openvino_index = self.local_endpoint_types.index("openvino")
+                        openvino_endpoints = []
+                        for item in local_endpoint_types:
+                            if "openvino" in item:
+                                openvino_endpoints.append(item)
+                        openvino_index = self.local_endpoint_types.index(endpoint_type)
                         openvino_model = self.local_endpoint_models[openvino_index]
-                        openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
+                        if ":" not in str(self.local_endpoint_types[openvino_index]):
+                            openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
+                        else:
+                            openvino_label = str(self.local_endpoint_types[openvino_index])
                         # to disable openvino to calling huggingface transformers uncomment
                         # self.hwtest["optimum-openvino"] = False
                         # if self.hwtest["optimum-openvino"] == True: 
@@ -371,39 +397,6 @@ class worker_py:
                                 print(e)
                                 pass
                         ov_count = ov_count + 1
-                    elif ipex_test and type(ipex_test) != ValueError and model_type != "llama_cpp":
-                            ipex_count = 0
-                            for endpoint in local:
-                                if "ipex" in endpoint:
-                                    endpoint_name = "ipex:"+str(ipex_count)
-                                    batch_size = 0
-                                    if model not in self.batch_sizes:
-                                        self.batch_sizes[model] = {}
-                                    if model not in self.queues:
-                                        self.queues[model] = {}
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.batch_sizes[model][endpoint] = batch_size
-                                    if self.batch_sizes[model][endpoint] > 0:
-                                        self.queues[model][endpoint] = asyncio.Queue(64)
-                                        self.endpoint_handler[model][endpoint_name] = ""
-                                    ipex_count = ipex_count + 1   
-                elif llama_cpp_test and type(llama_cpp_test) != ValueError and model_type == "llama_cpp":
-                    llama_model = None
-                    if len(local) > 0 and gpus > 1:
-                        for gpu in range(gpus):
-                            llama_model = await self.get_llama_cpp_model(model, model_type)
-                            self.tokenizer[model]["llama_cpp:"+str(gpu)] = AutoTokenizer.from_pretrained(model, use_fast=True)
-                            self.local_endpoints[model]["llama_cpp:"+str(gpu)] = llama_model.to("cuda:" + str(gpu))
-                            self.queues[model]["llama_cpp:"+str(gpu)] = asyncio.Queue(64)
-                            pass
-                    elif len(local) > 0 and cpus > 0:
-                        llama_model = await self.get_llama_cpp_model(model, model_type)
-                        self.local_endpoints[model]["llama_cpp"] = llama_model
-                        self.queues[model]["llama_cpp"] = asyncio.Queue(64)
-                        self.endpoint_handler[model]["llama_cpp"] = llama_model
-                        pass
-                    llama_count = llama_count + 1
-                    break
                 else:
                     pass
         worker_endpoint_types = []

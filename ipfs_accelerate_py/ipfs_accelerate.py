@@ -262,6 +262,7 @@ class ipfs_accelerate_py:
                         this_model = item[0]
                         this_endpoint = item[1]
                         this_context_length = item[2]
+                        endpoints_set.add(this_endpoint)
                         if this_model in list(new_endpoints[endpoint_type].keys()):
                             new_endpoints[endpoint_type][model].append(item)                
             self.endpoints = new_endpoints
@@ -343,19 +344,20 @@ class ipfs_accelerate_py:
                             self.resources["endpoint_handler"][model][endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
-                for endpoint in self.endpoints["tei_endpoints"]:
-                    if len(endpoint) == 3:
-                        this_model = endpoint[0]
-                        this_endpoint = endpoint[1]
-                        context_length = endpoint[2]
-                        if model == this_model:
-                            if endpoint not in list(self.batch_sizes[model].keys()):
-                                # self.batch_sizes[model][this_endpoint] =  0
-                                self.resources["batch_sizes"][model][this_endpoint] = 0
-                            # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
-                            self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
+                for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
+                    for endpoint in self.endpoints["tei_endpoints"][endpoint_model]:                            
+                        if len(endpoint) == 3:
+                            this_model = endpoint[0]
+                            this_endpoint = endpoint[1]
+                            context_length = endpoint[2]
+                            if model == this_model:
+                                if endpoint not in list(self.batch_sizes[model].keys()):
+                                    # self.batch_sizes[model][this_endpoint] =  0
+                                    self.resources["batch_sizes"][model][this_endpoint] = 0
+                                # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                                self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                                # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
+                                self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:

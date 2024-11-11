@@ -50,22 +50,22 @@ class ModelServer:
             results["init"] = e
         return results
 
-    def testEndpointTask(self, models: list, resources: dict):
+    async def testEndpointTask(self, models: list, resources: dict):
         ipfs_accelerate_py.test_endpoints(models, resources)
         return None
 
-    def inferTask(self, models: list, batch_data: list):
+    async def inferTask(self, models: list, batch_data: list):
         ipfs_accelerate_py.infer(models, batch_data)
         return None
 
-    def statusTask(self, models: list):
+    async def statusTask(self, models: list):
         return ipfs_accelerate_py.status(models)
 
-    def addEndpointTask(self, models: list, endpoint_type: str, endpoint: list):
+    async def addEndpointTask(self, models: list, endpoint_type: str, endpoint: list):
         ipfs_accelerate_py.add_endpoint(models, endpoint_type, endpoint)
         return None
 
-    def rmEndpointTask(self, models: list, endpoint_type: str, index: int):
+    async def rmEndpointTask(self, models: list, endpoint_type: str, index: int):
         ipfs_accelerate_py.rm_endpoint(models, endpoint_type, index)
         return None
 
