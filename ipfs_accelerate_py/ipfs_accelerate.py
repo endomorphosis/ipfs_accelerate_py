@@ -463,7 +463,10 @@ class ipfs_accelerate_py:
         torch.cuda.empty_cache()  # Free up GPU memory again
         return results
 
-    async def add_endpoint(self, model, endpoint, context_length, endpoint_type):
+    async def add_endpoint(self, model, endpoint_type, endpoint):
+        model = endpoint[0]
+        backend = endpoint[1]
+        context_length = endpoint[2]
         if endpoint_type in self.endpoint_types:
             success = False
             try:
@@ -481,7 +484,7 @@ class ipfs_accelerate_py:
             return success        
         return None
     
-    async def rm_endpoint(self, model, endpoint, endpoint_type):
+    async def rm_endpoint(self, model, endpoint_type, endpoint):
         if endpoint_type in self.endpoint_types:
             success = False
             try:
