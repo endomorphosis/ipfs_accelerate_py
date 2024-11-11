@@ -3,22 +3,22 @@ import uvicorn
 from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
 from pydantic import BaseModel
-
-class TestEndpointRequest(BaseModel):
-    models: list[str]
-    resources: dict[str, list[list[(str,str,int)]]]
     
 class InitEndpointsRequest(BaseModel):
     models: list
-    resources: dict[str, list[list[(str,str,int)]]]
+    resources: dict[str, list[list[tuple[str, str, int]]]]
     
+class TestEndpointRequest(BaseModel):
+    models: list[str]
+    resources: dict[str, list[list[tuple[str,str,int]]]]
+
 class InferEndpointRequest(BaseModel):
     models: list
     batch_data: list[str]
 
 class AddEndpointRequest(BaseModel):
     models: str
-    resources: dict[str, list[list[(str,str,int)]]]
+    resources: dict[str, list[list[tuple[str,str,int]]]]
 
 class RmEndpointRequest(BaseModel):
     models: str
