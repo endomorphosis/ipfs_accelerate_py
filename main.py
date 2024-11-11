@@ -15,89 +15,73 @@ class InitEndpointsRequest(BaseModel):
 class InferEndpointRequest(BaseModel):
     models: list
     batch_data: list[str]
-    
-# metadata = {
-#     "dataset": "TeraflopAI/Caselaw_Access_Project",
-#     "column": "text",
-#     "split": "train",
-#     "models": [
-#         "thenlper/gte-small",
-#         # "Alibaba-NLP/gte-large-en-v1.5",
-#         # "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
-#     ],
-#     "chunk_settings": {
-#         "chunk_size": 512,
-#         "n_sentences": 8,
-#         "step_size": 256,
-#         "method": "fixed",
-#         "embed_model": "thenlper/gte-small",
-#         "tokenizer": None
-#     },
-#     "dst_path": "/storage/teraflopai/tmp",
-# }
-# resources = {
-#     "local_endpoints": [
-#         ["thenlper/gte-small", "cpu", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "cpu", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cpu", 32768],
-#         ["thenlper/gte-small", "cuda:0", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "cuda:0", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cuda:0", 32768],
-#         ["thenlper/gte-small", "cuda:1", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "cuda:1", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cuda:1", 32768],
-#         ["thenlper/gte-small", "openvino", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "openvino", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "openvino", 32768],
-#         ["thenlper/gte-small", "llama_cpp", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "llama_cpp", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "llama_cpp", 32768],
-#         ["thenlper/gte-small", "ipex", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "ipex", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "ipex", 32768],
-#     ],
-#     "openvino_endpoints": [
-#         # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-#         # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-#         # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-#         # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx0-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx0/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx1-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx1/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx2-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx2/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx3-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx3/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx4-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx4/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx5-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx5/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx6-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx6/infer", 1024],
-#         # ["aapot/bge-m3-onnx", "https://bge-m3-onnx7-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx7/infer", 1024]
-#     ],
-#     "tei_endpoints": [
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8080/embed-medium", 32768],
-#         ["thenlper/gte-small", "http://62.146.169.111:8080/embed-tiny", 512],
-#         ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8081/embed-small", 8192],
-#         ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8081/embed-medium", 32768],
-#         ["thenlper/gte-small", "http://62.146.169.111:8081/embed-tiny", 512],
-#         # ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8082/embed-small", 8192],
-#         # ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8082/embed-medium", 32768],
-#         # ["thenlper/gte-small", "http://62.146.169.111:8082/embed-tiny", 512],
-#         # ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8083/embed-small", 8192],
-#         # ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8083/embed-medium", 32768],
-#         # ["thenlper/gte-small", "http://62.146.169.111:8083/embed-tiny", 512]
-#     ]
-# }
 
+class AddEndpointRequest(BaseModel):
+    models: str
+    resources: dict[str, list[list[(str,str,int)]]]
+
+class RmEndpointRequest(BaseModel):
+    models: str
+    endpoint_type: str
+
+class InitStatusRequest(BaseModel):    
+    models: list[str]
+    
 app = FastAPI(port=9999)
+resources = {}
+metadata = {}
+ipfs_accelererate = ipfs_accelerate_py(resources, metadata)
 
 def initEndpointsTask(BaseModel):
-    
+    models = BaseModel.models
+    resources = BaseModel.resources
+    ipfs_accelerate_py.init_endpoints(models, resources)
     return None
 
 def testEndpointTask(BaseModel):
-        
+    models = BaseModel.models
+    resources = BaseModel.resources
+    ipfs_accelerate_py.test_endpoints(models, resources)
     return None
 
 def inferTask(BaseModel):
-    
+    models = BaseModel.models
+    batch_data = BaseModel.batch_data
+    ipfs_accelerate_py.infer(models, batch_data)
     return None
+
+def statusTask(BaseModel):
+    models = BaseModel.models    
+    return ipfs_accelerate_py.status(models)
+
+def addEndpointTask(BaseModel):
+    models = BaseModel.models
+    resources = BaseModel.resources
+    endpoint = BaseModel.endpoint
+    ipfs_accelerate_py.add_endpoint(models, resources, endpoint)
+    return None
+
+def rmEndpointTask(BaseModel):
+    models = BaseModel.models
+    endpoint_type = BaseModel.endpoint_type
+    index = BaseModel.index
+    ipfs_accelerate_py.rm_endpoint(models, endpoint_type, index)
+    return None
+
+@app.get("/add_endpoint")
+async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(addEndpointTask, request.models, request.resources)
+    return {"message": "add endpoint started in the background"}
+
+@app.get("/rm_endpoint")
+async def rm_endpoint(request: RmEndpointRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(rmEndpointTask, request.models)
+    return {"message": "rm endpoint started in the background"}
+
+@app.get("/status")
+async def status_post(request: InitStatusRequest, background_tasks: BackgroundTasks):
+    background_tasks.add_task(statusTask, request.models)
+    return {"message": "status started in the background"}
 
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
@@ -106,7 +90,7 @@ async def load_index_post(request: InitEndpointsRequest, background_tasks: Backg
 
 @app.post("/test")
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(testEndpointTask, request.models , request.resources)
+    background_tasks.add_task(testEndpointTask, request.models, request.resources)
     return {"message": "test started in the background"}
 
 @app.post("/infer")

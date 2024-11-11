@@ -20,3 +20,4 @@ FlagEmbedding
 InstructorEmbedding
 toml
 boto3
+pydantic
