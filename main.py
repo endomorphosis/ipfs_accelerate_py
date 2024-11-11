@@ -5,12 +5,12 @@ from pydantic import BaseModel
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 class TestEndpointRequest(BaseModel):
-    models: List[str]
-    resources: Dict[str, List[str]]
+    models: list[str]
+    resources: dict[str, list[str]]
     
 class InitEndpointsRequest(BaseModel):
-    models: List[str]
-    resources: Dict[str, List[str]]
+    models: list
+    resources: dict[str, list[str]]
     
 metadata = {
     "dataset": "TeraflopAI/Caselaw_Access_Project",
@@ -81,14 +81,11 @@ resources = {
     ]
 }
 
-
 app = FastAPI(port=9999)
 
 def initEndpointsTask(BaseModel):
     
     return None
-
-
 
 def testEndpointTask(BaseModel):
         
