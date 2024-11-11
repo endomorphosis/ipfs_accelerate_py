@@ -218,9 +218,10 @@ class ipfs_accelerate_py:
             self.resources["batch_sizes"] = {}
         if "endpoint_handler" not in list(self.resources.keys()):
             self.resources["endpoint_handler"] = {}
+        endpoint_set = set(endpoint_list)
         for endpoint_type in self.endpoint_types:
-            if endpoint_type in list(endpoints_list.keys()):
-                for endpoint_info in self.endpoints[endpoint_type]:
+            if endpoint_type in endpoint_set:
+                for endpoint_info in endpoint_list[endpoint_type]:
                     model, endpoint, context_length = endpoint_info
                     if model not in list(self.resources["batch_sizes"].keys()):
                         self.resources["batch_sizes"][model] = {}
@@ -228,7 +229,9 @@ class ipfs_accelerate_py:
                         self.resources["queues"][model] = {}
                     if endpoint not in list(self.resources["batch_sizes"][model].keys()):
                         self.resources["batch_sizes"][model][endpoint] = 0
-                    await self.add_endpoint(model, endpoint_type, endpoint_info)    
+                    await self.add_endpoint(model, endpoint_type, endpoint_info)
+                else:
+                    pass    
         # for endpoint_type in self.endpoint_types:
         #     if endpoint_type in resources.keys():
         #         for endpoint_info in resources[endpoint_type]:
@@ -377,7 +380,7 @@ class ipfs_accelerate_py:
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
         return new_resources
-        
+
     def test_tei_https_endpoint(self, model, endpoint):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
             return True
