@@ -30,36 +30,46 @@ class InitStatusRequest(BaseModel):
 app = FastAPI(port=9999)
 resources = {}
 metadata = {}
-ipfs_accelererate = ipfs_accelerate_py(resources, metadata)
 
 class ModelServer:
     def __init__(self, resources=None, metadata=None):
+        if resources is None:
+            resources = {}
+        if metadata is None:
+            metadata = {}
         self.resources = resources
         self.metadata = metadata
-        self.ipfs_accelerate = ipfs_accelerate_py(self.resources, self.metadata)
+        self.resources["ipfs_accelerate_py"] = ipfs_accelerate_py(self.resources, self.metadata)
+        return 
 
-    def initEndpointsTask(models: list, resources: dict):
-        ipfs_accelerate_py.init_endpoints(models, resources)
-        return None
+    async def initEndpointsTask(self, models: list, resources: dict):
+        results = {}
+        try:
+            results["init"] = await model_server.resources["ipfs_accelerate_py"].init_endpoints(models, resources)
+        except Exception as e:
+            results["init"] = e
+        return results
 
-    def testEndpointTask(models: list, resources: dict):
+    def testEndpointTask(self, models: list, resources: dict):
         ipfs_accelerate_py.test_endpoints(models, resources)
         return None
 
-    def inferTask(models: list, batch_data: list):
+    def inferTask(self, models: list, batch_data: list):
         ipfs_accelerate_py.infer(models, batch_data)
         return None
 
-    def statusTask(models: list):
+    def statusTask(self, models: list):
         return ipfs_accelerate_py.status(models)
 
-    def addEndpointTask(models: list, endpoint_type: str, endpoint: list):
+    def addEndpointTask(self, models: list, endpoint_type: str, endpoint: list):
         ipfs_accelerate_py.add_endpoint(models, endpoint_type, endpoint)
         return None
 
-    def rmEndpointTask(models: list, endpoint_type: str, index: int):
+    def rmEndpointTask(self, models: list, endpoint_type: str, index: int):
         ipfs_accelerate_py.rm_endpoint(models, endpoint_type, index)
         return None
+
+model_server = ModelServer()
 
 @app.get("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
@@ -79,8 +89,11 @@ async def status_post(request: InitStatusRequest, background_tasks: BackgroundTa
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
     results = {}
-    results["init"] = await initEndpointsTask
-    await initEndpointsTask(request.models , request.resources)
+    try:
+        results["init"] = await model_server.initEndpointsTask(request.models , request.resources)
+    except Exception as e:
+        results["init"]  = e
+    return results
     # BackgroundTasks.add_task(initEndpointsTask, request.models , request.resources)
     # return {"message": "init loading started in the background"}
 

@@ -20,19 +20,26 @@ class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
-        self.resources["ipfs_accelerate"] = self
+        if self.resources is None:
+            self.resources = {}
+        if self.metadata is None:
+            self.metadata = {}
+        if resources is None:
+            resources = {}
+        if metadata is None:
+            metadata = {}
         self.resources["ipfs_accelerate_py"] = self
-        if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
+        if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             try:
                 from .test_ipfs_accelerate import test_ipfs_accelerate
             except:
                 from test_ipfs_accelerate import test_ipfs_accelerate
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
+            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         elif "test_ipfs_accelerate" in list(self.resources.keys()):
             self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
         elif "test_ipfs_accelerate" in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
+            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         if "install_depends_py" not in globals():
             try:
@@ -182,7 +189,7 @@ class ipfs_accelerate_py:
                         self.resources["queues"][model] = {}
                     if endpoint not in list(self.resources["batch_sizes"][model].keys()):
                         self.resources["batch_sizes"][model][endpoint] = 0
-                    await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
+                    await self.add_endpoint(model, endpoint_type, endpoint_info)    
         # for endpoint_type in self.endpoint_types:
         #     if endpoint_type in resources.keys():
         #         for endpoint_info in resources[endpoint_type]:
@@ -219,9 +226,17 @@ class ipfs_accelerate_py:
             raise ValueError("No endpoints available for model " + model)
         else:
             local = [ endpoint for endpoint in self.endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
-            openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
             libp2p = []
-            tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]     
+            if "openvino_endpoints" in list(self.endpoints.keys()):
+                openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
+            else:
+                openvino = []
+            
+            if "tei_endpoints" in list(self.endpoints.keys()):
+                tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]
+            else:
+                tei = []
+                 
         for model in models:
             if model not in self.tokenizer:
                 self.tokenizer[model] = {}
