@@ -373,9 +373,11 @@ class ipfs_accelerate_py:
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[model][endpoint] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-        return self.resources
-
-    
+        new_resources = {}
+        for resource in resource_list:
+            new_resources[resource] = self.resources[resource]
+        return new_resources
+        
     def test_tei_https_endpoint(self, model, endpoint):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
             return True
