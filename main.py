@@ -68,8 +68,13 @@ class ModelServer:
         
     async def testEndpointTask(self, models: list, resources: dict):
         try:
-            return await self.resources["ipfs_accelerate_py"].test_endpoints(models, resources)
+            results = await self.resources["ipfs_accelerate_py"].test_endpoints(models, resources)
+            print("test_results_keys:")
+            print(list(results.keys()))
+            return results
         except Exception as e:
+            print("error:")
+            print(e)
             return e
 
     async def inferTask(self, models: list, batch_data: list):
@@ -122,8 +127,13 @@ async def search_item_post(request: TestEndpointRequest, background_tasks: Backg
 
 @app.post("/infer")
 async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(model_server.inferTask, request.models, request.batch_data)
-    return {"message": "infer started in the background"}
+    infer_results = {}
+    try:
+        infer_results["infer"] = await model_server.inferTask(request.models, request.batch_data) 
+    except Exception as e:
+        infer_results["infer"] = e
+    print(infer_results)
+    return infer_results
 
 @app.post("/")
 async def help():
