@@ -340,8 +340,13 @@ class worker_py:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
                             device = 'cuda:' + str(gpu)
-                            cuda_index = self.local_endpoint_types.index("cuda:"+str(gpu))
-                            endpoint_model = self.local_endpoint_models[cuda_index]
+                            cuda_index = self.local_endpoint_types.index(device)
+                            if "model" in list(self.local_endpoints.keys()):
+                                endpoint_model = model
+                            else:
+                                for this_model in list(self.local_endpoints.keys()):
+                                    if device in list(self.local_endpoints[this_model].keys()):
+                                        endpoint_model = this_model
                             cuda_label = self.local_endpoint_types[cuda_index]
                             self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True)
                             self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model).to(device)
@@ -361,15 +366,19 @@ class worker_py:
                     elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                         ov_count = 0
                         openvino_endpoints = []
-                        for item in local_endpoint_types:
-                            if "openvino" in item:
-                                openvino_endpoints.append(item)
-                        openvino_index = self.local_endpoint_types.index(endpoint_type)
-                        openvino_model = self.local_endpoint_models[openvino_index]
-                        if ":" not in str(self.local_endpoint_types[openvino_index]):
-                            openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
+                        device = "openvino:" + str(ov_count)
+                        openvino_index = self.local_endpoint_types.index(device)
+                        if "model" in list(self.local_endpoints.keys()):
+                                openvino_model = model
                         else:
-                            openvino_label = str(self.local_endpoint_types[openvino_index])
+                            for this_model in list(self.local_endpoints.keys()):
+                                if device in list(self.local_endpoints[this_model].keys()):
+                                    openvino_model = this_model
+                        for item in self.local_endpoint_types:
+                            if device in item:
+                                openvino_endpoints.append(item)
+                                
+                        openvino_label = self.local_endpoint_types[openvino_index]
                         # to disable openvino to calling huggingface transformers uncomment
                         # self.hwtest["optimum-openvino"] = False
                         # if self.hwtest["optimum-openvino"] == True: 
