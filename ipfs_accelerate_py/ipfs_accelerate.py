@@ -591,11 +591,12 @@ class ipfs_accelerate_py:
         this_tokenizer = self.resources["tokenizer"][model][endpoint]
         for endpoint_type in endpoint_types:
             endpoints = self.endpoints[endpoint_type]
-            for this_endpoint in endpoints:
-                if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
-                    context_length = this_endpoint[2]
-                    token_length_size = round(context_length * 0.99)
-                    break
+            if model in list(endpoints.keys()):
+                for this_endpoint in endpoints[model]:
+                    if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
+                        context_length = this_endpoint[2]
+                        token_length_size = round(int(context_length) * 0.99)
+                        break
             if token_length_size > 0:
                 break
                         
@@ -624,6 +625,8 @@ class ipfs_accelerate_py:
             try:
                 if memory_increase is not None:
                     if free_memory < (memory_increase * 2):
+                        embed_fail = true
+                        break
                         raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
@@ -663,9 +666,9 @@ class ipfs_accelerate_py:
             "memory_increase": memory_increase,
             "free_memory": free_memory
             }
-            # print(log)
+            print(log)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
-            if batch_size >= 2048:
+            if batch_size >= 4096:
                 embed_fail = True
                 pass
         if exponent == 0:

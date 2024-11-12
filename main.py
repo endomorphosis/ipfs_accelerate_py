@@ -68,7 +68,8 @@ class ModelServer:
         
     async def testEndpointTask(self, models: list, resources: dict):
         try:
-            results = await self.resources["ipfs_accelerate_py"].test_endpoints(models, resources)
+            print(self.resources["endpoint_handler"])
+            results = await self.resources["ipfs_accelerate_py"].test_endpoints(models, self.resources["endpoint_handler"])
             print("test_results_keys:")
             print(list(results.keys()))
             return results
