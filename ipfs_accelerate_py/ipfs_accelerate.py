@@ -622,12 +622,12 @@ class ipfs_accelerate_py:
             start_time = time.time()
             start_mem = process.memory_info().rss
             free_memory = psutil.virtual_memory().free
+            if memory_increase is not None:
+                if free_memory < (memory_increase * 2):
+                    embed_fail = true
+                    break
+                    raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
             try:
-                if memory_increase is not None:
-                    if free_memory < (memory_increase * 2):
-                        embed_fail = true
-                        break
-                        raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
                     end_memory = process.memory_info().rss
