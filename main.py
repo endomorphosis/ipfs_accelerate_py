@@ -49,15 +49,15 @@ class ModelServer:
         except Exception as e:
             results["init"] = e
             
-        try:
-            results["test"] = await self.testEndpointTask(models, resources)
-        except Exception as e:
-            results["test"] = e
+        # try:
+        #     results["test"] = await self.testEndpointTask(models, resources)
+        # except Exception as e:
+        #     results["test"] = e
         
-        try:
-            results["status"] = await self.statusTask(models)
-        except Exception as e:
-            results["status"] = e
+        # try:
+        #     results["status"] = await self.statusTask(models)
+        # except Exception as e:
+        #     results["status"] = e
         return results
 
     async def init_endpoints (self, models: list, resources: dict):
@@ -100,17 +100,17 @@ testEndpointTask = model_server.testEndpointTask
 
 @app.get("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(model_server.addEndpointTask, request.models, request.resources)
+    background_tasks.add_task(model_server.addEndpointTask, request.models, request.resources)
     return {"message": "add endpoint started in the background"}
 
 @app.get("/rm_endpoint")
 async def rm_endpoint(request: RmEndpointRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(model_server.rmEndpointTask, request.models)
+    background_tasks.add_task(model_server.rmEndpointTask, request.models)
     return {"message": "rm endpoint started in the background"}
 
 @app.get("/status")
 async def status_post(request: InitStatusRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(model_server.statusTask, request.models)
+    background_tasks.add_task(model_server.statusTask, request.models)
     return {"message": "status started in the background"}
 
 @app.post("/init")
@@ -126,7 +126,7 @@ async def load_index_post(request: InitEndpointsRequest, background_tasks: Backg
 
 @app.post("/test")
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
-    BackgroundTasks.add_task(model_server.testEndpointTask, request.models, request.resources)
+    background_tasks.add_task(model_server.testEndpointTask, request.models, request.resources)
     return {"message": "test started in the background"}
 
 @app.post("/infer")
