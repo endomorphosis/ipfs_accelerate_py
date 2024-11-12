@@ -272,13 +272,6 @@ class worker_py:
         def handler(x):
             return self.local_endpoints[endpoint_model][openvino_label](x)
         return handler
-    
-    async def get_llama_cpp_model(self, model_name, model_type=None):
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
-            model_type = config.__class__.model_type
-        llama_cpp_model = llama_cpp(model_name, model_type)
-        return llama_cpp_model
 
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
@@ -317,7 +310,7 @@ class worker_py:
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
-                hwtest = self.test_hardware()
+                hwtest = await self.test_hardware()
             elif "hwtest" in list(self.resources.keys()):
                 hwtest = self.resources["hwtest"]
             else:
@@ -346,17 +339,17 @@ class worker_py:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
                             cuda_index = self.local_endpoint_types.index("cuda:"+str(gpu))
                             endpoint_model = self.local_endpoint_models[cuda_index]
                             cuda_label = self.local_endpoint_types[cuda_index]
-                            device = 'cuda:' + str(gpu)
                             self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True)
                             self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model).to(device)
                             self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
-                            batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-                            self.batch_sizes[endpoint_model][cuda_label] = batch_size
+                            # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+                            self.batch_sizes[endpoint_model][cuda_label] = 0
                 if local > 0 and cpus > 0:
                     all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
                     all_tests_ValueError = all(x is ValueError for x in all_test_types)

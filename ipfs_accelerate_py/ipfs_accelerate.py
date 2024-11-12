@@ -332,7 +332,7 @@ class ipfs_accelerate_py:
                 
         if "openvino_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["openvino_endpoints"]) > 0 :
-                for endpoint in self.endpoints["openvino_endpoints"]:
+                for endpoint in self.endpoints["openvino_endpoints"][model]:
                     if len(endpoint) == 3:
                         this_model = endpoint[0]
                         this_endpoint = endpoint[1]
