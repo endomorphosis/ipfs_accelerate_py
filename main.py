@@ -95,6 +95,9 @@ class ModelServer:
 
 model_server = ModelServer()
 
+initEndpointsTask = model_server.initEndpointsTask
+testEndpointTask = model_server.testEndpointTask
+
 @app.get("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
     BackgroundTasks.add_task(model_server.addEndpointTask, request.models, request.resources)
