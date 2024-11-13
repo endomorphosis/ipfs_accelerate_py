@@ -1064,6 +1064,11 @@ class ipfs_accelerate_py:
             return None
         else:
             pass
+        if type(data) is dict:
+            if "inputs" not in list(data.keys()):
+                data = {"inputs": data}
+        if type(data) is list:
+            data = {"inputs": data}
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:
@@ -1130,6 +1135,12 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
                     
     async def make_post_request_openvino(self, endpoint, data):
+        if type(data) is dict:
+            raise ValueError("Data must be a string")
+        if type(data) is list:
+            if len(data) > 1:
+                raise ValueError("batch size must be 1")
+            data = data[0]
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:

@@ -83,19 +83,28 @@ class ModelServer:
 
     async def inferTask(self, models: list, batch_data: list):
         infer_results = {}
+        filtered_results = {}
         try:
             infer_results["infer"] = await self.resources["ipfs_accelerate_py"].infer(models, batch_data)
         except Exception as e:
             infer_results["infer"] = e
-        if type(infer_results["infer"]["infer"]) == dict:
-            filtered_results = {}
-            for key in list(infer_results["infer"]["infer"].keys()):
-                if type(infer_results["infer"]["infer"][key]) == Tensor:
-                    filtered_results[key] = infer_results["infer"]["infer"][key].tolist()
-                else:
-                    filtered_results[key] = infer_results["infer"]["infer"][key]
+        if type(infer_results["infer"]) == ValueError:
+            filtered_results = {"error": str(infer_results["infer"])}
         elif type(infer_results["infer"]["infer"]) == ValueError:
             filtered_results = {"error": str(infer_results["infer"]["infer"])}
+        elif "infer" in list(infer_results["infer"].keys()):
+            try:
+                if type(infer_results["infer"]["infer"]) == list:
+                    filtered_results = infer_results["infer"]["infer"]
+                else:
+                    for key in list(infer_results["infer"]["infer"].keys()):
+                        if type(infer_results["infer"]["infer"][key]) == Tensor:
+                            filtered_results[key] = infer_results["infer"]["infer"][key].tolist()
+                        else:
+                            filtered_results[key] = infer_results["infer"]["infer"][key]
+            except Exception as e:
+                print(type(infer_results["infer"]["infer"]))
+                print(e)
         return filtered_results
 
     async def statusTask(self, models: list):
