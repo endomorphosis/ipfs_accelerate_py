@@ -49,7 +49,8 @@ class ModelServer:
             results["init"] = await self.init_endpoints(models, resources)
         except Exception as e:
             results["init"] = e
-            
+        formatted_results = results["init"]
+        formatted_results = {k: str(v) for k, v in formatted_results.items() if k in ["batch_sizes", "endpoints", "hwtest"]} 
         # try:
         #     results["test"] = await self.testEndpointTask(models, resources)
         # except Exception as e:
@@ -117,39 +118,45 @@ model_server = ModelServer()
 initEndpointsTask = model_server.initEndpointsTask
 testEndpointTask = model_server.testEndpointTask
 
-@app.get("/add_endpoint")
+@app.post("/add_endpoint")
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(model_server.addEndpointTask, request.models, request.resources)
-    return {"message": "add endpoint started in the background"}
+    add_endpoint_results = {}
+    try:
+        add_endpoint_results["add_endpoint"] = model_server.addEndpointTask()
+        return {"message", json.dumps(add_endpoint_results) }
+    except Exception as e:
+        add_endpoint_results["add_endpoint"] = e
+        return {"message", json.dumps(add_endpoint_results) }
 
-@app.get("/rm_endpoint")
+@app.post("/rm_endpoint")
 async def rm_endpoint(request: RmEndpointRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(model_server.rmEndpointTask, request.models)
-    return {"message": "rm endpoint started in the background"}
-
+    rm_endpoint_results = {}
+    try:
+        rm_endpoint_results["rm_endpoint"] = model_server.rmEndpointTask()
+        return {"message", json.dumps(rm_endpoint_results)}
+    except Exception as e:
+        rm_endpoint_results["rm_endpoint"] = e
+        return {"message", json.dumps(rm_endpoint_results)}
 
 @app.post("/init")
 async def load_index_post(request: InitEndpointsRequest, background_tasks: BackgroundTasks):
     results = {}
     try:
         results["init"] = await model_server.initEndpointsTask(request.models, request.resources)
-        formatted_results = results["init"]["init"]
-        formatted_results = {k: str(v) for k, v in formatted_results.items() if k in ["batch_sizes", "endpoints", "hwtest"]} 
-        return {"message": json.dumps(formatted_results)}
+        return {"message": json.dumps(results)}
     except Exception as e:
         results["init"]  = e
-        return {"message": results}
-    # BackgroundTasks.add_task(initEndpointsTask, request.models , request.resources)
-    # return {"message": "init loading started in the background"}
+        return {"message": json.dumps(results)}
 
 @app.post("/status")
 async def status_post(request: InitStatusRequest, background_tasks: BackgroundTasks):
     results = {}
     try:
         results["status"] = await model_server.statusTask(request.models)
+        return {"message": json.dumps(results)}
     except Exception as e:
         results["status"]  = e
-    return results
+        return {"message": json.dumps(results)}
 
 @app.post("/test")
 async def search_item_post(request: TestEndpointRequest, background_tasks: BackgroundTasks):
