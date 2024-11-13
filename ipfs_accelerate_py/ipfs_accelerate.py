@@ -200,8 +200,26 @@ class ipfs_accelerate_py:
         return handler
     
     def create_openvino_endpoint_handler(self, model, endpoint, context_length):
-        def handler(x):
-            remote_endpoint = self.make_post_request_openvino(endpoint, x)
+        async def handler(x):
+            tokenizer = None
+            tokens = None
+            if model not in list(self.resources["tokenizer"].keys()):
+                self.resources["tokenizer"][model] = {}
+            tokenizers = list(self.resources["tokenizer"][model].keys())
+            if len(tokenizers) == 0:
+                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
+                tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
+            else:
+                for tokenizer in tokenizers:
+                    try:
+                        this_tokenizer = self.resources["tokenizer"][model][tokenizer]
+                        tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+                    except Exception as e:
+                        pass
+            if tokens is None:
+                raise ValueError("No tokenizer found for model " + model)            
+            tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+            remote_endpoint = await self.make_post_request_openvino(tokens, x)
             return remote_endpoint
         return handler
     
