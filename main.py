@@ -4,6 +4,7 @@ from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
 from pydantic import BaseModel
 import json
+from torch import Tensor
 
 class InitEndpointsRequest(BaseModel):
     models: list
@@ -86,15 +87,15 @@ class ModelServer:
             infer_results["infer"] = await self.resources["ipfs_accelerate_py"].infer(models, batch_data)
         except Exception as e:
             infer_results["infer"] = e
-        if type(infer_results["infer"]) == dict:
+        if type(infer_results["infer"]["infer"]) == dict:
             filtered_results = {}
-            for key in list(infer_results["infer"].keys()):
-                if type(infer_results["infer"][key]) == "tensor":
-                    filtered_results[key] = infer_results["infer"][key].tolist()
+            for key in list(infer_results["infer"]["infer"].keys()):
+                if type(infer_results["infer"]["infer"][key]) == Tensor:
+                    filtered_results[key] = infer_results["infer"]["infer"][key].tolist()
                 else:
-                    filtered_results[key] = infer_results["infer"][key]
-        elif type(infer_results["infer"]) == ValueError:
-            filtered_results = {"error": str(infer_results["infer"])}
+                    filtered_results[key] = infer_results["infer"]["infer"][key]
+        elif type(infer_results["infer"]["infer"]) == ValueError:
+            filtered_results = {"error": str(infer_results["infer"]["infer"])}
         return filtered_results
 
     async def statusTask(self, models: list):
@@ -179,7 +180,6 @@ async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks
         infer_results["infer"] = await model_server.inferTask(request.models, request.batch_data) 
     except Exception as e:
         infer_results["infer"] = e
-    print(infer_results)
     return {"message": json.dumps(infer_results)}
 
 @app.post("/")
