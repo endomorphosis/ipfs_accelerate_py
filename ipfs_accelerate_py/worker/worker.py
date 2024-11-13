@@ -316,6 +316,7 @@ class worker_py:
             else:
                 hwtest = await self.test_hardware()
         self.hwtest = hwtest
+        self.resources["hwtest"] = hwtest
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
@@ -421,7 +422,7 @@ class worker_py:
                         pass
                 pass
 
-        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types) }
+        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types), "hwtest": self.hwtest}
         return resources    
     
     # def __test__(self):

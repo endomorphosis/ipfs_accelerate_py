@@ -380,7 +380,8 @@ class ipfs_accelerate_py:
         new_resources = {}
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
-        return True
+        new_resources["endpoints"] = self.endpoints
+        return new_resources
 
     def test_tei_https_endpoint(self, model, endpoint):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
@@ -1187,6 +1188,13 @@ class ipfs_accelerate_py:
                 print("chosen endpoint for " + model + " is " + this_endpoint)
                 return this_endpoint
 
+    async def status (self):
+        new_resources = {}
+        included_resources = ["endpoint_handler", "batch_sizes", "queues","hwtest"]
+        for resource in included_resources:
+            new_resources[resource] = self.resources[resource]
+        new_resources["endpoints"] = self.endpoints
+        return new_resources
 
     async def get_endpoints(self, model, endpoint_type=None):
         if endpoint_type is None:
