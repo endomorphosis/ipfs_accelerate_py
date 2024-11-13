@@ -86,7 +86,16 @@ class ModelServer:
             infer_results["infer"] = await self.resources["ipfs_accelerate_py"].infer(models, batch_data)
         except Exception as e:
             infer_results["infer"] = e
-        return infer_results
+        if type(infer_results["infer"]) == dict:
+            filtered_results = {}
+            for key in list(infer_results["infer"].keys()):
+                if type(infer_results["infer"][key]) == "tensor":
+                    filtered_results[key] = infer_results["infer"][key].tolist()
+                else:
+                    filtered_results[key] = infer_results["infer"][key]
+        elif type(infer_results["infer"]) == ValueError:
+            filtered_results = {"error": str(infer_results["infer"])}
+        return filtered_results
 
     async def statusTask(self, models: list):
         status_results = {}

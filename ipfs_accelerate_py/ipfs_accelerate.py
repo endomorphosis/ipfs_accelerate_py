@@ -59,6 +59,7 @@ class ipfs_accelerate_py:
             resources["worker"] = self.worker
         self.endpoint_status = {}
         self.endpoint_handler = {}
+        self.endpoints = {}
         self.batch_sizes = {}
         self.inbox = {}
         self.outbox = {}
@@ -1300,24 +1301,38 @@ class ipfs_accelerate_py:
     
     
     async def get_endpoints_new(self, model, endpoint_type=None):
-        if endpoint_type == "tei":
+        filtered_endpoints = []
+        endpoints_keys = list(self.endpoints.keys())
+        if endpoint_type == "tei" and "tei_endpoints" in endpoints_keys:
             endpoints_dict = self.endpoints["tei_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "openvino":
+        elif endpoint_type == "openvino" and "openvino_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.endpoints["openvino_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "libp2p":
+        elif endpoint_type == "libp2p" and "libp2p_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.libp2p_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "local":
+        elif endpoint_type == "local" and "local_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.endpoints["local_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "cuda":
+        elif endpoint_type == "cuda" and "local_endpoints" in list(self.endpoints.keys()):
             endpoint_dict = self.endpoints["local_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
-        else:
-            all_endpoints_dict = self.endpoints["tei_endpoints"].get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.endpoints["openvino_endpoints"].get(model, {}) + self.endpoints["local_endpoints"].get(model, {})
-            filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+        elif endpoint_type == "all" or endpoint_type == None:
+            all_endpoints = []
+            if "tei_endpoints" in list(self.endpoints.keys()):
+                tei_endpoints = self.endpoints["tei_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + tei_endpoints
+            if "openvino_endpoints" in list(self.endpoints.keys()):
+                openvino_endpoints = self.endpoints["openvino_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + openvino_endpoints 
+            if "libp2p_endpoints" in list(self.endpoints.keys()):
+                libp2p_endpoints = self.libp2p_endpoints.get(model, {})
+                all_endpoints = all_endpoints + libp2p_endpoints
+            if "local_endpoints" in list(self.endpoints.keys()):
+                local_endpoints = self.endpoints["local_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + local_endpoints
+            filtered_endpoints = [endpoint for endpoint in all_endpoints]
         return filtered_endpoints
     
     async def async_generator(self, iterable):
