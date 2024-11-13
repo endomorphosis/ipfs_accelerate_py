@@ -1162,13 +1162,15 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
  
     async def choose_endpoint(self, model, endpoint_type=None):
+        if type(model) is list:
+            model = model[0]
         if endpoint_type != None:
-            this_endpoints = self.get_endpoints(model, endpoint_type)
+            this_endpoints = await self.get_endpoints(model, endpoint_type)
         else:
-            tei_endpoints = self.get_endpoints(model, endpoint_type="tei")
-            libp2p_endpoints = self.get_endpoints(model, endpoint_type="libp2p")
-            openvino_endpoints = self.get_endpoints(model, endpoint_type="openvino")
-            local_endpoints = self.get_endpoints(model, endpoint_type="local")
+            tei_endpoints = await self.get_endpoints(model, endpoint_type="tei")
+            libp2p_endpoints = await self.get_endpoints(model, endpoint_type="libp2p")
+            openvino_endpoints = await self.get_endpoints(model, endpoint_type="openvino")
+            local_endpoints = await self.get_endpoints(model, endpoint_type="local")
             filtered_libp2p_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and libp2p_endpoints is not None and k in list(libp2p_endpoints.keys())}
             filtered_tei_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and tei_endpoints is not None and k in list(tei_endpoints.keys())}
             filtered_openvino_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and openvino_endpoints is not None and k in list(openvino_endpoints.keys())}
@@ -1188,6 +1190,33 @@ class ipfs_accelerate_py:
                 print("chosen endpoint for " + model + " is " + this_endpoint)
                 return this_endpoint
 
+    async def choose_endpoint_new(self, model, endpoint_type=None):
+        if type(model) is list:
+            model = model[0]
+        if endpoint_type != None:
+            this_endpoints = await self.get_endpoints_new(model, endpoint_type)
+        else:
+            tei_endpoints = await self.get_endpoints_new(model, endpoint_type="tei")
+            libp2p_endpoints = await self.get_endpoints_new(model, endpoint_type="libp2p")
+            openvino_endpoints = await self.get_endpoints_new(model, endpoint_type="openvino")
+            local_endpoints = await self.get_endpoints_new(model, endpoint_type="local")
+            
+            
+            filtered_libp2p_endpoints = [x for x in libp2p_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_tei_endpoints = [x for x in tei_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_openvino_endpoints = [x for x in openvino_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_local_endpoints = [x for x in local_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            if not filtered_tei_endpoints and not filtered_libp2p_endpoints and not filtered_openvino_endpoints and not filtered_local_endpoints:
+                return None
+            else:
+                this_endpoint = None
+                combined_endpoints = filtered_tei_endpoints + filtered_libp2p_endpoints + filtered_openvino_endpoints + filtered_local_endpoints
+                random_endpoint = random.choice(combined_endpoints)
+                random_endpoint_model = random_endpoint[0]
+                random_endpoint_type = random_endpoint[1]
+                random_endpoint_handler = self.resources["endpoint_handler"][random_endpoint_model][random_endpoint_type]
+                return random_endpoint_handler
+
     async def status(self):
         new_resources = {}
         included_resources = ["endpoint_handler", "batch_sizes", "queues","hwtest"]
@@ -1197,14 +1226,19 @@ class ipfs_accelerate_py:
         return new_resources
     
     async def infer(self, model, data, endpoint=None, endpoint_type=None):
+        infer_results = {}
         if endpoint_type is None:        
             if endpoint is None:
-                endpoint = self.choose_endpoint(model, endpoint_type)
+                endpoint = await self.choose_endpoint_new(model, endpoint_type)
                 if endpoint is None:
                     return ValueError("No endpoint found")
                 else:
-                    print("chosen endpoint for " + model + " is " + endpoint)
-
+                    try:
+                        infer_results["infer"] = await endpoint(data)
+                    except Exception as e:
+                        infer_results["infer"] = endpoint(data)
+                        return infer_results
+                    return infer_results
             if "cuda" in endpoint or "cpu" in endpoint:
                 return await self.make_local_request(model, endpoint, endpoint_type, data)
             elif "openvino" in endpoint:
@@ -1217,31 +1251,33 @@ class ipfs_accelerate_py:
                 return self.endpoint_handler[model][endpoint](data)
         elif endpoint_type == "tei":
             if endpoint is None:
-                endpoint = self.choose_endpoint(model, endpoint_type)
+                endpoint = await self.choose_endpoint(model, endpoint_type)
             return await self.make_post_request_tei(endpoint, data)
         elif endpoint_type == "openvino":
             if endpoint is None:
-                endpoint = self.choose_endpoint(model, endpoint_type)
+                endpoint = await self.choose_endpoint(model, endpoint_type)
             return await self.make_post_request_openvino(endpoint, data)
         elif endpoint_type == "libp2p":
             if endpoint is None:
-                endpoint = self.choose_endpoint(model, endpoint_type)
+                endpoint = await self.choose_endpoint(model, endpoint_type)
             return await self.make_post_request_libp2p(endpoint, data)
         elif endpoint_type == "local":
             if endpoint is None:
-                endpoint = self.choose_endpoint(model, endpoint_type)
+                endpoint = await self.choose_endpoint(model, endpoint_type)
             return await self.make_local_request(model, endpoint, endpoint_type, data)
         else:
-            endpoint = self.choose_endpoint(model, endpoint_type)
+            endpoint = await self.choose_endpoint(model, endpoint_type)
             if endpoint is None:
                 return ValueError("No endpoint found")
             else:
-                print("chosen endpoint for " + model + " is " + endpoint)
+                try:
+                    infer_results["infer"] = await endpoint(data)
+                except Exception as e:
+                    infer_results["infer"] = endpoint(data)
+                    return infer_results
+                return infer_results
 
     async def get_endpoints(self, model, endpoint_type=None):
-        if endpoint_type is None:
-            endpoints_dict = self.tei_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
         if endpoint_type == "tei":
             endpoints_dict = self.tei_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
@@ -1259,6 +1295,28 @@ class ipfs_accelerate_py:
             filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
         else:
             all_endpoints_dict = self.tei_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.openvino_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
+            filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+        return filtered_endpoints
+    
+    
+    async def get_endpoints_new(self, model, endpoint_type=None):
+        if endpoint_type == "tei":
+            endpoints_dict = self.endpoints["tei_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "openvino":
+            endpoints_dict = self.endpoints["openvino_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "libp2p":
+            endpoints_dict = self.libp2p_endpoints.get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "local":
+            endpoints_dict = self.endpoints["local_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "cuda":
+            endpoint_dict = self.endpoints["local_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
+        else:
+            all_endpoints_dict = self.endpoints["tei_endpoints"].get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.endpoints["openvino_endpoints"].get(model, {}) + self.endpoints["local_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
         return filtered_endpoints
     

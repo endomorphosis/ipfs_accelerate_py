@@ -171,7 +171,7 @@ async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks
     except Exception as e:
         infer_results["infer"] = e
     print(infer_results)
-    return infer_results
+    return {"message": json.dumps(infer_results)}
 
 @app.post("/")
 async def help():
