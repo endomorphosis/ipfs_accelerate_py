@@ -60,7 +60,7 @@ class ModelServer:
         #     results["status"] = await self.statusTask(models)
         # except Exception as e:
         #     results["status"] = e
-        return results
+        return formatted_results
 
     async def init_endpoints (self, models: list, resources: dict):
         try:

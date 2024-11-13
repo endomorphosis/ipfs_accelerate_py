@@ -626,7 +626,7 @@ class ipfs_accelerate_py:
             free_memory = psutil.virtual_memory().free
             if memory_increase is not None:
                 if free_memory < (memory_increase * 2):
-                    embed_fail = true
+                    embed_fail = True
                     break
                     raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
             try:
@@ -1188,13 +1188,55 @@ class ipfs_accelerate_py:
                 print("chosen endpoint for " + model + " is " + this_endpoint)
                 return this_endpoint
 
-    async def status (self):
+    async def status(self):
         new_resources = {}
         included_resources = ["endpoint_handler", "batch_sizes", "queues","hwtest"]
         for resource in included_resources:
             new_resources[resource] = self.resources[resource]
         new_resources["endpoints"] = self.endpoints
         return new_resources
+    
+    async def infer(self, model, data, endpoint=None, endpoint_type=None):
+        if endpoint_type is None:        
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model, endpoint_type)
+                if endpoint is None:
+                    return ValueError("No endpoint found")
+                else:
+                    print("chosen endpoint for " + model + " is " + endpoint)
+
+            if "cuda" in endpoint or "cpu" in endpoint:
+                return await self.make_local_request(model, endpoint, endpoint_type, data)
+            elif "openvino" in endpoint:
+                return await self.make_post_request_openvino(endpoint, data)
+            elif "libp2p" in endpoint:
+                return await self.make_post_request_libp2p(endpoint, data)
+            elif "http" in endpoint:
+                return await self.make_post_request_tei(endpoint, data)
+            else:
+                return self.endpoint_handler[model][endpoint](data)
+        elif endpoint_type == "tei":
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_tei(endpoint, data)
+        elif endpoint_type == "openvino":
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_openvino(endpoint, data)
+        elif endpoint_type == "libp2p":
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_libp2p(endpoint, data)
+        elif endpoint_type == "local":
+            if endpoint is None:
+                endpoint = self.choose_endpoint(model, endpoint_type)
+            return await self.make_local_request(model, endpoint, endpoint_type, data)
+        else:
+            endpoint = self.choose_endpoint(model, endpoint_type)
+            if endpoint is None:
+                return ValueError("No endpoint found")
+            else:
+                print("chosen endpoint for " + model + " is " + endpoint)
 
     async def get_endpoints(self, model, endpoint_type=None):
         if endpoint_type is None:
