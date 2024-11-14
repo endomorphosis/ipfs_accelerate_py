@@ -1,10 +1,12 @@
 from typing import Union
 import uvicorn
+import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
 from pydantic import BaseModel
 import json
 from torch import Tensor
+from contextlib import asynccontextmanager
 
 class InitEndpointsRequest(BaseModel):
     models: list
@@ -31,7 +33,24 @@ class RmEndpointRequest(BaseModel):
 class InitStatusRequest(BaseModel):    
     models: list[str]
     
-app = FastAPI(port=9999)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def background_task():
+        # Define your background task here
+        while True:
+            try:
+                await model_server.resources["ipfs_accelerate_py"].create_consumer_tasks()
+                await asyncio.sleep(10)  # Example task
+            except Exception as e:
+                print("error in background task")
+                print(e)
+                await asyncio.sleep(10)
+    task = asyncio.create_task(background_task())
+    yield
+    task.cancel()
+    
+app = FastAPI(lifespan=lifespan, port=9999)
+# app = FastAPI(port=9999)
 resources = {}
 metadata = {}
 
@@ -188,5 +207,9 @@ async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks
 @app.post("/")
 async def help():
     return {"message": "Please use /init or /test endpoints"}
+
+
+
+
 
 uvicorn.run(app, host="0.0.0.0", port=9999)
