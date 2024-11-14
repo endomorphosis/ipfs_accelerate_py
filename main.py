@@ -19,12 +19,14 @@ class InferEndpointRequest(BaseModel):
     batch_data: list[str]
 
 class AddEndpointRequest(BaseModel):
-    models: str
-    resources: dict[str, list[list[str]]]
+    model: str
+    endpoint_type: str
+    endpoint: list[str]
 
 class RmEndpointRequest(BaseModel):
-    models: str
+    model: str
     endpoint_type: str
+    backend: str
 
 class InitStatusRequest(BaseModel):    
     models: list[str]
@@ -52,15 +54,6 @@ class ModelServer:
             results["init"] = e
         formatted_results = results["init"]
         formatted_results = {k: str(v) for k, v in formatted_results.items() if k in ["batch_sizes", "endpoints", "hwtest"]} 
-        # try:
-        #     results["test"] = await self.testEndpointTask(models, resources)
-        # except Exception as e:
-        #     results["test"] = e
-        
-        # try:
-        #     results["status"] = await self.statusTask(models)
-        # except Exception as e:
-        #     results["status"] = e
         return formatted_results
 
     async def init_endpoints (self, models: list, resources: dict):
@@ -122,12 +115,13 @@ class ModelServer:
             add_endpoint_results["add_endpoint"] = await self.resources["ipfs_accelerate_py"].add_endpoint(models, endpoint_type, endpoint)
         except Exception as e:
             add_endpoint_results["add_endpoint"] = e
+        await self.initEndpointsTask([models], self.resources)
         return add_endpoint_results
 
-    async def rmEndpointTask(self, models: list, endpoint_type: str, index: int):
+    async def rmEndpointTask(self, models: list, endpoint_type: str, backend: str):
         rm_endpoint_results = {}
         try:
-            rm_endpoint_results["rm_endpoint"] = await self.resources["ipfs_accelerate_py"].rm_endpoint(models, endpoint_type, index)
+            rm_endpoint_results["rm_endpoint"] = await self.resources["ipfs_accelerate_py"].rm_endpoint(models, endpoint_type, backend)
         except Exception as e:
             rm_endpoint_results["rm_endpoint"] = e
         return rm_endpoint_results
@@ -141,7 +135,7 @@ testEndpointTask = model_server.testEndpointTask
 async def add_endpoint(request: AddEndpointRequest, background_tasks: BackgroundTasks):
     add_endpoint_results = {}
     try:
-        add_endpoint_results["add_endpoint"] = model_server.addEndpointTask()
+        add_endpoint_results["add_endpoint"] = await model_server.addEndpointTask(request.model, request.endpoint_type, request.endpoint)
         return {"message", json.dumps(add_endpoint_results) }
     except Exception as e:
         add_endpoint_results["add_endpoint"] = e
@@ -151,7 +145,7 @@ async def add_endpoint(request: AddEndpointRequest, background_tasks: Background
 async def rm_endpoint(request: RmEndpointRequest, background_tasks: BackgroundTasks):
     rm_endpoint_results = {}
     try:
-        rm_endpoint_results["rm_endpoint"] = model_server.rmEndpointTask()
+        rm_endpoint_results["rm_endpoint"] = model_server.rmEndpointTask(request.model, request.endpoint_type, request.index)
         return {"message", json.dumps(rm_endpoint_results)}
     except Exception as e:
         rm_endpoint_results["rm_endpoint"] = e

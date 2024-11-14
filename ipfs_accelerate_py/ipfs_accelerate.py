@@ -562,7 +562,7 @@ class ipfs_accelerate_py:
         return results
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
-        model = endpoint[0]
+        this_model = endpoint[0]
         backend = endpoint[1]
         context_length = endpoint[2]
         if endpoint_type in self.endpoint_types:
@@ -573,7 +573,7 @@ class ipfs_accelerate_py:
                 if model not in list(self.__dict__[endpoint_type].keys()):
                     self.__dict__[endpoint_type][model] = {}
                 if endpoint not in list(self.__dict__[endpoint_type][model].keys()):
-                    self.__dict__[endpoint_type][model][endpoint] = context_length
+                    self.__dict__[endpoint_type][model][backend] = context_length
                 self.endpoint_status[endpoint] = context_length
                 success = True
             except Exception as e:
@@ -582,14 +582,18 @@ class ipfs_accelerate_py:
             return success        
         return None
     
-    async def rm_endpoint(self, model, endpoint_type, endpoint):
+    async def rm_endpoint(self, model, endpoint_type, backend):
         if endpoint_type in self.endpoint_types:
             success = False
             try:
-                if model in self.__dict__[endpoint_type] and endpoint in self.__dict__[endpoint_type][model]:
-                    del self.__dict__[endpoint_type][model][endpoint]
-                if endpoint in self.endpoint_status:
-                    del self.endpoint_status[endpoint]
+                if model in self.__dict__[endpoint_type] and backend in self.__dict__[endpoint_type][model]:
+                    del self.__dict__[endpoint_type][model][backend]
+                if backend in self.resources["batch_sizes"][model]:
+                    del self.resources["batch_sizes"][model][backend]
+                if backend in self.resources["queues"][model]:
+                    del self.resources["queues"][model][backend]
+                if backend in self.resources["endpoint_handler"][model]:
+                    del self.resources["endpoint_handler"][model][backend]
                 success = True
             except Exception as e:
                 print(e)
