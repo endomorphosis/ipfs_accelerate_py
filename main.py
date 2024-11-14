@@ -19,6 +19,10 @@ class TestEndpointRequest(BaseModel):
 class InferEndpointRequest(BaseModel):
     models: list
     batch_data: list[str]
+    
+class QueueEndpointRequest(BaseModel):
+    models: list
+    batch_data: list[str]
 
 class AddEndpointRequest(BaseModel):
     model: str
@@ -64,6 +68,19 @@ class ModelServer:
         self.metadata = metadata
         self.resources["ipfs_accelerate_py"] = ipfs_accelerate_py(self.resources, self.metadata)
         return 
+    
+    async def QueueEndpointTask(self, models: list, batch_data: list):
+        queue_results = {}
+        try:
+            queue_results["queue"] = await self.resources["ipfs_accelerate_py"].queue(models, batch_data)
+        except Exception as e:
+            queue_results["queue"] = e
+        fetch_results = {}
+        try:
+            fetch_results["queue"] = await self.resources["ipfs_accelerate_py"].fetch(models, batch_data)
+        except Exception as e:
+            fetch_results["queue"] = e
+        return fetch_results
 
     async def initEndpointsTask(self, models: list, resources: dict):
         results = {}
@@ -75,7 +92,7 @@ class ModelServer:
         formatted_results = {k: str(v) for k, v in formatted_results.items() if k in ["batch_sizes", "endpoints", "hwtest"]} 
         return formatted_results
 
-    async def init_endpoints (self, models: list, resources: dict):
+    async def init_endpoints(self, models: list, resources: dict):
         try:
             return await self.resources["ipfs_accelerate_py"].init_endpoints(models, resources)
         except Exception as e:
