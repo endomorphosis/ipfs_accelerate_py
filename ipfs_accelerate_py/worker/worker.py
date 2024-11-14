@@ -8,8 +8,10 @@ import optimum
 import torch 
 import asyncio
 import transformers
-from .skillset import llama_cpp
-from ipfs_multiformats import ipfs_multiformats_py
+try:
+    from ipfs_multiformats import ipfs_multiformats_py
+except:
+    from .ipfs_multiformats import ipfs_multiformats_py
 from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
 import ipfs_transformers_py
 from pathlib import Path
@@ -43,7 +45,7 @@ class dispatch_result:
         return None
     
     async def dispatch_result(self, result):
-        return result    
+        return None    
     
 class worker_py:
     def __init__(self, metadata, resources):
@@ -115,9 +117,8 @@ class worker_py:
         return None
     
     async def dispatch_result(self, result):
-        result_cid = self.ipfs_multiformats.get_cid(result)
-        self.outbox[result_cid] = result
-        return result
+
+        return None
     
     
     async def test_hardware(self):
@@ -271,13 +272,6 @@ class worker_py:
         def handler(x):
             return self.local_endpoints[endpoint_model][openvino_label](x)
         return handler
-    
-    async def get_llama_cpp_model(self, model_name, model_type=None):
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
-            model_type = config.__class__.model_type
-        llama_cpp_model = llama_cpp(model_name, model_type)
-        return llama_cpp_model
 
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
@@ -286,22 +280,43 @@ class worker_py:
             elif "local_endpoints" in list(self.resources.keys()):
                 local_endpoints = self.resources["local_endpoints"]
             else:
-                local_endpoints = []
+                local_endpoints = {}
         else:
             pass
         self.local_endpoints  = local_endpoints
-        self.local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
-        self.local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
-        self.local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
+        # local_endpoint_types = [ x[1] for x in local_endpoints if x[0] in models]
+        # local_endpoint_models = [ x[0] for x in local_endpoints if x[0] in models]
+        local_endpoint_models = list(local_endpoints.keys())
+        local_endpoint_types = []
+        for model in local_endpoint_models:
+            for endpoints in local_endpoints[model]:
+                endpoint_type = endpoints[1]
+                local_endpoint_types.append(endpoint_type)
+        new_endpoints_list = {}
+        for model in list(local_endpoints.keys()):
+            if model not in list(new_endpoints_list.keys()):
+                new_endpoints_list[model] = {}
+            for endpoint in local_endpoints[model]:
+                endpoint_type = endpoint[1]
+                if endpoint_type not in list(new_endpoints_list[model].keys()):
+                    new_endpoints_list[model][endpoint_type] = endpoint[2]
+        
+        print(new_endpoints_list)
+        self.local_endpoints = new_endpoints_list
+
+        # local_endpoints = { model: { endpoint[1]: endpoint[2] for endpoint in local_endpoints if endpoint[0] == model} for model in models}
+        self.local_endpoint_types = local_endpoint_types
+        self.local_endpoint_models = local_endpoint_models
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
-                hwtest = self.test_hardware()
+                hwtest = await self.test_hardware()
             elif "hwtest" in list(self.resources.keys()):
                 hwtest = self.resources["hwtest"]
             else:
                 hwtest = await self.test_hardware()
         self.hwtest = hwtest
+        self.resources["hwtest"] = hwtest
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
@@ -309,7 +324,6 @@ class worker_py:
         cpus = os.cpu_count()
         cuda = torch.cuda.is_available()
         gpus = torch.cuda.device_count()
-        
         for model in models:
             model_type = await self.get_model_type(model)
             if model not in self.tokenizer:
@@ -326,17 +340,22 @@ class worker_py:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
-                            cuda_index = self.local_endpoint_types.index("cuda:"+str(gpu))
-                            endpoint_model = self.local_endpoint_models[cuda_index]
-                            cuda_label = self.local_endpoint_types[cuda_index]
                             device = 'cuda:' + str(gpu)
+                            cuda_index = self.local_endpoint_types.index(device)
+                            if "model" in list(self.local_endpoints.keys()):
+                                endpoint_model = model
+                            else:
+                                for this_model in list(self.local_endpoints.keys()):
+                                    if device in list(self.local_endpoints[this_model].keys()):
+                                        endpoint_model = this_model
+                            cuda_label = self.local_endpoint_types[cuda_index]
                             self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True)
                             self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model).to(device)
                             self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
-                            batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-                            self.batch_sizes[endpoint_model][cuda_label] = batch_size
+                            # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+                            self.batch_sizes[endpoint_model][cuda_label] = 0
                 if local > 0 and cpus > 0:
                     all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
                     all_tests_ValueError = all(x is ValueError for x in all_test_types)
@@ -347,9 +366,20 @@ class worker_py:
                         self.endpoint_handler[model]["cpu"] = ""
                     elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                         ov_count = 0
-                        openvino_index = self.local_endpoint_types.index("openvino")
-                        openvino_model = self.local_endpoint_models[openvino_index]
-                        openvino_label = str(self.local_endpoint_types[openvino_index]) + ":" + str(ov_count)
+                        openvino_endpoints = []
+                        device = "openvino:" + str(ov_count)
+                        openvino_index = self.local_endpoint_types.index(device)
+                        if "model" in list(self.local_endpoints.keys()):
+                                openvino_model = model
+                        else:
+                            for this_model in list(self.local_endpoints.keys()):
+                                if device in list(self.local_endpoints[this_model].keys()):
+                                    openvino_model = this_model
+                        for item in self.local_endpoint_types:
+                            if device in item:
+                                openvino_endpoints.append(item)
+                                
+                        openvino_label = self.local_endpoint_types[openvino_index]
                         # to disable openvino to calling huggingface transformers uncomment
                         # self.hwtest["optimum-openvino"] = False
                         # if self.hwtest["optimum-openvino"] == True: 
@@ -358,51 +388,18 @@ class worker_py:
                             model_type =  str(await self.get_openvino_pipeline_type(model))
                             self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                             self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
-                            self.batch_sizes[openvino_model][openvino_label] = None
+                            self.batch_sizes[openvino_model][openvino_label] = 0
                         # elif self.hwtest["openvino"] == True:                            
                         except Exception as e:
                             try:
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
                                 self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
                                 self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
-                                self.batch_sizes[openvino_model][openvino_label] = None
+                                self.batch_sizes[openvino_model][openvino_label] = 0
                             except Exception as e:
                                 print(e)
                                 pass
                         ov_count = ov_count + 1
-                    elif ipex_test and type(ipex_test) != ValueError and model_type != "llama_cpp":
-                            ipex_count = 0
-                            for endpoint in local:
-                                if "ipex" in endpoint:
-                                    endpoint_name = "ipex:"+str(ipex_count)
-                                    batch_size = 0
-                                    if model not in self.batch_sizes:
-                                        self.batch_sizes[model] = {}
-                                    if model not in self.queues:
-                                        self.queues[model] = {}
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.batch_sizes[model][endpoint] = batch_size
-                                    if self.batch_sizes[model][endpoint] > 0:
-                                        self.queues[model][endpoint] = asyncio.Queue(64)
-                                        self.endpoint_handler[model][endpoint_name] = ""
-                                    ipex_count = ipex_count + 1   
-                elif llama_cpp_test and type(llama_cpp_test) != ValueError and model_type == "llama_cpp":
-                    llama_model = None
-                    if len(local) > 0 and gpus > 1:
-                        for gpu in range(gpus):
-                            llama_model = await self.get_llama_cpp_model(model, model_type)
-                            self.tokenizer[model]["llama_cpp:"+str(gpu)] = AutoTokenizer.from_pretrained(model, use_fast=True)
-                            self.local_endpoints[model]["llama_cpp:"+str(gpu)] = llama_model.to("cuda:" + str(gpu))
-                            self.queues[model]["llama_cpp:"+str(gpu)] = asyncio.Queue(64)
-                            pass
-                    elif len(local) > 0 and cpus > 0:
-                        llama_model = await self.get_llama_cpp_model(model, model_type)
-                        self.local_endpoints[model]["llama_cpp"] = llama_model
-                        self.queues[model]["llama_cpp"] = asyncio.Queue(64)
-                        self.endpoint_handler[model]["llama_cpp"] = llama_model
-                        pass
-                    llama_count = llama_count + 1
-                    break
                 else:
                     pass
         worker_endpoint_types = []
@@ -425,12 +422,8 @@ class worker_py:
                         pass
                 pass
 
-        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types) }
+        resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types), "hwtest": self.hwtest}
         return resources    
-    
-    async def max_batch_size(self, model, endpoint):
-        
-        return None
     
     # def __test__(self):
     #     return self 
