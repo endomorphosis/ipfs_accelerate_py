@@ -371,7 +371,7 @@ class ipfs_accelerate_py:
                             self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
                             self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
-                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], "text", 64, model, this_endpoint))
+                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
@@ -385,7 +385,7 @@ class ipfs_accelerate_py:
                                     self.resources["batch_sizes"][model][this_endpoint] = 0
                                 self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                                 self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
-                                self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], "text", 64, model, this_endpoint))
+                                self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -399,7 +399,7 @@ class ipfs_accelerate_py:
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], "text", 64, model, this_endpoint))
+                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
