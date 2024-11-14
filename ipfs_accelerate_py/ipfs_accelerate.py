@@ -1,7 +1,3 @@
-try:
-    from .backends import backends
-except:
-    from backends import backends       
 import torch
 import requests
 import json
@@ -14,24 +10,32 @@ from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
 import hashlib
+import time
 
 class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
-        self.resources["ipfs_accelerate"] = self
+        if self.resources is None:
+            self.resources = {}
+        if self.metadata is None:
+            self.metadata = {}
+        if resources is None:
+            resources = {}
+        if metadata is None:
+            metadata = {}
         self.resources["ipfs_accelerate_py"] = self
-        if "test_ipfs_embeddings_py" not in globals() and "test_ipfs_embeddings" not in list(self.resources.keys()):
+        if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             try:
                 from .test_ipfs_accelerate import test_ipfs_accelerate
             except:
                 from test_ipfs_accelerate import test_ipfs_accelerate
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
+            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         elif "test_ipfs_accelerate" in list(self.resources.keys()):
             self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
         elif "test_ipfs_accelerate" in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata) 
+            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
             resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
         if "install_depends_py" not in globals():
             try:
@@ -51,6 +55,7 @@ class ipfs_accelerate_py:
             resources["worker"] = self.worker
         self.endpoint_status = {}
         self.endpoint_handler = {}
+        self.endpoints = {}
         self.batch_sizes = {}
         self.inbox = {}
         self.outbox = {}
@@ -130,19 +135,58 @@ class ipfs_accelerate_py:
         return test_results
 
     async def query_endpoints(self, model):
-        endpoints = self.get_endpoints(model)
-        local = self.get_endpoints(model, "local")
-        openvino = self.get_endpoints(model, "openvino")
-        libp2p = self.get_endpoints(model, "libp2p")
-        tei = self.get_endpoints(model, "tei")
+        endpoints = None
+        local = None
+        openvino = None
+        tei = None
+        libp2p = None
+        try:
+            endpoints = await self.get_endpoints(model)
+        except Exception as e:
+            endpoints = e
+        try:
+            local = await self.get_endpoints(model, "local")
+        except Exception as e:
+            local = e
+        try:
+            openvino = await self.get_endpoints(model, "openvino")
+        except Exception as e:
+            openvino = e
+        try:
+            libp2p = await self.get_endpoints(model, "libp2p")
+        except Exception as e:
+            libp2p = e
+        try:
+            tei = await self.get_endpoints(model, "tei")
+        except Exception as e:
+            tei = e
+        if type(tei) == list:
+            tei_set = set(endpoints["tei"])
+        else:
+            tei_set = set()
+        if type(local) == list:
+            local_set = set(endpoints["local"])
+        else:
+            local_set = set()
+        if type(libp2p) == list:
+            libp2p_set = set(endpoints["libp2p"])
+        else:
+            libp2p_set = set()
+        if type(openvino) == list:
+            openvino_set = set(endpoints["openvino"])
+        else:
+            openvino_set = set()
+
+        endpoints_set = set.union(tei_set, local_set, openvino_set, libp2p_set)
         endpoints =  { "tei" : tei , "local" : local , "openvino": openvino , "libp2p": libp2p }
-        endpoints_set = set(endpoints["tei"] + endpoints["local"] + endpoints["openvino"] + endpoints["libp2p"] )
-        self.endpoints = endpoints
-        self.endpoints_list = list(endpoints.keys())
-        self.endpoints_set = endpoints_set
+
+        # endpoints_set = set(set(endpoints["tei"]),set(endpoints["local"]),set(endpoints["openvino"]),set(endpoints["libp2p"]))
+        # self.endpoints = endpoints
+        # self.endpoints_list = list(endpoints.keys())
+        # self.endpoints_set = endpoints_set
         return {
-            endpoints: endpoints,
-            endpoints_set: endpoints_set
+            "endpoints": endpoints,
+            "endpoints_set": endpoints_set
         }
 
     def create_tei_endpoint_handler(self, model, endpoint, context_length):
@@ -152,8 +196,26 @@ class ipfs_accelerate_py:
         return handler
     
     def create_openvino_endpoint_handler(self, model, endpoint, context_length):
-        def handler(x):
-            remote_endpoint = self.make_post_request_openvino(endpoint, x)
+        async def handler(x):
+            tokenizer = None
+            tokens = None
+            if model not in list(self.resources["tokenizer"].keys()):
+                self.resources["tokenizer"][model] = {}
+            tokenizers = list(self.resources["tokenizer"][model].keys())
+            if len(tokenizers) == 0:
+                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
+                tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
+            else:
+                for tokenizer in tokenizers:
+                    try:
+                        this_tokenizer = self.resources["tokenizer"][model][tokenizer]
+                        tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+                    except Exception as e:
+                        pass
+            if tokens is None:
+                raise ValueError("No tokenizer found for model " + model)            
+            tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+            remote_endpoint = await self.make_post_request_openvino(tokens, x)
             return remote_endpoint
         return handler
     
@@ -171,8 +233,9 @@ class ipfs_accelerate_py:
             self.resources["batch_sizes"] = {}
         if "endpoint_handler" not in list(self.resources.keys()):
             self.resources["endpoint_handler"] = {}
+        endpoint_set = set(endpoint_list)
         for endpoint_type in self.endpoint_types:
-            if endpoint_type in list(endpoint_list.keys()):
+            if endpoint_type in endpoint_set:
                 for endpoint_info in endpoint_list[endpoint_type]:
                     model, endpoint, context_length = endpoint_info
                     if model not in list(self.resources["batch_sizes"].keys()):
@@ -181,7 +244,9 @@ class ipfs_accelerate_py:
                         self.resources["queues"][model] = {}
                     if endpoint not in list(self.resources["batch_sizes"][model].keys()):
                         self.resources["batch_sizes"][model][endpoint] = 0
-                    await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
+                    await self.add_endpoint(model, endpoint_type, endpoint_info)
+                else:
+                    pass    
         # for endpoint_type in self.endpoint_types:
         #     if endpoint_type in resources.keys():
         #         for endpoint_info in resources[endpoint_type]:
@@ -195,12 +260,29 @@ class ipfs_accelerate_py:
             self.endpoint_list = new_endpoints_list
             endpoints_set = set(new_endpoints_list)
             self.endpoint_set = endpoints_set
-        if type(endpoint_list) == dict:                
+        if type(endpoint_list) == dict:
+            query_endpoints = await self.query_endpoints(model)                
             new_endpoints_list = [ k for k in endpoint_list.keys() if k in self.endpoint_types or endpoint_list[k] in self.endpoint_types ]
             new_endpoints = {}
-            endpoints_set = set(new_endpoints_list)
-            for new_endpoint in new_endpoints_list:
-                new_endpoints[new_endpoint] = endpoint_list[new_endpoint]
+            endpoints_set = query_endpoints["endpoints_set"]
+            for endpoint_type in new_endpoints_list:
+                if endpoint_type in list(endpoint_list.keys()):
+                    if endpoint_type not in list(new_endpoints.keys()):
+                        new_endpoints[endpoint_type] = {}
+            for endpoint_type in new_endpoints_list:
+                for model in models:
+                    if model not in new_endpoints[endpoint_type]:
+                        new_endpoints[endpoint_type][model] = []
+            for endpoint_type in new_endpoints_list:
+                if endpoint_type in endpoint_list:
+                    this_list = endpoint_list[endpoint_type]
+                    for item in this_list:
+                        this_model = item[0]
+                        this_endpoint = item[1]
+                        this_context_length = item[2]
+                        endpoints_set.add(this_endpoint)
+                        if this_model in list(new_endpoints[endpoint_type].keys()):
+                            new_endpoints[endpoint_type][model].append(item)                
             self.endpoints = new_endpoints
             self.endpoints_list = new_endpoints_list
             self.endpoint_set = endpoints_set
@@ -218,9 +300,17 @@ class ipfs_accelerate_py:
             raise ValueError("No endpoints available for model " + model)
         else:
             local = [ endpoint for endpoint in self.endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
-            openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
             libp2p = []
-            tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]     
+            if "openvino_endpoints" in list(self.endpoints.keys()):
+                openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
+            else:
+                openvino = []
+            
+            if "tei_endpoints" in list(self.endpoints.keys()):
+                tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]
+            else:
+                tei = []
+                 
         for model in models:
             if model not in self.tokenizer:
                 self.tokenizer[model] = {}
@@ -257,7 +347,7 @@ class ipfs_accelerate_py:
                 
         if "openvino_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["openvino_endpoints"]) > 0 :
-                for endpoint in self.endpoints["openvino_endpoints"]:
+                for endpoint in self.endpoints["openvino_endpoints"][model]:
                     if len(endpoint) == 3:
                         this_model = endpoint[0]
                         this_endpoint = endpoint[1]
@@ -267,24 +357,26 @@ class ipfs_accelerate_py:
                                 # self.batch_sizes[model][this_endpoint] = 0
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
                             # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.resources["queues"][model][this_endpoint] = None
+                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
-                            self.resources["endpoint_handler"][model][endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
+                            self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
-                for endpoint in self.endpoints["tei_endpoints"]:
-                    if len(endpoint) == 3:
-                        this_model = endpoint[0]
-                        this_endpoint = endpoint[1]
-                        context_length = endpoint[2]
-                        if model == this_model:
-                            if endpoint not in list(self.batch_sizes[model].keys()):
-                                # self.batch_sizes[model][this_endpoint] =  0
-                                self.resources["batch_sizes"][model][this_endpoint] = 0
-                            # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
-                            self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
+                for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
+                    for endpoint in self.endpoints["tei_endpoints"][endpoint_model]:                            
+                        if len(endpoint) == 3:
+                            this_model = endpoint[0]
+                            this_endpoint = endpoint[1]
+                            context_length = endpoint[2]
+                            if model == this_model:
+                                if endpoint not in list(self.batch_sizes[model].keys()):
+                                    # self.batch_sizes[model][this_endpoint] =  0
+                                    self.resources["batch_sizes"][model][this_endpoint] = 0
+                                # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                                self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                                # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
+                                self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -300,9 +392,12 @@ class ipfs_accelerate_py:
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[model][endpoint] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-        return self.resources
+        new_resources = {}
+        for resource in resource_list:
+            new_resources[resource] = self.resources[resource]
+        new_resources["endpoints"] = self.endpoints
+        return new_resources
 
-    
     def test_tei_https_endpoint(self, model, endpoint):
         if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
             return True
@@ -462,7 +557,10 @@ class ipfs_accelerate_py:
         torch.cuda.empty_cache()  # Free up GPU memory again
         return results
 
-    async def add_endpoint(self, model, endpoint, context_length, endpoint_type):
+    async def add_endpoint(self, model, endpoint_type, endpoint):
+        this_model = endpoint[0]
+        backend = endpoint[1]
+        context_length = endpoint[2]
         if endpoint_type in self.endpoint_types:
             success = False
             try:
@@ -471,7 +569,7 @@ class ipfs_accelerate_py:
                 if model not in list(self.__dict__[endpoint_type].keys()):
                     self.__dict__[endpoint_type][model] = {}
                 if endpoint not in list(self.__dict__[endpoint_type][model].keys()):
-                    self.__dict__[endpoint_type][model][endpoint] = context_length
+                    self.__dict__[endpoint_type][model][backend] = context_length
                 self.endpoint_status[endpoint] = context_length
                 success = True
             except Exception as e:
@@ -480,14 +578,18 @@ class ipfs_accelerate_py:
             return success        
         return None
     
-    async def rm_endpoint(self, model, endpoint, endpoint_type):
+    async def rm_endpoint(self, model, endpoint_type, backend):
         if endpoint_type in self.endpoint_types:
             success = False
             try:
-                if model in self.__dict__[endpoint_type] and endpoint in self.__dict__[endpoint_type][model]:
-                    del self.__dict__[endpoint_type][model][endpoint]
-                if endpoint in self.endpoint_status:
-                    del self.endpoint_status[endpoint]
+                if model in self.__dict__[endpoint_type] and backend in self.__dict__[endpoint_type][model]:
+                    del self.__dict__[endpoint_type][model][backend]
+                if backend in self.resources["batch_sizes"][model]:
+                    del self.resources["batch_sizes"][model][backend]
+                if backend in self.resources["queues"][model]:
+                    del self.resources["queues"][model][backend]
+                if backend in self.resources["endpoint_handler"][model]:
+                    del self.resources["endpoint_handler"][model][backend]
                 success = True
             except Exception as e:
                 print(e)
@@ -496,6 +598,8 @@ class ipfs_accelerate_py:
         return None
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):
+        import psutil
+        process = psutil.Process(os.getpid())
         embed_fail = False
         context_length = None
         exponent = int(0)
@@ -508,11 +612,12 @@ class ipfs_accelerate_py:
         this_tokenizer = self.resources["tokenizer"][model][endpoint]
         for endpoint_type in endpoint_types:
             endpoints = self.endpoints[endpoint_type]
-            for this_endpoint in endpoints:
-                if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
-                    context_length = this_endpoint[2]
-                    token_length_size = round(context_length * 0.99)
-                    break
+            if model in list(endpoints.keys()):
+                for this_endpoint in endpoints[model]:
+                    if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
+                        context_length = this_endpoint[2]
+                        token_length_size = round(int(context_length) * 0.99)
+                        break
             if token_length_size > 0:
                 break
                         
@@ -526,6 +631,7 @@ class ipfs_accelerate_py:
         for i in range(token_length_size):
             test_tokens.append(find_token_int)
         test_text = this_tokenizer.decode(test_tokens)
+        memory_increase = None
         while not embed_fail:
             test_batch = []
             exponent += 1
@@ -534,29 +640,54 @@ class ipfs_accelerate_py:
             parsed_knn_embeddings = None
             embeddings = None
             request_knn_results = None
+            start_time = time.time()
+            start_mem = process.memory_info().rss
+            free_memory = psutil.virtual_memory().free
+            if memory_increase is not None:
+                if free_memory < (memory_increase * 2):
+                    embed_fail = True
+                    break
+                    raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
             try:
                 if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
                     request_knn_results = await endpoint_handler({"inputs": test_batch})
+                    end_memory = process.memory_info().rss
+
                 elif "cuda" in endpoint or "cpu" in endpoint or "openvino:" in endpoint:
                     try:
                         request_knn_results = await endpoint_handler(test_batch)
+                        end_memory = process.memory_info().rss
                     except Exception as e:
                         pass
                     if request_knn_results == None:
                         try:
                             request_knn_results = endpoint_handler(test_batch)
+                            end_memory = process.memory_info().rss
                         except Exception as e:
                             request_knn_results = e
                             embed_fail = True
+                            end_memory = process.memory_info().rss
                             pass
                         pass
             except Exception as e:
                 request_knn_results = e
                 embed_fail = True
+                end_memory = process.memory_info().rss
                 pass
             if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
                 embed_fail = True
+            end_time = time.time()
             batch_size = 2**(exponent-1)
+            elapsed_time = end_time - start_time
+            memory_increase = end_memory - start_mem
+            free_memory = psutil.virtual_memory().free
+            log = {
+            "batch size": batch_size,
+            "elapsed_time": elapsed_time,
+            "memory_increase": memory_increase,
+            "free_memory": free_memory
+            }
+            print(log)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
             if batch_size >= 4096:
                 embed_fail = True
@@ -951,6 +1082,11 @@ class ipfs_accelerate_py:
             return None
         else:
             pass
+        if type(data) is dict:
+            if "inputs" not in list(data.keys()):
+                data = {"inputs": data}
+        if type(data) is list:
+            data = {"inputs": data}
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:
@@ -1017,6 +1153,12 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
                     
     async def make_post_request_openvino(self, endpoint, data):
+        if type(data) is dict:
+            raise ValueError("Data must be a string")
+        if type(data) is list:
+            if len(data) > 1:
+                raise ValueError("batch size must be 1")
+            data = data[0]
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:
@@ -1050,13 +1192,15 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
  
     async def choose_endpoint(self, model, endpoint_type=None):
+        if type(model) is list:
+            model = model[0]
         if endpoint_type != None:
-            this_endpoints = self.get_endpoints(model, endpoint_type)
+            this_endpoints = await self.get_endpoints(model, endpoint_type)
         else:
-            tei_endpoints = self.get_endpoints(model, endpoint_type="tei")
-            libp2p_endpoints = self.get_endpoints(model, endpoint_type="libp2p")
-            openvino_endpoints = self.get_endpoints(model, endpoint_type="openvino")
-            local_endpoints = self.get_endpoints(model, endpoint_type="local")
+            tei_endpoints = await self.get_endpoints(model, endpoint_type="tei")
+            libp2p_endpoints = await self.get_endpoints(model, endpoint_type="libp2p")
+            openvino_endpoints = await self.get_endpoints(model, endpoint_type="openvino")
+            local_endpoints = await self.get_endpoints(model, endpoint_type="local")
             filtered_libp2p_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and libp2p_endpoints is not None and k in list(libp2p_endpoints.keys())}
             filtered_tei_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and tei_endpoints is not None and k in list(tei_endpoints.keys())}
             filtered_openvino_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and openvino_endpoints is not None and k in list(openvino_endpoints.keys())}
@@ -1076,11 +1220,94 @@ class ipfs_accelerate_py:
                 print("chosen endpoint for " + model + " is " + this_endpoint)
                 return this_endpoint
 
+    async def choose_endpoint_new(self, model, endpoint_type=None):
+        if type(model) is list:
+            model = model[0]
+        if endpoint_type != None:
+            this_endpoints = await self.get_endpoints_new(model, endpoint_type)
+        else:
+            tei_endpoints = await self.get_endpoints_new(model, endpoint_type="tei")
+            libp2p_endpoints = await self.get_endpoints_new(model, endpoint_type="libp2p")
+            openvino_endpoints = await self.get_endpoints_new(model, endpoint_type="openvino")
+            local_endpoints = await self.get_endpoints_new(model, endpoint_type="local")
+            
+            
+            filtered_libp2p_endpoints = [x for x in libp2p_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_tei_endpoints = [x for x in tei_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_openvino_endpoints = [x for x in openvino_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_local_endpoints = [x for x in local_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            if not filtered_tei_endpoints and not filtered_libp2p_endpoints and not filtered_openvino_endpoints and not filtered_local_endpoints:
+                return None
+            else:
+                this_endpoint = None
+                combined_endpoints = filtered_tei_endpoints + filtered_libp2p_endpoints + filtered_openvino_endpoints + filtered_local_endpoints
+                random_endpoint = random.choice(combined_endpoints)
+                random_endpoint_model = random_endpoint[0]
+                random_endpoint_type = random_endpoint[1]
+                random_endpoint_handler = self.resources["endpoint_handler"][random_endpoint_model][random_endpoint_type]
+                return random_endpoint_handler
+
+    async def status(self):
+        new_resources = {}
+        included_resources = ["endpoint_handler", "batch_sizes", "queues","hwtest"]
+        for resource in included_resources:
+            new_resources[resource] = self.resources[resource]
+        new_resources["endpoints"] = self.endpoints
+        return new_resources
+    
+    async def infer(self, model, data, endpoint=None, endpoint_type=None):
+        infer_results = {}
+        if endpoint_type is None:        
+            if endpoint is None:
+                endpoint = await self.choose_endpoint_new(model, endpoint_type)
+                if endpoint is None:
+                    return ValueError("No endpoint found")
+                else:
+                    try:
+                        infer_results["infer"] = await endpoint(data)
+                    except Exception as e:
+                        infer_results["infer"] = endpoint(data)
+                        return infer_results
+                    return infer_results
+            if "cuda" in endpoint or "cpu" in endpoint:
+                return await self.make_local_request(model, endpoint, endpoint_type, data)
+            elif "openvino" in endpoint:
+                return await self.make_post_request_openvino(endpoint, data)
+            elif "libp2p" in endpoint:
+                return await self.make_post_request_libp2p(endpoint, data)
+            elif "http" in endpoint:
+                return await self.make_post_request_tei(endpoint, data)
+            else:
+                return self.endpoint_handler[model][endpoint](data)
+        elif endpoint_type == "tei":
+            if endpoint is None:
+                endpoint = await self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_tei(endpoint, data)
+        elif endpoint_type == "openvino":
+            if endpoint is None:
+                endpoint = await self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_openvino(endpoint, data)
+        elif endpoint_type == "libp2p":
+            if endpoint is None:
+                endpoint = await self.choose_endpoint(model, endpoint_type)
+            return await self.make_post_request_libp2p(endpoint, data)
+        elif endpoint_type == "local":
+            if endpoint is None:
+                endpoint = await self.choose_endpoint(model, endpoint_type)
+            return await self.make_local_request(model, endpoint, endpoint_type, data)
+        else:
+            endpoint = await self.choose_endpoint(model, endpoint_type)
+            if endpoint is None:
+                return ValueError("No endpoint found")
+            else:
+                try:
+                    infer_results["infer"] = await endpoint(data)
+                except Exception as e:
+                    infer_results["infer"] = endpoint(data)
+                    return infer_results
+                return infer_results
 
     async def get_endpoints(self, model, endpoint_type=None):
-        if endpoint_type is None:
-            endpoints_dict = self.tei_endpoints.get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
         if endpoint_type == "tei":
             endpoints_dict = self.tei_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
@@ -1099,6 +1326,42 @@ class ipfs_accelerate_py:
         else:
             all_endpoints_dict = self.tei_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.openvino_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
+        return filtered_endpoints
+    
+    
+    async def get_endpoints_new(self, model, endpoint_type=None):
+        filtered_endpoints = []
+        endpoints_keys = list(self.endpoints.keys())
+        if endpoint_type == "tei" and "tei_endpoints" in endpoints_keys:
+            endpoints_dict = self.endpoints["tei_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "openvino" and "openvino_endpoints" in list(self.endpoints.keys()):
+            endpoints_dict = self.endpoints["openvino_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "libp2p" and "libp2p_endpoints" in list(self.endpoints.keys()):
+            endpoints_dict = self.libp2p_endpoints.get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "local" and "local_endpoints" in list(self.endpoints.keys()):
+            endpoints_dict = self.endpoints["local_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
+        elif endpoint_type == "cuda" and "local_endpoints" in list(self.endpoints.keys()):
+            endpoint_dict = self.endpoints["local_endpoints"].get(model, {})
+            filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
+        elif endpoint_type == "all" or endpoint_type == None:
+            all_endpoints = []
+            if "tei_endpoints" in list(self.endpoints.keys()):
+                tei_endpoints = self.endpoints["tei_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + tei_endpoints
+            if "openvino_endpoints" in list(self.endpoints.keys()):
+                openvino_endpoints = self.endpoints["openvino_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + openvino_endpoints 
+            if "libp2p_endpoints" in list(self.endpoints.keys()):
+                libp2p_endpoints = self.libp2p_endpoints.get(model, {})
+                all_endpoints = all_endpoints + libp2p_endpoints
+            if "local_endpoints" in list(self.endpoints.keys()):
+                local_endpoints = self.endpoints["local_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + local_endpoints
+            filtered_endpoints = [endpoint for endpoint in all_endpoints]
         return filtered_endpoints
     
     async def async_generator(self, iterable):
