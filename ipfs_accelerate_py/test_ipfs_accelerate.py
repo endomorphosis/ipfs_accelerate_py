@@ -13,13 +13,8 @@ class test_ipfs_accelerate:
         if "ipfs_accelerate_py" not in globals() and "ipfs_accelerate_py" not in list(self.resources.keys()):
             from ipfs_accelerate import ipfs_accelerate_py
             self.resources["ipfs_accelerate_py"] = ipfs_accelerate_py(resources, metadata)
-        if "test_backend" not in globals() and "test_backend" not in list(self.resources.keys()):
-            from test_backend import test_backend_py
-            self.test_backend = test_backend_py(resources, metadata)
         elif "test_backend" in list(self.resources.keys()):
             self.test_backend = self.resources["test_backend"]
-        elif "test_backend" in globals():
-            self.test_backend = test_backend_py(resources, metadata)
         return None
     
     async def test(self):

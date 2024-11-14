@@ -1,7 +1,3 @@
-try:
-    from .backends import backends
-except:
-    from backends import backends       
 import torch
 import requests
 import json
