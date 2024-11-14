@@ -20,7 +20,7 @@ class InferEndpointRequest(BaseModel):
     models: list
     batch_data: list[str]
     
-class QueueEndpointRequest(BaseModel):
+class QueueRequest(BaseModel):
     models: list
     batch_data: list[str]
 
@@ -69,7 +69,7 @@ class ModelServer:
         self.resources["ipfs_accelerate_py"] = ipfs_accelerate_py(self.resources, self.metadata)
         return 
     
-    async def QueueEndpointTask(self, models: list, batch_data: list):
+    async def queueTask(self, models: list, batch_data: list):
         queue_results = {}
         try:
             queue_results["queue"] = await self.resources["ipfs_accelerate_py"].queue(models, batch_data)
@@ -220,6 +220,15 @@ async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks
     except Exception as e:
         infer_results["infer"] = e
     return {"message": json.dumps(infer_results)}
+
+@app.post("/queue")
+async def queue(request: InferEndpointRequest, background_tasks: BackgroundTasks):
+    queue_results = {}
+    try:
+        queue_results["queue"] = await model_server.queueTask(request.models, request.batch_data) 
+    except Exception as e:
+        queue_results["queue"] = e
+    return {"message": json.dumps(queue_results)}
 
 @app.post("/")
 async def help():
