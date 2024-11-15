@@ -87,7 +87,6 @@ class ipfs_accelerate_py:
         self.tokenizer = {}
         self.local_queues = {}
         self.queues = {}
-        self.queue = {}
         self.request = {}
         self.local_endpoints = {}
         self.tei_endpoints = {}
@@ -648,7 +647,7 @@ class ipfs_accelerate_py:
                                 self.resources["queue_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
         return None
     
-    async def model_consumer(self, queue, batch_size, model_name):
+    async def model_consumer(self, queue, batch_size, model):
         # print("consumer started for model " + model_name )
         batch = []
         results = None
@@ -658,54 +657,50 @@ class ipfs_accelerate_py:
                 if queue.empty():
                     if len(batch) == 0:
                         await asyncio.sleep(0.1)
-                    else:
-                        # Process batch
-                        try:
-                            results = await endpoint(batch)
-                        except Exception as e:
-                            try:
-                                results = endpoint(batch)
-                            except Exception as e:
-                                results = e
-                                pass
-                        batch = []
                 else:
-                    item = await queue.get()
-                    batch.append(item)
-                    if len(batch) >= batch_size:
-                        # Process batch
-                        try:
-                            results = await endpoint(batch)
-                        except Exception as e:
-                            try:
-                                results = endpoint(batch)
-                            except Exception as e:
-                                results = e
-                                pass
-                        batch = []
+                    queue_length = queue.qsize()
+                    endpoint_queue_lengths = {}
+                    endpoint_queue_remaining = {}
+                    for model in list(self.resouces["queues"].keys()):
+                        endpoint_queue_lengths[model] = {}
+                        endpoint_queue_remaining[model] = {}
+                        for endpoint in list(self.resources["queues"][model].keys()):
+                            endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
+                            endpoint_queue_remaining[model][endpoint] = self.resources["batch_sizes"][model][endpoint] - endpoint_queue_lengths[model][endpoint]
+                    most_full_endpoint = max(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+                    most_empty_endpoint = min(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+                    if queue_length <= endpoint_queue_remaining[most_empty_endpoint]:
+                        num_added = 0
+                        while not queue.empty() and num_added < endpoint_queue_remaining[most_empty_endpoint]:
+                            item = await queue.get()
+                            self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                            num_added += 1
+                    elif queue_length > endpoint_queue_remaining[most_empty_endpoint]:
+                        while not queue.empty():
+                            num_added = 0
+                            while not queue.empty() and num_added < endpoint_queue_remaining[most_empty_endpoint]:
+                                item = await queue.get()
+                                self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                                num_added += 1
+                            num_added = 0
+                            for endpoint in list(self.resources["queues"][model].keys()):
+                                endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
+                                endpoint_queue_remaining[model][endpoint] = self.resources["batch_sizes"][model][endpoint] - endpoint_queue_lengths[model][endpoint]
+                            most_full_endpoint = max(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+                            most_empty_endpoint = min(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
             except Exception as e:
+                print("error in model_consumer")
                 print(e)
-                pass 
-            if results is not None:
-                for i in range(len(results)):
-                    filtered_result = {}
-                    for key in list(results[i].keys()):
-                        if type(results[i][key]) == Tensor:
-                            filtered_results[key] = results[i][key].tolist()
-                        else:
-                            filtered_results[key] = results[i][key]
-                    self.caches[model_name]["items"] + filtered_results
-                batch = []
         return None
     
     async def queue(self, models, batch_data):
         for model in models:
             for item in range(len(batch_data)):
-                ipfs_cid = self.ipfs_multiformats.ipfs_cid(batch_data[item])
+                ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
                 cid_value = batch_data[item]
                 queue_insert = {ipfs_cid: cid_value}
                 if model in list(self.resources["queues"].keys()):
-                    self.resources["queues"][model].put_nowait(queue_insert)
+                    self.resources["queue"][model].put_nowait(queue_insert)
                     
         return None
     
@@ -713,10 +708,14 @@ class ipfs_accelerate_py:
         return_results  = []
         for model in models:
             while len(batch_data) != return_results:
+                while len(self.resources["caches"][model]["items"]) == 0:
+                    asyncio.sleep(0.1)
                 for item in range(len(batch_data)):
-                    ipfs_cid = self.ipfs_multiformats.ipfs_cid(batch_data[item])
-                    if ipfs_cid in self.caches[model]["items"]:
+                    ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
+                    if ipfs_cid in self.resources["caches"][model]["items"]:
                         return_results.append({ipfs_cid: self.caches[model]["items"][ipfs_cid]})
+                        del self.caches[model]["items"][ipfs_cid]
+                asyncio.sleep(0.1)
         return return_results
     
     async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
