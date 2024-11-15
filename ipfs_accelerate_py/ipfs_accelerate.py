@@ -113,11 +113,7 @@ class ipfs_accelerate_py:
         self.get_https_endpoint = self.get_https_endpoint
         self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
-        self.test_libp2p_endpoint = self.test_libp2p_endpoint
-        self.test_openvino_endpoint = self.test_openvino_endpoint
-        self.test_local_endpoint = self.test_local_endpoint
-        self.test_tei_endpoint = self.test_tei_endpoint
-        
+
         return None
     
     async def test_hardware(self):
@@ -389,7 +385,7 @@ class ipfs_accelerate_py:
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
                             # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["queues"][model][this_endpoint] = None
-                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(1)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
                             self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
                             # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
@@ -426,32 +422,6 @@ class ipfs_accelerate_py:
             new_resources[resource] = self.resources[resource]
         new_resources["endpoints"] = self.endpoints
         return new_resources
-
-    def test_tei_https_endpoint(self, model, endpoint):
-        if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
-            return True
-        return False
-
-    def test_libp2p_endpoint(self, model, endpoint):
-        if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
-            return True
-        return False
-    
-    def test_openvino_endpoint(self, model, endpoint):
-        if model in self.openvino_endpoints and endpoint in self.openvino_endpoints[model]:
-            return True
-        return False
-    
-
-    def get_https_endpoint(self, model):
-        if model in self.tei_endpoints:
-            return self.tei_endpoints[model]
-        return None
-
-    def get_libp2p_endpoint(self, model):
-        if model in self.libp2p_endpoints:
-            return self.libp2p_endpoints[model]
-        return None
 
     def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
@@ -674,7 +644,6 @@ class ipfs_accelerate_py:
                         while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
                             item = await queue.get()
                             self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
-                            del item
                             queue.task_done()
                             num_added += 1
                     elif queue_length > endpoint_queue_remaining[model][most_empty_endpoint]:
@@ -739,15 +708,20 @@ class ipfs_accelerate_py:
                         await asyncio.sleep(0.1)
                     else:
                         # Process batch
+                        items = []
+                        for i in range(len(batch)):
+                            item = batch[i]
+                            items.append(item.values())
                         try:
-                            results = await endpoint(batch)
+                            results = await endpoint(items)
                         except Exception as e:
                             try:
-                                results = endpoint(batch)
+                                results = endpoint(items)
                             except Exception as e:
                                 results = e
                                 pass
-                        batch = []
+                        if type(results) != ValueError:
+                            batch = []
                 else:
                     item = await queue.get()  # Wait for item
                     batch.append(item)
