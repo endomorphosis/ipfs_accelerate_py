@@ -37,6 +37,10 @@ class ipfs_accelerate_py:
             self.resources["consumer_tasks"] = {}
         if "queue_tasks" not in list(self.resources.keys()):
             self.resources["queue_tasks"] = {}
+        if "caches" not in list(self.resources.keys()):
+            self.resources["caches"] = {}
+        if "tokenizer" not in list(self.resources.keys()):
+            self.resources["tokenizer"] = {}
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             try:
@@ -266,7 +270,7 @@ class ipfs_accelerate_py:
                     pass    
         for model in models:
             if model not in self.queues:
-                self.queue[model] = asyncio.Queue(128)
+                self.resources["queue"][model] = asyncio.Queue(128)
             if model not in list(self.resources["consumer_tasks"].keys()):
                 self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:
@@ -333,9 +337,21 @@ class ipfs_accelerate_py:
             if model not in self.queues:    
                 self.queues[model] = {}
             if model not in self.caches:
-                self.caches[model] = {"itmes": []}
+                self.caches[model] = {"items": []}
             if model not in self.batch_sizes:
                 self.batch_sizes[model] = {}
+            if model not in self.resources["batch_sizes"]:
+                self.resources["batch_sizes"][model] = {}
+            if model not in self.resources["queues"]:
+                self.resources["queues"][model] = {}
+            if model not in self.resources["queue"]:
+                self.resources["queue"][model] = {}
+            if model not in self.resources["caches"]:
+                self.resources["caches"][model] = {"items": []}
+            if model not in self.resources["tokenizer"]:
+                self.resources["tokenizer"][model] = {}
+            if model not in self.resources["endpoint_handler"]:
+                self.resources["endpoint_handler"][model] = {}
             if "cpu" not in self.local_endpoints[model]:
                 self.local_endpoints[model]["cpu"] = ""
             if "cpu" not in self.queues[model]:
@@ -377,7 +393,7 @@ class ipfs_accelerate_py:
                             self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
                             self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
-                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
@@ -391,7 +407,7 @@ class ipfs_accelerate_py:
                                     self.resources["batch_sizes"][model][this_endpoint] = 0
                                 self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                                 self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
-                                self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+                                # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -405,7 +421,7 @@ class ipfs_accelerate_py:
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-                            self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
@@ -611,60 +627,65 @@ class ipfs_accelerate_py:
             return success
         return None
     
-    async def create_consumer_tasks(self):
+    async def create_background_tasks(self):
         if "endpoint_handler" in list(self.resources.keys()):
             models = list(self.resources["endpoint_handler"].keys())
             for model in models:
                 for endpoint in self.endpoints_list:
-                    if model in list(self.resources["queues"].keys()):
+                    if model in list(self.resources["endpoint_handler"].keys()):
                         if model not in list(self.resources["consumer_tasks"].keys()):
                             self.resources["consumer_tasks"][model] = {}
                         if model not in list(self.resources["queue_tasks"].keys()):
-                            self.resources["queue_tasks"][model] = {}  
+                            self.resources["queue_tasks"][model] = {}
+                        if model not in list(self.resources["queue"].keys()):
+                            self.resources["queue"][model] = {}  
                         backends = list(self.resources["queues"][model].keys())
                         queues = list(self.resources["queues"][model].keys())
                         for backend in backends:
                             if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["endpoint_handler"][model].keys())and backend not in list(self.resources["consumer_tasks"][model].keys()):
                                 self.resources["consumer_tasks"][model][endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][backend], 64, model, self.resources["endpoint_handler"][model][backend]))
-                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["queue"][model].keys()) and backend not in list(self.resources["queue_tasks"][model].keys()):
+                            if model in list(self.resources["endpoint_handler"].keys()):
                                 self.resources["queue_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
         return None
     
-    async def model_consumer(self, queue, batch_size, model_name, endpoint):
-        print("consumer started for model " + model_name + " at endpoint " + endpoint)
+    async def model_consumer(self, queue, batch_size, model_name):
+        # print("consumer started for model " + model_name )
         batch = []
         results = None
         filtered_results = []
         while True:
-            if queue.empty():
-                if len(batch) == 0:
-                    await asyncio.sleep(0.1)
+            try:
+                if queue.empty():
+                    if len(batch) == 0:
+                        await asyncio.sleep(0.1)
+                    else:
+                        # Process batch
+                        try:
+                            results = await endpoint(batch)
+                        except Exception as e:
+                            try:
+                                results = endpoint(batch)
+                            except Exception as e:
+                                results = e
+                                pass
+                        batch = []
                 else:
-                    # Process batch
-                    try:
-                        results = await endpoint(batch)
-                    except Exception as e:
+                    item = await queue.get()
+                    batch.append(item)
+                    if len(batch) >= batch_size:
+                        # Process batch
                         try:
-                            results = endpoint(batch)
+                            results = await endpoint(batch)
                         except Exception as e:
-                            results = e
-                            pass
-                    batch = []
-            else:
-                item = await queue.get()
-                batch.append(item)
-                if len(batch) >= batch_size:
-                    # Process batch
-                    try:
-                        results = await endpoint(batch)
-                    except Exception as e:
-                        try:
-                            results = endpoint(batch)
-                        except Exception as e:
-                            results = e
-                            pass
-                    batch = []
-                    
+                            try:
+                                results = endpoint(batch)
+                            except Exception as e:
+                                results = e
+                                pass
+                        batch = []
+            except Exception as e:
+                print(e)
+                pass 
             if results is not None:
                 for i in range(len(results)):
                     filtered_result = {}
@@ -699,49 +720,53 @@ class ipfs_accelerate_py:
         return return_results
     
     async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
-        print("consumer started for model " + model_name + " at endpoint " + endpoint)
+        # print("consumer started for model " + model_name + " at endpoint " + endpoint)
         batch = []
         results = None
         filtered_results = []
         while True:
-            if queue.empty():
-                if len(batch) == 0:
-                    await asyncio.sleep(0.1)
+            try:
+                if queue.empty():
+                    if len(batch) == 0:
+                        await asyncio.sleep(0.1)
+                    else:
+                        # Process batch
+                        try:
+                            results = await endpoint(batch)
+                        except Exception as e:
+                            try:
+                                results = endpoint(batch)
+                            except Exception as e:
+                                results = e
+                                pass
+                        batch = []
                 else:
-                    # Process batch
-                    try:
-                        results = await endpoint(batch)
-                    except Exception as e:
+                    item = await queue.get()  # Wait for item
+                    batch.append(item)
+                    if len(batch) >= batch_size:
+                        # Process batch
                         try:
-                            results = endpoint(batch)
+                            results = await endpoint(batch)
                         except Exception as e:
-                            results = e
-                            pass
-                    batch = []
-            else:
-                item = await queue.get()  # Wait for item
-                batch.append(item)
-                if len(batch) >= batch_size:
-                    # Process batch
-                    try:
-                        results = await endpoint(batch)
-                    except Exception as e:
-                        try:
-                            results = endpoint(batch)
-                        except Exception as e:
-                            results = e
-                            pass
-                    batch = []
-            if results is not None:
-                for i in range(len(results)):
-                    filtered_result = {}
-                    for key in list(results[i].keys()):
-                        if type(results[i][key]) == Tensor:
-                            filtered_results[key] = results[i][key].tolist()
-                        else:
-                            filtered_results[key] = results[i][key]
-                    self.caches[model_name]["items"] + filtered_results
-                batch = []  # Clear batch after sending
+                            try:
+                                results = endpoint(batch)
+                            except Exception as e:
+                                results = e
+                                pass
+                        batch = []
+                if results is not None:
+                    for i in range(len(results)):
+                        filtered_result = {}
+                        for key in list(results[i].keys()):
+                            if type(results[i][key]) == Tensor:
+                                filtered_results[key] = results[i][key].tolist()
+                            else:
+                                filtered_results[key] = results[i][key]
+                        self.caches[model_name]["items"] + filtered_results
+                    batch = []  # Clear batch after sending
+            except Exception as e:
+                print(e)
+                pass
         return None
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):

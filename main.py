@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
         # Define your background task here
         while True:
             try:
-                await model_server.resources["ipfs_accelerate_py"].create_consumer_tasks()
+                await model_server.resources["ipfs_accelerate_py"].create_background_tasks()
                 await asyncio.sleep(10)  # Example task
             except Exception as e:
                 print("error in background task")
