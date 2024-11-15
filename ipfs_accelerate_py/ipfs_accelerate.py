@@ -25,6 +25,18 @@ class ipfs_accelerate_py:
             resources = {}
         if metadata is None:
             metadata = {}
+        if "queues" not in list(self.resources.keys()):
+            self.resources["queues"] = {}
+        if "queue" not in list(self.resources.keys()):
+            self.resources["queue"] = {}
+        if "batch_sizes" not in list(self.resources.keys()):
+            self.resources["batch_sizes"] = {}
+        if "endpoint_handler" not in list(self.resources.keys()):
+            self.resources["endpoint_handler"] = {}
+        if "consumer_tasks" not in list(self.resources.keys()):
+            self.resources["consumer_tasks"] = {}
+        if "queue_tasks" not in list(self.resources.keys()):
+            self.resources["queue_tasks"] = {}
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             try:
@@ -102,6 +114,7 @@ class ipfs_accelerate_py:
         self.test_openvino_endpoint = self.test_openvino_endpoint
         self.test_local_endpoint = self.test_local_endpoint
         self.test_tei_endpoint = self.test_tei_endpoint
+        
         return None
     
     async def test_hardware(self):
@@ -236,14 +249,7 @@ class ipfs_accelerate_py:
         return handler
 
     async def init_endpoints(self, models=None, endpoint_list=None):
-        if "queues" not in list(self.resources.keys()):
-            self.resources["queues"] = {}
-        if "batch_sizes" not in list(self.resources.keys()):
-            self.resources["batch_sizes"] = {}
-        if "endpoint_handler" not in list(self.resources.keys()):
-            self.resources["endpoint_handler"] = {}
-        if "consumer_tasks" not in list(self.resources.keys()):
-            self.resources["consumer_tasks"] = {}
+
         endpoint_set = set(endpoint_list)
         for endpoint_type in self.endpoint_types:
             if endpoint_type in endpoint_set:
@@ -613,13 +619,15 @@ class ipfs_accelerate_py:
                     if model in list(self.resources["queues"].keys()):
                         if model not in list(self.resources["consumer_tasks"].keys()):
                             self.resources["consumer_tasks"][model] = {}
+                        if model not in list(self.resources["queue_tasks"].keys()):
+                            self.resources["queue_tasks"][model] = {}  
                         backends = list(self.resources["queues"][model].keys())
                         queues = list(self.resources["queues"][model].keys())
                         for backend in backends:
-                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["endpoint_handler"][model].keys()):
+                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["endpoint_handler"][model].keys())and backend not in list(self.resources["consumer_tasks"][model].keys()):
                                 self.resources["consumer_tasks"][model][endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][backend], 64, model, self.resources["endpoint_handler"][model][backend]))
-                            if model in list(self.resources["queue"].keys()) and backend in list(self.resources["queue"][model].keys()): 
-                                self.resources["consumer_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
+                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["queue"][model].keys()) and backend not in list(self.resources["queue_tasks"][model].keys()):
+                                self.resources["queue_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
         return None
     
     async def model_consumer(self, queue, batch_size, model_name, endpoint):
