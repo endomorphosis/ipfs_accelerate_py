@@ -234,8 +234,4 @@ async def queue(request: InferEndpointRequest, background_tasks: BackgroundTasks
 async def help():
     return {"message": "Please use /init or /test endpoints"}
 
-
-
-
-
 uvicorn.run(app, host="0.0.0.0", port=9999)
