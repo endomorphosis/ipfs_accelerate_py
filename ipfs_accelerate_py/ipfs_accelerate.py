@@ -11,6 +11,7 @@ from transformers import AutoTokenizer
 from transformers import AutoModel
 import hashlib
 import time
+from torch import Tensor
 
 class ipfs_accelerate_py:
     def __init__(self, resources, metadata):
@@ -24,6 +25,22 @@ class ipfs_accelerate_py:
             resources = {}
         if metadata is None:
             metadata = {}
+        if "queues" not in list(self.resources.keys()):
+            self.resources["queues"] = {}
+        if "queue" not in list(self.resources.keys()):
+            self.resources["queue"] = {}
+        if "batch_sizes" not in list(self.resources.keys()):
+            self.resources["batch_sizes"] = {}
+        if "endpoint_handler" not in list(self.resources.keys()):
+            self.resources["endpoint_handler"] = {}
+        if "consumer_tasks" not in list(self.resources.keys()):
+            self.resources["consumer_tasks"] = {}
+        if "queue_tasks" not in list(self.resources.keys()):
+            self.resources["queue_tasks"] = {}
+        if "caches" not in list(self.resources.keys()):
+            self.resources["caches"] = {}
+        if "tokenizer" not in list(self.resources.keys()):
+            self.resources["tokenizer"] = {}
         self.resources["ipfs_accelerate_py"] = self
         if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             try:
@@ -53,6 +70,13 @@ class ipfs_accelerate_py:
                 from worker import worker
             self.worker = worker.worker_py(resources, metadata)
             resources["worker"] = self.worker
+        if "ipfs_multiformats" not in globals():
+            try:
+                from .ipfs_multiformats import ipfs_multiformats_py
+            except:
+                from ipfs_multiformats import ipfs_multiformats_py
+            self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
+            resources["ipfs_multiformats"] = self.ipfs_multiformats
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.endpoints = {}
@@ -63,12 +87,12 @@ class ipfs_accelerate_py:
         self.tokenizer = {}
         self.local_queues = {}
         self.queues = {}
-        self.queue = {}
         self.request = {}
         self.local_endpoints = {}
         self.tei_endpoints = {}
         self.openvino_endpoints = {}
         self.libp2p_endpoints = {}
+        self.caches = {}
         self.endpoint_types = ["tei_endpoints", "openvino_endpoints", "libp2p_endpoints", "local_endpoints"]
         self.add_endpoint = self.add_endpoint
         self.rm_endpoint = self.rm_endpoint
@@ -89,10 +113,7 @@ class ipfs_accelerate_py:
         self.get_https_endpoint = self.get_https_endpoint
         self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
-        self.test_libp2p_endpoint = self.test_libp2p_endpoint
-        self.test_openvino_endpoint = self.test_openvino_endpoint
-        self.test_local_endpoint = self.test_local_endpoint
-        self.test_tei_endpoint = self.test_tei_endpoint
+
         return None
     
     async def test_hardware(self):
@@ -227,12 +248,7 @@ class ipfs_accelerate_py:
         return handler
 
     async def init_endpoints(self, models=None, endpoint_list=None):
-        if "queues" not in list(self.resources.keys()):
-            self.resources["queues"] = {}
-        if "batch_sizes" not in list(self.resources.keys()):
-            self.resources["batch_sizes"] = {}
-        if "endpoint_handler" not in list(self.resources.keys()):
-            self.resources["endpoint_handler"] = {}
+
         endpoint_set = set(endpoint_list)
         for endpoint_type in self.endpoint_types:
             if endpoint_type in endpoint_set:
@@ -247,14 +263,11 @@ class ipfs_accelerate_py:
                     await self.add_endpoint(model, endpoint_type, endpoint_info)
                 else:
                     pass    
-        # for endpoint_type in self.endpoint_types:
-        #     if endpoint_type in resources.keys():
-        #         for endpoint_info in resources[endpoint_type]:
-        #             model, endpoint, context_length = endpoint_info
-        #             await self.add_endpoint(model, endpoint, context_length, endpoint_type)    
         for model in models:
             if model not in self.queues:
-                self.queues[model] = {}
+                self.resources["queue"][model] = asyncio.Queue(128)
+            if model not in list(self.resources["consumer_tasks"].keys()):
+                self.resources["consumer_tasks"][model] = {}
         if type(endpoint_list) == list:
             self.endpoints = { k : v for k, v in enumerate(endpoint_list) if endpoint_list[v] in self.endpoint_types or endpoint_list[k] in self.endpoint_types }
             self.endpoint_list = new_endpoints_list
@@ -318,8 +331,22 @@ class ipfs_accelerate_py:
                 self.local_endpoints[model] = {}
             if model not in self.queues:    
                 self.queues[model] = {}
+            if model not in self.caches:
+                self.caches[model] = {"items": {}}
             if model not in self.batch_sizes:
                 self.batch_sizes[model] = {}
+            if model not in self.resources["batch_sizes"]:
+                self.resources["batch_sizes"][model] = {}
+            if model not in self.resources["queues"]:
+                self.resources["queues"][model] = {}
+            if model not in self.resources["queue"]:
+                self.resources["queue"][model] = {}
+            if model not in self.resources["caches"]:
+                self.resources["caches"][model] = {"items": {}}
+            if model not in self.resources["tokenizer"]:
+                self.resources["tokenizer"][model] = {}
+            if model not in self.resources["endpoint_handler"]:
+                self.resources["endpoint_handler"][model] = {}
             if "cpu" not in self.local_endpoints[model]:
                 self.local_endpoints[model]["cpu"] = ""
             if "cpu" not in self.queues[model]:
@@ -358,9 +385,10 @@ class ipfs_accelerate_py:
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
                             # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
                             self.resources["queues"][model][this_endpoint] = None
-                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
+                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(1)  # Unbounded queue
                             # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
                             self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
+                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "tei_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["tei_endpoints"]) > 0:
                 for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
@@ -371,12 +399,10 @@ class ipfs_accelerate_py:
                             context_length = endpoint[2]
                             if model == this_model:
                                 if endpoint not in list(self.batch_sizes[model].keys()):
-                                    # self.batch_sizes[model][this_endpoint] =  0
                                     self.resources["batch_sizes"][model][this_endpoint] = 0
-                                # self.queues[model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                                 self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                                # self.endpoint_handler[model][this_endpoint] = self.make_post_request(self.request_tei_endpoint(model, endpoint=this_endpoint, endpoint_type="tei_endpoints"))
                                 self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
+                                # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         if "libp2p_endpoints" in list(self.endpoints.keys()):
             if len(self.endpoints["libp2p_endpoints"]) > 0:
                 for endpoint in self.endpoints["libp2p_endpoints"]:
@@ -388,41 +414,14 @@ class ipfs_accelerate_py:
                             if endpoint not in list(self.batch_sizes[model].keys()):
                                 # self.batch_sizes[model][this_endpoint] =  0
                                 self.resources["batch_sizes"][model][this_endpoint] = 0
-                            # self.queues[model][endpoint] = asyncio.Queue(64) # Unbounded queue
                             self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            # self.endpoint_handler[model][endpoint] = self.make_post_request_libp2p(self.request_libp2p_endpoint(model))
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
+                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
         for resource in resource_list:
             new_resources[resource] = self.resources[resource]
         new_resources["endpoints"] = self.endpoints
         return new_resources
-
-    def test_tei_https_endpoint(self, model, endpoint):
-        if model in self.tei_endpoints and endpoint in self.tei_endpoints[model]:
-            return True
-        return False
-
-    def test_libp2p_endpoint(self, model, endpoint):
-        if model in self.libp2p_endpoints and endpoint in self.libp2p_endpoints[model]:
-            return True
-        return False
-    
-    def test_openvino_endpoint(self, model, endpoint):
-        if model in self.openvino_endpoints and endpoint in self.openvino_endpoints[model]:
-            return True
-        return False
-    
-
-    def get_https_endpoint(self, model):
-        if model in self.tei_endpoints:
-            return self.tei_endpoints[model]
-        return None
-
-    def get_libp2p_endpoint(self, model):
-        if model in self.libp2p_endpoints:
-            return self.libp2p_endpoints[model]
-        return None
 
     def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
@@ -595,6 +594,198 @@ class ipfs_accelerate_py:
                 print(e)
                 pass
             return success
+        return None
+    
+    async def create_background_tasks(self):
+        if "endpoint_handler" in list(self.resources.keys()):
+            models = list(self.resources["endpoint_handler"].keys())
+            for model in models:
+                for endpoint in self.endpoints_list:
+                    if model in list(self.resources["endpoint_handler"].keys()):
+                        if model not in list(self.resources["consumer_tasks"].keys()):
+                            self.resources["consumer_tasks"][model] = {}
+                        if model not in list(self.resources["queue_tasks"].keys()):
+                            self.resources["queue_tasks"][model] = {}
+                        if model not in list(self.resources["queue"].keys()):
+                            self.resources["queue"][model] = {}  
+                        backends = list(self.resources["queues"][model].keys())
+                        queues = list(self.resources["queues"][model].keys())
+                        for backend in backends:
+                            if model in list(self.resources["endpoint_handler"].keys()) and backend in list(self.resources["endpoint_handler"][model].keys())and backend not in list(self.resources["consumer_tasks"][model].keys()):
+                                self.resources["consumer_tasks"][model][endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][backend], 64, model, self.resources["endpoint_handler"][model][backend]))
+                            if model in list(self.resources["endpoint_handler"].keys()):
+                                self.resources["queue_tasks"][model][backend] = asyncio.create_task(self.model_consumer(self.resources["queue"][model], 64, model))
+        return None
+    
+    async def model_consumer(self, queue, batch_size, model):
+        # print("consumer started for model " + model_name )
+        batch = []
+        results = None
+        filtered_results = []
+        while True:
+            try:
+                if queue.empty():
+                    if len(batch) == 0:
+                        await asyncio.sleep(0.1)
+                else:
+                    queue_length = queue.qsize()
+                    endpoint_queue_lengths = {}
+                    endpoint_queue_remaining = {}
+                    for model in list(self.resources["queues"].keys()):
+                        endpoint_queue_lengths[model] = {}
+                        endpoint_queue_remaining[model] = {}
+                        for endpoint in list(self.resources["queues"][model].keys()):
+                            endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
+                            endpoint_queue_remaining[model][endpoint] = self.resources["queues"][model][endpoint]._maxsize - self.resources["queues"][model][endpoint].qsize()
+                    most_empty_endpoint = max(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
+                    most_full_endpoint = min(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
+                    if queue_length <= endpoint_queue_remaining[model][most_empty_endpoint]:
+                        num_added = 0
+                        while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
+                            item = await queue.get()
+                            self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                            queue.task_done()
+                            num_added += 1
+                    elif queue_length > endpoint_queue_remaining[model][most_empty_endpoint]:
+                        while not queue.empty():
+                            num_added = 0
+                            while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
+                                item = await queue.get()
+                                self.resources["queues"][model][most_empty_endpoint].put_nowait(item)                        
+                                num_added += 1
+                                del item
+                                queue.task_done()
+                            num_added = 0
+                            for endpoint in list(self.resources["queues"][model].keys()):
+                                endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
+                                endpoint_queue_remaining[model][endpoint] = self.resources["batch_sizes"][model][endpoint] - endpoint_queue_lengths[model][endpoint]
+                            most_full_endpoint = max(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+                            most_empty_endpoint = min(endpoint_queue_remaining, key=endpoint_queue_remaining.get)
+            except Exception as e:
+                print("error in model_consumer")
+                print(e)
+        return None
+    
+    async def queue(self, models, batch_data):
+        for model in models:
+            for item in range(len(batch_data)):
+                ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
+                cid_value = batch_data[item]
+                queue_insert = {ipfs_cid: cid_value}
+                if model in list(self.resources["queues"].keys()):
+                    self.resources["queue"][model].put_nowait(queue_insert)
+                    
+        return None
+    
+    async def fetch(self, models, batch_data):
+        return_results  = []
+        for model in models:
+            while len(batch_data) != len(return_results):
+                while len(self.resources["caches"][model]["items"]) == 0:
+                    if model in list(self.resources["queue"].keys()):
+                        if self.resources["queue"][model].empty():
+                            await asyncio.sleep(0.1)
+                        else:
+                            print("queue not empty")
+                            await asyncio.sleep(0.1)       
+                for item in range(len(batch_data)):
+                    ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
+                    if ipfs_cid in list(self.resources["caches"][model]["items"].keys()):
+                        return_results.append({ipfs_cid: self.resources["caches"][model]["items"][ipfs_cid]})
+                        del self.resources["caches"][model]["items"][ipfs_cid]
+                await asyncio.sleep(0.1)
+        return return_results
+    
+    async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
+        # print("consumer started for model " + model_name + " at endpoint " + endpoint)
+        batch = []
+        results = None
+        filtered_results = {}
+        items = []
+        cids = []
+        while True:
+            try:
+                if queue.empty():
+                    if len(batch) == 0:
+                        await asyncio.sleep(0.1)
+                    else:
+                        # Process batch
+                        items = []
+                        cids = []
+                        for i in range(len(batch)):
+                            item = batch[i]
+                            key = list(item.keys())[0]
+                            value = item[key]
+                            items.append(value)
+                            cids.append(key)
+                        try:
+                            results = await endpoint(items)
+                        except Exception as e:
+                            results = e
+                        if type(results) == ValueError or type(results) == Exception or type(results) or TypeError:
+                            try:
+                                results = endpoint(items)
+                            except Exception as e:
+                                results = e
+                                pass
+                        if type(results) != ValueError and results is not None:
+                            print(results)
+                            filtered_results = {}
+                            for key in list(results.keys()):
+                                if type(results[key]) == Tensor:
+                                    tensor_list = results[key].tolist()
+                                    filtered_results[key] = tensor_list
+                                else:
+                                    filtered_results[key] = results[key]
+                            filtered_results = [filtered_results]
+                            if len(cids) <= 1:
+                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
+                            else:
+                                for i in range(len(cids)):
+                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
+                            batch = []
+                else:
+                    item = await queue.get()  # Wait for item
+                    batch.append(item)
+                    if len(batch) >= batch_size:
+                        for i in range(len(batch)):
+                            if i <= batch_size:
+                                item = batch[i]
+                                key = list(item.keys())[0]
+                                value = item[key]
+                                items.append(value)
+                        try:
+                            results = await endpoint(items)
+                        except Exception as e:
+                            results = e
+                        try:
+                            results = endpoint(items)
+                        except Exception as e:
+                            results = e
+                            pass
+                        if type(results) != ValueError:
+                            print(results)
+                            self.resources["caches"][model_name]["items"] + results
+                            batch = []
+                        if type(results) != ValueError and results is not None:
+                            print(results)
+                            filtered_results = {}
+                            for key in list(results.keys()):
+                                if type(results[key]) == Tensor:
+                                    tensor_list = results[key].tolist()
+                                    filtered_results[key] = tensor_list
+                                else:
+                                    filtered_results[key] = results[key]
+                            filtered_results = [filtered_results]
+                            if len(cids) <= 1:
+                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
+                            else:
+                                for i in range(len(cids)):
+                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
+                            batch = []
+            except Exception as e:
+                print(e)
+                pass
         return None
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):
