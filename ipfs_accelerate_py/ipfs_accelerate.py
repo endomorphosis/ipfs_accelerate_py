@@ -332,7 +332,7 @@ class ipfs_accelerate_py:
             if model not in self.queues:    
                 self.queues[model] = {}
             if model not in self.caches:
-                self.caches[model] = {"items": []}
+                self.caches[model] = {"items": {}}
             if model not in self.batch_sizes:
                 self.batch_sizes[model] = {}
             if model not in self.resources["batch_sizes"]:
@@ -342,7 +342,7 @@ class ipfs_accelerate_py:
             if model not in self.resources["queue"]:
                 self.resources["queue"][model] = {}
             if model not in self.resources["caches"]:
-                self.resources["caches"][model] = {"items": []}
+                self.resources["caches"][model] = {"items": {}}
             if model not in self.resources["tokenizer"]:
                 self.resources["tokenizer"][model] = {}
             if model not in self.resources["endpoint_handler"]:
@@ -637,8 +637,8 @@ class ipfs_accelerate_py:
                         for endpoint in list(self.resources["queues"][model].keys()):
                             endpoint_queue_lengths[model][endpoint] = self.resources["queues"][model][endpoint].qsize()
                             endpoint_queue_remaining[model][endpoint] = self.resources["queues"][model][endpoint]._maxsize - self.resources["queues"][model][endpoint].qsize()
-                    most_full_endpoint = max(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
-                    most_empty_endpoint = min(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
+                    most_empty_endpoint = max(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
+                    most_full_endpoint = min(endpoint_queue_remaining[model], key=endpoint_queue_remaining[model].get)
                     if queue_length <= endpoint_queue_remaining[model][most_empty_endpoint]:
                         num_added = 0
                         while not queue.empty() and num_added < endpoint_queue_remaining[model][most_empty_endpoint]:
@@ -680,7 +680,7 @@ class ipfs_accelerate_py:
     async def fetch(self, models, batch_data):
         return_results  = []
         for model in models:
-            while len(batch_data) != return_results:
+            while len(batch_data) != len(return_results):
                 while len(self.resources["caches"][model]["items"]) == 0:
                     if model in list(self.resources["queue"].keys()):
                         if self.resources["queue"][model].empty():
@@ -690,9 +690,9 @@ class ipfs_accelerate_py:
                             await asyncio.sleep(0.1)       
                 for item in range(len(batch_data)):
                     ipfs_cid = self.ipfs_multiformats.get_cid(batch_data[item])
-                    if ipfs_cid in self.resources["caches"][model]["items"]:
-                        return_results.append({ipfs_cid: self.caches[model]["items"][ipfs_cid]})
-                        del self.caches[model]["items"][ipfs_cid]
+                    if ipfs_cid in list(self.resources["caches"][model]["items"].keys()):
+                        return_results.append({ipfs_cid: self.resources["caches"][model]["items"][ipfs_cid]})
+                        del self.resources["caches"][model]["items"][ipfs_cid]
                 await asyncio.sleep(0.1)
         return return_results
     
@@ -700,7 +700,9 @@ class ipfs_accelerate_py:
         # print("consumer started for model " + model_name + " at endpoint " + endpoint)
         batch = []
         results = None
-        filtered_results = []
+        filtered_results = {}
+        items = []
+        cids = []
         while True:
             try:
                 if queue.empty():
@@ -709,43 +711,78 @@ class ipfs_accelerate_py:
                     else:
                         # Process batch
                         items = []
+                        cids = []
                         for i in range(len(batch)):
                             item = batch[i]
-                            items.append(item.values())
+                            key = list(item.keys())[0]
+                            value = item[key]
+                            items.append(value)
+                            cids.append(key)
                         try:
                             results = await endpoint(items)
                         except Exception as e:
+                            results = e
+                        if type(results) == ValueError or type(results) == Exception or type(results) or TypeError:
                             try:
                                 results = endpoint(items)
                             except Exception as e:
                                 results = e
                                 pass
-                        if type(results) != ValueError:
+                        if type(results) != ValueError and results is not None:
+                            print(results)
+                            filtered_results = {}
+                            for key in list(results.keys()):
+                                if type(results[key]) == Tensor:
+                                    tensor_list = results[key].tolist()
+                                    filtered_results[key] = tensor_list
+                                else:
+                                    filtered_results[key] = results[key]
+                            filtered_results = [filtered_results]
+                            if len(cids) <= 1:
+                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
+                            else:
+                                for i in range(len(cids)):
+                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
                             batch = []
                 else:
                     item = await queue.get()  # Wait for item
                     batch.append(item)
                     if len(batch) >= batch_size:
-                        # Process batch
+                        for i in range(len(batch)):
+                            if i <= batch_size:
+                                item = batch[i]
+                                key = list(item.keys())[0]
+                                value = item[key]
+                                items.append(value)
                         try:
-                            results = await endpoint(batch)
+                            results = await endpoint(items)
                         except Exception as e:
-                            try:
-                                results = endpoint(batch)
-                            except Exception as e:
-                                results = e
-                                pass
-                        batch = []
-                if results is not None:
-                    for i in range(len(results)):
-                        filtered_result = {}
-                        for key in list(results[i].keys()):
-                            if type(results[i][key]) == Tensor:
-                                filtered_results[key] = results[i][key].tolist()
+                            results = e
+                        try:
+                            results = endpoint(items)
+                        except Exception as e:
+                            results = e
+                            pass
+                        if type(results) != ValueError:
+                            print(results)
+                            self.resources["caches"][model_name]["items"] + results
+                            batch = []
+                        if type(results) != ValueError and results is not None:
+                            print(results)
+                            filtered_results = {}
+                            for key in list(results.keys()):
+                                if type(results[key]) == Tensor:
+                                    tensor_list = results[key].tolist()
+                                    filtered_results[key] = tensor_list
+                                else:
+                                    filtered_results[key] = results[key]
+                            filtered_results = [filtered_results]
+                            if len(cids) <= 1:
+                                self.resources["caches"][model_name]["items"][cids[0]] = filtered_results[0]
                             else:
-                                filtered_results[key] = results[i][key]
-                        self.caches[model_name]["items"] + filtered_results
-                    batch = []  # Clear batch after sending
+                                for i in range(len(cids)):
+                                    self.resources["caches"][model_name]["items"][cids[i]] = filtered_results[i]
+                            batch = []
             except Exception as e:
                 print(e)
                 pass
