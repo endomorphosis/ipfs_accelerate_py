@@ -18,6 +18,47 @@ class install_depends_py():
         elif "test_ipfs_accelerate" in globals():
             self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
 
+
+    
+    async def test_hardware(self):
+        install_file_hash = None
+        test_results_file = None
+        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends", "install_depends.py")
+        if os.path.exists(install_depends_filename):
+            ## get the sha256 hash of the file
+            sha256 = hashlib.sha256()
+            with open(install_depends_filename, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096),b""):
+                    sha256.update(byte_block)
+            install_file_hash = sha256.hexdigest()
+            test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
+            if os.path.exists(test_results_file):
+                try:
+                    with open(test_results_file, "r") as f:
+                        test_results = json.load(f)
+                        return test_results
+                except Exception as e:
+                    try:
+                        test_results = await self.install_depends.test_hardware()
+                        with open(test_results_file, "w") as f:
+                            json.dump(test_results, f)
+                        return test_results
+                    except Exception as e:
+                        print(e)
+                        return e
+            else:
+                try:
+                    test_results = await self.install_depends.test_hardware()
+                    with open(test_results_file, "w") as f:
+                        json.dump(test_results, f)
+                    return test_results
+                except Exception as e:
+                    print(e)
+                    return e
+        else: 
+            raise ValueError("install_depends.py not found")
+        return test_results
+    
     
     async def install(self, resources=None):        
         if resources is None:

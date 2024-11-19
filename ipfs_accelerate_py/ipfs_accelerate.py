@@ -361,7 +361,7 @@ class ipfs_accelerate_py:
             self.worker_resources = e
             pass
         
-        if type(self.worker_resources) is not ValueError:
+        if type(self.worker_resources) is not ValueError and type(self.worker_resources) is not Exception and type(self.worker_resources) is not TypeError:
             resource_list = list(self.worker_resources.keys())
             for resource in resource_list:
                 if resource not in list(self.resources.keys()):
@@ -418,9 +418,10 @@ class ipfs_accelerate_py:
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
                             # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
-        for resource in resource_list:
-            new_resources[resource] = self.resources[resource]
-        new_resources["endpoints"] = self.endpoints
+        if "resource_list" in globals() or "resource_list" in locals():
+            for resource in resource_list:
+                new_resources[resource] = self.resources[resource]
+            new_resources["endpoints"] = self.endpoints
         return new_resources
 
     def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
