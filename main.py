@@ -1,10 +1,12 @@
 from typing import Union
 import uvicorn
+import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from ipfs_accelerate_py import ipfs_accelerate_py
 from pydantic import BaseModel
 import json
 from torch import Tensor
+from contextlib import asynccontextmanager
 
 class InitEndpointsRequest(BaseModel):
     models: list
@@ -15,6 +17,10 @@ class TestEndpointRequest(BaseModel):
     resources: dict[str, list[list[str]]]
 
 class InferEndpointRequest(BaseModel):
+    models: list
+    batch_data: list[str]
+    
+class QueueRequest(BaseModel):
     models: list
     batch_data: list[str]
 
@@ -31,7 +37,24 @@ class RmEndpointRequest(BaseModel):
 class InitStatusRequest(BaseModel):    
     models: list[str]
     
-app = FastAPI(port=9999)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def background_task():
+        # Define your background task here
+        while True:
+            try:
+                await model_server.resources["ipfs_accelerate_py"].create_background_tasks()
+                await asyncio.sleep(10)  # Example task
+            except Exception as e:
+                print("error in background task")
+                print(e)
+                await asyncio.sleep(10)
+    task = asyncio.create_task(background_task())
+    yield
+    task.cancel()
+    
+app = FastAPI(lifespan=lifespan, port=9999)
+# app = FastAPI(port=9999)
 resources = {}
 metadata = {}
 
@@ -45,6 +68,19 @@ class ModelServer:
         self.metadata = metadata
         self.resources["ipfs_accelerate_py"] = ipfs_accelerate_py(self.resources, self.metadata)
         return 
+    
+    async def queueTask(self, models: list, batch_data: list):
+        queue_results = {}
+        try:
+            queue_results["queue"] = await self.resources["ipfs_accelerate_py"].queue(models, batch_data)
+        except Exception as e:
+            queue_results["queue"] = e
+        fetch_results = {}
+        try:
+            fetch_results["queue"] = await self.resources["ipfs_accelerate_py"].fetch(models, batch_data)
+        except Exception as e:
+            fetch_results["queue"] = e
+        return fetch_results
 
     async def initEndpointsTask(self, models: list, resources: dict):
         results = {}
@@ -56,7 +92,7 @@ class ModelServer:
         formatted_results = {k: str(v) for k, v in formatted_results.items() if k in ["batch_sizes", "endpoints", "hwtest"]} 
         return formatted_results
 
-    async def init_endpoints (self, models: list, resources: dict):
+    async def init_endpoints(self, models: list, resources: dict):
         try:
             return await self.resources["ipfs_accelerate_py"].init_endpoints(models, resources)
         except Exception as e:
@@ -184,6 +220,15 @@ async def infer(request: InferEndpointRequest, background_tasks: BackgroundTasks
     except Exception as e:
         infer_results["infer"] = e
     return {"message": json.dumps(infer_results)}
+
+@app.post("/queue")
+async def queue(request: InferEndpointRequest, background_tasks: BackgroundTasks):
+    queue_results = {}
+    try:
+        queue_results["queue"] = await model_server.queueTask(request.models, request.batch_data) 
+    except Exception as e:
+        queue_results["queue"] = e
+    return {"message": json.dumps(queue_results)}
 
 @app.post("/")
 async def help():
