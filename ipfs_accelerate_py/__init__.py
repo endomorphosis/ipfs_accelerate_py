@@ -6,6 +6,7 @@ from .install_depends import install_depends
 from .test_ipfs_accelerate import test_ipfs_accelerate
 from .ipfs_accelerate import ipfs_accelerate_py
 from .test_backend import test_backend_py
+from .ipfs_multiformats import ipfs_multiformats_py
 export = {
     "backends": backends,
     "config": config,
@@ -14,5 +15,6 @@ export = {
     "install_depends": install_depends,
     "endpoints": endpoints,
     "ipfs_accelerate_py": ipfs_accelerate_py,
-    "worker": worker
+    "worker": worker,
+    "ipfs_multiformats_py": ipfs_multiformats_py
 }

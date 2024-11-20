@@ -418,6 +418,7 @@ class ipfs_accelerate_py:
                             self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
                             # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
+        resource_list = ["queues", "queue", "batch_sizes", "endpoint_handler", "consumer_tasks", "caches", "tokenizer"]
         if "resource_list" in globals() or "resource_list" in locals():
             for resource in resource_list:
                 new_resources[resource] = self.resources[resource]
@@ -570,7 +571,7 @@ class ipfs_accelerate_py:
                     self.__dict__[endpoint_type][model] = {}
                 if endpoint not in list(self.__dict__[endpoint_type][model].keys()):
                     self.__dict__[endpoint_type][model][backend] = context_length
-                self.endpoint_status[endpoint] = context_length
+                # self.endpoint_status[endpoint] = context_length
                 success = True
             except Exception as e:
                 print(e)
