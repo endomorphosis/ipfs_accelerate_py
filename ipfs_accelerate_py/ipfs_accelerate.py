@@ -1058,52 +1058,28 @@ class ipfs_accelerate_py:
             pass
         return test_results
     
-    async def test_tei_endpoint(self, model, endpoint_list=None):
+    async def test_tei_endpoint_bak(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
         test_results = {}
-        tei_endpoints = self.endpoints["tei_endpoints"]
-        tei_endpoints_by_model = list(self.tei_endpoints.keys())
-        endpoint_handlers_by_model = list(self.resources["endpoint_handler"][model].keys())
-        if endpoint_list is not None:            
-            for endpoint in tei_endpoints:
-                    this_model = endpoint[0]
-                    this_endpoint = endpoint[1]
-                    this_data = endpoint[2]
-                    if this_model == model and this_endpoint == endpoint:
-                        filtered_list[this_endpoint] = endpoint
-        if this_endpoint is not None:
-            endpoint_list = [model,endpoint,""]
-            for endpoint in tei_endpoints:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model == endpoint_list[0] and this_endpoint == endpoint_list[1]:
-                    filtered_list[this_endpoint] = endpoint
-        else:
-            endpoint_list = [model,"",""]
-            for endpoint in tei_endpoints:
-                print(endpoint)
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model == model:
-                    filtered_list[this_endpoint] = endpoint
-        endpoint_handlers = {}
-        if len(filtered_list.keys()) > 0:
-            for endpoint in list(filtered_list.keys()):
-                if endpoint in endpoint_handlers_by_model:
-                    endpoint_handlers[endpoint] = self.resources["endpoint_handler"][model][endpoint]
-        else:
-            return ValueError("No endpoints found")
-        if len(endpoint_handlers) > 0:
-            for endpoint in list(endpoint_handlers.keys()):
+        local_endpoints = self.resources["tei_endpoints"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
+        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+        if len(local_endpoints_by_model_by_endpoint) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
                 try:
-                    endpoint_handler = endpoint_handlers[endpoint]
-                    test = await endpoint_handlers[endpoint]({"inputs": "hello world"})
+                    test = await endpoint_handler("hello world")
                     test_results[endpoint] = test
                 except Exception as e:
-                    test_results[endpoint] = e
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
                     pass
         else:
             return ValueError("No endpoint_handlers found")
@@ -1112,57 +1088,28 @@ class ipfs_accelerate_py:
     async def test_libp2p_endpoint(self, model, endpoint=None):
         return ValueError("Not implemented")
 
-    async def test_openvino_endpoint(self, model, endpoint=None):
+    async def test_openvino_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
-        filtered_list = []
+        filtered_list = {}
         test_results = {}
-        if type(model) is str:
-            model = [model]
-        if endpoint is not None:
-            for endpoint in self.resources["openvino_endpoints"]:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model[0] == model and this_endpoint == endpoint:
-                    filtered_list.append(endpoint)
-        if this_endpoint is not None:
-            endpoint_list = [model[0],endpoint,""]
-            for endpoint in self.resources["openvino_endpoints"]:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model[0] == endpoint_list[0] and this_endpoint == endpoint_list[1]:
-                    filtered_list.append(endpoint)            
-        else:
-            endpoint_list = [model[0],"",""]
-            for endpoint in self.resources["openvino_endpoints"]:
-                print(endpoint)
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model == endpoint_list[0]:
-                    filtered_list.append(endpoint)
-        endpoint_handlers = []
-        if len(filtered_list) > 0:
-            for endpoint in filtered_list:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                endpoint_handler = self.endpoint_handler[this_model][this_endpoint]
-                endpoint_handlers.append((this_model, this_endpoint, endpoint_handler))
-        else:
-            return ValueError("No endpoints found")
-        if len(endpoint_handlers) > 0:
-            for i in endpoint_handlers:
-                model = i[0]
-                endpoint = i[1]
-                endpoint_handler = i[2]
-                test_endpoint = False
+        local_endpoints = self.resources["openvino_endpoints"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
+        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+        if len(local_endpoints_by_model_by_endpoint) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
                 try:
-                    test_endpoint = endpoint_handler("hello world")
-                    test_results[endpoint] = test_endpoint
+                    test = await endpoint_handler("hello world")
+                    test_results[endpoint] = test
                 except Exception as e:
-                    test_results[endpoint] = e
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
                     pass
         else:
             return ValueError("No endpoint_handlers found")
@@ -1173,42 +1120,23 @@ class ipfs_accelerate_py:
         filtered_list = {}
         test_results = {}
         local_endpoints = self.resources["local_endpoints"]
-        local_endpoints_by_model = self.resources["local_endpoints"][model]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["local_endpoints"][model]
         endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
-        local_endpoints_by_model_by_endpoint = list(local_endpoints_by_model.keys())
-        if endpoint_list is not None:
-            for endpoint in local_endpoints:
-                this_model = endpoint[0]
-                this_endpoint = endpoint[1]
-                this_data = endpoint[2]
-                if this_model[0] == model and this_endpoint == endpoint:
-                    filtered_list[this_endpoint] = self.endpoint_handler[this_model][this_endpoint]
-        if endpoint_list is not None:
-            endpoint_list = [model,endpoint_list,""]
-            for endpoint in list(local_endpoints.keys()):
-                if endpoint in local_endpoints_by_model_by_endpoint:
-                    this_endpoint = endpoint_handlers_by_model[endpoint]
-                    filtered_list[endpoint] = local_endpoints[endpoint]            
-        else:
-            endpoint_list = [model,"",""]
-            for endpoint in local_endpoints_by_model:
-                if endpoint in local_endpoints_by_model_by_endpoint:
-                    this_endpoint = endpoint_handlers_by_model[endpoint]        
-                    filtered_list[endpoint] = this_endpoint
-        endpoint_handlers = {}
-        if len(filtered_list.keys()) > 0:
-            for endpoint in filtered_list:
-                endpoint_handlers[endpoint] = filtered_list[endpoint]
-        else:
-            return ValueError("No endpoints found")
-        if len(endpoint_handlers) > 0:
-            for endpoint in list(endpoint_handlers.keys()):
+        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+        if len(local_endpoints_by_model_by_endpoint) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
                 try:
-                    endpoint_handler = endpoint_handlers[endpoint]
-                    test = endpoint_handler("hello world")
+                    test = await endpoint_handler("hello world")
                     test_results[endpoint] = test
                 except Exception as e:
-                    test_results[endpoint] = e
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
                     pass
         else:
             return ValueError("No endpoint_handlers found")
