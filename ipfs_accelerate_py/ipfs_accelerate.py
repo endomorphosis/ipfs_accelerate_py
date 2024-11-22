@@ -127,7 +127,8 @@ class ipfs_accelerate_py:
                 for byte_block in iter(lambda: f.read(4096),b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
-            test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"test", install_file_hash + ".json")
+            test_results_file = "/tmp/" + install_file_hash + ".json"
+            # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"test", install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
@@ -1058,7 +1059,7 @@ class ipfs_accelerate_py:
             pass
         return test_results
     
-    async def test_tei_endpoint_bak(self, model, endpoint_list=None):
+    async def test_tei_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
         test_results = {}
@@ -1530,9 +1531,9 @@ if __name__ == "__main__":
             ["thenlper/gte-small", "cuda:1", 512],
             ["Alibaba-NLP/gte-large-en-v1.5", "cuda:1", 8192],
             ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cuda:1", 32768],
-            ["thenlper/gte-small", "openvino", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "openvino", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "openvino", 32768],
+            ["thenlper/gte-small", "openvino:0", 512],
+            ["Alibaba-NLP/gte-large-en-v1.5", "openvino:0", 8192],
+            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "openvino:0", 32768],
             ["thenlper/gte-small", "llama_cpp", 512],
             ["Alibaba-NLP/gte-large-en-v1.5", "llama_cpp", 8192],
             ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "llama_cpp", 32768],

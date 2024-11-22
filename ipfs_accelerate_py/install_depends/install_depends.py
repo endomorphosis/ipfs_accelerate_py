@@ -30,7 +30,8 @@ class install_depends_py():
                 for byte_block in iter(lambda: f.read(4096),b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
-            test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
+            test_results_file = "/tmp/" + install_file_hash + ".json"
+            # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
