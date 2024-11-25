@@ -265,7 +265,18 @@ class worker_py:
         def handler(x):
             self.local_endpoints[endpoint_model][cuda_label].eval()
             tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt', padding=True, truncation=True).to(self.local_endpoints[endpoint_model][cuda_label].device)
-            results = self.local_endpoints[endpoint_model][cuda_label](**tokens)
+            new_tokens = []
+            context_length = self.endpoint_handler[endpoint_model][cuda_label].context_length
+            # min_token_lengh = min([len(tokens[i]) for i in range(0, len(tokens))])
+            min_token_lengh = min([tokens[i].shape[1] for i in range(0, len(tokens))])
+            if min_token_lengh < context_length:
+                context_length = min_token_lengh
+            for i in range(0, len(tokens)): 
+                if tokens[i].shape[1] > context_length:
+                    new_tokens.append(tokens[i][:, :context_length])
+                else:
+                    new_tokens.append(tokens[i])                
+            results = self.local_endpoints[endpoint_model][cuda_label](**new_tokens)
             return results
         return handler
     

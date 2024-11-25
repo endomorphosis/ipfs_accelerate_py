@@ -1496,7 +1496,12 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
-        results = {"ipfs_accelerate_init": ipfs_accelerate_init,"test_endpoints": test_endpoints}
+        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        results = {
+            "ipfs_accelerate_init": ipfs_accelerate_init,
+            "test_endpoints": test_endpoints,
+            # "test_batch_sizes": test_batch_sizes
+        }
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
