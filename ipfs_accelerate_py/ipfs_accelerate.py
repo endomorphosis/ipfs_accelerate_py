@@ -128,7 +128,6 @@ class ipfs_accelerate_py:
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = "/tmp/" + install_file_hash + ".json"
-            # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"test", install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
@@ -1028,8 +1027,11 @@ class ipfs_accelerate_py:
             test_results[model]["endpoint_handler_resources"] = e
             test_results["batch_sizes"] = {}
             test_results["endpoint_handler"] = {}            
+        return test_results
+    
+    async def test_batch_sizes(self, model, endpoint_handler_object=None):
+        test_results = {}
         try:    
-            batch_sizes = self.resources["batch_sizes"]
             endpoint_handler = self.resources["endpoint_handler"]
             endpoint_tests = {}
             batch_sizes = {}

@@ -264,7 +264,7 @@ class worker_py:
     def create_endpoint_handler(self, endpoint_model, cuda_label):
         def handler(x):
             self.local_endpoints[endpoint_model][cuda_label].eval()
-            tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt').to(self.local_endpoints[endpoint_model][cuda_label].device)
+            tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt', padding=True, truncation=True).to(self.local_endpoints[endpoint_model][cuda_label].device)
             results = self.local_endpoints[endpoint_model][cuda_label](**tokens)
             return results
         return handler
@@ -351,7 +351,7 @@ class worker_py:
                                         endpoint_model = this_model
                             cuda_label = self.local_endpoint_types[cuda_index]
                             self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True)
-                            self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model).to(device)
+                            self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model,).to(device)
                             self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
