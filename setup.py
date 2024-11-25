@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.35',
+	version='0.0.36',
     packages=find_packages(),
 	install_requires=[
 		'ipfs_kit_py',

@@ -1496,10 +1496,73 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
+        sentence_1 = '''The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        The quick brown fox jumps over the lazy dog. \n
+        '''
+        sentence_2 = "Now is the time for all good Men to come to the aid of their country."
+        batch = [sentence_1, sentence_2]
+        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"](batch)
+        
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         results = {
             "ipfs_accelerate_init": ipfs_accelerate_init,
             "test_endpoints": test_endpoints,
+            "test_batch": test_batch,
             # "test_batch_sizes": test_batch_sizes
         }
         return results
@@ -1574,7 +1637,11 @@ if __name__ == "__main__":
             # ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8083/embed-small", 8192],
             # ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8083/embed-medium", 32768],
             # ["thenlper/gte-small", "http://62.146.169.111:8083/embed-tiny", 512]
-        ]
+        ],
+        "vllm_endpoints": [
+        ],
+        "openai_endpoints": [
+        ],
     }
     ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
