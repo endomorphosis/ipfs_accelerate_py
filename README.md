@@ -3,12 +3,25 @@
 This is meant to be an extension of the Huggingface accelerate library, is to act as a model server, which can contain lists of other endpoints to call, or can call a local instance, and can respond to external calls for inference. I have some modular back ends, such as Libp2p, Akash, Lilypad, Huggingface Zero, Vast AI, which I use for autoscaling. If the model is already listed in the ipfs_model_manager there should be an associated hw_requirements key of the manifest. In the case of libp2p the request to do inference will go out to peers in the same trusted zone, if there are no peers in the network available to fulfill the task, and it has the resources to run the model localliy it will do so, otherwise a docker container will need to be launched with one of the providers here. 
 
 # Instructions:
+
+run.sh -- this will run the model server
+
 init.sh -- this will initialize the endpoints and models that you want to use
 
 queue.sh -- this will add an item to the model queue, and the endpoints will pull items from their model queue.
 
 infer.sh -- this will select a random endpoint for the requested model to perform inference.
 
+# Usage
+
+```
+from ipfs_accelerate_py import ipfs_accelerate_py
+model_server = ipfs_accelerate_py()
+init_model_server = model_server.init_endpoints(models, endpoints)
+endpoints = model_server.resources["endpoint_handler"][model[0]]
+for endpoint in list(endpoints.keys()):
+    endpoint("hello world")
+```
 
 # BACKENDS
 You can spin up additional model endpoints with the following:
