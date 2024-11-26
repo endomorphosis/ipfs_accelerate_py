@@ -4,6 +4,8 @@ This is meant to be an extension of the Huggingface accelerate library, is to ac
 
 # Instructions:
 
+run.sh -- this will run the model server
+
 init.sh -- this will initialize the endpoints and models that you want to use
 
 queue.sh -- this will add an item to the model queue, and the endpoints will pull items from their model queue.
