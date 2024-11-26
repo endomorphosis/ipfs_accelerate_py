@@ -265,72 +265,57 @@ class worker_py:
         def handler(x):
             self.local_endpoints[endpoint_model][cuda_label].eval()
             with torch.no_grad():
-                # Tokenize input with truncation and padding
-                tokens = self.tokenizer[endpoint_model][cuda_label](
-                    x, 
-                    return_tensors='pt', 
-                    padding=True, 
-                    truncation=True,
-                    max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
-                )
-                
-                # Move tokens to the correct device
-                input_ids = tokens['input_ids'].to(self.local_endpoints[endpoint_model][cuda_label].device)
-                attention_mask = tokens['attention_mask'].to(self.local_endpoints[endpoint_model][cuda_label].device)
-                
-                # Run model inference
-                outputs = self.local_endpoints[endpoint_model][cuda_label](
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    return_dict=True
-                )
-                
-                # Process outputs
-                if hasattr(outputs, 'last_hidden_state'):
-                    return {
-                        'hidden_states': outputs.last_hidden_state.cpu().numpy(),
-                        'attention_mask': attention_mask.cpu().numpy()
-                    }
-                else:
-                    return outputs
+                try:
+                    torch.cuda.empty_cache()
+                    # Tokenize input with truncation and padding
+                    tokens = self.tokenizer[endpoint_model][cuda_label](
+                        x, 
+                        return_tensors='pt', 
+                        padding=True, 
+                        truncation=True,
+                        max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
+                    )
+                    
+                    # Move tokens to the correct device
+                    input_ids = tokens['input_ids'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+                    attention_mask = tokens['attention_mask'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+                    
+                    # Run model inference
+                    outputs = self.local_endpoints[endpoint_model][cuda_label](
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        return_dict=True
+                    )
+                        
+                    # Process and prepare outputs
+                    if hasattr(outputs, 'last_hidden_state'):
+                        hidden_states = outputs.last_hidden_state.cpu().numpy()
+                        attention_mask_np = attention_mask.cpu().numpy()
+                        result = {
+                            'hidden_states': hidden_states,
+                            'attention_mask': attention_mask_np
+                        }
+                    else:
+                        result = outputs.to('cpu').detach().numpy()
+
+                    # Cleanup GPU memory
+                    del tokens, input_ids, attention_mask, outputs
+                    if 'hidden_states' in locals(): del hidden_states
+                    if 'attention_mask_np' in locals(): del attention_mask_np
+                    torch.cuda.empty_cache()
+                    return result
+                except Exception as e:
+                    # Cleanup GPU memory in case of error
+                    if 'tokens' in locals(): del tokens
+                    if 'input_ids' in locals(): del input_ids
+                    if 'attention_mask' in locals(): del attention_mask
+                    if 'outputs' in locals(): del outputs
+                    if 'hidden_states' in locals(): del hidden_states
+                    if 'attention_mask_np' in locals(): del attention_mask_np
+                    torch.cuda.empty_cache()
+                    raise e
         return handler
-    
-    def create_endpoint_handler_bak(self, endpoint_model, cuda_label):
-        def handler(x):
-            self.local_endpoints[endpoint_model][cuda_label].eval()
-            tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt', padding=True, truncation=True).to(self.local_endpoints[endpoint_model][cuda_label].device)
-            new_tokens = []
-            new_token_ids = []
-            new_tensors = []
-            context_length = self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
-            # min_token_lengh = min([tokens[i].shape[1] for i in range(0, len(tokens))])
-            for i in range(0, len(tokens.encodings)): 
-                if len(tokens[i]) > context_length:
-                    new_tokens.append(tokens.encodings[i].tokens[:context_length])
-                    new_token_ids.append(tokens.encodings[i].ids[:context_length])
-                    new_tensors.append(self.local_endpoint_models[endpoint_model][cuda_label](input_ids=torch.stack(new_token_ids).to(self.local_endpoints[endpoint_model][cuda_label].device), return_dict=True))
-                else:
-                    new_tokens.append(tokens.encodings[i].tokens)                
-                    new_token_ids.append(tokens.encodings[i].ids)
-                    new_token_ids_tensor = torch.tensor(new_token_ids).to(self.local_endpoints[endpoint_model][cuda_label].device)
-                    new_tensors.append(self.local_endpoints[endpoint_model][cuda_label](input_ids=new_token_ids_tensor, return_dict=True))
-            try:
-                results1 = self.local_endpoints[endpoint_model][cuda_label](new_tensors)
-            except Exception as e:
-                print(e)
-                results1 = None
-            try:    
-                results2 = self.local_endpoints[endpoint_model][cuda_label](input_ids=torch.stack(new_token_ids).to(self.local_endpoints[endpoint_model][cuda_label].device), return_dict=True)
-            except Exception as e:
-                results2 = None
-            try:    
-                results3 = self.local_endpoints[endpoint_model][cuda_label](tokens)
-            except Exception as e:
-                results3 = None
-            
-            results =  { "results1": results1, "results2": results2, "results3": results3}
-            return results
-        return handler
+
     
     def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
         def handler(x):

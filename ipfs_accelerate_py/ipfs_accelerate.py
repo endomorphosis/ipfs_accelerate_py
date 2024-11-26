@@ -790,6 +790,117 @@ class ipfs_accelerate_py:
                 pass
         return None
     
+    async def max_batch_size_bak(self, model, endpoint, endpoint_handler):
+        import psutil
+        process = psutil.Process(os.getpid())
+        embed_fail = False
+        context_length = None
+        exponent = int(0)
+        batch = []
+        token_length_size = 0
+        batch_size = 2**exponent
+        test_tokens = []
+        endpoint_types = list(self.endpoints.keys())
+
+        this_tokenizer = self.resources["tokenizer"][model][endpoint]
+        for endpoint_type in endpoint_types:
+            endpoints = self.endpoints[endpoint_type]
+            if model in list(endpoints.keys()):
+                for this_endpoint in endpoints[model]:
+                    if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
+                        context_length = this_endpoint[2]
+                        token_length_size = round(int(context_length) * 0.99)
+                        break
+            if token_length_size > 0:
+                break
+                        
+        token_kv = {}
+        acceptable_tokens = "abcdefghijklmnopqrstuvwxyz"
+        for i in range(0, len(acceptable_tokens)):
+            find_token_int = this_tokenizer.encode(acceptable_tokens[i])
+            if len(find_token_int) == 3:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 2:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 1:
+                find_token_int = find_token_int[0]
+            token_kv[acceptable_tokens[i]] = find_token_int
+                        
+        memory_increase = None
+        while not embed_fail:
+            test_batch = []
+            exponent += 1
+            for i in range(2**(exponent)):
+                random_offset = random.randint(0, len(acceptable_tokens)-1)
+                test_tokens = []
+                for i in range(token_length_size):
+                    test_tokens.append(token_kv[list(token_kv.keys())[(i + random_offset) % len(acceptable_tokens)]])
+                    pass
+                test_text = this_tokenizer.decode(test_tokens)
+                test_batch.append(test_text)
+            parsed_knn_embeddings = None
+            embeddings = None
+            request_knn_results = None
+            start_time = time.time()
+            start_mem = process.memory_info().rss
+            free_memory = psutil.virtual_memory().free
+            if memory_increase is not None:
+                if free_memory < (memory_increase * 2):
+                    embed_fail = True
+                    break
+                    raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
+            try:
+                if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
+                    request_knn_results = await endpoint_handler({"inputs": test_batch})
+                    end_memory = process.memory_info().rss
+
+                elif "cuda" in endpoint or "cpu" in endpoint or "openvino:" in endpoint:
+                    try:
+                        request_knn_results = await endpoint_handler(test_batch)
+                        end_memory = process.memory_info().rss
+                    except Exception as e:
+                        pass
+                    if request_knn_results == None:
+                        try:
+                            request_knn_results = endpoint_handler(test_batch)
+                            end_memory = process.memory_info().rss
+                        except Exception as e:
+                            request_knn_results = e
+                            embed_fail = True
+                            end_memory = process.memory_info().rss
+                            pass
+                        pass
+            except Exception as e:
+                request_knn_results = e
+                embed_fail = True
+                end_memory = process.memory_info().rss
+                pass
+            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
+                embed_fail = True
+            end_time = time.time()
+            batch_size = 2**(exponent-1)
+            elapsed_time = end_time - start_time
+            memory_increase = end_memory - start_mem
+            free_memory = psutil.virtual_memory().free
+            log = {
+            "batch size": batch_size,
+            "elapsed_time": elapsed_time,
+            "memory_increase": memory_increase,
+            "free_memory": free_memory
+            }
+            print(log)
+            self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
+            if batch_size >= 4096:
+                embed_fail = True
+                pass
+        if exponent == 0:
+            torch.cuda.empty_cache()
+            return 1
+        else:  
+            torch.cuda.empty_cache()
+            return 2**(exponent-1)
+
+    
     async def max_batch_size(self, model, endpoint, endpoint_handler):
         import psutil
         process = psutil.Process(os.getpid())
@@ -886,8 +997,12 @@ class ipfs_accelerate_py:
                 embed_fail = True
                 pass
         if exponent == 0:
+            with torch.no_grad():
+                torch.cuda.empty_cache()
             return 1
-        else:
+        else:  
+            with torch.no_grad():
+                torch.cuda.empty_cache()
             return 2**(exponent-1)
 
     async def max_batch_size_bak(self, model, endpoint=None, endpoint_type=None ):
@@ -1556,13 +1671,21 @@ class ipfs_accelerate_py:
         '''
         sentence_2 = "Now is the time for all good Men to come to the aid of their country."
         batch = [sentence_1, sentence_2]
+        max_batch_size1 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
+        max_batch_size2 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
+        del self.max_batch_size 
         test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"](batch)
-        
+
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        with torch.no_grad():
+            torch.cuda.empty_cache()
         results = {
             "ipfs_accelerate_init": ipfs_accelerate_init,
             "test_endpoints": test_endpoints,
             "test_batch": test_batch,
+            "max_batch_size": max_batch_size1,
+            "max_batch_size": max_batch_size2,
+            "max_batch_size": max_batch_size3,
             # "test_batch_sizes": test_batch_sizes
         }
         return results
