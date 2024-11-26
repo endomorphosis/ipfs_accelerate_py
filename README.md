@@ -4,11 +4,24 @@ This is meant to be an extension of the Huggingface accelerate library, is to ac
 
 # Instructions:
 
+run.sh -- this will run the model server
+
 init.sh -- this will initialize the endpoints and models that you want to use
 
 queue.sh -- this will add an item to the model queue, and the endpoints will pull items from their model queue.
 
-infer.sh  -- this will select a random endpoint for the requested model to perform inference. 
+infer.sh -- this will select a random endpoint for the requested model to perform inference.
+
+# Usage
+
+```
+from ipfs_accelerate_py import ipfs_accelerate_py
+model_server = ipfs_accelerate_py()
+init_model_server = model_server.init_endpoints(models, endpoints)
+endpoints = model_server.resources["endpoint_handler"][model[0]]
+for endpoint in list(endpoints.keys()):
+    endpoint("hello world")
+```
 
 # BACKENDS
 You can spin up additional model endpoints with the following:
