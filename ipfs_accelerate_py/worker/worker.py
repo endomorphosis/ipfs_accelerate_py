@@ -1,13 +1,20 @@
 import os
 import sys
 import subprocess
+import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from test_ipfs_accelerate import test_ipfs_accelerate
+from PIL import Image
+import tempfile
+import torchvision.transforms as T
+from torchvision.transforms import InterpolationMode
 from install_depends import install_depends_py
 import optimum
 import torch 
 import asyncio
 import transformers
+import openvino as ov
+
 try:
     from ipfs_multiformats import ipfs_multiformats_py
 except:
@@ -46,6 +53,82 @@ class dispatch_result:
     
     async def dispatch_result(self, result):
         return None    
+    
+    
+
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
+
+def build_transform(input_size):
+    MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
+    transform = T.Compose([
+        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=MEAN, std=STD)
+    ])
+    return transform
+
+def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
+    best_ratio_diff = float('inf')
+    best_ratio = (1, 1)
+    area = width * height
+    for ratio in target_ratios:
+        target_aspect_ratio = ratio[0] / ratio[1]
+        ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+        if ratio_diff < best_ratio_diff:
+            best_ratio_diff = ratio_diff
+            best_ratio = ratio
+        elif ratio_diff == best_ratio_diff:
+            if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                best_ratio = ratio
+    return best_ratio
+
+def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
+    orig_width, orig_height = image.size
+    aspect_ratio = orig_width / orig_height
+
+    # calculate the existing image aspect ratio
+    target_ratios = set(
+        (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
+        i * j <= max_num and i * j >= min_num)
+    target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
+
+    # find the closest aspect ratio to the target
+    target_aspect_ratio = find_closest_aspect_ratio(
+        aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+
+    # calculate the target width and height
+    target_width = image_size * target_aspect_ratio[0]
+    target_height = image_size * target_aspect_ratio[1]
+    blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
+
+    # resize the image
+    resized_img = image.resize((target_width, target_height))
+    processed_images = []
+    for i in range(blocks):
+        box = (
+            (i % (target_width // image_size)) * image_size,
+            (i // (target_width // image_size)) * image_size,
+            ((i % (target_width // image_size)) + 1) * image_size,
+            ((i // (target_width // image_size)) + 1) * image_size
+        )
+        # split the image
+        split_img = resized_img.crop(box)
+        processed_images.append(split_img)
+    assert len(processed_images) == blocks
+    if use_thumbnail and len(processed_images) != 1:
+        thumbnail_img = image.resize((image_size, image_size))
+        processed_images.append(thumbnail_img)
+    return processed_images
+
+def load_image(image_file, input_size=448, max_num=12):
+    image = Image.open(image_file).convert('RGB')
+    transform = build_transform(input_size=input_size)
+    images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
+    pixel_values = [transform(image) for image in images]
+    pixel_values = torch.stack(pixel_values)
+    return pixel_values
     
 class worker_py:
     def __init__(self, metadata, resources):
@@ -120,7 +203,7 @@ class worker_py:
 
         return None
     
-    
+
     async def test_hardware(self):
         install_file_hash = None
         test_results_file = None
@@ -163,13 +246,13 @@ class worker_py:
     
     async def get_model_type(self, model_name, model_type=None):
         if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         return model_type
     
     async def get_model_format(self, model_name, model_type=None):
         if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         return model_type
     
@@ -186,16 +269,66 @@ class worker_py:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "model.xml")
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_src_path)
-            model_type = config.__class__.model_type
-        hftokenizer = AutoTokenizer.from_pretrained(model_name)
-        hfmodel = AutoModel.from_pretrained(model_name)
-        text = "Replace me by any text you'd like."
-        encoded_input = hftokenizer(text, return_tensors='pt')
-        import openvino as ov
-        ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
-        ov.save_model(ov_model, model_dst_path)
+        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+        architecture = None
+        config = None
+        model_type = None
+        if "config" in list(dir(hfmodel)):
+            config = hfmodel.config
+        else:
+            try:
+                config = AutoConfig.from_pretrained(model_src_path)
+            except Exception as e:
+                config = None
+        if config is not None and "architectures" in dir(config):        
+            architecture = config.architectures
+            architecture = architecture[0]
+        if config is not None and "model_type" in dir(config):
+            model_type = config.model_type
+            model_type = model_type[0]
+        elif "model_type" in list(config.__class__.__dict__.keys()):
+            model_type = config.model_type
+            model_type = model_type[0]
+        if model_type == "internvl_chat" or architecture == 'InternVLChatModel':
+            hfmodel = AutoModel.from_pretrained(model_name, attn_implementation="flash_attention_2", torch_dtype=torch.float16 , trust_remote_code=True)
+            text = "Replace me by any text you'd like."
+            image = 'https://avatars.githubusercontent.com/u/3405202'
+            from PIL import Image
+            from io import BytesIO
+            try:
+                response = requests.get(image)
+                response.raise_for_status()
+                image_data = response.content
+                image_pil = Image.open(BytesIO(image_data)).convert('RGB').resize((224, 224))
+                with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
+                    image_pil.save(f.name)
+                    pixel_values = load_image(str(f.name), max_num=12)
+                    pixel_values = pixel_values.to(torch.float16).cpu().numpy()
+                    encoded_input = hftokenizer(text=text, return_tensors='pt')
+                    encoded_input["pixel_values"] = pixel_values
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching image: {e}")
+                return None
+            except Exception as e:
+                print(f"Error processing image: {e}")
+                return None
+        else:
+            text = "Replace me by any text you'd like."
+            encoded_input = hftokenizer(text, return_tensors='pt')
+            
+        try:
+            ov_model = ov.convert_model(hfmodel, example_input=encoded_input, model_precision="FP16")
+            ov.save_model(ov_model, model_dst_path)
+            return ov.compile_model(ov_model)
+        except Exception as e:
+            try:
+                ov_model = ov.convert_model(hfmodel)   
+                ov.save_model(ov_model, model_dst_path)
+                return ov.compile_model(ov_model)
+            except Exception as e:
+                print(e)
+                return None
         return ov.compile_model(ov_model)
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):
@@ -250,7 +383,7 @@ class worker_py:
     async def get_openvino_pipeline_type(self, model_name, model_type=None):
         model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
         if model_type is None:
-            config = AutoConfig.from_pretrained(model_name)
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         if model_type not in model_mapping_list:
             if model_type == "bert":
@@ -375,17 +508,19 @@ class worker_py:
         gpus = torch.cuda.device_count()
         for model in models:
             model_type = await self.get_model_type(model)
-            if model not in self.tokenizer:
+            if model not in list(self.tokenizer.keys()):
                 self.tokenizer[model] = {}
-            if model not in self.local_endpoints:
+            if model not in list(self.local_endpoints.keys()):
                 self.local_endpoints[model] = {}
-            if model not in self.queues:
+            if model not in list(self.queues.keys()):
                 self.queues[model] = {}
-            if model not in self.endpoint_handler:
+            if model not in list(self.endpoint_handler.keys()):
                 self.endpoint_handler[model] = {}
-            if model not in self.batch_sizes:
+            if model not in list(self.batch_sizes.keys()):
                 self.batch_sizes[model] = {}
-            if model_type != "llama_cpp":
+                
+            vlm_model_types = ["llava"]
+            if model_type != "llama_cpp" and model_type not in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
@@ -398,8 +533,8 @@ class worker_py:
                                     if device in list(self.local_endpoints[this_model].keys()):
                                         endpoint_model = this_model
                             cuda_label = self.local_endpoint_types[cuda_index]
-                            self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True)
-                            self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model,).to(device)
+                            self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+                            self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
                             self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
@@ -410,7 +545,7 @@ class worker_py:
                     all_tests_ValueError = all(x is ValueError for x in all_test_types)
                     all_tests_none = all(x is None for x in all_test_types)
                     if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
-                        self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model).to("cpu")
+                        self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model, trust_remote_code=True).to("cpu")
                         self.queues[model]["cpu"] = asyncio.Queue(4)
                         self.endpoint_handler[model]["cpu"] = ""
                     elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
@@ -433,7 +568,7 @@ class worker_py:
                         # self.hwtest["optimum-openvino"] = False
                         # if self.hwtest["optimum-openvino"] == True: 
                         try:
-                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True)
+                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
                             model_type =  str(await self.get_openvino_pipeline_type(model))
                             self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
                             self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
@@ -441,15 +576,35 @@ class worker_py:
                         # elif self.hwtest["openvino"] == True:                            
                         except Exception as e:
                             try:
-                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True)
+                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
                                 self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
-                                self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
+                                self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
                                 self.batch_sizes[openvino_model][openvino_label] = 0
                             except Exception as e:
                                 print(e)
                                 pass
                         ov_count = ov_count + 1
-                else:
+            elif model_type in vlm_model_types:
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_index = self.local_endpoint_types.index(device)
+                            if "model" in list(self.local_endpoints.keys()):
+                                endpoint_model = model
+                            else:
+                                for this_model in list(self.local_endpoints.keys()):
+                                    if device in list(self.local_endpoints[this_model].keys()):
+                                        endpoint_model = this_model
+                                        
+                            cuda_label = self.local_endpoint_types[cuda_index]
+                            self.tokenizer[model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+                            self.local_endpoints[model][cuda_label] = AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
+                            self.endpoint_handler[model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
+                            torch.cuda.empty_cache()
+                            self.queues[model][cuda_label] = asyncio.Queue(64)
+                            # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+                            self.batch_sizes[model][cuda_label] = 0
                     pass
         worker_endpoint_types = []
         worker_model_types = []

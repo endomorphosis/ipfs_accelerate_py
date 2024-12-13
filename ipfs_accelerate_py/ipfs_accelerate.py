@@ -224,7 +224,7 @@ class ipfs_accelerate_py:
                 self.resources["tokenizer"][model] = {}
             tokenizers = list(self.resources["tokenizer"][model].keys())
             if len(tokenizers) == 0:
-                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
+                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
                 tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
             else:
                 for tokenizer in tokenizers:
@@ -358,6 +358,7 @@ class ipfs_accelerate_py:
             self.worker_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], None)
         except Exception as e:
             print(e)
+            print(e.__traceback__)
             self.worker_resources = e
             pass
         
@@ -1691,81 +1692,55 @@ class ipfs_accelerate_py:
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
-
+    
 if __name__ == "__main__":
     metadata = {
-        "dataset": "TeraflopAI/Caselaw_Access_Project",
-        "namespace": "TeraflopAI/Caselaw_Access_Project",
-        "column": "text",
+        "dataset": "laion/gpt4v-dataset",
+        "namespace": "laion/gpt4v-dataset",
+        "column": "link",
         "split": "train",
         "models": [
-            "thenlper/gte-small",
-            # "Alibaba-NLP/gte-large-en-v1.5",
-            # "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
+            "lmms-lab/llava-onevision-qwen2-0.5b-si", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "lmms-lab/llava-onevision-qwen2-0.5b-ov",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            # "lmms-lab/llava-onevision-qwen2-7b-si-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "lmms-lab/llava-onevision-qwen2-7b-ov-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "lmms-lab/LLaVA-Video-7B-Qwen2", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
         ],
         "chunk_settings": {
-            "chunk_size": 512,
-            "n_sentences": 8,
-            "step_size": 256,
-            "method": "fixed",
-            "embed_model": "thenlper/gte-small",
-            "tokenizer": None
+
         },
-        "dst_path": "/storage/teraflopai/tmp",
+        "dst_path": "/storage/gpt4v-dataset/data",
     }
     resources = {
         "local_endpoints": [
-            ["thenlper/gte-small", "cpu", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "cpu", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cpu", 32768],
-            ["thenlper/gte-small", "cuda:0", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "cuda:0", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cuda:0", 32768],
-            ["thenlper/gte-small", "cuda:1", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "cuda:1", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "cuda:1", 32768],
-            ["thenlper/gte-small", "openvino:0", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "openvino:0", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "openvino:0", 32768],
-            ["thenlper/gte-small", "llama_cpp", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "llama_cpp", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "llama_cpp", 32768],
-            ["thenlper/gte-small", "ipex", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "ipex", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "ipex", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","cpu", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","cuda:0", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","cuda:1", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","openvino:0", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","llama_cpp", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
+            ["OpenGVLab/PVC-InternVL2-8B","ipex", 32768],
         ],
         "openvino_endpoints": [
-            # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-            # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-            # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-            # ["neoALI/bge-m3-rag-ov", "https://bge-m3-rag-ov-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-rag-ov/infer", 4095],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx0-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx0/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx1-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx1/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx2-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx2/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx3-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx3/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx4-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx4/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx5-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx5/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx6-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx6/infer", 1024],
-            # ["aapot/bge-m3-onnx", "https://bge-m3-onnx7-endomorphosis-dev.apps.cluster.intel.sandbox1234.opentlc.com/v2/models/bge-m3-onnx7/infer", 1024]
         ],
         "tei_endpoints": [
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8080/embed-medium", 32768],
-            ["thenlper/gte-small", "http://62.146.169.111:8080/embed-tiny", 512],
-            ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8081/embed-small", 8192],
-            ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8081/embed-medium", 32768],
-            ["thenlper/gte-small", "http://62.146.169.111:8081/embed-tiny", 512],
-            # ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8082/embed-small", 8192],
-            # ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8082/embed-medium", 32768],
-            # ["thenlper/gte-small", "http://62.146.169.111:8082/embed-tiny", 512],
-            # ["Alibaba-NLP/gte-large-en-v1.5", "http://62.146.169.111:8083/embed-small", 8192],
-            # ["Alibaba-NLP/gte-Qwen2-1.5B-instruct", "http://62.146.169.111:8083/embed-medium", 32768],
-            # ["thenlper/gte-small", "http://62.146.169.111:8083/embed-tiny", 512]
-        ],
-        "vllm_endpoints": [
-        ],
-        "openai_endpoints": [
         ],
     }
+
     ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")
