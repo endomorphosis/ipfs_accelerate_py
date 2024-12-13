@@ -323,12 +323,17 @@ class worker_py:
             return ov.compile_model(ov_model)
         except Exception as e:
             try:
-                ov_model = ov.convert_model(hfmodel)   
+                ov_model = ov.convert_model(hfmodel, example_input=encoded_input)
                 ov.save_model(ov_model, model_dst_path)
                 return ov.compile_model(ov_model)
             except Exception as e:
-                print(e)
-                return None
+                try:                
+                    ov_model = ov.convert_model(hfmodel)   
+                    ov.save_model(ov_model, model_dst_path)
+                    return ov.compile_model(ov_model)
+                except Exception as e:
+                    print(e)
+                    return None
         return ov.compile_model(ov_model)
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):

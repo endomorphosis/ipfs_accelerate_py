@@ -1700,7 +1700,8 @@ if __name__ == "__main__":
         "column": "link",
         "split": "train",
         "models": [
-            "lmms-lab/llava-onevision-qwen2-0.5b-si", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->  ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
+            # "lmms-lab/llava-onevision-qwen2-0.5b-si", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "lmms-lab/llava-onevision-qwen2-0.5b-ov",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
@@ -1716,24 +1717,24 @@ if __name__ == "__main__":
     }
     resources = {
         "local_endpoints": [
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 512],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","cpu", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 512],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","cuda:0", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 512],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","cpu", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","cuda:0", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","cuda:1", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 512],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","openvino:0", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","cuda:1", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 32768],
+            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","llama_cpp", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","llama_cpp", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
-            ["OpenGVLab/PVC-InternVL2-8B","ipex", 32768],
+            ["Qwen/Qwen2-VL-7B-Instruct","ipex", 32768],
         ],
         "openvino_endpoints": [
         ],
