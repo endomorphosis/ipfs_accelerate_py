@@ -1673,7 +1673,6 @@ class ipfs_accelerate_py:
         batch = [sentence_1, sentence_2]
         max_batch_size1 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
         max_batch_size2 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
-        del self.max_batch_size 
         test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"](batch)
 
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
@@ -1698,17 +1697,20 @@ if __name__ == "__main__":
         "column": "link",
         "split": "train",
         "models": [
-            # "llava-hf/llava-v1.6-mistral-7b-hf", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
-            # "llava-hf/llava-interleave-qwen-0.5b-hf", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            "TIGER-Lab/Mantis-8B-siglip-llama3",
+            # "lmms-lab/llava-onevision-qwen2-7b-si",  
+            # "lmms-lab/llava-onevision-qwen2-7b-ov", 
+            # "lmms-lab/LLaVA-Video-7B-Qwen2",
+            # "llava-hf/llava-v1.6-mistral-7b-hf", 
+            # "llava-hf/llava-interleave-qwen-0.5b-hf",
+            # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
+            # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
             # "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
-            # "lmms-lab/llava-onevision-qwen2-0.5b-si", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
-            # "lmms-lab/llava-onevision-qwen2-0.5b-ov",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
-            # "lmms-lab/llava-onevision-qwen2-7b-si-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
-            # "lmms-lab/llava-onevision-qwen2-7b-ov-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
-            "lmms-lab/LLaVA-Video-7B-Qwen2", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "AIDC-AI/Ovis1.6-Llama3.2-3B", # alueError: Trying to export a ovis model, that is a custom or unsupported architecture,
+            # "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
         ],
         "chunk_settings": {
 
@@ -1719,22 +1721,22 @@ if __name__ == "__main__":
         "local_endpoints": [
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 32768],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cpu", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cuda:0", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cuda:1", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 32768],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "openvino:0", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "llama_cpp", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "llama_cpp", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
-            ["lmms-lab/LLaVA-Video-7B-Qwen2", "ipex", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "ipex", 32768],
         ],
         "openvino_endpoints": [
         ],

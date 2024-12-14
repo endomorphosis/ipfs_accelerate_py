@@ -345,11 +345,17 @@ class worker_py:
         return convert_model
     
     
-    async def get_openvino_model(self, model_name, model_type=None):
+    async def get_openvino_model(self, model_name, model_type=None, device_name=None ):
         architecture = None
         config = None
+        hfmodel = None
+        hftokenizer = None
         import openvino as ov                                
         core = ov.Core()
+        import openvino_genai as ov_genai
+        openvino_devices = core.available_devices
+        device_index = int(device_name.split(":")[-1])
+        device = openvino_devices[device_index]
         model_type = await self.get_model_type(model_name)
         model_task = await self.get_openvino_pipeline_type(model_name, model_type)
         homedir = os.path.expanduser("~")
@@ -382,18 +388,13 @@ class worker_py:
             config = hfmodel.config
         else:
             try:
-                config = AutoConfig.from_pretrained(model_src_path)
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:
                 config = None
         if config is not None and "architectures" in dir(config):        
             architecture = config.architectures
-            architecture = architecture[0]
         if config is not None and "model_type" in dir(config):
             model_type = config.model_type
-            model_type = model_type[0]
-        elif "model_type" in list(config.__class__.__dict__.keys()):
-            model_type = config.model_type
-            model_type = model_type[0]
         if model_type == "internvl_chat" or architecture == 'InternVLChatModel':
             convert_cmd = []
             hfmodel = AutoModel.from_pretrained(model_name, attn_implementation="flash_attention_2", torch_dtype=torch.float16 , trust_remote_code=True)
@@ -421,20 +422,66 @@ class worker_py:
         else:
             text = "Replace me by any text you'd like."
             encoded_input = hftokenizer(text, return_tensors='pt')
-            
-        try:
-            ov_model = ov.convert_model(hfmodel)
-            ov.save_model(ov_model, model_dst_path)
-            return ov.compile_model(ov_model)
-        except Exception as e:
-            try:
-                ov_model = await self.openvino_cli_convert(model_name, model_dst_path=model_dst_path , task=model_task) 
-                return ov_model
-            except Exception as e:
-                print(e)
-                return None
+
+        model_dst_path_split = model_dst_path.split("/")
+        last_split = model_dst_path_split[-1]
+        if "." in last_split:
+            last_split = last_split.split(".")[0]
+        model_dst_path = "/".join(model_dst_path_split[:-1]) + "/" + last_split
+        if os.path.exists(model_dst_path):
+            if model_task == "image-text-to-text":
+                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+                del hfmodel
+                del hftokenizer
+            else:
+                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                del hfmodel
+                del hftokenizer
+                ov.save_model(ov_model, model_dst_path)
+                ov_model = ov.compile_model(ov_model)
+        else:
+            await self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
+            if model_task == "image-text-to-text":
+                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+                del hfmodel
+                del hftokenizer
+            else:
+                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
+                del hfmodel
+                del hftokenizer
+                ov.save_model(ov_model, model_dst_path)
+                ov_model = ov.compile_model(ov_model)
         return ov_model
-        return ov.compile_model(ov_model)
+    
+        # try:
+        #     ov_model = ov.convert_model(hfmodel)
+        #     ov.save_model(ov_model, model_dst_path)
+        #     return ov.compile_model(ov_model)
+        # except Exception as e:
+        #     try:
+        #         if os.path.exists(model_dst_path):
+        #             try:
+        #                 ov_model = core.load_model(model_dst_path)
+        #                 ov_model = ov.compile_model(ov_model)
+        #                 return ov_model
+        #             except Exception as e:
+        #                 try:
+        #                     ov_model = await self.openvino_cli_convert(model_name, model_dst_path=model_dst_path , task=model_task) 
+        #                     ov_model = core.import_model(model_dst_path)
+        #                     ov_model = ov.compile_model(ov_model)
+        #                 except:
+        #                     print(e)
+        #                     return None
+        #         else:
+        #             ov_model = await self.openvino_cli_convert(model_name, model_dst_path=model_dst_path , task=model_task) 
+        #             ov_model = core.import_model(model_dst_path)
+        #             ov_model = ov.compile_model(ov_model)
+        #         return ov_model
+        #     except Exception as e:
+        #         print(e)
+        #         return None
+        # return ov_model
+        # return ov.compile_model(ov_model)
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):
         if model_type is None:
@@ -729,7 +776,7 @@ class worker_py:
                         except Exception as e:
                             try:
                                 self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
+                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type, openvino_label)
                                 self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
                                 self.batch_sizes[openvino_model][openvino_label] = 0
                             except Exception as e:
@@ -785,25 +832,15 @@ class worker_py:
                                 openvino_endpoints.append(item)
                                 
                         openvino_label = self.local_endpoint_types[openvino_index]
-                        # to disable openvino to calling huggingface transformers uncomment
-                        # self.hwtest["optimum-openvino"] = False
-                        # if self.hwtest["optimum-openvino"] == True: 
                         try:
-                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
-                            model_type =  str(await self.get_openvino_pipeline_type(model))
-                            self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
-                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
+                            self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+                            self.local_endpoints[openvino_model][openvino_label] = self.get_openvino_model(model, model_type, openvino_label)
+                            self.endpoint_handler[openvino_model][openvino_label] = None
+                            self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
                             self.batch_sizes[openvino_model][openvino_label] = 0
-                        # elif self.hwtest["openvino"] == True:                            
                         except Exception as e:
-                            try:
-                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
-                                self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
-                                self.batch_sizes[openvino_model][openvino_label] = 0
-                            except Exception as e:
-                                print(e)
-                                pass
+                            print(e)
+                            pass
                         ov_count = ov_count + 1
                     pass
         worker_endpoint_types = []
