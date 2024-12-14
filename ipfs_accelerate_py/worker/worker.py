@@ -9,11 +9,14 @@ import tempfile
 import torchvision.transforms as T
 from torchvision.transforms import InterpolationMode
 from install_depends import install_depends_py
+import transformers
+from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig
 import optimum
 import torch 
 import asyncio
-import transformers
 import openvino as ov
+import platform
+import os
 
 try:
     from ipfs_multiformats import ipfs_multiformats_py
@@ -256,9 +259,99 @@ class worker_py:
             model_type = config.__class__.model_type
         return model_type
     
+    async def openvino_cli_convert(
+        self,
+        model_name,
+        model_dst_path,
+        task=None,
+        framework=None,
+        trust_remote_code=False,
+        weight_format=None,
+        library=None,
+        cache_dir=None,
+        pad_token_id=None,
+        ratio=None,
+        sym=False,
+        group_size=None,
+        backup_precision=None,
+        dataset=None,
+        all_layers=False,
+        awq=False,
+        scale_estimation=False,
+        gptq=False,
+        lora_correction=False,
+        sensitivity_metric=None,
+        num_samples=None,
+        disable_stateful=False,
+        disable_convert_tokenizer=False,
+    ):
+        command = ['optimum-cli', 'export', 'openvino', '-m', model_name]
+        tasks_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
+        if task is not None:
+            command.extend(['--task', task])
+        if task is None:
+            model_type = await self.get_model_type(model_name)
+            task = await self.get_openvino_pipeline_type(model_name, model_type)
+            if task not in tasks_list:
+                raise ValueError("Task not supported: " + task)
+            elif task is not None:
+                command.extend(['--task', task])
+        if framework is not None:
+            command.extend(['--framework', framework])
+        if trust_remote_code:
+            command.append('--trust-remote-code')
+        if weight_format is not None:
+            command.extend(['--weight-format', weight_format])
+        if library is not None:
+            command.extend(['--library', library])
+        if cache_dir is not None:
+            command.extend(['--cache_dir', cache_dir])
+        if pad_token_id is not None:
+            command.extend(['--pad-token-id', str(pad_token_id)])
+        if ratio is not None:
+            command.extend(['--ratio', str(ratio)])
+        if sym:
+            command.append('--sym')
+        if group_size is not None:
+            command.extend(['--group-size', str(group_size)])
+        if backup_precision is not None:
+            command.extend(['--backup-precision', backup_precision])
+        if dataset is not None:
+            command.extend(['--dataset', dataset])
+        if all_layers:
+            command.append('--all-layers')
+        if awq:
+            command.append('--awq')
+        if scale_estimation:
+            command.append('--scale-estimation')
+        if gptq:
+            command.append('--gptq')
+        if lora_correction:
+            command.append('--lora-correction')
+        if sensitivity_metric is not None:
+            command.extend(['--sensitivity-metric', sensitivity_metric])
+        if num_samples is not None:
+            command.extend(['--num-samples', str(num_samples)])
+        if disable_stateful:
+            command.append('--disable-stateful')
+        if disable_convert_tokenizer:
+            command.append('--disable-convert-tokenizer')
+        
+        # Add the output directory
+        command.append(model_dst_path)
+        
+        # Execute the command
+        convert_model = subprocess.check_output(command)
+        return convert_model
+    
+    
     async def get_openvino_model(self, model_name, model_type=None):
+        architecture = None
+        config = None
         import openvino as ov                                
         core = ov.Core()
+        model_type = await self.get_model_type(model_name)
+        model_task = await self.get_openvino_pipeline_type(model_name, model_type)
         homedir = os.path.expanduser("~")
         model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
@@ -269,11 +362,22 @@ class worker_py:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "model.xml")
+        try:
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            model_type = config.__class__.model_type
+        except Exception as e:
+            config = None
+                         
         hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
-        architecture = None
-        config = None
-        model_type = None
+        vlm_model_types = ["llava"]
+        try:
+            if model_type not in vlm_model_types:
+                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+            else:
+                hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        except Exception as e:
+            print(e)
+
         if "config" in list(dir(hfmodel)):
             config = hfmodel.config
         else:
@@ -291,6 +395,7 @@ class worker_py:
             model_type = config.model_type
             model_type = model_type[0]
         if model_type == "internvl_chat" or architecture == 'InternVLChatModel':
+            convert_cmd = []
             hfmodel = AutoModel.from_pretrained(model_name, attn_implementation="flash_attention_2", torch_dtype=torch.float16 , trust_remote_code=True)
             text = "Replace me by any text you'd like."
             image = 'https://avatars.githubusercontent.com/u/3405202'
@@ -318,22 +423,17 @@ class worker_py:
             encoded_input = hftokenizer(text, return_tensors='pt')
             
         try:
-            ov_model = ov.convert_model(hfmodel, example_input=encoded_input, model_precision="FP16")
+            ov_model = ov.convert_model(hfmodel)
             ov.save_model(ov_model, model_dst_path)
             return ov.compile_model(ov_model)
         except Exception as e:
             try:
-                ov_model = ov.convert_model(hfmodel, example_input=encoded_input)
-                ov.save_model(ov_model, model_dst_path)
-                return ov.compile_model(ov_model)
+                ov_model = await self.openvino_cli_convert(model_name, model_dst_path=model_dst_path , task=model_task) 
+                return ov_model
             except Exception as e:
-                try:                
-                    ov_model = ov.convert_model(hfmodel)   
-                    ov.save_model(ov_model, model_dst_path)
-                    return ov.compile_model(ov_model)
-                except Exception as e:
-                    print(e)
-                    return None
+                print(e)
+                return None
+        return ov_model
         return ov.compile_model(ov_model)
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):
@@ -387,17 +487,56 @@ class worker_py:
     
     async def get_openvino_pipeline_type(self, model_name, model_type=None):
         model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
-        if model_type not in model_mapping_list:
-            if model_type == "bert":
-                model_type = "feature-extraction"
-            else:
-                return None
-        if model_type == None:
-            return None
-        return model_type
+        model_mapping_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
+        return_model_type = None
+        config_model_type = None
+        if model_type is not None:
+            model_type = model_type
+            try:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                config_model_type = config.__class__.model_type
+            except Exception as e:
+                config_model_type = None
+            if config_model_type is None:
+                config_model_type = config_model_type if config_model_type is not None else model_type
+                if config_model_type == "bert":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "llava":
+                    return_model_type = "image-text-to-text"       
+                pass
+            elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
+                config_model_type = config_model_type if config_model_type is not None else model_type
+                if config_model_type == "bert":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "llava":
+                    return_model_type = "image-text-to-text"
+                pass            
+            elif config_model_type in model_mapping_list:
+                return_model_type = config_model_type         
+        elif model_type is None:
+            try:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                config_model_type = config.__class__.model_type
+            except Exception as e:
+                config_model_type = None
+            if config_model_type is None:
+                config_model_type = config_model_type if config_model_type is not None else model_type
+                if config_model_type == "bert":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "llava":
+                    return_model_type = "image-text-to-text"
+                pass            
+            elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
+                config_model_type = config_model_type if config_model_type is not None else model_type
+                if config_model_type == "bert":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "llava":
+                    return_model_type = "image-text-to-text"            
+            elif config_model_type in model_mapping_list:
+                return_model_type = config_model_type   
+
+        return return_model_type
+
     
     def create_endpoint_handler(self, endpoint_model, cuda_label):
         def handler(x):
@@ -537,9 +676,17 @@ class worker_py:
                                 for this_model in list(self.local_endpoints.keys()):
                                     if device in list(self.local_endpoints[this_model].keys()):
                                         endpoint_model = this_model
+                            config = AutoConfig.from_pretrained(model, trust_remote_code=True)
                             cuda_label = self.local_endpoint_types[cuda_index]
                             self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
-                            self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+                            try:
+                                self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+                            except Exception as e:
+                                try:
+                                    self.local_endpoints[endpoint_model][cuda_label] = AutoProcessor.from_pretrained(model, trust_remote_code=True, device=device)
+                                except Exception as e:
+                                    print(e)
+                                    pass
                             self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
@@ -601,15 +748,63 @@ class worker_py:
                                 for this_model in list(self.local_endpoints.keys()):
                                     if device in list(self.local_endpoints[this_model].keys()):
                                         endpoint_model = this_model
-                                        
+                            config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
                             cuda_label = self.local_endpoint_types[cuda_index]
                             self.tokenizer[model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
-                            self.local_endpoints[model][cuda_label] = AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
+                            try:
+                                self.local_endpoints[model][cuda_label] = AutoProcessor.from_pretrained(model)
+                            except Exception as e:
+                                print(e)
+                                pass
                             self.endpoint_handler[model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[model][cuda_label] = asyncio.Queue(64)
                             # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
                             self.batch_sizes[model][cuda_label] = 0
+                if local > 0 and cpus > 0:
+                    all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
+                    all_tests_ValueError = all(x is ValueError for x in all_test_types)
+                    all_tests_none = all(x is None for x in all_test_types)
+                    if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
+                        self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model, trust_remote_code=True).to("cpu")
+                        self.queues[model]["cpu"] = asyncio.Queue(4)
+                        self.endpoint_handler[model]["cpu"] = ""
+                    elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        ov_count = 0
+                        openvino_endpoints = []
+                        device = "openvino:" + str(ov_count)
+                        openvino_index = self.local_endpoint_types.index(device)
+                        if "model" in list(self.local_endpoints.keys()):
+                                openvino_model = model
+                        else:
+                            for this_model in list(self.local_endpoints.keys()):
+                                if device in list(self.local_endpoints[this_model].keys()):
+                                    openvino_model = this_model
+                        for item in self.local_endpoint_types:
+                            if device in item:
+                                openvino_endpoints.append(item)
+                                
+                        openvino_label = self.local_endpoint_types[openvino_index]
+                        # to disable openvino to calling huggingface transformers uncomment
+                        # self.hwtest["optimum-openvino"] = False
+                        # if self.hwtest["optimum-openvino"] == True: 
+                        try:
+                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
+                            model_type =  str(await self.get_openvino_pipeline_type(model))
+                            self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
+                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
+                            self.batch_sizes[openvino_model][openvino_label] = 0
+                        # elif self.hwtest["openvino"] == True:                            
+                        except Exception as e:
+                            try:
+                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type)
+                                self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
+                                self.batch_sizes[openvino_model][openvino_label] = 0
+                            except Exception as e:
+                                print(e)
+                                pass
+                        ov_count = ov_count + 1
                     pass
         worker_endpoint_types = []
         worker_model_types = []

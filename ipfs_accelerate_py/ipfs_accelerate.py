@@ -248,7 +248,6 @@ class ipfs_accelerate_py:
         return handler
 
     async def init_endpoints(self, models=None, endpoint_list=None):
-
         endpoint_set = set(endpoint_list)
         for endpoint_type in self.endpoint_types:
             if endpoint_type in endpoint_set:
@@ -1686,7 +1685,6 @@ class ipfs_accelerate_py:
             "test_batch": test_batch,
             "max_batch_size": max_batch_size1,
             "max_batch_size": max_batch_size2,
-            "max_batch_size": max_batch_size3,
             # "test_batch_sizes": test_batch_sizes
         }
         return results
@@ -1700,7 +1698,9 @@ if __name__ == "__main__":
         "column": "link",
         "split": "train",
         "models": [
-            "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->  ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
+            # "llava-hf/llava-v1.6-mistral-7b-hf", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "llava-hf/llava-interleave-qwen-0.5b-hf", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            # "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "lmms-lab/llava-onevision-qwen2-0.5b-ov",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
@@ -1708,7 +1708,7 @@ if __name__ == "__main__":
             # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "lmms-lab/llava-onevision-qwen2-7b-si-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
             # "lmms-lab/llava-onevision-qwen2-7b-ov-chat",  ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
-            # "lmms-lab/LLaVA-Video-7B-Qwen2", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
+            "lmms-lab/LLaVA-Video-7B-Qwen2", ## Automodel() -> Unrecognized configuration class <class 'transformers.models.llava.configuration_llava.LlavaConfig'> for this kind of AutoModel: AutoModel.
         ],
         "chunk_settings": {
 
@@ -1719,22 +1719,22 @@ if __name__ == "__main__":
         "local_endpoints": [
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 32768],
-            ["Qwen/Qwen2-VL-7B-Instruct","cpu", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],
-            ["Qwen/Qwen2-VL-7B-Instruct","cuda:0", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
-            ["Qwen/Qwen2-VL-7B-Instruct","cuda:1", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 32768],
-            ["Qwen/Qwen2-VL-7B-Instruct","openvino:0", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
-            ["Qwen/Qwen2-VL-7B-Instruct","llama_cpp", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "llama_cpp", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
-            ["Qwen/Qwen2-VL-7B-Instruct","ipex", 32768],
+            ["lmms-lab/LLaVA-Video-7B-Qwen2", "ipex", 32768],
         ],
         "openvino_endpoints": [
         ],
