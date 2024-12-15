@@ -163,3 +163,5 @@ class ResultStreamer(TextStreamer):
 
 		if self.emit_chunk:
 			self.emit_chunk(text)
+   
+export = hf_lm

@@ -124,6 +124,8 @@ class hf_embed:
 		last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
 		return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 
+export = hf_embed
+
 # def test():
 # 	cwd = os.getcwd()
 # 	dir = os.path.dirname(__file__)

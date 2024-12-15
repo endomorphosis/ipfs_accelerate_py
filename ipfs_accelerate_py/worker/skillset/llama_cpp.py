@@ -345,6 +345,7 @@ class llama_cpp:
 		
 		pass
 
+export = llama_cpp
 
 #if __name__ == "__main__":
 #    this_test = llama_cpp_kit({'checkpoint': '/storage/cloudkit-models/law-LLM-GGUF-Q2_K@gguf/'})

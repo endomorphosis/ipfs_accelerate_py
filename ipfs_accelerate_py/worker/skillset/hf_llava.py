@@ -2,6 +2,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoProcessor, AutoConfig
+from transformers.generation.streamers import TextStreamer
 import torch 
 import openvino as ov
 from pathlib import Path
@@ -16,7 +17,7 @@ def load_image(image_file):
     else:
         image = Image.open(image_file).convert("RGB")
     image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)    
+    return image, ov.Tensor(image_data)
 
 class hf_llava:
     def __init__(self, resources=None, metadata=None):
@@ -47,19 +48,21 @@ class hf_llava:
     def init_openvino(self):       
         return None
     
-    def __call__(self, method, **kwargs):
-        if method == 'text_complete':
-            return self.text_complete(**kwargs)
-        elif method == 'chat':
-            return self.chat(**kwargs)
-        else:
-            raise Exception('unknown method: %s' % method)
+    # def __call__(self, method, **kwargs):
+    #     if method == 'text_complete':
+    #         return self.text_complete(**kwargs)
+    #     elif method == 'chat':
+    #         return self.chat(**kwargs)
+    #     else:
+    #         raise Exception('unknown method: %s' % method)
         
     
-    def create_vlm_endpoint_handler(self, endpoint_model, cuda_label):
+    def create_vlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_tokenizer, endpoint_model, cuda_label):
         def handler(x):
-            if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
-                self.local_endpoints[endpoint_model][cuda_label].eval()
+            # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
+            #       self.local_endpoints[endpoint_model][cuda_label].eval()
+            if "eval" in dir(local_cuda_endpoint):
+                local_cuda_endpoint.eval()
             else:
                 pass
             with torch.no_grad():
@@ -74,14 +77,14 @@ class hf_llava:
                     #     max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
                     # )
                     config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
-                    tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt', padding=True, truncation=True, max_length=512)
+                    tokens = local_cuda_tokenizer(x, return_tensors='pt', padding=True, truncation=True, max_length=512)
                     
                     # Move tokens to the correct device
-                    input_ids = tokens['input_ids'].to(self.local_endpoints[endpoint_model][cuda_label].device)
-                    attention_mask = tokens['attention_mask'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+                    input_ids = tokens['input_ids'].to(local_cuda_endpoint.device)
+                    attention_mask = tokens['attention_mask'].to(local_cuda_endpoint.device)
                     
                     # Run model inference
-                    outputs = self.local_endpoints[endpoint_model][cuda_label](
+                    outputs = local_cuda_endpoint(
                         input_ids=input_ids,
                         attention_mask=attention_mask,
                         return_dict=True
@@ -116,7 +119,7 @@ class hf_llava:
                     raise e
         return handler
 
-    def create_openvino_vlm_endpoint_handler(self, endpoint_model, openvino_label):
+    def create_openvino_vlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
         def handler(x, y=None):
             chat = None
             image_file = None
@@ -137,14 +140,15 @@ class hf_llava:
                     pass
                 
             image = load_image(image_file)
-            prompt = self.local_endpoints[endpoint_model][openvino_label].apply_chat_template(chat, add_generation_prompt=True)
-            inputs = self.local_endpoints[endpoint_model][openvino_label](images=image, text=prompt, return_tensors="pt")
-            streamer = TextStreamer(self.tokenizer[endpoint_model][openvino_label], skip_prompt=True, skip_special_tokens=True)
-            output_ids = self.local_endpoints[endpoint_model][openvino_label].generate(
+            prompt = openvino_endpoint_handler.apply_chat_template(chat, add_generation_prompt=True)
+            inputs = openvino_endpoint_handler(images=image, text=prompt, return_tensors="pt")
+            streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
+            output_ids = openvino_endpoint_handler.generate(
                 **inputs,
                 do_sample=False,
                 max_new_tokens=50,
                 streamer=streamer,
             )
         return handler
-    
+
+hf_llava = hf_llava()
