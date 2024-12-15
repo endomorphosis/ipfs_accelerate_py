@@ -9,9 +9,6 @@ import numpy as np
 import torch
 import json
 
-
-
-
 def load_image(image_file):
     if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
@@ -25,6 +22,8 @@ class hf_llava:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
+        self.create_openvino_vlm_endpoint_handler = self.create_openvino_vlm_endpoint_handler
+        self.create_vlm_endpoint_handler = self.create_vlm_endpoint_handler
         return None
     
     def init(self):
