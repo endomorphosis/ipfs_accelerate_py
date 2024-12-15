@@ -43,7 +43,7 @@ chat_templates = [
 ]
 
 class hf_lm:
-	def __init__(self, resources, metadata=None):
+	def __init__(self, resources=None, metadata=None):
 		self.tokenizer = AutoTokenizer.from_pretrained(
 			resources['checkpoint'], 
 			local_files_only=True,

@@ -1709,8 +1709,10 @@ if __name__ == "__main__":
             # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
-            # "AIDC-AI/Ovis1.6-Llama3.2-3B", # alueError: Trying to export a ovis model, that is a custom or unsupported architecture,
+            # "AIDC-AI/Ovis1.6-Llama3.2-3B", # ValueError: Trying to export a ovis model, that is a custom or unsupported architecture,
             # "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
+            # "laion/larger_clap_general",
+            # "google/vit-base-patch16-224"
         ],
         "chunk_settings": {
 

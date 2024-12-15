@@ -10,14 +10,17 @@ import torchvision.transforms as T
 from torchvision.transforms import InterpolationMode
 from install_depends import install_depends_py
 import transformers
-from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig
+from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer
 import optimum
 import torch 
 import asyncio
 import openvino as ov
+from optimum.intel.openvino import OVModelForVisualCausalLM
 import platform
+from io import BytesIO
 import os
-
+from PIL import Image
+import requests
 try:
     from ipfs_multiformats import ipfs_multiformats_py
 except:
@@ -57,7 +60,15 @@ class dispatch_result:
     async def dispatch_result(self, result):
         return None    
     
-    
+
+def load_image(image_file):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
+        response = requests.get(image_file)
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+    else:
+        image = Image.open(image_file).convert("RGB")
+    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
+    return image, ov.Tensor(image_data)    
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -367,7 +378,7 @@ class worker_py:
         huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
-        model_dst_path = os.path.join(model_src_path, "model.xml")
+        model_dst_path = os.path.join(model_src_path, "openvino")
         try:
             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
@@ -395,39 +406,10 @@ class worker_py:
             architecture = config.architectures
         if config is not None and "model_type" in dir(config):
             model_type = config.model_type
-        if model_type == "internvl_chat" or architecture == 'InternVLChatModel':
-            convert_cmd = []
-            hfmodel = AutoModel.from_pretrained(model_name, attn_implementation="flash_attention_2", torch_dtype=torch.float16 , trust_remote_code=True)
-            text = "Replace me by any text you'd like."
-            image = 'https://avatars.githubusercontent.com/u/3405202'
-            from PIL import Image
-            from io import BytesIO
-            try:
-                response = requests.get(image)
-                response.raise_for_status()
-                image_data = response.content
-                image_pil = Image.open(BytesIO(image_data)).convert('RGB').resize((224, 224))
-                with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
-                    image_pil.save(f.name)
-                    pixel_values = load_image(str(f.name), max_num=12)
-                    pixel_values = pixel_values.to(torch.float16).cpu().numpy()
-                    encoded_input = hftokenizer(text=text, return_tensors='pt')
-                    encoded_input["pixel_values"] = pixel_values
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching image: {e}")
-                return None
-            except Exception as e:
-                print(f"Error processing image: {e}")
-                return None
-        else:
-            text = "Replace me by any text you'd like."
-            encoded_input = hftokenizer(text, return_tensors='pt')
+        
+        text = "Replace me by any text you'd like."
+        encoded_input = hftokenizer(text, return_tensors='pt')
 
-        model_dst_path_split = model_dst_path.split("/")
-        last_split = model_dst_path_split[-1]
-        if "." in last_split:
-            last_split = last_split.split(".")[0]
-        model_dst_path = "/".join(model_dst_path_split[:-1]) + "/" + last_split
         if os.path.exists(model_dst_path):
             if model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
@@ -584,10 +566,72 @@ class worker_py:
 
         return return_model_type
 
+    def create_vlm_endpoint_handler(self, endpoint_model, cuda_label):
+        def handler(x):
+            if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
+                self.local_endpoints[endpoint_model][cuda_label].eval()
+            else:
+                pass
+            with torch.no_grad():
+                try:
+                    torch.cuda.empty_cache()
+                    # Tokenize input with truncation and padding
+                    # tokens = self.tokenizer[endpoint_model][cuda_label](
+                    #     x, 
+                    #     return_tensors='pt', 
+                    #     padding=True, 
+                    #     truncation=True,
+                    #     max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
+                    # )
+                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    tokens = self.tokenizer[endpoint_model][cuda_label](x, return_tensors='pt', padding=True, truncation=True, max_length=512)
+                    
+                    # Move tokens to the correct device
+                    input_ids = tokens['input_ids'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+                    attention_mask = tokens['attention_mask'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+                    
+                    # Run model inference
+                    outputs = self.local_endpoints[endpoint_model][cuda_label](
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        return_dict=True
+                    )
+                        
+                    # Process and prepare outputs
+                    if hasattr(outputs, 'last_hidden_state'):
+                        hidden_states = outputs.last_hidden_state.cpu().numpy()
+                        attention_mask_np = attention_mask.cpu().numpy()
+                        result = {
+                            'hidden_states': hidden_states,
+                            'attention_mask': attention_mask_np
+                        }
+                    else:
+                        result = outputs.to('cpu').detach().numpy()
+
+                    # Cleanup GPU memory
+                    del tokens, input_ids, attention_mask, outputs
+                    if 'hidden_states' in locals(): del hidden_states
+                    if 'attention_mask_np' in locals(): del attention_mask_np
+                    torch.cuda.empty_cache()
+                    return result
+                except Exception as e:
+                    # Cleanup GPU memory in case of error
+                    if 'tokens' in locals(): del tokens
+                    if 'input_ids' in locals(): del input_ids
+                    if 'attention_mask' in locals(): del attention_mask
+                    if 'outputs' in locals(): del outputs
+                    if 'hidden_states' in locals(): del hidden_states
+                    if 'attention_mask_np' in locals(): del attention_mask_np
+                    torch.cuda.empty_cache()
+                    raise e
+        return handler
     
     def create_endpoint_handler(self, endpoint_model, cuda_label):
         def handler(x):
-            self.local_endpoints[endpoint_model][cuda_label].eval()
+            if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
+                self.local_endpoints[endpoint_model][cuda_label].eval()
+            else:
+                pass
             with torch.no_grad():
                 try:
                     torch.cuda.empty_cache()
@@ -639,13 +683,44 @@ class worker_py:
                     torch.cuda.empty_cache()
                     raise e
         return handler
-
     
     def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
         def handler(x):
             return self.local_endpoints[endpoint_model][openvino_label](x)
         return handler
 
+    def create_openvino_vlm_endpoint_handler(self, endpoint_model, openvino_label):
+        def handler(x, y=None):
+            chat = None
+            image_file = None
+            if y is not None and x is not None:
+                chat, image_file = x
+            elif x is not None:
+                if type(x) == tuple:
+                    chat, image_file = x
+                elif type(x) == list:
+                    chat = x[0]
+                    image_file = x[1]
+                elif type(x) == dict:
+                    chat = x["chat"]
+                    image_file = x["image"]
+                elif type(x) == str:
+                    chat = x
+                else:
+                    pass
+                
+            image = load_image(image_file)
+            prompt = self.local_endpoints[endpoint_model][openvino_label].apply_chat_template(chat, add_generation_prompt=True)
+            inputs = self.local_endpoints[endpoint_model][openvino_label](images=image, text=prompt, return_tensors="pt")
+            streamer = TextStreamer(self.tokenizer[endpoint_model][openvino_label], skip_prompt=True, skip_special_tokens=True)
+            output_ids = self.local_endpoints[endpoint_model][openvino_label].generate(
+                **inputs,
+                do_sample=False,
+                max_new_tokens=50,
+                streamer=streamer,
+            )
+        return handler
+    
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
@@ -803,7 +878,7 @@ class worker_py:
                             except Exception as e:
                                 print(e)
                                 pass
-                            self.endpoint_handler[model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
+                            self.endpoint_handler[model][cuda_label] = self.create_vlm_endpoint_handler(endpoint_model, cuda_label)
                             torch.cuda.empty_cache()
                             self.queues[model][cuda_label] = asyncio.Queue(64)
                             # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
@@ -835,8 +910,7 @@ class worker_py:
                         try:
                             self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
                             self.local_endpoints[openvino_model][openvino_label] = self.get_openvino_model(model, model_type, openvino_label)
-                            self.endpoint_handler[openvino_model][openvino_label] = None
-                            self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, return_tensors='pt')})
+                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_vlm_endpoint_handler(openvino_model, openvino_label)
                             self.batch_sizes[openvino_model][openvino_label] = 0
                         except Exception as e:
                             print(e)
