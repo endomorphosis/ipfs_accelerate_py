@@ -56,35 +56,38 @@ class hf_embed:
 		ov_count = ov_count + 1  
 		return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
 
-	def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
+	def create_openvino_endpoint_handler(self, endpoint_model, openvino_label, endpoint=None, ):
 		def handler(x):
-			return self.local_endpoints[endpoint_model][openvino_label](x)
+			if endpoint is None:
+				return self.local_endpoints[endpoint_model][openvino_label](x)
+			else:
+				return endpoint(x)
 		return handler
 
-	def create_endpoint_handler(self, endpoint_model, cuda_label):
+	def create_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
 		def handler(x):
-			if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
-				self.local_endpoints[endpoint_model][cuda_label].eval()
+			if "eval" in dir(endpoint):
+				endpoint.eval()
 			else:
 				pass
 			with torch.no_grad():
 				try:
 					torch.cuda.empty_cache()
 					# Tokenize input with truncation and padding
-					tokens = self.tokenizer[endpoint_model][cuda_label](
+					tokens = tokenizer[endpoint_model][cuda_label](
 						x, 
 						return_tensors='pt', 
 						padding=True, 
 						truncation=True,
-						max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
+						max_length=endpoint.config.max_position_embeddings
 					)
 					
 					# Move tokens to the correct device
-					input_ids = tokens['input_ids'].to(self.local_endpoints[endpoint_model][cuda_label].device)
-					attention_mask = tokens['attention_mask'].to(self.local_endpoints[endpoint_model][cuda_label].device)
+					input_ids = tokens['input_ids'].to(endpoint.device)
+					attention_mask = tokens['attention_mask'].to(endpoint.device)
 					
 					# Run model inference
-					outputs = self.local_endpoints[endpoint_model][cuda_label](
+					outputs = endpoint(
 						input_ids=input_ids,
 						attention_mask=attention_mask,
 						return_dict=True
@@ -151,26 +154,3 @@ class hf_embed:
 		return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 
 export = hf_embed
-
-# def test():
-# 	cwd = os.getcwd()
-# 	dir = os.path.dirname(__file__)
-# 	grandparent = os.path.dirname(dir)
-# 	models = os.path.join(grandparent, "models")
-# 	checkpoint = 'bge-base-en-v1.5'
-# 	resources = {}
-# 	resources['checkpoint'] = models + "/" + checkpoint + "@hf"
-	
-# 	print(resources["checkpoint"])
-# 	meta = {"modelName":"bge-base-en-v1.5"}
-# 	text = "sample text to embed"
-# 	model = "bge-base-en-v1.5"
-# 	instruction = "Represent this sentence for searching relevant passages:"
-# 	embed = hf_embed(resources, meta)
-# 	results = embed.embed(instruction, text)
-# 	print(results)
-# 	return results
-
-# if __name__ == '__main__':
-# 	test()
-# 	# pass
