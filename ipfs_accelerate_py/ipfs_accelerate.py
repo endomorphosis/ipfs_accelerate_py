@@ -789,116 +789,6 @@ class ipfs_accelerate_py:
                 print(e)
                 pass
         return None
-    
-    async def max_batch_size_bak(self, model, endpoint, endpoint_handler):
-        import psutil
-        process = psutil.Process(os.getpid())
-        embed_fail = False
-        context_length = None
-        exponent = int(0)
-        batch = []
-        token_length_size = 0
-        batch_size = 2**exponent
-        test_tokens = []
-        endpoint_types = list(self.endpoints.keys())
-
-        this_tokenizer = self.resources["tokenizer"][model][endpoint]
-        for endpoint_type in endpoint_types:
-            endpoints = self.endpoints[endpoint_type]
-            if model in list(endpoints.keys()):
-                for this_endpoint in endpoints[model]:
-                    if model == this_endpoint[0] and ( endpoint == this_endpoint[1] or this_endpoint[1] in list(self.resources["endpoint_handler"][model].keys()) ):
-                        context_length = this_endpoint[2]
-                        token_length_size = round(int(context_length) * 0.99)
-                        break
-            if token_length_size > 0:
-                break
-                        
-        token_kv = {}
-        acceptable_tokens = "abcdefghijklmnopqrstuvwxyz"
-        for i in range(0, len(acceptable_tokens)):
-            find_token_int = this_tokenizer.encode(acceptable_tokens[i])
-            if len(find_token_int) == 3:
-                find_token_int = find_token_int[1]
-            elif len(find_token_int) == 2:
-                find_token_int = find_token_int[1]
-            elif len(find_token_int) == 1:
-                find_token_int = find_token_int[0]
-            token_kv[acceptable_tokens[i]] = find_token_int
-                        
-        memory_increase = None
-        while not embed_fail:
-            test_batch = []
-            exponent += 1
-            for i in range(2**(exponent)):
-                random_offset = random.randint(0, len(acceptable_tokens)-1)
-                test_tokens = []
-                for i in range(token_length_size):
-                    test_tokens.append(token_kv[list(token_kv.keys())[(i + random_offset) % len(acceptable_tokens)]])
-                    pass
-                test_text = this_tokenizer.decode(test_tokens)
-                test_batch.append(test_text)
-            parsed_knn_embeddings = None
-            embeddings = None
-            request_knn_results = None
-            start_time = time.time()
-            start_mem = process.memory_info().rss
-            free_memory = psutil.virtual_memory().free
-            if memory_increase is not None:
-                if free_memory < (memory_increase * 2):
-                    embed_fail = True
-                    break
-                    raise(ValueError("the system does not free system memory for batch size " + str(2**(exponent-1))))
-            try:
-                if "cuda" not in endpoint and "cpu" not in endpoint and "openvino:" not in endpoint:
-                    request_knn_results = await endpoint_handler({"inputs": test_batch})
-                    end_memory = process.memory_info().rss
-
-                elif "cuda" in endpoint or "cpu" in endpoint or "openvino:" in endpoint:
-                    try:
-                        request_knn_results = await endpoint_handler(test_batch)
-                        end_memory = process.memory_info().rss
-                    except Exception as e:
-                        pass
-                    if request_knn_results == None:
-                        try:
-                            request_knn_results = endpoint_handler(test_batch)
-                            end_memory = process.memory_info().rss
-                        except Exception as e:
-                            request_knn_results = e
-                            embed_fail = True
-                            end_memory = process.memory_info().rss
-                            pass
-                        pass
-            except Exception as e:
-                request_knn_results = e
-                embed_fail = True
-                end_memory = process.memory_info().rss
-                pass
-            if request_knn_results is None or type(request_knn_results) is None or type(request_knn_results) is ValueError or type(request_knn_results) is Exception or type(request_knn_results) is str or type(request_knn_results) is int:
-                embed_fail = True
-            end_time = time.time()
-            batch_size = 2**(exponent-1)
-            elapsed_time = end_time - start_time
-            memory_increase = end_memory - start_mem
-            free_memory = psutil.virtual_memory().free
-            log = {
-            "batch size": batch_size,
-            "elapsed_time": elapsed_time,
-            "memory_increase": memory_increase,
-            "free_memory": free_memory
-            }
-            print(log)
-            self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))
-            if batch_size >= 4096:
-                embed_fail = True
-                pass
-        if exponent == 0:
-            torch.cuda.empty_cache()
-            return 1
-        else:  
-            torch.cuda.empty_cache()
-            return 2**(exponent-1)
 
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):
@@ -924,16 +814,22 @@ class ipfs_accelerate_py:
                         break
             if token_length_size > 0:
                 break
-                        
-        find_token_int = this_tokenizer.encode(find_token_str)
-        if len(find_token_int) == 3:
-            find_token_int = find_token_int[1]
-        elif len(find_token_int) == 2:
-            find_token_int = find_token_int[1]
-        elif len(find_token_int) == 1:
-            find_token_int = find_token_int[0]
-        for i in range(token_length_size):
-            test_tokens.append(find_token_int)
+        if "encode" in list(dir(this_tokenizer)):
+            find_token_int = this_tokenizer.encode(find_token_str)
+        else:
+            find_token_int = this_tokenizer(find_token_str)
+        if type(find_token_int) is dict:
+            if "input_ids" in list(find_token_int.keys()):
+                find_token_int = find_token_int["input_ids"][1]
+        elif type(find_token_int) is list:
+            if len(find_token_int) == 3:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 2:
+                find_token_int = find_token_int[1]
+            elif len(find_token_int) == 1:
+                find_token_int = find_token_int[0]
+            for i in range(token_length_size):
+                test_tokens.append(find_token_int)
         test_text = this_tokenizer.decode(test_tokens)
         memory_increase = None
         while not embed_fail:
@@ -1003,84 +899,6 @@ class ipfs_accelerate_py:
         else:  
             with torch.no_grad():
                 torch.cuda.empty_cache()
-            return 2**(exponent-1)
-
-    async def max_batch_size_bak(self, model, endpoint=None, endpoint_type=None ):
-        embed_fail = False
-        exponent = 0
-        batch = []
-        token_length_size = 0
-        batch_size = 2**exponent
-        if endpoint_type is None:
-            this_model = None
-            this_endpoint = None
-            this_context_length = None
-            if "/embed" in endpoint:
-                endpoint_type = "tei_endpoints"
-            elif "/infer" in endpoint:
-                endpoint_type = "openvino_endpoints"
-            elif "http" in endpoint:
-                endpoint_type = "tei_endpoints"
-            elif "cuda" in endpoint or "cpu" in endpoint or "local" in endpoint:
-                endpoint_type = "local_endpoints"
-            elif "libp2p" in endpoint:
-                endpoint_type = "libp2p_endpoints"
-            if endpoint_type is None:
-                print('Endpoint not found')
-                return 0
-            else:
-                pass
-                  
-            for this_endpoint in self.endpoints[endpoint_type]:
-                if "cuda" in this_endpoint[1] or "cpu" in this_endpoint[1] or "local" in this_endpoint[1]:
-                    this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
-                    token_length_size = round(self.endpoints["local_endpoints"][this_endpoint_index][2] * 0.99)
-                elif model is this_endpoint[0]:
-                    this_endpoint_index = self.endpoints[endpoint_type].index(this_endpoint)
-                    token_length_size = round(self.endpoints[endpoint_type][this_endpoint_index][2] * 0.99) 
-            
-            test_tokens = []
-            if model not in self.tokenizer.keys():
-                self.tokenizer[model] = {}
-            if "cpu" not in self.tokenizer[model].keys():
-                self.tokenizer[model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu')
-            find_token_str = str("z")
-            find_token_int = self.tokenizer[model]["cpu"].encode(find_token_str)
-            if len(find_token_int) == 3:
-                find_token_int = find_token_int[1]
-            elif len(find_token_int) == 2:
-                find_token_int = find_token_int[1]
-            elif len(find_token_int) == 1:
-                find_token_int = find_token_int[0]
-            for i in range(token_length_size):
-                test_tokens.append(find_token_int)
-            test_text = self.tokenizer[model]["cpu"].decode(test_tokens)
-            if endpoint is None:
-                endpoint = self.choose_endpoint(model)
-            while not embed_fail:
-                test_batch = []
-                for i in range(batch_size):
-                    test_batch.append(test_text)
-                parsed_knn_embeddings = None
-                embeddings = None
-                request_knn_results = None
-                try:
-                    request_knn_results = await self.request_knn(test_batch, model, endpoint, endpoint_type)
-                except Exception as e:
-                    try:
-                        embeddings = await self.index_knn(test_batch, model, endpoint)
-                    except Exception as e:
-                            pass
-                if request_knn_results != None and parsed_knn_embeddings == None:
-                    parsed_knn_embeddings = await self.parse_knn(request_knn_results, model, endpoint, endpoint_type)
-                if parsed_knn_embeddings is not None:
-                    embeddings = parsed_knn_embeddings
-                embed_fail = True
-                
-        self.endpoint_status[endpoint] = 2**(exponent-1)
-        if exponent == 0:
-            return 1
-        else:
             return 2**(exponent-1)
     
     async def request_openvino_endpoint(self, model, batch_size):
@@ -1697,11 +1515,11 @@ if __name__ == "__main__":
         "column": "link",
         "split": "train",
         "models": [
-            "TIGER-Lab/Mantis-8B-siglip-llama3",
+            # "TIGER-Lab/Mantis-8B-siglip-llama3",
             # "lmms-lab/llava-onevision-qwen2-7b-si",  
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            # "llava-hf/llava-v1.6-mistral-7b-hf", 
+            "llava-hf/llava-v1.6-mistral-7b-hf", 
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
             # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
@@ -1723,22 +1541,22 @@ if __name__ == "__main__":
         "local_endpoints": [
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 32768],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cpu", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cpu", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cuda:0", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "cuda:1", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cuda:1", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 32768],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "openvino:0", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "llama_cpp", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "llama_cpp", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
-            ["TIGER-Lab/Mantis-8B-siglip-llama3",  "ipex", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf",   "ipex", 32768],
         ],
         "openvino_endpoints": [
         ],

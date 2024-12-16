@@ -1,9 +1,10 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig
+from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText
 from transformers.generation.streamers import TextStreamer
 import torch 
+import asyncio
 import openvino as ov
 from pathlib import Path
 import numpy as np
@@ -28,39 +29,38 @@ class hf_llava:
         return None
     
     def init(self):
-    #     self.processor = AutoProcessor.from_pretrained(
-    #         self.resources['checkpoint'], 
-    #         local_files_only=True
-    #     )
-    #     self.config = AutoConfig.from_pretrained(
-    #         self.resources['checkpoint'], 
-    #         local_files_only=True
-    #     )
-    #     self.model = AutoModelForSequenceClassification.from_pretrained(
-    #         self.resources['checkpoint'], 
-    #         local_files_only=True
-    #     )
         return None
     
-    def init_cuda(self):
-        return None
+    def init_cuda(self, model, device, cuda_label):
+        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = AutoProcessor.from_pretrained(model)
+        endpoint = None
+        try:
+            endpoint = AutoModelForImageTextToText.from_pretrained(model,  torch_dtype=torch.float16, trust_remote_code=True).to(device)
+        except Exception as e:
+            print(e)
+            pass
+        endpoint_handler = self.create_vlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        torch.cuda.empty_cache()
+        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
-    def init_openvino(self):       
-        return None
+    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_model):
+        endpoint = None
+        tokenizer = None
+        endpoint_handler = None
+        batch_size = 0                
+        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        model = get_openvino_model(model, model_type, openvino_label)
+        endpoint_handler = self.create_openvino_vlm_endpoint_handler(self.local_endpoints[openvino_model][openvino_label], self.tokenizer[openvino_model][openvino_label], openvino_model, openvino_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
-    # def __call__(self, method, **kwargs):
-    #     if method == 'text_complete':
-    #         return self.text_complete(**kwargs)
-    #     elif method == 'chat':
-    #         return self.chat(**kwargs)
-    #     else:
-    #         raise Exception('unknown method: %s' % method)
-        
-    
-    def create_vlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_tokenizer, endpoint_model, cuda_label):
-        def handler(x):
+    def create_vlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
+        def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
             # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
             #       self.local_endpoints[endpoint_model][cuda_label].eval()
+            tmp_url = "https://github.com/haotian-liu/LLaVA/blob/1a91fc274d7c35a9b50b3cb29c4247ae5837ce39/images/llava_v1_5_radar.jpg?raw=true"
             if "eval" in dir(local_cuda_endpoint):
                 local_cuda_endpoint.eval()
             else:
@@ -68,53 +68,55 @@ class hf_llava:
             with torch.no_grad():
                 try:
                     torch.cuda.empty_cache()
-                    # Tokenize input with truncation and padding
-                    # tokens = self.tokenizer[endpoint_model][cuda_label](
-                    #     x, 
-                    #     return_tensors='pt', 
-                    #     padding=True, 
-                    #     truncation=True,
-                    #     max_length=self.local_endpoints[endpoint_model][cuda_label].config.max_position_embeddings
-                    # )
                     config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
-                    tokens = local_cuda_tokenizer(x, return_tensors='pt', padding=True, truncation=True, max_length=512)
-                    
-                    # Move tokens to the correct device
-                    input_ids = tokens['input_ids'].to(local_cuda_endpoint.device)
-                    attention_mask = tokens['attention_mask'].to(local_cuda_endpoint.device)
-                    
-                    # Run model inference
-                    outputs = local_cuda_endpoint(
-                        input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        return_dict=True
-                    )
-                        
-                    # Process and prepare outputs
-                    if hasattr(outputs, 'last_hidden_state'):
-                        hidden_states = outputs.last_hidden_state.cpu().numpy()
-                        attention_mask_np = attention_mask.cpu().numpy()
-                        result = {
-                            'hidden_states': hidden_states,
-                            'attention_mask': attention_mask_np
-                        }
+                    if y is not None and type(y) == str:
+                        image = load_image(y)
+                    elif type(y) == tuple:
+                        image = load_image(y[1])
+                    elif type(y) == dict:
+                        image = load_image(y["image"])
+                    elif type(y) == list:
+                        image = load_image(y[1])
                     else:
-                        result = outputs.to('cpu').detach().numpy()
-
-                    # Cleanup GPU memory
-                    del tokens, input_ids, attention_mask, outputs
-                    if 'hidden_states' in locals(): del hidden_states
-                    if 'attention_mask_np' in locals(): del attention_mask_np
+                        image = Image.open(requests.get(tmp_url, stream=True).raw)
+                    
+                    if x is not None and type(x) == str:
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image"},
+                                    {"type": "text", "text": x},
+                                ],
+                            },
+                        ]
+                    elif type(x) == tuple:
+                        conversation = x
+                    elif type(x) == dict:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    elif type(x) == list:
+                        # conversation = x
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image"},
+                                    {"type": "text", "text": x},
+                                ],
+                            },
+                        ]
+                    else:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                  
+                    prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                    inputs = local_cuda_processor(image, prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
+                    result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    # Run model inference
                     torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    if 'tokens' in locals(): del tokens
-                    if 'input_ids' in locals(): del input_ids
-                    if 'attention_mask' in locals(): del attention_mask
-                    if 'outputs' in locals(): del outputs
-                    if 'hidden_states' in locals(): del hidden_states
-                    if 'attention_mask_np' in locals(): del attention_mask_np
                     torch.cuda.empty_cache()
                     raise e
         return handler

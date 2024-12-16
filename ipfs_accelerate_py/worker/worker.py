@@ -10,7 +10,7 @@ import torchvision.transforms as T
 from torchvision.transforms import InterpolationMode
 from install_depends import install_depends_py
 import transformers
-from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer
+from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer, AutoModelForImageTextToText
 import optimum
 import torch 
 import asyncio
@@ -451,12 +451,7 @@ class worker_py:
     
     async def get_openvino_pipeline_type(self, model_name, model_type=None):
         results = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
-        return results    
-    
-    def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
-        def handler(x):
-            return self.local_endpoints[endpoint_model][openvino_label](x)
-        return handler
+        return results
     
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
@@ -522,138 +517,110 @@ class worker_py:
             if model not in list(self.batch_sizes.keys()):
                 self.batch_sizes[model] = {}
                 
-            vlm_model_types = ["llava"]
-            if model_type != "llama_cpp" and model_type not in vlm_model_types:
+            vlm_model_types = ["llava", "llava_next"]
+            text_embedding_types = ["bert"]
+            custom_types = vlm_model_types + text_embedding_types
+            if model_type != "llama_cpp" and model_type not in custom_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
                             device = 'cuda:' + str(gpu)
-                            cuda_index = self.local_endpoint_types.index(device)
-                            if "model" in list(self.local_endpoints.keys()):
-                                endpoint_model = model
-                            else:
-                                for this_model in list(self.local_endpoints.keys()):
-                                    if device in list(self.local_endpoints[this_model].keys()):
-                                        endpoint_model = this_model
-                            config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-                            cuda_label = self.local_endpoint_types[cuda_index]
-                            self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
-                            try:
-                                self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
-                            except Exception as e:
-                                try:
-                                    self.local_endpoints[endpoint_model][cuda_label] = AutoProcessor.from_pretrained(model, trust_remote_code=True, device=device)
-                                except Exception as e:
-                                    print(e)
-                                    pass
-                            self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
-                            torch.cuda.empty_cache()
-                            self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
-                            # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-                            self.batch_sizes[endpoint_model][cuda_label] = 0
+                            cuda_label = 'cuda:' + str(gpu)
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.default.init_cuda(model, device, cuda_label)
+                            # cuda_index = self.local_endpoint_types.index(device)
+                            # if "model" in list(self.local_endpoints.keys()):
+                            #     endpoint_model = model
+                            # else:
+                            #     for this_model in list(self.local_endpoints.keys()):
+                            #         if device in list(self.local_endpoints[this_model].keys()):
+                            #             endpoint_model = this_model
+                            # config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+                            # cuda_label = self.local_endpoint_types[cuda_index]
+                            # self.tokenizer[endpoint_model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+                            # try:
+                            #     self.local_endpoints[endpoint_model][cuda_label] = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+                            # except Exception as e:
+                            #     try:
+                            #         self.local_endpoints[endpoint_model][cuda_label] = AutoProcessor.from_pretrained(model, trust_remote_code=True, device=device)
+                            #     except Exception as e:
+                            #         print(e)
+                            #         pass
+                            # self.endpoint_handler[endpoint_model][cuda_label] = self.create_endpoint_handler(endpoint_model, cuda_label)
+                            # torch.cuda.empty_cache()
+                            # self.queues[endpoint_model][cuda_label] = asyncio.Queue(64)
+                            # # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+                            # self.batch_sizes[endpoint_model][cuda_label] = 0
                 if local > 0 and cpus > 0:
-                    all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
-                    all_tests_ValueError = all(x is ValueError for x in all_test_types)
-                    all_tests_none = all(x is None for x in all_test_types)
-                    if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
-                        self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model, trust_remote_code=True).to("cpu")
-                        self.queues[model]["cpu"] = asyncio.Queue(4)
-                        self.endpoint_handler[model]["cpu"] = ""
-                    elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                    # all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
+                    # all_tests_ValueError = all(x is ValueError for x in all_test_types)
+                    # all_tests_none = all(x is None for x in all_test_types)
+                    # if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
+                    #     self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model, trust_remote_code=True).to("cpu")
+                    #     self.queues[model]["cpu"] = asyncio.Queue(4)
+                    #     self.endpoint_handler[model]["cpu"] = ""
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
                         ov_count = 0
-                        openvino_endpoints = []
+                        openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
-                        openvino_index = self.local_endpoint_types.index(device)
-                        if "model" in list(self.local_endpoints.keys()):
-                                openvino_model = model
-                        else:
-                            for this_model in list(self.local_endpoints.keys()):
-                                if device in list(self.local_endpoints[this_model].keys()):
-                                    openvino_model = this_model
-                        for item in self.local_endpoint_types:
-                            if device in item:
-                                openvino_endpoints.append(item)
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.default.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
+                        # ov_count = 0
+                        # openvino_endpoints = []
+                        # device = "openvino:" + str(ov_count)
+                        # openvino_index = self.local_endpoint_types.index(device)
+                        # if "model" in list(self.local_endpoints.keys()):
+                        #         openvino_model = model
+                        # else:
+                        #     for this_model in list(self.local_endpoints.keys()):
+                        #         if device in list(self.local_endpoints[this_model].keys()):
+                        #             openvino_model = this_model
+                        # for item in self.local_endpoint_types:
+                        #     if device in item:
+                        #         openvino_endpoints.append(item)
                                 
-                        openvino_label = self.local_endpoint_types[openvino_index]
-                        # to disable openvino to calling huggingface transformers uncomment
-                        # self.hwtest["optimum-openvino"] = False
-                        # if self.hwtest["optimum-openvino"] == True: 
-                        try:
-                            self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
-                            model_type =  str(await self.get_openvino_pipeline_type(model))
-                            self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
-                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
-                            self.batch_sizes[openvino_model][openvino_label] = 0
-                        # elif self.hwtest["openvino"] == True:                            
-                        except Exception as e:
-                            try:
-                                self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-                                self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type, openvino_label)
-                                self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
-                                self.batch_sizes[openvino_model][openvino_label] = 0
-                            except Exception as e:
-                                print(e)
-                                pass
-                        ov_count = ov_count + 1
+                        # openvino_label = self.local_endpoint_types[openvino_index]
+                        # # to disable openvino to calling huggingface transformers uncomment
+                        # # self.hwtest["optimum-openvino"] = False
+                        # # if self.hwtest["optimum-openvino"] == True: 
+                        # try:
+                        #     self.tokenizer[openvino_model][openvino_label] = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
+                        #     model_type =  str(await self.get_openvino_pipeline_type(model))
+                        #     self.local_endpoints[openvino_model][openvino_label] = pipe = pipeline(model_type, model= await self.get_optimum_openvino_model(model, model_type), tokenizer=self.tokenizer[openvino_model][openvino_label])
+                        #     self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_endpoint_handler(openvino_model, openvino_label)
+                        #     self.batch_sizes[openvino_model][openvino_label] = 0
+                        # # elif self.hwtest["openvino"] == True:                            
+                        # except Exception as e:
+                        #     try:
+                        #         self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+                        #         self.local_endpoints[openvino_model][openvino_label] = await self.get_openvino_model(model, model_type, openvino_label)
+                        #         self.endpoint_handler[openvino_model][openvino_label] = lambda x: self.local_endpoints[openvino_model][openvino_label]({**self.tokenizer[openvino_model][openvino_label](x, 0, return_tensors='pt')})
+                        #         self.batch_sizes[openvino_model][openvino_label] = 0
+                        #     except Exception as e:
+                        #         print(e)
+                        #         pass
+                        # ov_count = ov_count + 1
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(gpus):
                             device = 'cuda:' + str(gpu)
-                            cuda_index = self.local_endpoint_types.index(device)
-                            if "model" in list(self.local_endpoints.keys()):
-                                endpoint_model = model
-                            else:
-                                for this_model in list(self.local_endpoints.keys()):
-                                    if device in list(self.local_endpoints[this_model].keys()):
-                                        endpoint_model = this_model
-                            config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-                            cuda_label = self.local_endpoint_types[cuda_index]
-                            self.tokenizer[model][cuda_label] = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
-                            try:
-                                self.local_endpoints[model][cuda_label] = AutoProcessor.from_pretrained(model)
-                            except Exception as e:
-                                print(e)
-                                pass
-                            self.endpoint_handler[model][cuda_label] = self.create_vlm_endpoint_handler(self.local_endpoints[endpoint_model][cuda_label], self.tokenizer[model][cuda_label], endpoint_model, cuda_label)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_llava.init_cuda( model, device, cuda_label)
                             torch.cuda.empty_cache()
-                            self.queues[model][cuda_label] = asyncio.Queue(64)
-                            # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-                            self.batch_sizes[model][cuda_label] = 0
                 if local > 0 and cpus > 0:
-                    all_test_types = [ type(openvino_test), type(llama_cpp_test), type(ipex_test)]
-                    all_tests_ValueError = all(x is ValueError for x in all_test_types)
-                    all_tests_none = all(x is None for x in all_test_types)
-                    if (all_tests_ValueError or all_tests_none) and model_type != "llama_cpp":  
-                        self.local_endpoints[model]["cpu"] = AutoModel.from_pretrained(model, trust_remote_code=True).to("cpu")
-                        self.queues[model]["cpu"] = asyncio.Queue(4)
-                        self.endpoint_handler[model]["cpu"] = ""
-                    elif openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        ov_count = 0
-                        openvino_endpoints = []
-                        device = "openvino:" + str(ov_count)
-                        openvino_index = self.local_endpoint_types.index(device)
-                        if "model" in list(self.local_endpoints.keys()):
-                                openvino_model = model
-                        else:
-                            for this_model in list(self.local_endpoints.keys()):
-                                if device in list(self.local_endpoints[this_model].keys()):
-                                    openvino_model = this_model
-                        for item in self.local_endpoint_types:
-                            if device in item:
-                                openvino_endpoints.append(item)
-                                
-                        openvino_label = self.local_endpoint_types[openvino_index]
-                        try:
-                            self.tokenizer[openvino_model][openvino_label] =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-                            self.local_endpoints[openvino_model][openvino_label] = self.get_openvino_model(model, model_type, openvino_label)
-                            self.endpoint_handler[openvino_model][openvino_label] = self.create_openvino_vlm_endpoint_handler(self.local_endpoints[openvino_model][openvino_label], self.tokenizer[openvino_model][openvino_label], openvino_model, openvino_label)
-                            self.batch_sizes[openvino_model][openvino_label] = 0
-                        except Exception as e:
-                            print(e)
-                            pass
-                        ov_count = ov_count + 1
-                    pass
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
+            elif model_type in text_embedding_types:
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_cuda( model, device, cuda_label)
+                            torch.cuda.empty_cache()
+                if local > 0 and cpus > 0:
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
+
         worker_endpoint_types = []
         worker_model_types = []
         for endpoint in self.endpoint_handler:
