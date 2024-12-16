@@ -62,7 +62,14 @@ class openvino_utils:
         # await results.compile()
         return results
     
-    async def openvino_cli_convert(
+    
+    def get_model_type(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            model_type = config.__class__.model_type
+        return model_type
+    
+    def openvino_cli_convert(
         self,
         model_name,
         model_dst_path,
@@ -93,8 +100,8 @@ class openvino_utils:
         if task is not None:
             command.extend(['--task', task])
         if task is None:
-            model_type = await self.get_model_type(model_name)
-            task = await self.get_openvino_pipeline_type(model_name, model_type)
+            model_type = self.get_model_type(model_name)
+            task = self.get_openvino_pipeline_type(model_name, model_type)
             if task not in tasks_list:
                 raise ValueError("Task not supported: " + task)
             elif task is not None:
@@ -148,7 +155,7 @@ class openvino_utils:
         return convert_model
     
     
-    async def get_openvino_pipeline_type(self, model_name, model_type=None):
+    def get_openvino_pipeline_type(self, model_name, model_type=None):
         model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
         model_mapping_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         return_model_type = None

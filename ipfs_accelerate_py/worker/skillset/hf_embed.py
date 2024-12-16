@@ -1,8 +1,9 @@
+import asyncio
 import os
 import torch
 import torch.nn.functional as F
 from torch import inference_mode, float16, Tensor
-from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteriaList
+from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList
 from transformers.generation.streamers import TextStreamer
 from sentence_transformers import SentenceTransformer
 from InstructorEmbedding import INSTRUCTOR
@@ -16,8 +17,21 @@ class hf_embed:
 	def init(self):
 		return None
 
-	def init_cuda(self):
-		return None
+	def init_cuda(self, model, device, cuda_label):
+		config = AutoConfig.from_pretrained(model, trust_remote_code=True)
+		tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+		try:
+			endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+		except Exception as e:
+			try:
+				endpoint = AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
+			except Exception as e:
+				print(e)
+				pass
+		endpoint_handler = self.create_endpoint_handler(endpoint, cuda_label)
+		torch.cuda.empty_cache()
+		batch_size = 0
+		return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
 	def init_openvino(self):
 		return None		

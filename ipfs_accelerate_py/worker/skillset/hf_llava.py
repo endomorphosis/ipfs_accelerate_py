@@ -1,7 +1,7 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText
+from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
 from transformers.generation.streamers import TextStreamer
 import torch 
 import asyncio
@@ -52,7 +52,7 @@ class hf_llava:
         batch_size = 0                
         tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         model = get_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_vlm_endpoint_handler(self.local_endpoints[openvino_model][openvino_label], self.tokenizer[openvino_model][openvino_label], openvino_model, openvino_label)
+        endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     

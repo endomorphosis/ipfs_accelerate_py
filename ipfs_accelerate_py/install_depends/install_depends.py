@@ -1,6 +1,8 @@
 import subprocess
 import os
 import sys
+import json
+import hashlib
 
 class install_depends_py():
     def __init__(self, resources, metadata):
