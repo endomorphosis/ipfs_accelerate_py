@@ -33,16 +33,28 @@ class hf_embed:
 		batch_size = 0
 		return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
-	def init_openvino(self):
-		return None		
-			
-	def __call__(self, method, **kwargs):
-		if method == 'hf_embed':
-			return self.embed(**kwargs)
-		elif method == 'instruct_embed':
-			return self.embed(**kwargs)
-		else:
-			raise Exception('unknown method: %s' % method)
+	def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+		ov_count = 0
+		device = "openvino:" + str(ov_count)
+		openvino_label = "openvino:" + str(ov_count)
+		try:
+			tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
+			model_type =  str(get_openvino_pipeline_type(model))
+			endpoint = pipeline(model_type, model = get_optimum_openvino_model(model, model_type), tokenizer=tokenizer)
+			endpoint_handler = self.create_openvino_endpoint_handler(model, openvino_label)
+			batch_size = 0
+		# elif self.hwtest["openvino"] == True:                            
+		except Exception as e:
+			try:
+				tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+				model = get_openvino_model(model, model_type, openvino_label)
+				endpoint_handler = lambda x: model({**tokenizer(x, 0, return_tensors='pt')})
+				batch_size = 0
+			except Exception as e:
+				print(e)
+				pass
+		ov_count = ov_count + 1  
+		return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
 
 	def create_openvino_endpoint_handler(self, endpoint_model, openvino_label):
 		def handler(x):
