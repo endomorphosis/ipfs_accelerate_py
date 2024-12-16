@@ -71,90 +71,6 @@ class dispatch_result:
     async def dispatch_result(self, result):
         return None    
     
-
-def load_image(image_file):
-    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
-        response = requests.get(image_file)
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-    else:
-        image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)    
-
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD = (0.229, 0.224, 0.225)
-
-def build_transform(input_size):
-    MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
-    transform = T.Compose([
-        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
-        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
-        T.ToTensor(),
-        T.Normalize(mean=MEAN, std=STD)
-    ])
-    return transform
-
-def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
-    best_ratio_diff = float('inf')
-    best_ratio = (1, 1)
-    area = width * height
-    for ratio in target_ratios:
-        target_aspect_ratio = ratio[0] / ratio[1]
-        ratio_diff = abs(aspect_ratio - target_aspect_ratio)
-        if ratio_diff < best_ratio_diff:
-            best_ratio_diff = ratio_diff
-            best_ratio = ratio
-        elif ratio_diff == best_ratio_diff:
-            if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
-                best_ratio = ratio
-    return best_ratio
-
-def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
-    orig_width, orig_height = image.size
-    aspect_ratio = orig_width / orig_height
-
-    # calculate the existing image aspect ratio
-    target_ratios = set(
-        (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
-        i * j <= max_num and i * j >= min_num)
-    target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
-
-    # find the closest aspect ratio to the target
-    target_aspect_ratio = find_closest_aspect_ratio(
-        aspect_ratio, target_ratios, orig_width, orig_height, image_size)
-
-    # calculate the target width and height
-    target_width = image_size * target_aspect_ratio[0]
-    target_height = image_size * target_aspect_ratio[1]
-    blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
-
-    # resize the image
-    resized_img = image.resize((target_width, target_height))
-    processed_images = []
-    for i in range(blocks):
-        box = (
-            (i % (target_width // image_size)) * image_size,
-            (i // (target_width // image_size)) * image_size,
-            ((i % (target_width // image_size)) + 1) * image_size,
-            ((i // (target_width // image_size)) + 1) * image_size
-        )
-        # split the image
-        split_img = resized_img.crop(box)
-        processed_images.append(split_img)
-    assert len(processed_images) == blocks
-    if use_thumbnail and len(processed_images) != 1:
-        thumbnail_img = image.resize((image_size, image_size))
-        processed_images.append(thumbnail_img)
-    return processed_images
-
-def load_image(image_file, input_size=448, max_num=12):
-    image = Image.open(image_file).convert('RGB')
-    transform = build_transform(input_size=input_size)
-    images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
-    pixel_values = [transform(image) for image in images]
-    pixel_values = torch.stack(pixel_values)
-    return pixel_values
-    
 class worker_py:
     def __init__(self, metadata, resources):
         self.metadata = metadata
@@ -242,6 +158,10 @@ class worker_py:
         self.create_vlm_endpoint_handler = self.hf_llava.create_vlm_endpoint_handler
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
         self.create_endpoint_handler = self.default.create_endpoint_handler
+        self.get_openvino_model = self.openvino_utils.get_openvino_model
+        self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
+        self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
+        self.get_model_type = self.openvino_utils.get_model_type
         
         # if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
         #     self.hf_lm = hf_lm(resources, metadata)
@@ -336,90 +256,93 @@ class worker_py:
     #         model_type = config.__class__.model_type
     #     return model_type
     
-    async def get_model_format(self, model_name, model_type=None):
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
-        return model_type
-        
+    # async def get_model_format(self, model_name, model_type=None):
+    #     if model_type is None:
+    #         config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    #         model_type = config.__class__.model_type
+    #     return model_type
+                
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):
-        architecture = None
-        config = None
-        hfmodel = None
-        hftokenizer = None
-        import openvino as ov                                
-        core = ov.Core()
-        import openvino_genai as ov_genai
-        openvino_devices = core.available_devices
-        device_index = int(device_name.split(":")[-1])
-        device = openvino_devices[device_index]
-        model_type = self.get_model_type(model_name)
-        model_task = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
-        homedir = os.path.expanduser("~")
-        model_name_convert = model_name.replace("/", "--")
-        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
-        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
-        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
-        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
-        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
-        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
-        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
-        model_dst_path = os.path.join(model_src_path, "openvino")
-        try:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
-        except Exception as e:
-            config = None
-                         
-        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        vlm_model_types = ["llava"]
-        try:
-            if model_type not in vlm_model_types:
-                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
-            else:
-                hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-        except Exception as e:
-            print(e)
-
-        if "config" in list(dir(hfmodel)):
-            config = hfmodel.config
-        else:
-            try:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            except Exception as e:
-                config = None
-        if config is not None and "architectures" in dir(config):        
-            architecture = config.architectures
-        if config is not None and "model_type" in dir(config):
-            model_type = config.model_type
+        return self.openvino_utils.get_openvino_model(model_name, model_type, device_name)
         
-        text = "Replace me by any text you'd like."
-        encoded_input = hftokenizer(text, return_tensors='pt')
+    # def get_openvino_model(self, model_name, model_type=None, device_name=None ):
+    #     architecture = None
+    #     config = None
+    #     hfmodel = None
+    #     hftokenizer = None
+    #     import openvino as ov                                
+    #     core = ov.Core()
+    #     import openvino_genai as ov_genai
+    #     openvino_devices = core.available_devices
+    #     device_index = int(device_name.split(":")[-1])
+    #     device = openvino_devices[device_index]
+    #     model_type = self.get_model_type(model_name)
+    #     model_task = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
+    #     homedir = os.path.expanduser("~")
+    #     model_name_convert = model_name.replace("/", "--")
+    #     huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+    #     huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+    #     huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+    #     huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+    #     huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+    #     huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+    #     model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+    #     model_dst_path = os.path.join(model_src_path, "openvino")
+    #     try:
+    #         config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    #         model_type = config.__class__.model_type
+    #     except Exception as e:
+    #         config = None
+                         
+    #     hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    #     vlm_model_types = ["llava"]
+    #     try:
+    #         if model_type not in vlm_model_types:
+    #             hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+    #         else:
+    #             hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+    #     except Exception as e:
+    #         print(e)
 
-        if os.path.exists(model_dst_path):
-            if model_task is not None and model_task == "image-text-to-text":
-                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-                del hfmodel
-                del hftokenizer
-            else:
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                del hfmodel
-                del hftokenizer
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
-        else:
-            self.openvino_utils.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
-            if model_task is not None and model_task == "image-text-to-text":
-                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-                del hfmodel
-                del hftokenizer
-            else:
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
-                del hfmodel
-                del hftokenizer
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
-        return ov_model
+    #     if "config" in list(dir(hfmodel)):
+    #         config = hfmodel.config
+    #     else:
+    #         try:
+    #             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    #         except Exception as e:
+    #             config = None
+    #     if config is not None and "architectures" in dir(config):        
+    #         architecture = config.architectures
+    #     if config is not None and "model_type" in dir(config):
+    #         model_type = config.model_type
+        
+    #     text = "Replace me by any text you'd like."
+    #     encoded_input = hftokenizer(text, return_tensors='pt')
+
+    #     if os.path.exists(model_dst_path):
+    #         if model_task is not None and model_task == "image-text-to-text":
+    #             ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+    #             del hfmodel
+    #             del hftokenizer
+    #         else:
+    #             ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+    #             del hfmodel
+    #             del hftokenizer
+    #             ov.save_model(ov_model, model_dst_path)
+    #             ov_model = ov.compile_model(ov_model)
+    #     else:
+    #         self.openvino_utils.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
+    #         if model_task is not None and model_task == "image-text-to-text":
+    #             ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+    #             del hfmodel
+    #             del hftokenizer
+    #         else:
+    #             ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
+    #             del hfmodel
+    #             del hftokenizer
+    #             ov.save_model(ov_model, model_dst_path)
+    #             ov_model = ov.compile_model(ov_model)
+    #     return ov_model
     
         
     def get_optimum_openvino_model(self, model_name, model_type=None, device_name=None ):

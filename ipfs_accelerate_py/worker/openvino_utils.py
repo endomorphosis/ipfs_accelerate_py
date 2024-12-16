@@ -1,5 +1,11 @@
 import subprocess
 from transformers import AutoConfig
+import os
+import openvino as ov
+import openvino_genai as ov_genai
+from transformers import AutoTokenizer, AutoModel, AutoProcessor
+from transformers import AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoModelForAudioClassification, AutoModelForImageClassification, AutoModelForFeatureExtraction, AutoModelForMaskedLM, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForSpeechSeq2Seq, AutoModelForVision2Seq
+from transformers import AutoModelForImageTextToText
 
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
@@ -8,10 +14,94 @@ class openvino_utils:
         self.openvino_cli_convert = self.openvino_cli_convert
         self.get_openvino_pipeline_type = self.get_openvino_pipeline_type
         self.get_optimum_openvino_model = self.get_optimum_openvino_model
+        self.get_model_type = self.get_model_type
+        self.init = self.init
+        self.get_openvino_model = self.get_openvino_model
         return None
     
     def init(self):
         return None
+            
+    def get_openvino_model(self, model_name, model_type=None, device_name=None ):
+        architecture = None
+        config = None
+        hfmodel = None
+        hftokenizer = None
+        import openvino as ov                                
+        core = ov.Core()
+        import openvino_genai as ov_genai
+        openvino_devices = core.available_devices
+        device_index = int(device_name.split(":")[-1])
+        device = openvino_devices[device_index]
+        model_type = self.get_model_type(model_name)
+        model_task = self.get_openvino_pipeline_type(model_name, model_type)
+        homedir = os.path.expanduser("~")
+        model_name_convert = model_name.replace("/", "--")
+        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+        model_dst_path = os.path.join(model_src_path, "openvino")
+        try:
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            model_type = config.__class__.model_type
+        except Exception as e:
+            config = None
+                         
+        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        vlm_model_types = ["llava"]
+        try:
+            if model_type not in vlm_model_types:
+                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+            else:
+                hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        except Exception as e:
+            print(e)
+
+        if "config" in list(dir(hfmodel)):
+            config = hfmodel.config
+        else:
+            try:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            except Exception as e:
+                config = None
+        if config is not None and "architectures" in dir(config):        
+            architecture = config.architectures
+        if config is not None and "model_type" in dir(config):
+            model_type = config.model_type
+        
+        text = "Replace me by any text you'd like."
+        encoded_input = hftokenizer(text, return_tensors='pt')
+
+        if os.path.exists(model_dst_path):
+            if model_task is not None and model_task == "image-text-to-text":
+                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+                del hfmodel
+                del hftokenizer
+            else:
+                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                del hfmodel
+                del hftokenizer
+                ov.save_model(ov_model, model_dst_path)
+                ov_model = ov.compile_model(ov_model)
+        else:
+            self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
+            if model_task is not None and model_task == "image-text-to-text":
+                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+                del hfmodel
+                del hftokenizer
+            else:
+                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
+                del hfmodel
+                del hftokenizer
+                ov.save_model(ov_model, model_dst_path)
+                ov_model = ov.compile_model(ov_model)
+        return ov_model
+
+    
     
     async def get_optimum_openvino_model(self, model_name, model_type=None):
         if model_type is None:
