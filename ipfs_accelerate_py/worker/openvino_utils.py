@@ -102,7 +102,7 @@ class openvino_utils:
         if task is None:
             model_type = self.get_model_type(model_name)
             task = self.get_openvino_pipeline_type(model_name, model_type)
-            if task not in tasks_list:
+            if task not in tasks_list and task is not None:
                 raise ValueError("Task not supported: " + task)
             elif task is not None:
                 command.extend(['--task', task])
@@ -149,9 +149,9 @@ class openvino_utils:
         
         # Add the output directory
         command.append(model_dst_path)
-        
+        parsed_cmd = ' '.join(command)
         # Execute the command
-        convert_model = subprocess.check_output(command)
+        convert_model = subprocess.check_output(parsed_cmd, shell=True)
         return convert_model
     
     

@@ -397,7 +397,7 @@ class worker_py:
         encoded_input = hftokenizer(text, return_tensors='pt')
 
         if os.path.exists(model_dst_path):
-            if model_task == "image-text-to-text":
+            if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
                 del hfmodel
                 del hftokenizer
@@ -409,7 +409,7 @@ class worker_py:
                 ov_model = ov.compile_model(ov_model)
         else:
             self.openvino_utils.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
-            if model_task == "image-text-to-text":
+            if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
                 del hfmodel
                 del hftokenizer
@@ -509,7 +509,7 @@ class worker_py:
                         ov_count = 0
                         openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.default.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -519,8 +519,10 @@ class worker_py:
                             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_llava.init_cuda( model, device, cuda_label)
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
+                    ov_count = 0
+                    openvino_label = "openvino:" + str(ov_count)
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
             elif model_type in text_embedding_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -531,8 +533,8 @@ class worker_py:
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model)
-
+                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        
         worker_endpoint_types = []
         worker_model_types = []
         for endpoint in self.endpoint_handler:
