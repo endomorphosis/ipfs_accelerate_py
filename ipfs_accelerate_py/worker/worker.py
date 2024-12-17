@@ -30,7 +30,7 @@ except:
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
 from .skillset import hf_llava
 from .skillset import default
-
+from .skillset import hf_embed
 try:
     from openvino_utils import openvino_utils
 except:
@@ -146,7 +146,17 @@ class worker_py:
         elif "hf_llava" in globals():
             self.hf_llava = hf_llava
             # self.hf_llava3 = self.hf_llava.hf_llava(resources, metadata)    
+
         
+        if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
+            self.hf_embed = hf_embed
+        elif "hf_embed" in list(self.resources.keys()):
+            self.hf_embed = self.resources["hf_embed"]
+        elif "hf_embed" in globals():
+            self.hf_embed = hf_embed
+        
+
+
         if "default" not in globals() and "default" not in list(self.resources.keys()):
             self.default = default
         elif "default" in list(self.resources.keys()):
@@ -215,8 +225,7 @@ class worker_py:
                 for byte_block in iter(lambda: f.read(4096),b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
-            test_results_file = "/tmp/" + install_file_hash + ".json"
-            # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
+            test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:

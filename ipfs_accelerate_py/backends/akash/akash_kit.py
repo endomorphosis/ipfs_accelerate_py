@@ -83,8 +83,10 @@ class akash_kit:
                 akash_path = os.path.expanduser("~/.akash/bin/")
                 pass
 
-        os.system("cd /tmp && curl -sfL https://raw.githubusercontent.com/akash-network/provider/main/install.sh | bash")
-        os.system("mv /tmp/bin/provider-services " + akash_path)
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            subprocess.check_call(['curl', '-sfL', 'https://raw.githubusercontent.com/akash-network/provider/main/install.sh', '-o', os.path.join(tmpdirname, 'install.sh')])
+            subprocess.check_call(['bash', os.path.join(tmpdirname, 'install.sh')])
+            shutil.move(os.path.join(tmpdirname, 'bin', 'provider-services'), akash_path)
 
         if os.geteuid() != 0:
            self.env['PATH'] = self.env['PATH'] + ":" + akash_path

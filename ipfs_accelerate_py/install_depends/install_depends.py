@@ -203,7 +203,7 @@ class install_depends_py():
         return None
     
     async def test_torch_vision(self):
-        test_torch_vision_cmd = "python3 -c 'import torchvision; print(torchvision.__version__)'"
+        test_torch_vision_cmd = [sys.executable, "-c", "import torchvision; print(torchvision.__version__)"]
         try:
             test_torch_vision = subprocess.check_output(test_torch_vision_cmd, shell=True).decode("utf-8")
             if type(test_torch_vision) == str and type(test_torch_vision) != ValueError:
@@ -216,7 +216,7 @@ class install_depends_py():
         return None
     
     async def test_torch(self):
-        test_torch_cmd = "python3 -c 'import torch; print(torch.__version__)'"
+        test_torch_cmd = [sys.executable, "-c", "import torch; print(torch.__version__)"]
         try:
             test_torch = subprocess.check_output(test_torch_cmd, shell=True).decode("utf-8")
             if type(test_torch) == str and type(test_torch) != ValueError:
@@ -1017,7 +1017,7 @@ class install_depends_py():
         return install_results
     
     async def test_numpy(self):
-        test_numpy_cmd = "python3 -c 'import numpy; print(numpy.__version__)'"
+        test_numpy_cmd = [sys.executable, "-c", "import numpy; print(numpy.__version__)"]
         try:
             test_numpy = subprocess.check_output(test_numpy_cmd, shell=True).decode("utf-8")
             if type(test_numpy) == str and type(test_numpy) != ValueError:
