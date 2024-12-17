@@ -1489,9 +1489,9 @@ class ipfs_accelerate_py:
         '''
         sentence_2 = "Now is the time for all good Men to come to the aid of their country."
         batch = [sentence_1, sentence_2]
-        max_batch_size1 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
-        max_batch_size2 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
-        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"](batch)
+        max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"](batch)
 
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         with torch.no_grad():

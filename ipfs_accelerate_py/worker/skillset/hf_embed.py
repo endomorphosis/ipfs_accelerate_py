@@ -5,8 +5,8 @@ import torch.nn.functional as F
 from torch import inference_mode, float16, Tensor
 from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
 from transformers.generation.streamers import TextStreamer
-from sentence_transformers import SentenceTransformer
-from InstructorEmbedding import INSTRUCTOR
+# from sentence_transformers import SentenceTransformer
+# from InstructorEmbedding import INSTRUCTOR
 import json
 
 class hf_embed:
