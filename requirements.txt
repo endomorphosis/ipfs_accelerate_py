@@ -1,7 +1,7 @@
 ipfs_kit_py
 ipfs_transformers_py
 ipfs_model_manager_py
-transformers>4.36
+transformers==4.46
 torch>=2.1
 torchvision
 numpy
@@ -18,11 +18,13 @@ toml
 pydantic
 einops
 timm
-flash-attn
 openvino>=2024.5
 openvino-tokenizers>=2024.5
 openvino-genai>=2024.5
-git+https://github.com/huggingface/optimum-intel.git --extra-index-url https://download.pytorch.org/whl/cpu
 Pillow
 nncf>=2.14.0
 optimum[exporters]
+optimum[intel]
+onnxruntime==1.19.2
+onnx==1.16.1
+llama-cpp-python

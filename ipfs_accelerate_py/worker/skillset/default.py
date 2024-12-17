@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForCausa
 from transformers.generation.streamers import TextStreamer
 from sentence_transformers import SentenceTransformer
 from InstructorEmbedding import INSTRUCTOR
-from FlagEmbedding import FlagModel
+# from FlagEmbedding import FlagModel
 import json
 
 class default:

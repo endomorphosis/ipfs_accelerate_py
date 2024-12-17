@@ -6,5 +6,6 @@ from .skillset.hf_llava import hf_llava
 from .skillset.hf_llava import *
 from .skillset.default import default
 from .skillset.default import *
-import openvino_utils
+from .openvino_utils import *
+
 import torch

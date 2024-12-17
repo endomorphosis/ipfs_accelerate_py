@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import hashlib
+import platform
 
 class install_depends_py():
     def __init__(self, resources, metadata):

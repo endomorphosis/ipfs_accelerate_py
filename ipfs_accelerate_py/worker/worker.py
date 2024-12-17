@@ -144,7 +144,7 @@ class worker_py:
         elif "hf_llava" in list(self.resources.keys()):
             self.hf_llava = self.resources["hf_llava"]
         elif "hf_llava" in globals():
-            self.hf_llava = hf_llava.hf_llava
+            self.hf_llava = hf_llava
             # self.hf_llava3 = self.hf_llava.hf_llava(resources, metadata)    
         
         if "default" not in globals() and "default" not in list(self.resources.keys()):
@@ -152,7 +152,7 @@ class worker_py:
         elif "default" in list(self.resources.keys()):
             self.default = self.resources["default"]
         elif "default" in globals():
-            self.default = default.default
+            self.default = default
         
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
         self.create_vlm_endpoint_handler = self.hf_llava.create_vlm_endpoint_handler
