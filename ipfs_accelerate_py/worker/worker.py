@@ -391,7 +391,7 @@ class worker_py:
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        ov_count = 0
+                        ov_count = 2
                         openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
                         self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)

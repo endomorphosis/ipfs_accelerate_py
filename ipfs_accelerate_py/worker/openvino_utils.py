@@ -68,21 +68,21 @@ class openvino_utils:
                 ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
                 ov.save_model(ov_model, model_dst_path)
                 ov_model = ov.compile_model(ov_model)
-                del hfmodel
+                hfmodel = None
                 del hftokenizer
 
             except Exception as e:
                 if hfmodel is not None:
-                    del hfmodel
+                    hfmodel = None
                 if hftokenizer is not None:
                     del hftokenizer
                 print(e)
                 
             if ov_model == None:
                 try:
-                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", group_size=-1, sym=True )
-                    ov_model = ov.read_model(model_dst_path)
-                    ov_model = ov.compile_model(ov_model)
+                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
+                    # ov_model = ov.load_model(model_dst_path)
+                    # ov_model = ov.compile_model(ov_model)
                 except Exception as e:
                     print(e)
                     pass
@@ -269,7 +269,11 @@ class openvino_utils:
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"
                 elif config_model_type == "llava_next":
-                    return_model_type = "image-text-to-text"       
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -279,6 +283,10 @@ class openvino_utils:
                     return_model_type = "image-text-to-text"
                 elif config_model_type == "llava_next":
                     return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -294,6 +302,12 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -301,6 +315,12 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"            
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 

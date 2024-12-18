@@ -1489,20 +1489,21 @@ class ipfs_accelerate_py:
         The quick brown fox jumps over the lazy dog. \n
         '''
         sentence_2 = "Now is the time for all good Men to come to the aid of their country."
-        batch = [sentence_1, sentence_2]
-        max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"](batch)
+        # batch = [sentence_1, sentence_2]
+        # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"](sentence_2)
 
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         with torch.no_grad():
-            torch.cuda.empty_cache()
+            if "cuda" in dir(torch):
+                torch.cuda.empty_cache()
         results = {
             "ipfs_accelerate_init": ipfs_accelerate_init,
             "test_endpoints": test_endpoints,
             "test_batch": test_batch,
-            "max_batch_size": max_batch_size1,
-            "max_batch_size": max_batch_size2,
+            # "max_batch_size": max_batch_size1,
+            # "max_batch_size": max_batch_size2,
             # "test_batch_sizes": test_batch_sizes
         }
         return results
@@ -1552,9 +1553,9 @@ if __name__ == "__main__":
             ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:1", 32768],
             ["Qwen/Qwen2-7B", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:0", 32768],
-            ["Qwen/Qwen2-7B", "openvino:0", 32768],
-            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:0", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:2", 32768],
+            ["Qwen/Qwen2-7B", "openvino:2", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:2", 32768],
             ["meta-llama/Meta-Llama-3-8B-Instruct",  "llama_cpp", 512],
             ["Qwen/Qwen2-7B", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],
