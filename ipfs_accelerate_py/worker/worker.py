@@ -441,7 +441,7 @@ class worker_py:
                         ov_count = 0
                         openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -453,8 +453,10 @@ class worker_py:
                 if local > 0 and cpus > 0:
                     ov_count = 0
                     openvino_label = "openvino:" + str(ov_count)
+                    device = "openvino:" + str(ov_count)
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        torch.cuda.empty_cache()
             elif model_type in text_embedding_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
