@@ -81,7 +81,7 @@ class ipfs_accelerate_py:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
-        self.ipfs_kit_py = ipfs_kit_py(resources, metadata)
+        self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
         resources["ipfs_kit"] = self.ipfs_kit_py
         self.libp2p_kit_py = libp2p_kit_py(resources, metadata)
         resources["libp2p_kit"] = self.libp2p_kit_py
