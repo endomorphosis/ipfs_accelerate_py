@@ -10,6 +10,9 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
+import ipfs_kit_py
+import ipfs_model_manager_py
+import libp2p_kit_py
 import hashlib
 import time
 from torch import Tensor
@@ -78,6 +81,14 @@ class ipfs_accelerate_py:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
+        self.ipfs_kit_py = ipfs_kit_py(resources, metadata)
+        resources["ipfs_kit"] = self.ipfs_kit_py
+        self.libp2p_kit_py = libp2p_kit_py(resources, metadata)
+        resources["libp2p_kit"] = self.libp2p_kit_py
+        self.ipfs_model_manager_py = ipfs_model_manager_py(resources, metadata)
+        resources["ipfs_model_manager"] = self.ipfs_model_manager_py
+        self.resources = resources
+        self.metadata = metadata
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.endpoints = {}
