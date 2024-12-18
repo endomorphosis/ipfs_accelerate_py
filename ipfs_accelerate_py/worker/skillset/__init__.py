@@ -1,5 +1,5 @@
 from .hf_embed import *
-# from .hf_lm import *
+from .hf_lm import *
 from .hf_llava import *
 from .default import *
 # from .llama_cpp_kit import *
