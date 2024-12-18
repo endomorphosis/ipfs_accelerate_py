@@ -102,7 +102,7 @@ class openvino_utils:
         if os.path.exists(model_dst_path):
             if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-            elif model_type == 'qwen2':
+            elif model_type == 'qwen2' or model_type == 'llama':
                 ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
         return ov_model
 

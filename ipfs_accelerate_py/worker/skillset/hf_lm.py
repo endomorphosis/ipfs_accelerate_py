@@ -46,8 +46,8 @@ class hf_lm:
         endpoint_handler = None
         batch_size = 0                
         tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        model = get_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_llm_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint = get_openvino_model(model, model_type, openvino_label)
+        endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
@@ -106,7 +106,7 @@ class hf_lm:
         return handler
 
     def create_openvino_llm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
-        def handler(x, y=None):
+        def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
             chat = None
             if y is not None and x is not None:
                 chat = x
