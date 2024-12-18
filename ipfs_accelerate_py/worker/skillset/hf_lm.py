@@ -47,7 +47,7 @@ class hf_lm:
         batch_size = 0                
         tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         model = get_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_llm_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
@@ -123,16 +123,18 @@ class hf_lm:
                     chat = x
                 else:
                     pass
-                
-            prompt = openvino_endpoint_handler.apply_chat_template(chat, add_generation_prompt=True)
-            inputs = openvino_endpoint_handler(text=prompt, return_tensors="pt")
-            streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
-            output_ids = openvino_endpoint_handler.generate(
-                **inputs,
-                do_sample=False,
-                max_new_tokens=50,
-                streamer=streamer,
-            )
+
+            pipeline_config = { "MAX_PROMPT_LEN": 1024, "MIN_RESPONSE_LEN": 512 ,  "NPUW_CACHE_DIR": ".npucache" }
+            results = openvino_endpoint_handler.generate(x, max_new_tokens=100, do_sample=False)
+            # prompt = openvino_endpoint_handler.apply_chat_template(chat, add_generation_prompt=True)
+            # inputs = openvino_endpoint_handler(text=prompt, return_tensors="pt")
+            # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
+            # output_ids = openvino_endpoint_handler.generate(
+            #     **inputs,
+            #     do_sample=False,
+            #     max_new_tokens=50,
+            #     streamer=streamer,
+            return results
         return handler
 
 hf_lm = hf_lm()

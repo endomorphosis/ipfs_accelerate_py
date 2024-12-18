@@ -31,6 +31,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
 from .skillset import hf_llava
 from .skillset import default
 from .skillset import hf_embed
+from .skillset import hf_lm
+
 try:
     from openvino_utils import openvino_utils
 except:
@@ -145,8 +147,6 @@ class worker_py:
             self.hf_llava = self.resources["hf_llava"]
         elif "hf_llava" in globals():
             self.hf_llava = hf_llava
-            # self.hf_llava3 = self.hf_llava.hf_llava(resources, metadata)    
-
         
         if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
             self.hf_embed = hf_embed
@@ -154,8 +154,6 @@ class worker_py:
             self.hf_embed = self.resources["hf_embed"]
         elif "hf_embed" in globals():
             self.hf_embed = hf_embed
-        
-
 
         if "default" not in globals() and "default" not in list(self.resources.keys()):
             self.default = default
@@ -163,6 +161,14 @@ class worker_py:
             self.default = self.resources["default"]
         elif "default" in globals():
             self.default = default
+
+            
+        if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
+            self.hf_lm = hf_lm
+        elif "hf_lm" in list(self.resources.keys()):
+            self.hf_lm = self.resources["hf_lm"]
+        elif "hf_lm" in globals():
+            self.hf_lm = hf_lm
         
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
         self.create_vlm_endpoint_handler = self.hf_llava.create_vlm_endpoint_handler
@@ -173,12 +179,6 @@ class worker_py:
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
         self.get_model_type = self.openvino_utils.get_model_type
         
-        # if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
-        #     self.hf_lm = hf_lm(resources, metadata)
-        # elif "hf_lm" in list(self.resources.keys()):
-        #     self.hf_lm = self.resources["hf_lm"]
-        # elif "hf_lm" in globals():
-        #     self.hf_lm = hf_lm(resources, metadata)
         
         # if "hf_embed" not in globals() and "hf_embed" not in list(self.resources.keys()):
         #     self.hf_embed = hf_embed
@@ -258,101 +258,9 @@ class worker_py:
             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         return model_type
-
-    # async def get_model_type(self, model_name, model_type=None):
-    #     if model_type is None:
-    #         config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    #         model_type = config.__class__.model_type
-    #     return model_type
-    
-    # async def get_model_format(self, model_name, model_type=None):
-    #     if model_type is None:
-    #         config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    #         model_type = config.__class__.model_type
-    #     return model_type
                 
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):
         return self.openvino_utils.get_openvino_model(model_name, model_type, device_name)
-        
-    # def get_openvino_model(self, model_name, model_type=None, device_name=None ):
-    #     architecture = None
-    #     config = None
-    #     hfmodel = None
-    #     hftokenizer = None
-    #     import openvino as ov                                
-    #     core = ov.Core()
-    #     import openvino_genai as ov_genai
-    #     openvino_devices = core.available_devices
-    #     device_index = int(device_name.split(":")[-1])
-    #     device = openvino_devices[device_index]
-    #     model_type = self.get_model_type(model_name)
-    #     model_task = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
-    #     homedir = os.path.expanduser("~")
-    #     model_name_convert = model_name.replace("/", "--")
-    #     huggingface_cache = os.path.join(homedir, ".cache/huggingface")
-    #     huggingface_cache_models = os.path.join(huggingface_cache, "hub")
-    #     huggingface_cache_models_files = os.listdir(huggingface_cache_models)
-    #     huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
-    #     huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
-    #     huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
-    #     model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
-    #     model_dst_path = os.path.join(model_src_path, "openvino")
-    #     try:
-    #         config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    #         model_type = config.__class__.model_type
-    #     except Exception as e:
-    #         config = None
-                         
-    #     hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-    #     vlm_model_types = ["llava"]
-    #     try:
-    #         if model_type not in vlm_model_types:
-    #             hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
-    #         else:
-    #             hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-    #     except Exception as e:
-    #         print(e)
-
-    #     if "config" in list(dir(hfmodel)):
-    #         config = hfmodel.config
-    #     else:
-    #         try:
-    #             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    #         except Exception as e:
-    #             config = None
-    #     if config is not None and "architectures" in dir(config):        
-    #         architecture = config.architectures
-    #     if config is not None and "model_type" in dir(config):
-    #         model_type = config.model_type
-        
-    #     text = "Replace me by any text you'd like."
-    #     encoded_input = hftokenizer(text, return_tensors='pt')
-
-    #     if os.path.exists(model_dst_path):
-    #         if model_task is not None and model_task == "image-text-to-text":
-    #             ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-    #             del hfmodel
-    #             del hftokenizer
-    #         else:
-    #             ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-    #             del hfmodel
-    #             del hftokenizer
-    #             ov.save_model(ov_model, model_dst_path)
-    #             ov_model = ov.compile_model(ov_model)
-    #     else:
-    #         self.openvino_utils.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
-    #         if model_task is not None and model_task == "image-text-to-text":
-    #             ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-    #             del hfmodel
-    #             del hftokenizer
-    #         else:
-    #             ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
-    #             del hfmodel
-    #             del hftokenizer
-    #             ov.save_model(ov_model, model_dst_path)
-    #             ov_model = ov.compile_model(ov_model)
-    #     return ov_model
-    
         
     def get_optimum_openvino_model(self, model_name, model_type=None, device_name=None ):
         results = self.openvino_utils.get_optimum_openvino_model(model_name, model_type, device_name)
@@ -427,8 +335,9 @@ class worker_py:
                 self.batch_sizes[model] = {}
                 
             vlm_model_types = ["llava", "llava_next"]
+            llm_model_types = ["qwen2", "llama"]
             text_embedding_types = ["bert"]
-            custom_types = vlm_model_types + text_embedding_types
+            custom_types = vlm_model_types + text_embedding_types + llm_model_types
             if model_type != "llama_cpp" and model_type not in custom_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -467,8 +376,27 @@ class worker_py:
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
-                        
+                        ov_count = 0
+                        openvino_label = "openvino:" + str(ov_count)
+                        device = "openvino:" + str(ov_count)
+                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        torch.cuda.empty_cache()
+            elif model_type in llm_model_types:
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_lm.init_cuda( model, device, cuda_label)
+                            torch.cuda.empty_cache()
+                if local > 0 and cpus > 0:
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        ov_count = 0
+                        openvino_label = "openvino:" + str(ov_count)
+                        device = "openvino:" + str(ov_count)
+                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                        torch.cuda.empty_cache()
+
         worker_endpoint_types = []
         worker_model_types = []
         for endpoint in self.endpoint_handler:

@@ -52,6 +52,7 @@ class openvino_utils:
             config = None
 
         ov_model = None
+        hfmodel = None
         hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         vlm_model_types = ["llava", "llava_next"]
 
@@ -71,18 +72,22 @@ class openvino_utils:
                 del hftokenizer
 
             except Exception as e:
+                if hfmodel is not None:
+                    del hfmodel
+                if hftokenizer is not None:
+                    del hftokenizer
                 print(e)
-
+                
             if ov_model == None:
                 try:
-                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
+                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", group_size=-1, sym=True )
                     ov_model = ov.read_model(model_dst_path)
                     ov_model = ov.compile_model(ov_model)
                 except Exception as e:
                     print(e)
                     pass
-
-            if "config" in list(dir(hfmodel)):
+            
+            if hfmodel is not None and "config" in list(dir(hfmodel)):
                 config = hfmodel.config
             else:
                 try:
@@ -97,6 +102,8 @@ class openvino_utils:
         if os.path.exists(model_dst_path):
             if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+            elif model_type == 'qwen2':
+                ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
         return ov_model
 
     
