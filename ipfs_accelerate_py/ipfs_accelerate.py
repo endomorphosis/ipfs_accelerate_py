@@ -86,6 +86,15 @@ class ipfs_accelerate_py:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
+
+        if "ipfs_transformers" not in globals():
+            try:
+                import ipfs_transformers_py
+            except:
+                from ipfs_transformers_py import ipfs_transformers_py
+            self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers(resources, metadata)
+            resources["ipfs_transformers_py"] = self.ipfs_transformers_py
+
         self.metadata["role"] = self.role
         self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
         resources["ipfs_kit"] = self.ipfs_kit_py
