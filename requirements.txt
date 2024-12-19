@@ -1,4 +1,4 @@
-ipfs_kit_py==0.0.11
+ipfs_kit_py==0.0.12
 ipfs_model_manager_py==0.0.15
 libp2p_kit_py==0.0.11
 ipfs_transformers_py

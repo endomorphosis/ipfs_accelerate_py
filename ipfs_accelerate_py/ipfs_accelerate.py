@@ -18,7 +18,7 @@ import time
 from torch import Tensor
 
 class ipfs_accelerate_py:
-    def __init__(self, resources, metadata):
+    def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
         if self.resources is None:
@@ -29,6 +29,8 @@ class ipfs_accelerate_py:
             resources = {}
         if metadata is None:
             metadata = {}
+        if "role" in list(metadata.keys()):
+            self.role = metadata["role"]
         if "queues" not in list(self.resources.keys()):
             self.resources["queues"] = {}
         if "queue" not in list(self.resources.keys()):
@@ -45,28 +47,30 @@ class ipfs_accelerate_py:
             self.resources["caches"] = {}
         if "tokenizer" not in list(self.resources.keys()):
             self.resources["tokenizer"] = {}
-        self.resources["ipfs_accelerate_py"] = self
-        if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
-            try:
-                from .test_ipfs_accelerate import test_ipfs_accelerate
-            except:
-                from test_ipfs_accelerate import test_ipfs_accelerate
-            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
-            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-        elif "test_ipfs_accelerate" in list(self.resources.keys()):
-            self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
-        elif "test_ipfs_accelerate" in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
-            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-        if "install_depends_py" not in globals():
-            try:
-                from .install_depends import install_depends_py
-            except:
-                from install_depends import install_depends_py
-            self.install_depends = install_depends_py(resources, metadata)
-            resources["install_depends"] = self.install_depends 
-        else:
-            self.install_depends = install_depends_py(resources, metadata)
+        # if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
+        #     try:
+        #         from .test_ipfs_accelerate import test_ipfs_accelerate
+        #     except:
+        #         from test_ipfs_accelerate import test_ipfs_accelerate
+        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
+        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
+        # elif "test_ipfs_accelerate" in list(self.resources.keys()):
+        #     self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
+        # elif "test_ipfs_accelerate" in globals():
+        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
+        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
+
+        # if "install_depends_py" not in globals():
+        #     try:
+        #         from .install_depends import install_depends_py
+        #     except:
+        #         from install_depends import install_depends_py
+        #     self.install_depends = install_depends_py(resources, metadata)
+        #     resources["install_depends"] = self.install_depends 
+        # else:
+        #     self.install_depends = install_depends_py(resources, metadata)
+        #     resources["install_depends"] = self.install_depends
+
         if "worker" not in globals():
             try:
                 from .worker import worker
@@ -74,6 +78,7 @@ class ipfs_accelerate_py:
                 from worker import worker
             self.worker = worker.worker_py(resources, metadata)
             resources["worker"] = self.worker
+
         if "ipfs_multiformats" not in globals():
             try:
                 from .ipfs_multiformats import ipfs_multiformats_py
@@ -81,14 +86,13 @@ class ipfs_accelerate_py:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
+        self.metadata["role"] = self.role
         self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
         resources["ipfs_kit"] = self.ipfs_kit_py
-        self.libp2p_kit_py = libp2p_kit_py(resources, metadata)
+        self.libp2p_kit_py = libp2p_kit_py.libp2p_kit(resources, metadata)
         resources["libp2p_kit"] = self.libp2p_kit_py
-        self.ipfs_model_manager_py = ipfs_model_manager_py(resources, metadata)
+        self.ipfs_model_manager_py = ipfs_model_manager_py.ipfs_model_manager(resources, metadata)
         resources["ipfs_model_manager"] = self.ipfs_model_manager_py
-        self.resources = resources
-        self.metadata = metadata
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.endpoints = {}
@@ -1526,6 +1530,7 @@ if __name__ == "__main__":
         "dataset": "laion/gpt4v-dataset",
         "namespace": "laion/gpt4v-dataset",
         "column": "link",
+        "role": "master",
         "split": "train",
         "models": [
             # "TIGER-Lab/Mantis-8B-siglip-llama3",
@@ -1551,6 +1556,7 @@ if __name__ == "__main__":
         "chunk_settings": {
 
         },
+        "path": "/storage/gpt4v-dataset/data",
         "dst_path": "/storage/gpt4v-dataset/data",
     }
     resources = {

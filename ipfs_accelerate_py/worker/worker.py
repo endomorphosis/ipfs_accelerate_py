@@ -88,11 +88,9 @@ class worker_py:
         self.local_endpoints = {}
         self.dispatch_result = self.dispatch_result
         self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
-        if "test_ipfs_accelerate" not in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
-            # self.hwtest = self.test_ipfs_accelerate
-        if "install_depends" not in globals():
-            self.install_depends = install_depends_py(resources, metadata)
+        # self.hwtest = self.test_ipfs_accelerate
+        # if "install_depends" not in globals():
+        #     self.install_depends = install_depends_py(resources, metadata)
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
             from ipfs_transformers_py import ipfs_transformers
             self.ipfs_transformers = { 
