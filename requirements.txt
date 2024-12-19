@@ -13,18 +13,18 @@ boto3
 sentence_transformers
 trio
 optimum[openvino]
-FlagEmbedding
+# FlagEmbedding
 InstructorEmbedding
 toml
 pydantic
 einops
 timm
-openvino>=2024.5
-openvino-tokenizers>=2024.5
-openvino-genai>=2024.5
+openvino>=2024.6
+openvino-tokenizers>=2024.6
+openvino-genai>=2024.6
 Pillow
 nncf>=2.14.0
-optimum[exporters]
+# optimum[exporters]
 optimum[intel]
 onnxruntime==1.19.2
 onnx==1.16.1
