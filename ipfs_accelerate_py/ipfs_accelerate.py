@@ -92,7 +92,7 @@ class ipfs_accelerate_py:
                 import ipfs_transformers_py
             except:
                 from ipfs_transformers_py import ipfs_transformers_py
-            self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers(resources, metadata)
+            self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers
             resources["ipfs_transformers_py"] = self.ipfs_transformers_py
 
         self.metadata["role"] = self.role
