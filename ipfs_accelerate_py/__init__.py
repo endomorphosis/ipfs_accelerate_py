@@ -1,4 +1,4 @@
-from .backends import backends
+from .container_backends import backends
 from .worker import worker
 from .config import config
 from .endpoints import endpoints_py
@@ -8,7 +8,7 @@ from .ipfs_accelerate import ipfs_accelerate_py
 from .test_backend import test_backend_py
 from .ipfs_multiformats import ipfs_multiformats_py
 export = {
-    "backends": backends,
+    "backends": container_backends,
     "config": config,
     "test_ipfs_accelerate": test_ipfs_accelerate,
     "test_backend": test_backend_py,
