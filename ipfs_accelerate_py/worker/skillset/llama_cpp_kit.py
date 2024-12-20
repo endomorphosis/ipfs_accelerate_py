@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','sk
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
 from chat_format import chat_format
 import worker
-from llama_cpp import Llama
+# from llama_cpp import Llama
 # from worker import TaskAbortion, should_abort
 class llama_cpp_kit:
 	def __init__(self, resources, meta=None):

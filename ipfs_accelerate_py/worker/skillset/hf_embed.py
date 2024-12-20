@@ -122,32 +122,32 @@ class hf_embed:
 					raise e
 		return handler
 
-	def embed_bak(self, instruction, text , **kwargs):
-		self.input = text
-		self.method = 'embed'
-		embeddings = None
-		if "instructor" in self.modelName:
-			embeddings = self.model.encode([[instruction,self.input]])
-			print(embeddings)
-		if "gte" in self.modelName:
-			embeddings = self.model.encode([self.input])
-			print(embeddings)
-		if "bge" in self.modelName:
-			if self.model == None:
-				self.model = FlagModel(
-					'BAAI/'+self.modelName, query_instruction_for_retrieval=instruction,
-					use_fp16=True
-				)
-			embeddings = self.model.encode(str(self.input))
-			print(embeddings)
+	# def embed_bak(self, instruction, text , **kwargs):
+	# 	self.input = text
+	# 	self.method = 'embed'
+	# 	embeddings = None
+	# 	if "instructor" in self.modelName:
+	# 		embeddings = self.model.encode([[instruction,self.input]])
+	# 		print(embeddings)
+	# 	if "gte" in self.modelName:
+	# 		embeddings = self.model.encode([self.input])
+	# 		print(embeddings)
+	# 	if "bge" in self.modelName:
+	# 		if self.model == None:
+	# 			self.model = FlagModel(
+	# 				'BAAI/'+self.modelName, query_instruction_for_retrieval=instruction,
+	# 				use_fp16=True
+	# 			)
+	# 		embeddings = self.model.encode(str(self.input))
+	# 		print(embeddings)
 
-		if type(embeddings) != str:
-			embeddings = json.dumps(embeddings.tolist())
+	# 	if type(embeddings) != str:
+	# 		embeddings = json.dumps(embeddings.tolist())
 
-		return {
-			'text': embeddings, 
-			'done': True
-		}
+	# 	return {
+	# 		'text': embeddings, 
+	# 		'done': True
+	# 	}
 		
 	def average_pool_bak(last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
 		last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
