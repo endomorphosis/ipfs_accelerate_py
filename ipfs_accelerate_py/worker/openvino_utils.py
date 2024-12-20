@@ -4,7 +4,7 @@ import os
 import openvino as ov
 import openvino_genai as ov_genai
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
-from transformers import AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoModelForAudioClassification, AutoModelForImageClassification, AutoModelForFeatureExtraction, AutoModelForMaskedLM, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForSpeechSeq2Seq, AutoModelForVision2Seq
+from transformers import AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoModelForAudioClassification, AutoModelForImageClassification, AutoModelForMaskedLM, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForSpeechSeq2Seq, AutoModelForVision2Seq
 from transformers import AutoModelForImageTextToText
 
 class openvino_utils:
@@ -50,55 +50,60 @@ class openvino_utils:
             model_type = config.__class__.model_type
         except Exception as e:
             config = None
-                         
-        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        vlm_model_types = ["llava"]
-        try:
-            if model_type not in vlm_model_types:
-                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
-            else:
-                hfmodel = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-        except Exception as e:
-            print(e)
 
-        if "config" in list(dir(hfmodel)):
-            config = hfmodel.config
-        else:
+        ov_model = None
+        hfmodel = None
+        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        vlm_model_types = ["llava", "llava_next"]
+
+        if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
             try:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                if model_type not in vlm_model_types:
+                    hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+                else:
+                    hfmodel = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+            
+                text = "Replace me by any text you'd like."
+                encoded_input = hftokenizer(text, return_tensors='pt')
+                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                ov.save_model(ov_model, model_dst_path)
+                ov_model = ov.compile_model(ov_model)
+                hfmodel = None
+                del hftokenizer
+
             except Exception as e:
-                config = None
-        if config is not None and "architectures" in dir(config):        
-            architecture = config.architectures
-        if config is not None and "model_type" in dir(config):
-            model_type = config.model_type
-        
-        text = "Replace me by any text you'd like."
-        encoded_input = hftokenizer(text, return_tensors='pt')
+                if hfmodel is not None:
+                    hfmodel = None
+                if hftokenizer is not None:
+                    del hftokenizer
+                print(e)
+                
+            if ov_model == None:
+                try:
+                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
+                    # ov_model = ov.load_model(model_dst_path)
+                    # ov_model = ov.compile_model(ov_model)
+                except Exception as e:
+                    print(e)
+                    pass
+            
+            if hfmodel is not None and "config" in list(dir(hfmodel)):
+                config = hfmodel.config
+            else:
+                try:
+                    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                except Exception as e:
+                    config = None
+            if config is not None and "architectures" in dir(config):        
+                architecture = config.architectures
+            if config is not None and "model_type" in dir(config):
+                model_type = config.model_type
 
         if os.path.exists(model_dst_path):
             if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-                del hfmodel
-                del hftokenizer
-            else:
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                del hfmodel
-                del hftokenizer
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
-        else:
-            self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task)
-            if model_task is not None and model_task == "image-text-to-text":
-                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-                del hfmodel
-                del hftokenizer
-            else:
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})
-                del hfmodel
-                del hftokenizer
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
+            elif model_type == 'qwen2' or model_type == 'llama':
+                ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
         return ov_model
 
     
@@ -262,7 +267,13 @@ class openvino_utils:
                 if config_model_type == "bert":
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
-                    return_model_type = "image-text-to-text"       
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -270,6 +281,12 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -285,6 +302,12 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -292,6 +315,12 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
                     return_model_type = "image-text-to-text"            
+                elif config_model_type == "llava_next":
+                    return_model_type = "image-text-to-text"
+                elif config_model_type == "qwen2":
+                    return_model_type = "text-generation-with-past"
+                elif config_model_type == "llama":
+                    return_model_type = "text-generation-with-past"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 

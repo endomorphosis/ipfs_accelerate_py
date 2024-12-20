@@ -3,6 +3,8 @@ import os
 import sys
 import json
 import hashlib
+import platform
+import tempfile
 
 class install_depends_py():
     def __init__(self, resources, metadata):
@@ -32,7 +34,7 @@ class install_depends_py():
                 for byte_block in iter(lambda: f.read(4096),b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
-            test_results_file = "/tmp/" + install_file_hash + ".json"
+            test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
@@ -201,7 +203,7 @@ class install_depends_py():
         return None
     
     async def test_torch_vision(self):
-        test_torch_vision_cmd = "python3 -c 'import torchvision; print(torchvision.__version__)'"
+        test_torch_vision_cmd = [sys.executable, "-c", "import torchvision; print(torchvision.__version__)"]
         try:
             test_torch_vision = subprocess.check_output(test_torch_vision_cmd, shell=True).decode("utf-8")
             if type(test_torch_vision) == str and type(test_torch_vision) != ValueError:
@@ -214,7 +216,7 @@ class install_depends_py():
         return None
     
     async def test_torch(self):
-        test_torch_cmd = "python3 -c 'import torch; print(torch.__version__)'"
+        test_torch_cmd = [sys.executable, "-c", "import torch; print(torch.__version__)"]
         try:
             test_torch = subprocess.check_output(test_torch_cmd, shell=True).decode("utf-8")
             if type(test_torch) == str and type(test_torch) != ValueError:
@@ -229,7 +231,7 @@ class install_depends_py():
     async def install_torch_vision(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "torchvision", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "torchvision", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["torch_vision"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -240,7 +242,7 @@ class install_depends_py():
     async def install_torch(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "torch", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "torch", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["torch"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -262,7 +264,7 @@ class install_depends_py():
         return None
     
     async def test_openvino(self):
-        test_openvino_cmd = "python3 -c 'import openvino; print(openvino.__version__)'"
+        test_openvino_cmd = [sys.executable, "-c", "import openvino; print(openvino.__version__)"]
         try:
             test_openvino = subprocess.check_output(test_openvino_cmd, shell=True).decode("utf-8")              
             if type(test_openvino) == str and type(test_openvino) != ValueError:
@@ -275,9 +277,9 @@ class install_depends_py():
         return None
     
     async def test_huggingface_optimum_cuda(self):
-        test_optimum_cuda_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_cuda_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
-            test_optimum_cuda = subprocess.check_output(test_optimum_cuda_cmd, shell=True).decode("utf-8")
+            test_optimum_cuda = subprocess.check_output(test_optimum_cuda_cmd).decode("utf-8")
             if type(test_optimum_cuda) == str and type(test_optimum_cuda) != ValueError:
                 return True
             else:
@@ -285,10 +287,9 @@ class install_depends_py():
         except Exception as e:
             print(e)
             raise ValueError(e)
-        return None
     
     async def test_huggingface_optimum_onnx(self):
-        test_optimum_onnx_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_onnx_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_onnx = subprocess.check_output(test_optimum_onnx_cmd, shell=True).decode("utf-8")
             if type(test_optimum_onnx) == str and type(test_optimum_onnx) != ValueError:
@@ -301,7 +302,7 @@ class install_depends_py():
         return None
     
     async def test_llama_cpp(self):
-        test_llama_cpp_cmd = "pip show llama-cpp-python"
+        test_llama_cpp_cmd = [sys.executable, "-m", "pip", "show", "llama-cpp-python"]
         test_results = {}
         try:
             test_llama_cpp = subprocess.check_output(test_llama_cpp_cmd, shell=True)
@@ -324,7 +325,7 @@ class install_depends_py():
         
     
     async def test_local_openvino(self):
-        test_openvino_cmd = "python3 -c 'import openvino; print(openvino.__version__)'"
+        test_openvino_cmd = [sys.executable, "-c", "import openvino; print(openvino.__version__)"]
         try:
             test_openvino = subprocess.check_output(test_openvino_cmd, shell=True).decode("utf-8")              
             if type(test_openvino) == str and type(test_openvino) != ValueError:
@@ -337,7 +338,7 @@ class install_depends_py():
         return None
     
     async def test_ipex(self):        
-        test_ipex_cmd = 'python -c "import torch; import intel_extension_for_pytorch as ipex; print(torch.__version__); print(ipex.__version__);"'
+        test_ipex_cmd = [sys.executable, "-c", "import torch; import intel_extension_for_pytorch as ipex; print(torch.__version__); print(ipex.__version__);"]
         test_ipex = None
         try:
             # test_ipex = subprocess.check_output(test_ipex_cmd, shell=True)
@@ -348,7 +349,7 @@ class install_depends_py():
         return None
     
     async def test_huggingface_optimum(self):
-        test_optimum_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum = subprocess.check_output(test_optimum_cmd, shell=True).decode("utf-8")
             if type(test_optimum) == str and type(test_optimum) != ValueError:
@@ -362,7 +363,7 @@ class install_depends_py():
    
     async def test_huggingface_optimum_amx(self):
         import optimum
-        test_optimum_amx_cmd = "python3 -c 'import transformers; print(optimum.__version__)'"
+        test_optimum_amx_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_amx = subprocess.check_output(test_optimum_amx_cmd, shell=True).decode("utf-8")
             if type(test_optimum_amx) == str and type(test_optimum_amx) != ValueError:
@@ -375,7 +376,7 @@ class install_depends_py():
         return None
    
     async def test_huggingface_optimum_habana(self):
-        test_optimum_habana_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_habana_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_habana = subprocess.check_output(test_optimum_habana_cmd, shell=True).decode("utf-8")
             if type(test_optimum_habana) == str and type(test_optimum_habana) != ValueError:
@@ -388,7 +389,7 @@ class install_depends_py():
         return None
     
     async def test_huggingface_optimum_neural_compressor(self):
-        test_optimum_neural_compressor_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_neural_compressor_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_neural_compressor = subprocess.check_output(test_optimum_neural_compressor_cmd, shell=True).decode("utf-8")
             if type(test_optimum_neural_compressor) == str and type(test_optimum_neural_compressor) != ValueError:
@@ -401,7 +402,7 @@ class install_depends_py():
         return None
     
     async def test_huggingface_optimum_openvino(self):
-        test_optimum_openvino_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_openvino_cmd  = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_openvino = subprocess.check_output(test_optimum_openvino_cmd, shell=True).decode("utf-8")
             if type(test_optimum_openvino) == str and type(test_optimum_openvino) != ValueError:
@@ -415,7 +416,7 @@ class install_depends_py():
     
    
     async def test_huggingface_optimum_ipex(self):
-        test_optimum_intel_cmd = "python3 -c 'import transformers; print(transformers.__version__)'"
+        test_optimum_intel_cmd = [sys.executable, "-c", "import transformers; print(transformers.__version__)"]
         try:
             test_optimum_intel = subprocess.check_output(test_optimum_intel_cmd, shell=True).decode("utf-8")
             if type(test_optimum_intel) == str and type(test_optimum_intel) != ValueError:
@@ -440,7 +441,7 @@ class install_depends_py():
             raise ValueError(e)
     
     async def test_onnx(self):
-        test_onnx_cmd = "python3 -c 'import onnx; print(onnx.__version__)'"
+        test_onnx_cmd = [sys.executable, "-c", "import onnx; print(onnx.__version__)"]
         try:
             test_onnx = subprocess.check_output(test_onnx_cmd, shell=True).decode("utf-8")
             if type(test_onnx) == str and type(test_onnx) != ValueError:
@@ -455,7 +456,7 @@ class install_depends_py():
     async def install_onnx(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "onnx", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "onnx", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["onnx"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -466,7 +467,7 @@ class install_depends_py():
     async def install_cuda(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
             print(install_cmd)
             install_results["cuda"] = subprocess.run(install_cmd, check=True)
         except Exception as e:
@@ -489,7 +490,7 @@ class install_depends_py():
     async def install_faiss(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "faiss", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "faiss", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["faiss"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -500,7 +501,7 @@ class install_depends_py():
     async def install_faiss_cuda(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "faiss-cuda", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "faiss-cuda", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["faiss_cuda"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -617,7 +618,7 @@ class install_depends_py():
         install_results = {}
 
         try:
-            install_torch_cmd = ["pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
+            install_torch_cmd = [sys.executable , "-m", "pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
             print(install_torch_cmd)
             install_results["torch"] = subprocess.run(install_torch_cmd, check=True)
         except Exception as e:
@@ -628,7 +629,7 @@ class install_depends_py():
             gpus = torch.cuda.device_count()
             install_results["torch"] = gpus
         except Exception as e:
-            install_torch_cmd = ["pip", "install", "torch", "torchvision, torchaudio, torchtext", "--index-url", "https://download.pytorch.org/whl/cu102", "--break-system-packages"]
+            install_torch_cmd = [sys.executable , "-m", "pip", "install", "torch", "torchvision, torchaudio, torchtext", "--index-url", "https://download.pytorch.org/whl/cu102", "--break-system-packages"]
             result = subprocess.run(install_torch_cmd, check=True, capture_output=True, text=True)
             install_results["torch"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -639,7 +640,7 @@ class install_depends_py():
     async def install_openvino(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "openvino", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "openvino", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["openvino"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -652,7 +653,7 @@ class install_depends_py():
         install_results = {}
         for dependency in dependencies:
             try:
-                install_cmd = ["pip", "install", dependency]
+                install_cmd = [sys.executable , "-m", "pip", "install", dependency]
                 result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
                 install_results[dependency] = result.stdout
             except subprocess.CalledProcessError as e:
@@ -662,7 +663,7 @@ class install_depends_py():
     
     async def install_ipex(self):
         install_results = {}
-        install_ipex_cmd = "pip install --upgrade --upgrade-strategy eager optimum[ipex]"
+        install_ipex_cmd = [sys.executable , "-m", "pip", "install", "intel-extension-for-pytorch", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
         try:
             install_results["install_ipex"] = subprocess.run(install_ipex_cmd, check=True)
         except Exception as e:
@@ -684,7 +685,7 @@ class install_depends_py():
     
     async def install_huggingface_optimum(self):
         install_results = {}
-        install_optimum_cmd = ["python", "-m", "pip", "install", "optimum"]
+        install_optimum_cmd = [sys.executable, "-m" "pip", "install", "optimum"]
         test_results = {}        
         try:
             install_results["install_huggingface_optimum"] = subprocess.run(install_optimum_cmd, check=True)
@@ -728,7 +729,7 @@ class install_depends_py():
     async def install_huggingface_optimum_neural_compressor(self):
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[neural-compressor]"
+            install_cmd = [sys.executable , "-m", "pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[neural-compressor]", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_neural_compressor"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -739,7 +740,7 @@ class install_depends_py():
     async def install_huggingface_optimum_cuda(self):   
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[cuda]"
+            install_cmd = [sys.executable , "-m", "pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[cuda]", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_cuda"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -750,8 +751,7 @@ class install_depends_py():
     async def install_huggingface_optimum_openvino(self):
         install_results = {}
         try:
-            install_cmd = 'pip install --upgrade --upgrade-strategy eager "optimum[openvino]" --break-system-packages'
-            install_cmd = ["pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[openvino]", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[openvino]", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_openvino"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -773,7 +773,7 @@ class install_depends_py():
     async def install_huggingface_optimum_ipex(self):
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[ipex]"
+            install_cmd = [sys.executable , "-m", "pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[ipex]", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)    
             install_results["install_optimum_ipex"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -795,7 +795,7 @@ class install_depends_py():
     async def install_huggingface_optimum_habana(self):
         install_results = {}
         try:
-            install_cmd = "pip install --upgrade --upgrade-strategy eager optimum[habana]"
+            install_cmd = [sys.executable , "-m", "pip", "install", "--upgrade", "--upgrade-strategy", "eager", "optimum[habana]"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_habana"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -806,7 +806,7 @@ class install_depends_py():
     async def intstall_huggingface_optimum_onnx(self):
         install_results = {}
         try:
-            install_cmd = ["pip","install","--upgrade","--upgrade-strategy","eager","optimum[onnx]","--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip","install","--upgrade","--upgrade-strategy","eager","optimum[onnx]","--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["install_optimum_onnx"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -871,7 +871,7 @@ class install_depends_py():
     async def install_oneccl_bind_pt(self):
         install_results = {} 
         try:
-            install_cmd = ["pip", "install", "oneccl_bind_pt", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "oneccl_bind_pt", "--extra-index-url", "https://pytorch-extension.intel.com/release-whl/stable/cpu/us/", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["oneccl_bind_pt"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -908,7 +908,7 @@ class install_depends_py():
     async def install_faiss(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "faiss", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "faiss", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["faiss"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -919,7 +919,7 @@ class install_depends_py():
     async def install_faiss_cuda(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "faiss-cuda", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "faiss-cuda", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["faiss_cuda"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -931,7 +931,7 @@ class install_depends_py():
         install_results = {}
         git_src="https://github.com/guangzegu/faiss/tree/main"
         try:
-            install_cmd = ["pip", "install", "faiss-amx", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "faiss-amx", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["faiss_amx"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -942,7 +942,7 @@ class install_depends_py():
     async def install_qdrant(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "qdrant", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "qdrant", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["qdrant"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -953,7 +953,7 @@ class install_depends_py():
     async def install_elasticsearch(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "elasticsearch", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "elasticsearch", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["elasticsearch"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -964,7 +964,7 @@ class install_depends_py():
     async def install_numpy(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "numpy", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "numpy", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["numpy"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -975,7 +975,7 @@ class install_depends_py():
     async def install_onnx(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "onnx", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "onnx", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["onnx"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -986,7 +986,7 @@ class install_depends_py():
     async def install_torch_vision(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "torchvision", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "torchvision", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["torch_vision"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -997,7 +997,7 @@ class install_depends_py():
     async def install_torch(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "torch", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "torch", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["torch"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -1008,7 +1008,7 @@ class install_depends_py():
     async def install_numpy(self):
         install_results = {}
         try:
-            install_cmd = ["pip", "install", "numpy", "--break-system-packages"]
+            install_cmd = [sys.executable , "-m", "pip", "install", "numpy", "--break-system-packages"]
             result = subprocess.run(install_cmd, check=True, capture_output=True, text=True)
             install_results["numpy"] = result.stdout
         except subprocess.CalledProcessError as e:
@@ -1017,7 +1017,7 @@ class install_depends_py():
         return install_results
     
     async def test_numpy(self):
-        test_numpy_cmd = "python3 -c 'import numpy; print(numpy.__version__)'"
+        test_numpy_cmd = [sys.executable, "-c", "import numpy; print(numpy.__version__)"]
         try:
             test_numpy = subprocess.check_output(test_numpy_cmd, shell=True).decode("utf-8")
             if type(test_numpy) == str and type(test_numpy) != ValueError:

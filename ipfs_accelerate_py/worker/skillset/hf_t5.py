@@ -3,6 +3,7 @@ from torch import inference_mode, float16
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.generation.streamers import TextStreamer
+from ipfs_transformers_py import AutoModel
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))

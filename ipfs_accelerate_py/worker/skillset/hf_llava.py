@@ -3,6 +3,7 @@ from PIL import Image
 from io import BytesIO
 from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
 from transformers.generation.streamers import TextStreamer
+from ipfs_transformers_py import AutoModel
 import torch
 from torch import Tensor as T
 from torchvision.transforms import InterpolationMode
@@ -123,7 +124,7 @@ class hf_llava:
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
-    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_model):
+    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_model, get_openvino_pipeline_type):
         endpoint = None
         tokenizer = None
         endpoint_handler = None

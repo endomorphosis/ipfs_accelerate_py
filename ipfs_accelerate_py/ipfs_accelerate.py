@@ -1,3 +1,4 @@
+import tempfile
 import torch
 import requests
 import json
@@ -9,12 +10,15 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout
 from transformers import AutoTokenizer
 from transformers import AutoModel
+import ipfs_kit_py
+import ipfs_model_manager_py
+import libp2p_kit_py
 import hashlib
 import time
 from torch import Tensor
 
 class ipfs_accelerate_py:
-    def __init__(self, resources, metadata):
+    def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
         if self.resources is None:
@@ -25,6 +29,8 @@ class ipfs_accelerate_py:
             resources = {}
         if metadata is None:
             metadata = {}
+        if "role" in list(metadata.keys()):
+            self.role = metadata["role"]
         if "queues" not in list(self.resources.keys()):
             self.resources["queues"] = {}
         if "queue" not in list(self.resources.keys()):
@@ -41,28 +47,30 @@ class ipfs_accelerate_py:
             self.resources["caches"] = {}
         if "tokenizer" not in list(self.resources.keys()):
             self.resources["tokenizer"] = {}
-        self.resources["ipfs_accelerate_py"] = self
-        if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
-            try:
-                from .test_ipfs_accelerate import test_ipfs_accelerate
-            except:
-                from test_ipfs_accelerate import test_ipfs_accelerate
-            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
-            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-        elif "test_ipfs_accelerate" in list(self.resources.keys()):
-            self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
-        elif "test_ipfs_accelerate" in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
-            resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-        if "install_depends_py" not in globals():
-            try:
-                from .install_depends import install_depends_py
-            except:
-                from install_depends import install_depends_py
-            self.install_depends = install_depends_py(resources, metadata)
-            resources["install_depends"] = self.install_depends 
-        else:
-            self.install_depends = install_depends_py(resources, metadata)
+        # if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
+        #     try:
+        #         from .test_ipfs_accelerate import test_ipfs_accelerate
+        #     except:
+        #         from test_ipfs_accelerate import test_ipfs_accelerate
+        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
+        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
+        # elif "test_ipfs_accelerate" in list(self.resources.keys()):
+        #     self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
+        # elif "test_ipfs_accelerate" in globals():
+        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
+        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
+
+        # if "install_depends_py" not in globals():
+        #     try:
+        #         from .install_depends import install_depends_py
+        #     except:
+        #         from install_depends import install_depends_py
+        #     self.install_depends = install_depends_py(resources, metadata)
+        #     resources["install_depends"] = self.install_depends 
+        # else:
+        #     self.install_depends = install_depends_py(resources, metadata)
+        #     resources["install_depends"] = self.install_depends
+
         if "worker" not in globals():
             try:
                 from .worker import worker
@@ -70,6 +78,7 @@ class ipfs_accelerate_py:
                 from worker import worker
             self.worker = worker.worker_py(resources, metadata)
             resources["worker"] = self.worker
+
         if "ipfs_multiformats" not in globals():
             try:
                 from .ipfs_multiformats import ipfs_multiformats_py
@@ -77,6 +86,22 @@ class ipfs_accelerate_py:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
+
+        if "ipfs_transformers" not in globals():
+            try:
+                import ipfs_transformers_py
+            except:
+                from ipfs_transformers_py import ipfs_transformers_py
+            self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers
+            resources["ipfs_transformers_py"] = self.ipfs_transformers_py
+
+        self.metadata["role"] = self.role
+        self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
+        resources["ipfs_kit"] = self.ipfs_kit_py
+        self.libp2p_kit_py = libp2p_kit_py.libp2p_kit(resources, metadata)
+        resources["libp2p_kit"] = self.libp2p_kit_py
+        self.ipfs_model_manager_py = ipfs_model_manager_py.ipfs_model_manager(resources, metadata)
+        resources["ipfs_model_manager"] = self.ipfs_model_manager_py
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.endpoints = {}
@@ -127,7 +152,7 @@ class ipfs_accelerate_py:
                 for byte_block in iter(lambda: f.read(4096),b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
-            test_results_file = "/tmp/" + install_file_hash + ".json"
+            test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
@@ -1488,20 +1513,21 @@ class ipfs_accelerate_py:
         The quick brown fox jumps over the lazy dog. \n
         '''
         sentence_2 = "Now is the time for all good Men to come to the aid of their country."
-        batch = [sentence_1, sentence_2]
-        max_batch_size1 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
-        max_batch_size2 = await self.max_batch_size(metadata['models'][0], "cuda:1", self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"])
-        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["cuda:1"](batch)
+        # batch = [sentence_1, sentence_2]
+        # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"](sentence_2)
 
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         with torch.no_grad():
-            torch.cuda.empty_cache()
+            if "cuda" in dir(torch):
+                torch.cuda.empty_cache()
         results = {
             "ipfs_accelerate_init": ipfs_accelerate_init,
             "test_endpoints": test_endpoints,
             "test_batch": test_batch,
-            "max_batch_size": max_batch_size1,
-            "max_batch_size": max_batch_size2,
+            # "max_batch_size": max_batch_size1,
+            # "max_batch_size": max_batch_size2,
             # "test_batch_sizes": test_batch_sizes
         }
         return results
@@ -1513,13 +1539,17 @@ if __name__ == "__main__":
         "dataset": "laion/gpt4v-dataset",
         "namespace": "laion/gpt4v-dataset",
         "column": "link",
+        "role": "master",
         "split": "train",
         "models": [
             # "TIGER-Lab/Mantis-8B-siglip-llama3",
             # "lmms-lab/llava-onevision-qwen2-7b-si",  
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            "llava-hf/llava-v1.6-mistral-7b-hf", 
+            # "llava-hf/llava-v1.6-mistral-7b-hf",
+            # "meta-llama/Meta-Llama-3-8B-Instruct",
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0", 
+            # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
             # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
@@ -1535,28 +1565,29 @@ if __name__ == "__main__":
         "chunk_settings": {
 
         },
+        "path": "/storage/gpt4v-dataset/data",
         "dst_path": "/storage/gpt4v-dataset/data",
     }
     resources = {
         "local_endpoints": [
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cpu", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cpu", 32768],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cpu", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cuda:0", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:1", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:1", 8192],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "cuda:1", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "openvino:0", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "openvino:0", 32768],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "openvino:0", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "llama_cpp", 512],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "llama_cpp", 8192],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "llama_cpp", 32768],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-si", "ipex", 512],
-            ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "ipex", 8192],
-            ["llava-hf/llava-v1.6-mistral-7b-hf",   "ipex", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cpu", 32768],
+            ["Qwen/Qwen2-7B", "cpu", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cpu", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:0", 32768],
+            ["Qwen/Qwen2-7B", "cuda:0", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:0", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:1", 32768],
+            ["Qwen/Qwen2-7B", "cuda:1", 8192],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:2", 32768],
+            ["Qwen/Qwen2-7B", "openvino:2", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:2", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "llama_cpp", 512],
+            ["Qwen/Qwen2-7B", "llama_cpp", 8192],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "ipex", 512],
+            ["Qwen/Qwen2-7B", "ipex", 8192],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "ipex", 32768],
         ],
         "openvino_endpoints": [
         ],

@@ -1,7 +1,8 @@
-ipfs_kit_py
+ipfs_kit_py==0.0.18
+ipfs_model_manager_py==0.0.23
+libp2p_kit_py==0.0.19
 ipfs_transformers_py
-ipfs_model_manager_py
-transformers>4.36
+transformers==4.46
 torch>=2.1
 torchvision
 numpy
@@ -12,17 +13,18 @@ boto3
 sentence_transformers
 trio
 optimum[openvino]
-FlagEmbedding
+# FlagEmbedding
 InstructorEmbedding
 toml
 pydantic
 einops
 timm
-flash-attn
-openvino>=2024.5
-openvino-tokenizers>=2024.5
-openvino-genai>=2024.5
-git+https://github.com/huggingface/optimum-intel.git --extra-index-url https://download.pytorch.org/whl/cpu
+openvino>=2024.6
+openvino-tokenizers>=2024.6
+openvino-genai>=2024.6
 Pillow
 nncf>=2.14.0
-optimum[exporters]
+# optimum[exporters]
+optimum[intel]
+onnxruntime==1.19.2
+onnx==1.16.1
