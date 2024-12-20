@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name='ipfs_accelerate_py',
-	version='0.0.40',
+	version='0.0.41',
 	packages=find_packages(),
 	install_requires=[
 		'ipfs_kit_py',
@@ -24,7 +24,7 @@ setup(
 		'llama-cpp-python',
 		'gguf',
 		'optimum',
-		"git+https://github.com/huggingface/optimum-intel.git --extra-index-url https://download.pytorch.org/whl/cpu",
+		# "git+https://github.com/huggingface/optimum-intel.git --extra-index-url https://download.pytorch.org/whl/cpu",
 		'optimum[openvino]',
 		'toml',
 		'pydantic',
