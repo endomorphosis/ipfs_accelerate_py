@@ -3,6 +3,8 @@ from PIL import Image
 from io import BytesIO
 from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
 from transformers.generation.streamers import TextStreamer
+from ipfs_transformers_py import AutoModel
+import json
 import torch
 from torch import Tensor as T
 from torchvision.transforms import InterpolationMode
