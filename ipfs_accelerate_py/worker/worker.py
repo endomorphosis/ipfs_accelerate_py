@@ -28,10 +28,10 @@ except:
     from .ipfs_multiformats import ipfs_multiformats_py
     
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
-from .skillset import hf_llava
-from .skillset import default
-from .skillset import hf_embed
-from .skillset import hf_lm
+from ipfs_accelerate_py.worker.skillset import hf_llava
+from ipfs_accelerate_py.worker.skillset import default
+from ipfs_accelerate_py.worker.skillset import hf_embed
+from ipfs_accelerate_py.worker.skillset import hf_lm
 
 try:
     from openvino_utils import openvino_utils
@@ -345,10 +345,12 @@ class worker_py:
                             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.default.init_cuda(model, device, cuda_label)
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        ov_count = 0
-                        openvino_label = "openvino:" + str(ov_count)
-                        device = "openvino:" + str(ov_count)
-                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.openvino_utils.get_openvino_model, self.openvino_utils.get_openvino_pipeline_type)
+                        openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                        for openvino_endpoint in openvino_local_endpont_types:
+                            ov_count = openvino_endpoint.split(":")[1]
+                            openvino_label = "openvino:" + str(ov_count)
+                            device = "openvino:" + str(ov_count)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.openvino_utils.get_openvino_model, self.openvino_utils.get_openvino_pipeline_type)
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -358,12 +360,14 @@ class worker_py:
                             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_llava.init_cuda( model, device, cuda_label)
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
-                    ov_count = 0
-                    openvino_label = "openvino:" + str(ov_count)
-                    device = "openvino:" + str(ov_count)
-                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
-                        torch.cuda.empty_cache()
+                    openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                    for openvino_endpoint in openvino_local_endpont_types:
+                        ov_count = openvino_endpoint.split(":")[1]
+                        openvino_label = "openvino:" + str(ov_count)
+                        device = "openvino:" + str(ov_count)
+                        if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            torch.cuda.empty_cache()
             elif model_type in text_embedding_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -374,11 +378,13 @@ class worker_py:
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        ov_count = 0
-                        openvino_label = "openvino:" + str(ov_count)
-                        device = "openvino:" + str(ov_count)
-                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
-                        torch.cuda.empty_cache()
+                        openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                        for openvino_endpoint in openvino_local_endpont_types:
+                            ov_count = openvino_endpoint.split(":")[1]
+                            openvino_label = "openvino:" + str(ov_count)
+                            device = "openvino:" + str(ov_count)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            torch.cuda.empty_cache()
             elif model_type in llm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -389,11 +395,13 @@ class worker_py:
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                        ov_count = 2
-                        openvino_label = "openvino:" + str(ov_count)
-                        device = "openvino:" + str(ov_count)
-                        self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
-                        torch.cuda.empty_cache()
+                        openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                        for openvino_endpoint in openvino_local_endpont_types:
+                            ov_count = openvino_endpoint.split(":")[1]
+                            openvino_label = "openvino:" + str(ov_count)
+                            device = "openvino:" + str(ov_count)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            torch.cuda.empty_cache()
 
         worker_endpoint_types = []
         worker_model_types = []

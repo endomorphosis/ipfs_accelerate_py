@@ -87,21 +87,21 @@ class ipfs_accelerate_py:
             self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
 
-        if "ipfs_transformers" not in globals():
-            try:
-                import ipfs_transformers_py
-            except:
-                from ipfs_transformers_py import ipfs_transformers_py
-            self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers
-            resources["ipfs_transformers_py"] = self.ipfs_transformers_py
+        # if "ipfs_transformers" not in globals():
+        #     try:
+        #         import ipfs_transformers_py
+        #     except:
+        #         from ipfs_transformers_py import ipfs_transformers_py
+        #     self.ipfs_transformers_py = ipfs_transformers_py.ipfs_transformers
+        #     resources["ipfs_transformers_py"] = self.ipfs_transformers_py
 
-        self.metadata["role"] = self.role
-        self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
-        resources["ipfs_kit"] = self.ipfs_kit_py
-        self.libp2p_kit_py = libp2p_kit_py.libp2p_kit(resources, metadata)
-        resources["libp2p_kit"] = self.libp2p_kit_py
-        self.ipfs_model_manager_py = ipfs_model_manager_py.ipfs_model_manager(resources, metadata)
-        resources["ipfs_model_manager"] = self.ipfs_model_manager_py
+        # self.metadata["role"] = self.role
+        # self.ipfs_kit_py = ipfs_kit_py.ipfs_kit(resources, metadata)
+        # resources["ipfs_kit"] = self.ipfs_kit_py
+        # self.libp2p_kit_py = libp2p_kit_py.libp2p_kit(resources, metadata)
+        # resources["libp2p_kit"] = self.libp2p_kit_py
+        # self.ipfs_model_manager_py = ipfs_model_manager_py.ipfs_model_manager(resources, metadata)
+        # resources["ipfs_model_manager"] = self.ipfs_model_manager_py
         self.endpoint_status = {}
         self.endpoint_handler = {}
         self.endpoints = {}
@@ -1516,7 +1516,7 @@ class ipfs_accelerate_py:
         # batch = [sentence_1, sentence_2]
         # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
         # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"](sentence_2)
+        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:1"](sentence_2)
 
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         with torch.no_grad():
@@ -1579,9 +1579,9 @@ if __name__ == "__main__":
             ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:1", 32768],
             ["Qwen/Qwen2-7B", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:2", 32768],
-            ["Qwen/Qwen2-7B", "openvino:2", 32768],
-            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:2", 32768],
+            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:1", 32768],
+            ["Qwen/Qwen2-7B", "openvino:1", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:1", 32768],
             ["meta-llama/Meta-Llama-3-8B-Instruct",  "llama_cpp", 512],
             ["Qwen/Qwen2-7B", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],
