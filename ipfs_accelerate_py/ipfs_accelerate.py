@@ -1516,8 +1516,16 @@ class ipfs_accelerate_py:
         # batch = [sentence_1, sentence_2]
         # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
         # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        timestamp1 = time.time()
         test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:1"](sentence_2)
-
+        timestamp2 = time.time()
+        elapsed_time = timestamp2 - timestamp1
+        tokens = self.resources["tokenizer"][metadata['models'][0]]["openvino:1"](test_batch)
+        len_tokens = len(tokens["input_ids"])
+        tokens_per_second = len_tokens / elapsed_time
+        print(f"elapsed time: {elapsed_time}")
+        print(f"tokens: {len_tokens}")
+        print(f"tokens per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         with torch.no_grad():
             if "cuda" in dir(torch):
@@ -1546,9 +1554,9 @@ if __name__ == "__main__":
             # "lmms-lab/llava-onevision-qwen2-7b-si",  
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            # "llava-hf/llava-v1.6-mistral-7b-hf",
-            # "meta-llama/Meta-Llama-3-8B-Instruct",
-            "TinyLlama/TinyLlama-1.1B-Chat-v1.0", 
+            "llava-hf/llava-v1.6-mistral-7b-hf",
+            # "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0", 
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
@@ -1570,22 +1578,22 @@ if __name__ == "__main__":
     }
     resources = {
         "local_endpoints": [
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cpu", 32768],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cpu", 32768],
             ["Qwen/Qwen2-7B", "cpu", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cpu", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:0", 32768],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cuda:0", 32768],
             ["Qwen/Qwen2-7B", "cuda:0", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:0", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "cuda:1", 32768],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cuda:1", 32768],
             ["Qwen/Qwen2-7B", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "openvino:1", 32768],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "openvino:1", 32768],
             ["Qwen/Qwen2-7B", "openvino:1", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:1", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "llama_cpp", 512],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "llama_cpp", 512],
             ["Qwen/Qwen2-7B", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],
-            ["meta-llama/Meta-Llama-3-8B-Instruct",  "ipex", 512],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "ipex", 512],
             ["Qwen/Qwen2-7B", "ipex", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "ipex", 32768],
         ],
