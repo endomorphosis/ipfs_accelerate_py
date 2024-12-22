@@ -8,8 +8,7 @@ import asyncio
 import random
 import aiohttp
 from aiohttp import ClientSession, ClientTimeout
-from transformers import AutoTokenizer
-from transformers import AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 import ipfs_kit_py
 import ipfs_model_manager_py
 import libp2p_kit_py
@@ -1057,10 +1056,12 @@ class ipfs_accelerate_py:
         local_endpoints_types = [x[1] for x in local_endpoints]
         local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
         endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
-        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
-        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
-        if len(local_endpoints_by_model_by_endpoint) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint:
+        if endpoint_list is not None:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+        else:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]
+        if len(local_endpoints_by_model_by_endpoint_list) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint_list:
                 endpoint_handler = endpoint_handlers_by_model[endpoint]
                 try:
                     test = await endpoint_handler("hello world")
@@ -1075,7 +1076,13 @@ class ipfs_accelerate_py:
         else:
             return ValueError("No endpoint_handlers found")
         return test_results
-
+    
+    def get_model_type(self, model_name, model_type=None):
+        if model_type is None:
+            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            model_type = config.__class__.model_type
+        return model_type
+    
     async def test_local_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
@@ -1084,23 +1091,23 @@ class ipfs_accelerate_py:
         local_endpoints_types = [x[1] for x in local_endpoints]
         local_endpoints_by_model = self.endpoints["local_endpoints"][model]
         endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
-        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
-        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
-        if len(local_endpoints_by_model_by_endpoint) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint:
-                endpoint_handler = endpoint_handlers_by_model[endpoint]
-                try:
-                    test = await endpoint_handler("hello world")
-                    test_results[endpoint] = test
-                except Exception as e:
-                    try:
-                        test = endpoint_handler("hello world")
-                        test_results[endpoint] = test
-                    except Exception as e:
-                        test_results[endpoint] = e
-                    pass
+        if endpoint_list is not None:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
-            return ValueError("No endpoint_handlers found")
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]      
+        if len(local_endpoints_by_model_by_endpoint_list) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint_list:
+                endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
+                model_type = self.get_model_type(model)
+                vlm_model_types = ["llava", "llava_next"]
+                llm_model_types = ["qwen2", "llama"]
+                text_embedding_types = ["bert"]
+                test = None
+                if model_type in vlm_model_types:
+                    from ipfs_accelerate_py.worker.skillset import hf_llava
+                    hf_llava_test = hf_llava()
+                    test = await hf_llava_test.__test__(endpoint_handler)
+                    test_results[endpoint] = test
         return test_results
 
     async def get_https_endpoint(self, model):
@@ -1454,6 +1461,9 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
+        test_tasks = []
+
+        
         sentence_1 = '''The quick brown fox jumps over the lazy dog. \n
         The quick brown fox jumps over the lazy dog. \n
         The quick brown fox jumps over the lazy dog. \n
