@@ -16,6 +16,9 @@ class hf_embed:
 
 	def init(self):
 		return None
+	
+	def __test__(self):
+		return None
 
 	def init_cuda(self, model, device, cuda_label):
 		config = AutoConfig.from_pretrained(model, trust_remote_code=True)
@@ -33,7 +36,7 @@ class hf_embed:
 		batch_size = 0
 		return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
-	def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+	def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
 		ov_count = 0
 		device = "openvino:" + str(ov_count)
 		openvino_label = "openvino:" + str(ov_count)

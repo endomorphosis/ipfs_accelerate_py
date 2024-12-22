@@ -19,7 +19,7 @@ toml
 pydantic
 einops
 timm
-openvino>=2024.6
+openvino>=2024.6 
 openvino-tokenizers>=2024.6
 openvino-genai>=2024.6
 Pillow

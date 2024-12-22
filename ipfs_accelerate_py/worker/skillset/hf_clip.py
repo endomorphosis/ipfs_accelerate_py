@@ -1,8 +1,7 @@
 from torch import no_grad
 from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
 
-
-class HFClip:
+class hf_clip:
 	def __init__(self, resources, meta=None):
 		self.model = CLIPModel.from_pretrained(resources['clip'], local_files_only=True).to('cuda')
 		self.processor = CLIPProcessor.from_pretrained(resources['clip'], local_files_only=True)

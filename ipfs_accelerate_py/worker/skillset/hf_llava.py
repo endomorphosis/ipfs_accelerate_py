@@ -110,6 +110,9 @@ class hf_llava:
     def init(self):
         return None
     
+    def __test__(self):
+        return None
+    
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
@@ -124,7 +127,7 @@ class hf_llava:
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
-    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_model, get_openvino_pipeline_type):
+    def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
         endpoint = None
         tokenizer = None
         endpoint_handler = None

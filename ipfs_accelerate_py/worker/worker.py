@@ -173,6 +173,7 @@ class worker_py:
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
         self.create_endpoint_handler = self.default.create_endpoint_handler
         self.get_openvino_model = self.openvino_utils.get_openvino_model
+        self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
         self.get_model_type = self.openvino_utils.get_model_type
@@ -211,6 +212,8 @@ class worker_py:
 
         return None
     
+    def get_openvino_genai_pipeline(self, model_name, model_type=None):
+        return self.openvino_utils.get_openvino_genai_pipeline(model_name, model_type)
 
     async def test_hardware(self):
         install_file_hash = None
@@ -331,7 +334,9 @@ class worker_py:
                 self.endpoint_handler[model] = {}
             if model not in list(self.batch_sizes.keys()):
                 self.batch_sizes[model] = {}
-                
+            pipeline_model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text", "image-text-to-text"]
+            model_mapping_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
+            
             vlm_model_types = ["llava", "llava_next"]
             llm_model_types = ["qwen2", "llama"]
             text_embedding_types = ["bert"]
@@ -350,7 +355,7 @@ class worker_py:
                             ov_count = openvino_endpoint.split(":")[1]
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.openvino_utils.get_openvino_model, self.openvino_utils.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
@@ -366,7 +371,7 @@ class worker_py:
                         openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
                         if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
                             torch.cuda.empty_cache()
             elif model_type in text_embedding_types:
                 if cuda and gpus > 0:
@@ -383,7 +388,7 @@ class worker_py:
                             ov_count = openvino_endpoint.split(":")[1]
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
                             torch.cuda.empty_cache()
             elif model_type in llm_model_types:
                 if cuda and gpus > 0:
@@ -400,7 +405,7 @@ class worker_py:
                             ov_count = openvino_endpoint.split(":")[1]
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
                             torch.cuda.empty_cache()
 
         worker_endpoint_types = []
@@ -438,5 +443,3 @@ export = worker_py
 #     except Exception as e:
 #         print(e)
 #         pass
-    
-    
