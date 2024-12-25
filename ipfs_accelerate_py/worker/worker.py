@@ -28,10 +28,10 @@ except:
     from .ipfs_multiformats import ipfs_multiformats_py
     
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
-from ipfs_accelerate_py.worker.skillset import hf_llava
-from ipfs_accelerate_py.worker.skillset import default
-from ipfs_accelerate_py.worker.skillset import hf_embed
-from ipfs_accelerate_py.worker.skillset import hf_lm
+from .skillset import hf_llava
+from .skillset import default
+from .skillset import hf_embed
+from .skillset import hf_lm
 
 try:
     from openvino_utils import openvino_utils
@@ -371,7 +371,17 @@ class worker_py:
                         openvino_label = "openvino:" + str(ov_count)
                         device = "openvino:" + str(ov_count)
                         if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            # self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_llava.init_openvino(
+                                model,
+                                model_type,
+                                device,
+                                openvino_label,
+                                self.get_openvino_genai_pipeline,
+                                self.get_optimum_openvino_model,
+                                self.get_openvino_model,
+                                self.get_openvino_pipeline_type
+                            )
                             torch.cuda.empty_cache()
             elif model_type in text_embedding_types:
                 if cuda and gpus > 0:
