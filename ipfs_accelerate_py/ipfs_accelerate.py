@@ -137,7 +137,6 @@ class ipfs_accelerate_py:
         self.get_https_endpoint = self.get_https_endpoint
         self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
-
         return None
     
     async def test_hardware(self):
@@ -1088,9 +1087,12 @@ class ipfs_accelerate_py:
         filtered_list = {}
         test_results = {}
         local_endpoints = self.resources["local_endpoints"]
+        local_tokenizers = self.resources["tokenizer"]
         local_endpoints_types = [x[1] for x in local_endpoints]
+        local_tokenizers_types = [x[1] for x in local_tokenizers]
         local_endpoints_by_model = self.endpoints["local_endpoints"][model]
         endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
+        tokenizers_by_model = self.resources["tokenizer"][model]
         if endpoint_list is not None:
             local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
@@ -1104,9 +1106,19 @@ class ipfs_accelerate_py:
                 text_embedding_types = ["bert"]
                 test = None
                 if model_type in vlm_model_types:
-                    from ipfs_accelerate_py.worker.skillset import hf_llava
-                    hf_llava_test = hf_llava()
-                    test = await hf_llava_test.__test__(endpoint_handler)
+                    sentence_1 = '''The quick brown fox jumps over the lazy dog. '''
+                    image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+                    timestamp1 = time.time()
+                    timestamp2 = time.time()
+                    elapsed_time = timestamp2 - timestamp1
+                    tokens = endpoint_handlers_by_model[endpoint[1]](sentence_1, image_1)
+                    len_tokens = len(tokens["input_ids"])
+                    tokens_per_second = len_tokens / elapsed_time
+                    print(f"elapsed time: {elapsed_time}")
+                    print(f"tokens: {len_tokens}")
+                    print(f"tokens per second: {tokens_per_second}")
+                    from worker.skillset import hf_llava
+                    test = await hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint] = test
         return test_results
 
@@ -1461,93 +1473,91 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
-        test_tasks = []
-
-        
-        sentence_1 = '''The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        The quick brown fox jumps over the lazy dog. \n
-        '''
-        sentence_2 = "Now is the time for all good Men to come to the aid of their country."
-        # batch = [sentence_1, sentence_2]
-        # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        timestamp1 = time.time()
-        test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:1"](sentence_2)
-        timestamp2 = time.time()
-        elapsed_time = timestamp2 - timestamp1
-        tokens = self.resources["tokenizer"][metadata['models'][0]]["openvino:1"](test_batch)
-        len_tokens = len(tokens["input_ids"])
-        tokens_per_second = len_tokens / elapsed_time
-        print(f"elapsed time: {elapsed_time}")
-        print(f"tokens: {len_tokens}")
-        print(f"tokens per second: {tokens_per_second}")
-        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
-        with torch.no_grad():
-            if "cuda" in dir(torch):
-                torch.cuda.empty_cache()
-        results = {
-            "ipfs_accelerate_init": ipfs_accelerate_init,
-            "test_endpoints": test_endpoints,
-            "test_batch": test_batch,
-            # "max_batch_size": max_batch_size1,
-            # "max_batch_size": max_batch_size2,
-            # "test_batch_sizes": test_batch_sizes
-        }
+        # test_tasks = []
+        # sentence_1 = '''The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # The quick brown fox jumps over the lazy dog. \n
+        # '''
+        # sentence_2 = "Now is the time for all good Men to come to the aid of their country."
+        # # batch = [sentence_1, sentence_2]
+        # # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        # # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
+        # timestamp1 = time.time()
+        # test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:1"](sentence_2)
+        # timestamp2 = time.time()
+        # elapsed_time = timestamp2 - timestamp1
+        # tokens = self.resources["tokenizer"][metadata['models'][0]]["openvinotest_batch:1"]()
+        # len_tokens = len(tokens["input_ids"])
+        # tokens_per_second = len_tokens / elapsed_time
+        # print(f"elapsed time: {elapsed_time}")
+        # print(f"tokens: {len_tokens}")
+        # print(f"tokens per second: {tokens_per_second}")
+        # # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        # with torch.no_grad():
+        #     if "cuda" in dir(torch):
+        #         torch.cuda.empty_cache()
+        # results = {
+        #     "ipfs_accelerate_init": ipfs_accelerate_init,
+        #     "test_endpoints": test_endpoints,
+        #     "test_batch": test_batch,
+        #     # "max_batch_size": max_batch_size1,
+        #     # "max_batch_size": max_batch_size2,
+        #     # "test_batch_sizes": test_batch_sizes
+        # }
         return results
 
 ipfs_accelerate_py = ipfs_accelerate_py
@@ -1597,9 +1607,9 @@ if __name__ == "__main__":
             ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cuda:1", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "openvino:1", 32768],
-            ["llava-hf/llava-v1.6-mistral-7b-hf", "openvino:1", 32768],
-            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:1", 32768],
+            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "openvino:0", 32768],
+            ["llava-hf/llava-v1.6-mistral-7b-hf", "openvino:0", 32768],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:0", 32768],
             ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "llama_cpp", 512],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],

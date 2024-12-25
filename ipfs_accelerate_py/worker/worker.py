@@ -28,10 +28,10 @@ except:
     from .ipfs_multiformats import ipfs_multiformats_py
     
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
-from ipfs_accelerate_py.worker.skillset import hf_llava
-from ipfs_accelerate_py.worker.skillset import default
-from ipfs_accelerate_py.worker.skillset import hf_embed
-from ipfs_accelerate_py.worker.skillset import hf_lm
+from .skillset import hf_llava
+from .skillset import default
+from .skillset import hf_embed
+from .skillset import hf_lm
 
 try:
     from openvino_utils import openvino_utils
