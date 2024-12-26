@@ -59,12 +59,12 @@ class llama_cpp_kit:
 		checkpoint_files = [file for file in checkpoint_files if file.endswith(".gguf")]
 
 		self.model_name = resources['checkpoint'].split('@')[0]
-		self.model = Llama(
-			model_path=os.path.join(resources['checkpoint'].replace("@gguf",""), checkpoint_files[0]),
-			n_gpu_layers=-1,
-			n_ctx=n_ctx,
-			n_gqa=n_gqa,
-		)
+		# self.model = Llama(
+		# 	model_path=os.path.join(resources['checkpoint'].replace("@gguf",""), checkpoint_files[0]),
+		# 	n_gpu_layers=-1,
+		# 	n_ctx=n_ctx,
+		# 	n_gqa=n_gqa,
+		# )
 
 	def __call__(self, method, **kwargs):
 		if method == 'llm_chat':
