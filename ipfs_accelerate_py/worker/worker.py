@@ -168,8 +168,8 @@ class worker_py:
         elif "hf_lm" in globals():
             self.hf_lm = hf_lm
         
+        self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
-        self.create_vlm_endpoint_handler = self.hf_llava.create_vlm_endpoint_handler
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
         self.create_endpoint_handler = self.default.create_endpoint_handler
         self.get_openvino_model = self.openvino_utils.get_openvino_model
@@ -177,6 +177,7 @@ class worker_py:
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
         self.get_model_type = self.openvino_utils.get_model_type
+        self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         
         
         # if "hf_embed" not in globals() and "hf_embed" not in list(self.resources.keys()):
@@ -269,6 +270,10 @@ class worker_py:
     
     def get_openvino_pipeline_type(self, model_name, model_type=None):
         results = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
+        return results
+    
+    def openvino_cli_convert(self, model_name, model_dst_path):
+        results = self.openvino_utils.openvino_cli_convert(model_name, model_dst_path)
         return results
     
     async def init_worker(self, models, local_endpoints, hwtest):
@@ -380,7 +385,8 @@ class worker_py:
                                 self.get_openvino_genai_pipeline,
                                 self.get_optimum_openvino_model,
                                 self.get_openvino_model,
-                                self.get_openvino_pipeline_type
+                                self.get_openvino_pipeline_type,
+                                self.openvino_cli_convert,
                             )
                             torch.cuda.empty_cache()
             elif model_type in text_embedding_types:

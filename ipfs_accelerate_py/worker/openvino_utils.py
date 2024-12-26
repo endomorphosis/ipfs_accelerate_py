@@ -83,10 +83,11 @@ class openvino_utils:
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
+                    # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
 
                     # ov_model = ov.load_model(model_dst_path)
                     # ov_model = ov.compile_model(ov_model)
+                    pass
                 except Exception as e:
                     print(e)
                     pass
@@ -171,10 +172,11 @@ class openvino_utils:
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-                    self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
+                    # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
 
                     # ov_model = ov.load_model(model_dst_path)
                     # ov_model = ov.compile_model(ov_model)
+                    pass
                 except Exception as e:
                     print(e)
                     pass
@@ -211,13 +213,24 @@ class openvino_utils:
 
         return ov_model
     
-    async def get_optimum_openvino_model(self, model_name, model_type=None):
+    def get_optimum_openvino_model(self, model_name, model_type=None):
+        homedir = os.path.expanduser("~")
+        model_name_convert = model_name.replace("/", "--")
+        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+        model_dst_path = os.path.join(model_src_path, "openvino")
         if model_type is None:
             config = AutoConfig.from_pretrained(model_name)
             model_type = config.__class__.model_type
         model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text", "bert", "llava", "image-text-to-text"]
         if model_type not in model_mapping_list:
-            return None
+            model_type = self.get_openvino_pipeline_type(model_name, model_type)
+        # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_type, weight_format="int8", ratio="1.0", group_size=128, sym=True )
         if model_type == "bert":
             model_type = "feature-extraction"
             from optimum.intel import OVModelForFeatureExtraction
@@ -252,12 +265,15 @@ class openvino_utils:
         elif model_type == "automatic-speech-recognition":
             from optimum.intel import OVModelForSpeechSeq2Seq
             results = OVModelForSpeechSeq2Seq.from_pretrained(model_name, compile=False)
+        # elif model_type == "image-text-to-text":
+        #     from optimum.intel import OVModelForVision2Seq
+        #     results = OVModelForVision2Seq.from_pretrained(model_name, compile=False)
         elif model_type == "image-text-to-text":
-            from optimum.intel import OVModelForVision2Seq
-            results = OVModelForVision2Seq.from_pretrained(model_name, compile=False)
+            from optimum.intel import OVModelForVisualCausalLM
+            results = OVModelForVisualCausalLM.from_pretrained(model_name, compile=False)
         else:
             return None
-        # await results.compile()
+        results.compile()
         return results
     
     
@@ -355,7 +371,7 @@ class openvino_utils:
     
     def get_openvino_pipeline_type(self, model_name, model_type=None):
         model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
-        model_mapping_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
+        model_mapping_list = ['image-text-to-text', 'fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         return_model_type = None
         config_model_type = None
         if model_type is not None:

@@ -1106,17 +1106,6 @@ class ipfs_accelerate_py:
                 text_embedding_types = ["bert"]
                 test = None
                 if model_type in vlm_model_types:
-                    sentence_1 = '''The quick brown fox jumps over the lazy dog. '''
-                    image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-                    timestamp1 = time.time()
-                    timestamp2 = time.time()
-                    elapsed_time = timestamp2 - timestamp1
-                    tokens = endpoint_handlers_by_model[endpoint[1]](sentence_1, image_1)
-                    len_tokens = len(tokens["input_ids"])
-                    tokens_per_second = len_tokens / elapsed_time
-                    print(f"elapsed time: {elapsed_time}")
-                    print(f"tokens: {len_tokens}")
-                    print(f"tokens per second: {tokens_per_second}")
                     from worker.skillset import hf_llava
                     test = await hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint] = test
