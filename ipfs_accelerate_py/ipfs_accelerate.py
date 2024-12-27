@@ -379,10 +379,13 @@ class ipfs_accelerate_py:
         try:
             self.worker_resources = await self.worker.init_worker(models, self.endpoints["local_endpoints"], None)
         except Exception as e:
-            print(e)
-            print(e.__traceback__)
+            import traceback
+            print("Error initializing worker:")
+            print(f"Exception type: {type(e).__name__}")
+            print(f"Exception message: {str(e)}")
+            print("Traceback:")
+            traceback.print_exc()
             self.worker_resources = e
-            pass
         
         if type(self.worker_resources) is not ValueError and type(self.worker_resources) is not Exception and type(self.worker_resources) is not TypeError:
             resource_list = list(self.worker_resources.keys())
