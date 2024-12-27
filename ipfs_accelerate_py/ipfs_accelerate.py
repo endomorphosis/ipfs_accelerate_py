@@ -1106,20 +1106,15 @@ class ipfs_accelerate_py:
                 text_embedding_types = ["bert"]
                 test = None
                 if model_type in vlm_model_types:
-                    sentence_1 = '''The quick brown fox jumps over the lazy dog. '''
-                    image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-                    timestamp1 = time.time()
-                    timestamp2 = time.time()
-                    elapsed_time = timestamp2 - timestamp1
-                    tokens = endpoint_handlers_by_model[endpoint[1]](sentence_1, image_1)
-                    len_tokens = len(tokens["input_ids"])
-                    tokens_per_second = len_tokens / elapsed_time
-                    print(f"elapsed time: {elapsed_time}")
-                    print(f"tokens: {len_tokens}")
-                    print(f"tokens per second: {tokens_per_second}")
                     from worker.skillset import hf_llava
                     test = await hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint] = test
+                elif model_type in llm_model_types:
+                    from worker.skillset import hf_llama
+                    test = await hf_llama.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint] = test
+                del hf_llava
+                del test
         return test_results
 
     async def get_https_endpoint(self, model):
@@ -1473,92 +1468,7 @@ class ipfs_accelerate_py:
         results = {}
         ipfs_accelerate_init = await self.init_endpoints( metadata['models'], resources)
         test_endpoints = await self.test_endpoints(metadata['models'], ipfs_accelerate_init)
-        # test_tasks = []
-        # sentence_1 = '''The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # The quick brown fox jumps over the lazy dog. \n
-        # '''
-        # sentence_2 = "Now is the time for all good Men to come to the aid of their country."
-        # # batch = [sentence_1, sentence_2]
-        # # max_batch_size1 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        # # max_batch_size2 = await self.max_batch_size(metadata['models'][0], "openvino:0", self.resources["endpoint_handler"][metadata['models'][0]]["openvino:0"])
-        # timestamp1 = time.time()
-        # test_batch = self.resources["endpoint_handler"][metadata['models'][0]]["openvino:1"](sentence_2)
-        # timestamp2 = time.time()
-        # elapsed_time = timestamp2 - timestamp1
-        # tokens = self.resources["tokenizer"][metadata['models'][0]]["openvinotest_batch:1"]()
-        # len_tokens = len(tokens["input_ids"])
-        # tokens_per_second = len_tokens / elapsed_time
-        # print(f"elapsed time: {elapsed_time}")
-        # print(f"tokens: {len_tokens}")
-        # print(f"tokens per second: {tokens_per_second}")
-        # # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
-        # with torch.no_grad():
-        #     if "cuda" in dir(torch):
-        #         torch.cuda.empty_cache()
-        # results = {
-        #     "ipfs_accelerate_init": ipfs_accelerate_init,
-        #     "test_endpoints": test_endpoints,
-        #     "test_batch": test_batch,
-        #     # "max_batch_size": max_batch_size1,
-        #     # "max_batch_size": max_batch_size2,
-        #     # "test_batch_sizes": test_batch_sizes
-        # }
-        return results
+        return test_endpoints
 
 ipfs_accelerate_py = ipfs_accelerate_py
     
@@ -1574,9 +1484,10 @@ if __name__ == "__main__":
             # "lmms-lab/llava-onevision-qwen2-7b-si",  
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "BAAI/bge-small-en-v1.5", 
             "llava-hf/llava-v1.6-mistral-7b-hf",
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
-            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0", 
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
@@ -1598,22 +1509,22 @@ if __name__ == "__main__":
     }
     resources = {
         "local_endpoints": [
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cpu", 32768],
+            ["BAAI/bge-small-en-v1.5",  "cpu", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cpu", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cpu", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cuda:0", 32768],
+            ["BAAI/bge-small-en-v1.5",  "cuda:0", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cuda:0", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:0", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "cuda:1", 32768],
+            ["BAAI/bge-small-en-v1.5",  "cuda:1", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "cuda:1", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "openvino:0", 32768],
+            ["BAAI/bge-small-en-v1.5",  "openvino:0", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "openvino:0", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "openvino:0", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "llama_cpp", 512],
+            ["BAAI/bge-small-en-v1.5",  "llama_cpp", 512],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "llama_cpp", 32768],
-            ["meta-llama/Meta-Llama-3.1-8B-Instruct",  "ipex", 512],
+            ["BAAI/bge-small-en-v1.5",  "ipex", 512],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "ipex", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0",    "ipex", 32768],
         ],

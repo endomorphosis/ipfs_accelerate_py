@@ -1,14 +1,26 @@
 import requests
 from PIL import Image
 from io import BytesIO
-import numpy as np
-import openvino_genai as ov_genai
-import os
+import shutil
+import nncf
 import openvino as ov
-from openvino import Core
-import openvino_genai as ov_genai
-config = ov_genai.GenerationConfig()
-config.max_new_tokens = 100
+import gc
+
+core = ov.Core()
+
+from transformers import AutoProcessor, AutoConfig
+from transformers import TextStreamer
+from optimum.intel.openvino import OVModelForVisualCausalLM
+
+model_path = "C:/Users/devcloud/.cache/huggingface/hub/models--llava-hf--llava-v1.6-mistral-7b-hf/openvino"
+
+config = AutoConfig.from_pretrained(model_path)
+
+processor = AutoProcessor.from_pretrained(
+    model_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
+)
+device = core.available_devices[0]
+ov_model = OVModelForVisualCausalLM.from_pretrained(model_path, device=device)
 
 
 def load_image(image_file):
@@ -17,32 +29,40 @@ def load_image(image_file):
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
         image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)
-
-
-def streamer(subword: str) -> bool:
-    """
-
-    Args:
-        subword: sub-word of the generated text.
-
-    Returns: Return flag corresponds whether generation should be stopped.
-
-    """
-    print(subword, end="", flush=True)
+    return image
 
 
 image_file = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-
-image, image_tensor = load_image(image_file)
 text_message = "What is unusual on this image?"
-device = Core().get_available_devices()[1]
 
-prompt = text_message
-model_dir = "C:/Users/devcloud/.cache/huggingface/hub/models--llava-hf--llava-v1.6-mistral-7b-hf/openvino"
-ov_model = ov_genai.VLMPipeline(model_dir, device=device)
-print(f"Question:\n{text_message}")
+image = load_image(image_file)
+
+conversation = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": text_message},
+            {"type": "image"},
+        ],
+    },
+]
+
+prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+
+inputs = processor(images=image, text=prompt, return_tensors="pt")
+
+from transformers import TextStreamer
+
+# Prepare
+streamer = TextStreamer(processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
+print(f"Question: {text_message}")
 print("Answer:")
-output = ov_model.generate(prompt, image=image_tensor, generation_config=config)
-print(output)
+
+output_ids = ov_model.generate(
+    **inputs,
+    do_sample=False,
+    max_new_tokens=50,
+    streamer=streamer,
+)
+outputs = processor.decode(output_ids[0], skip_special_tokens=True)
+print(outputs)
