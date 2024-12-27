@@ -153,6 +153,13 @@ class worker_py:
         elif "hf_embed" in globals():
             self.hf_embed = hf_embed
 
+        if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
+            self.hf_lm = hf_lm
+        elif "hf_lm" in list(self.resources.keys()):
+            self.hf_lm = self.resources["hf_lm"]
+        elif "hf_lm" in globals():
+            self.hf_lm = hf_lm
+
         if "default" not in globals() and "default" not in list(self.resources.keys()):
             self.default = default
         elif "default" in list(self.resources.keys()):
@@ -160,16 +167,12 @@ class worker_py:
         elif "default" in globals():
             self.default = default
 
-            
-        if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
-            self.hf_lm = hf_lm
-        elif "hf_lm" in list(self.resources.keys()):
-            self.hf_lm = self.resources["hf_lm"]
-        elif "hf_lm" in globals():
-            self.hf_lm = hf_lm
-        
         self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
+        self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
+        self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
+        self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
+        self.create_llm_endpoint_handler = self.hf_lm.create_llm_endpoint_handler
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
         self.create_endpoint_handler = self.default.create_endpoint_handler
         self.get_openvino_model = self.openvino_utils.get_openvino_model
@@ -420,7 +423,6 @@ class worker_py:
                                 model_type, 
                                 device, 
                                 openvino_label, 
-                                self.get_openvino_genai_pipeline, 
                                 self.get_optimum_openvino_model, 
                                 self.get_openvino_model, 
                                 self.get_openvino_pipeline_type,

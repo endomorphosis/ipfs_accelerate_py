@@ -1113,10 +1113,16 @@ class ipfs_accelerate_py:
                     test = await hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint] = test
                 elif model_type in llm_model_types:
-                    from worker.skillset import hf_llama
-                    test = await hf_llama.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
+                    from worker.skillset import hf_lm
+                    test = await hf_lm.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint] = test
+                elif model_type in text_embedding_types:
+                    from worker.skillset import hf_embed
+                    test = await hf_embed.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint] = test
                 del hf_llava
+                del hf_lm
+                del hf_embed
                 del test
         return test_results
 
@@ -1487,9 +1493,9 @@ if __name__ == "__main__":
             # "lmms-lab/llava-onevision-qwen2-7b-si",  
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            "BAAI/bge-small-en-v1.5", 
+            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
             "llava-hf/llava-v1.6-mistral-7b-hf",
+            "BAAI/bge-small-en-v1.5", 
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
