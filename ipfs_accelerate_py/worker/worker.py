@@ -168,7 +168,7 @@ class worker_py:
         elif "hf_lm" in globals():
             self.hf_lm = hf_lm
         
-        self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
+        self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
         self.create_endpoint_handler = self.default.create_endpoint_handler
