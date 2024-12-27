@@ -12,8 +12,16 @@ import json
 
 class hf_embed:
     def __init__(self, resources=None, metadata=None):
-        self.modelName = metadata['model_name']
-
+        self.resources = resources
+        self.metadata = metadata    
+        self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
+        self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
+        self.init_cuda = self.init_cuda
+        self.init_openvino = self.init_openvino
+        self.init = self.init
+        self.__test__ = self.__test__
+        return None
+    
     def init(self):
         return None
     
@@ -31,7 +39,7 @@ class hf_embed:
             except Exception as e:
                 print(e)
                 pass
-        endpoint_handler = self.create_endpoint_handler(endpoint, cuda_label)
+        endpoint_handler = self.create_cuda_text_embedding_endpoint_handler(endpoint, cuda_label)
         torch.cuda.empty_cache()
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
@@ -70,11 +78,11 @@ class hf_embed:
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         model = get_optimum_openvino_model(model, model_type)
-        endpoint_handler = self.create_openvino_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
 
-    def create_openvino_endpoint_handler(self, endpoint_model, openvino_label, endpoint=None, ):
+    def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, openvino_label, endpoint=None, ):
         def handler(x):
             if endpoint is None:
                 return self.local_endpoints[endpoint_model][openvino_label](x)
@@ -82,7 +90,7 @@ class hf_embed:
                 return endpoint(x)
         return handler
 
-    def create_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
+    def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
         def handler(x):
             if "eval" in dir(endpoint):
                 endpoint.eval()
