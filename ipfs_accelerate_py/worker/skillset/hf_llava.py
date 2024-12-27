@@ -188,12 +188,83 @@ class hf_llava:
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
 
+
+    def init(self):
+        return None
+    
+    def __test__(self, endpoint_model, endpoint_handler, tokenizer):
+        sentence_1 = "The quick brown fox jumps over the lazy dog"
+        sentence_2 = "The quick brown fox jumps over the lazy dog"
+        image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+        timestamp1 = time.time()
+        try:
+            test_batch = endpoint_handler(sentence_1, image_1)
+        except Exception as e:
+            print(e)
+            pass
+        timestamp2 = time.time()
+        elapsed_time = timestamp2 - timestamp1
+        tokens = tokenizer["openvinotest_batch:1"]()
+        len_tokens = len(tokens["input_ids"])
+        tokens_per_second = len_tokens / elapsed_time
+        print(f"elapsed time: {elapsed_time}")
+        print(f"tokens: {len_tokens}")
+        print(f"tokens per second: {tokens_per_second}")
+        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        with torch.no_grad():
+            if "cuda" in dir(torch):
+                torch.cuda.empty_cache()
+        print("hf_llava test")
+        return None
+    
+    def init_cuda(self, model, device, cuda_label):
+        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = AutoProcessor.from_pretrained(model)
+        endpoint = None
+        try:
+            endpoint = AutoModelForImageTextToText.from_pretrained(model,  torch_dtype=torch.float16, trust_remote_code=True).to(device)
+        except Exception as e:
+            print(e)
+            pass
+        endpoint_handler = self.create_vlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        torch.cuda.empty_cache()
+        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+
     def init_openvino(self, model , model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert ):
         endpoint = None
         tokenizer = None
         endpoint_handler = None
-        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        model = get_openvino_genai_pipeline(model, model_type, openvino_label)
+        homedir = os.path.expanduser("~")
+        model_name_convert = model.replace("/", "--")
+        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+        model_dst_path = os.path.join(model_src_path, "openvino")
+        config = AutoConfig.from_pretrained(model)
+        task = get_openvino_pipeline_type(model, model_type)
+        openvino_index = int(openvino_label.split(":")[1])
+        weight_format = ""
+        if openvino_index is not None:
+            if openvino_index == 0:
+                weight_format = "int8" ## CPU
+            if openvino_index == 1:
+                weight_format = "int4" ## gpu
+            if openvino_index == 2:
+                weight_format = "int4" ## npu
+        model_dst_path = model_dst_path+"_"+weight_format
+        if not os.path.exists(model_dst_path):
+            os.makedirs(model_dst_path)
+            openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
+        tokenizer =  AutoProcessor.from_pretrained(
+            model_dst_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
+        )
+        # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
+        model = get_optimum_openvino_model(model, model_type)
         endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
