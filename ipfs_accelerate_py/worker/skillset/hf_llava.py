@@ -2,7 +2,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-# from transformers.generation.streamers import TextStreamer
+# # from transformers.generation.streamers import TextStreamer
 from ipfs_transformers_py import AutoModel
 import torch
 from torch import Tensor as T
@@ -143,18 +143,7 @@ class hf_llava:
         self.resources = resources
         self.metadata = metadata    
         self.create_openvino_vlm_endpoint_handler = self.create_openvino_vlm_endpoint_handler
-        self.create_openvino_genai_vlm_endpoint_handler = self.create_openvino_genai_vlm_endpoint_handler
-        self.create_optimum_vlm_endpoint_handler = self.create_optimum_vlm_endpoint_handler
-        self.build_transform = build_transform
-        self.load_image = load_image
-        self.load_image_tensor = load_image_tensor
-        self.dynamic_preprocess = dynamic_preprocess
-        self.load_image_bak = load_image_bak
-        self.find_closest_aspect_ratio = find_closest_aspect_ratio
-        self.init_cuda = self.init_cuda
-        self.init_openvino = self.init_openvino
-        self.init = self.init
-        self.__test__ = self.__test__
+        self.create_vlm_endpoint_handler = self.create_vlm_endpoint_handler
         return None
     
     def init(self):
@@ -203,43 +192,24 @@ class hf_llava:
         endpoint = None
         tokenizer = None
         endpoint_handler = None
-        homedir = os.path.expanduser("~")
-        model_name_convert = model.replace("/", "--")
-        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
-        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
-        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
-        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
-        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
-        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
-        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
-        model_dst_path = os.path.join(model_src_path, "openvino")
-        config = AutoConfig.from_pretrained(model)
-        task = get_openvino_pipeline_type(model, model_type)
-        openvino_index = int(openvino_label.split(":")[1])
-        weight_format = ""
-        if openvino_index is not None:
-            if openvino_index == 0:
-                weight_format = "int8" ## CPU
-            if openvino_index == 1:
-                weight_format = "int4" ## gpu
-            if openvino_index == 2:
-                weight_format = "int4" ## npu
-        model_dst_path = model_dst_path+"_"+weight_format
-        if not os.path.exists(model_dst_path):
-            os.makedirs(model_dst_path)
-            openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  AutoProcessor.from_pretrained(
-            model_dst_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
-        )
-        # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
-        model = get_optimum_openvino_model(model, model_type)
+        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
-    def create_optimum_vlm_endpoint_handler(self, cuda_endpoint_handler, local_cuda_processor, endpoint_model, cuda_label):
+    def create_vlm_endpoint_handler(self, cuda_endpoint_handler, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y, cuda_endpoint_handler=cuda_endpoint_handler, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+            # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
+            #       self.local_endpoints[endpoint_model][cuda_label].eval()
+            if "eval" in dir(cuda_endpoint_handler):
+                cuda_endpoint_handler.eval()
+            else:
+                pass
+            with torch.no_grad():
                 try:
+                    torch.cuda.empty_cache()
+                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     if y is not None and type(y) == str:
                         image = load_image(y)
                     elif type(y) == tuple:
@@ -249,7 +219,7 @@ class hf_llava:
                     elif type(y) == list:
                         image = load_image(y[1])
                     else:
-                        image = Image.open(requests.get(y, stream=True).raw)
+                        image = Image.open(requests.get(tmp_url, stream=True).raw)
                     
                     if x is not None and type(x) == str:
                         conversation = [
@@ -278,17 +248,21 @@ class hf_llava:
                         ]
                     else:
                         raise Exception("Invalid input to vlm endpoint handler")
-                    result = None
-                    # prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    # inputs = local_cuda_processor(image, prompt, return_tensors="pt").to(cuda_label, torch.float16)
-                    # output = cuda_endpoint_handler.generate(**inputs, max_new_tokens=30)
-                    # result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                  
+                    prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                    inputs = local_cuda_processor(image, prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    output = cuda_endpoint_handler.generate(**inputs, max_new_tokens=30)
+                    result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    # Run model inference
+                    torch.cuda.empty_cache()
                     return result
                 except Exception as e:
+                    # Cleanup GPU memory in case of error
+                    torch.cuda.empty_cache()
                     raise e
         return handler
 
-    def create_openvino_genai_vlm_endpoint_handler(self, openvino_endpoint_handler, openvino_processor, endpoint_model, openvino_label):
+    def create_openvino_vlm_endpoint_handler(self, openvino_endpoint_handler, openvino_processor, endpoint_model, openvino_label):
         def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, openvino_processor=openvino_processor, endpoint_model=endpoint_model, openvino_label=openvino_label):
             config = ov_genai.GenerationConfig()
             config.max_new_tokens = 100
@@ -357,61 +331,4 @@ class hf_llava:
                 raise e
         return handler
 
-    
-    def create_openvino_vlm_endpoint_handler(self, openvino_endpoint_handler, local_openvino_processor, endpoint_model, cuda_label):
-        def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
-                try:
-                    if y.startswith("http") or y.startswith("https"):
-                        response = requests.get(y)
-                        image = Image.open(BytesIO(response.content)).convert("RGB")
-                    else:
-                        image = Image.open(y).convert("RGB")
-                    if x is not None and type(x) == str:
-                        conversation = [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": x},
-                                    {"type": "image"}
-                                ]
-                            }
-                        ]
-                    elif type(x) == tuple:
-                        conversation = x
-                    elif type(x) == dict:
-                        raise Exception("Invalid input to vlm endpoint handler")
-                    elif type(x) == list:
-                        # conversation = x
-
-                        conversation = [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": x},
-                                    {"type": "image"}
-                                ]
-                            }
-                        ]
-                        
-                    else:
-                        raise Exception("Invalid input to vlm endpoint handler")
-                    result = None
-                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
-                    prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_openvino_processor(image, prompt, return_tensors="pt")
-
-                    output_ids = endpoint_model.generate(
-                        **inputs,
-                        do_sample=False,
-                        max_new_tokens=50,
-                        streamer=streamer,
-                    )
-                    outputs = local_openvino_processor.decode(output_ids[0], skip_special_tokens=True)
-                    # result = local_openvino_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    return outputs
-                except Exception as e:
-                    raise e
-        return handler
-
-    
 hf_llava = hf_llava()
