@@ -27,7 +27,7 @@ try:
 except:
     from .ipfs_multiformats import ipfs_multiformats_py
     
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'skillset'))
+sys.path.append(os.path.join(os.path.dirname(__file__)))
 from .skillset import hf_llava
 from .skillset import default
 from .skillset import hf_embed
@@ -231,14 +231,17 @@ class worker_py:
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
+            test_results = {"cuda": False, "openvino" : True, "llama_cpp": False, "ipex": False}
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
+                        test_results = {"cuda": False, "openvino" : True, "llama_cpp": False, "ipex": False}
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = await self.install_depends.test_hardware()
+                        test_results = {"cuda": False, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        # test_results = await self.install_depends.test_hardware()
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
                         return test_results
@@ -247,7 +250,8 @@ class worker_py:
                         return e
             else:
                 try:
-                    test_results = await self.install_depends.test_hardware()
+                    test_results = {"cuda": False, "openvino" : True, "llama_cpp": False, "ipex": False}
+                    # test_results = await self.install_depends.test_hardware()
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
                     return test_results

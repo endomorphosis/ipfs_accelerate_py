@@ -28,3 +28,4 @@ nncf>=2.14.0
 optimum[intel]
 onnxruntime==1.19.2
 onnx==1.16.1
+multiformats

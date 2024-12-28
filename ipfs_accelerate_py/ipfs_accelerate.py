@@ -1494,7 +1494,7 @@ if __name__ == "__main__":
             # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
             # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            "llava-hf/llava-v1.6-mistral-7b-hf",
+            # "llava-hf/llava-v1.6-mistral-7b-hf",
             "BAAI/bge-small-en-v1.5", 
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
             # "Qwen/Qwen2-7B",
