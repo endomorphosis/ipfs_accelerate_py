@@ -1110,20 +1110,25 @@ class ipfs_accelerate_py:
                 test = None
                 if model_type in vlm_model_types:
                     from worker.skillset import hf_llava
-                    test = await hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint] = test
+                    this_hf_llava = hf_llava(self.resources, self.metadata)
+                    test = this_hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )   
+                    test_results[endpoint[1]] = test
+                    del hf_llava
+                    del this_hf_llava
                 elif model_type in llm_model_types:
                     from worker.skillset import hf_lm
-                    test = await hf_lm.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint] = test
+                    this_hf_lm = hf_lm(self.resources, self.metadata)
+                    test = this_hf_lm.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1],  tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_lm
+                    del this_hf_lm
                 elif model_type in text_embedding_types:
                     from worker.skillset import hf_embed
-                    test = await hf_embed.__test__(model, endpoint_handlers_by_model[endpoint[1]], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint] = test
-                del hf_llava
-                del hf_lm
-                del hf_embed
-                del test
+                    this_hf_embed = hf_embed(self.resources, self.metadata)
+                    test = this_hf_embed.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_embed
+                    del this_hf_embed
         return test_results
 
     async def get_https_endpoint(self, model):

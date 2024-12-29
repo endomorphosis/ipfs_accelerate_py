@@ -234,43 +234,79 @@ class openvino_utils:
         if model_type == "bert":
             model_type = "feature-extraction"
             from optimum.intel import OVModelForFeatureExtraction
-            results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForFeatureExtraction.from_pretrained(model_dst_path, compile=False)
         elif model_type == "text-classification":
             from optimum.intel import OVModelForSequenceClassification
-            results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForSequenceClassification.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForSequenceClassification.from_pretrained(model_dst_path, compile=False)
         elif model_type == "token-classification":
             from optimum.intel import OVModelForTokenClassification
-            results = OVModelForTokenClassification.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForTokenClassification.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForTokenClassification.from_pretrained(model_dst_path, compile=False)
         elif model_type == "question-answering":
             from optimum.intel import OVModelForQuestionAnswering
-            results = OVModelForQuestionAnswering.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForQuestionAnswering.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForQuestionAnswering.from_pretrained(model_dst_path, compile=False)
         elif model_type == "audio-classification":
             from optimum.intel import OVModelForAudioClassification
-            results = OVModelForAudioClassification.from_pretrained(model_name,  compile=False)
+            try:
+                results = OVModelForAudioClassification.from_pretrained(model_name,  compile=False)
+            except Exception as e:
+                results = OVModelForAudioClassification.from_pretrained(model_dst_path, compile=False)
         elif model_type == "image-classification":
             from optimum.intel import OVModelForImageClassification
-            results = OVModelForImageClassification.from_pretrained(model_name, compile=False) 
+            try:
+                results = OVModelForImageClassification.from_pretrained(model_name, compile=False) 
+            except Exception as e:
+                results = OVModelForImageClassification.from_pretrained(model_dst_path, compile=False)
         elif model_type == "feature-extraction":
             from optimum.intel import OVModelForFeatureExtraction
-            results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForFeatureExtraction.from_pretrained(model_dst_path, compile=False)
         elif model_type == "fill-mask":
             from optimum.intel import OVModelForMaskedLM
-            results = OVModelForMaskedLM.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForMaskedLM.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForMaskedLM.from_pretrained(model_dst_path, compile=False)
         elif model_type == "text-generation-with-past":
             from optimum.intel import OVModelForCausalLM
-            results = OVModelForCausalLM.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForCausalLM.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForCausalLM.from_pretrained(model_dst_path, compile=False)
         elif model_type == "text2text-generation-with-past":
             from optimum.intel import OVModelForSeq2SeqLM
-            results = OVModelForSeq2SeqLM.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForSeq2SeqLM.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForSeq2SeqLM.from_pretrained(model_dst_path, compile=False)
         elif model_type == "automatic-speech-recognition":
             from optimum.intel import OVModelForSpeechSeq2Seq
-            results = OVModelForSpeechSeq2Seq.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForSpeechSeq2Seq.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForSpeechSeq2Seq.from_pretrained(model_dst_path, compile=False)
         # elif model_type == "image-text-to-text":
         #     from optimum.intel import OVModelForVision2Seq
         #     results = OVModelForVision2Seq.from_pretrained(model_name, compile=False)
         elif model_type == "image-text-to-text":
             from optimum.intel import OVModelForVisualCausalLM
-            results = OVModelForVisualCausalLM.from_pretrained(model_name, compile=False)
+            try:
+                results = OVModelForVisualCausalLM.from_pretrained(model_name, compile=False)
+            except Exception as e:
+                results = OVModelForVisualCausalLM.from_pretrained(model_name, compile=False)
         else:
             return None
         results.compile()

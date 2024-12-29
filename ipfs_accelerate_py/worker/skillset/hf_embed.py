@@ -28,6 +28,9 @@ class hf_embed:
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
         timestamp1 = time.time()
+        test_batch = None
+        tokens = tokenizer(sentence_1)["input_ids"]
+        len_tokens = len(tokens)
         try:
             test_batch = endpoint_handler(sentence_1)
         except Exception as e:
@@ -35,8 +38,6 @@ class hf_embed:
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
-        tokens = tokenizer[endpoint_label]()
-        len_tokens = len(tokens["input_ids"])
         tokens_per_second = len_tokens / elapsed_time
         print(f"elapsed time: {elapsed_time}")
         print(f"tokens: {len_tokens}")
@@ -45,8 +46,8 @@ class hf_embed:
         with torch.no_grad():
             if "cuda" in dir(torch):
                 torch.cuda.empty_cache()
-        print("hf_llava test")
-        return None
+        print("hf_embed test")
+        return True
 
     def init_cpu():
         return None
@@ -67,12 +68,12 @@ class hf_embed:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
-    def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+    def init_openvino(self, model_name=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         endpoint = None
         tokenizer = None
         endpoint_handler = None
         homedir = os.path.expanduser("~")
-        model_name_convert = model.replace("/", "--")
+        model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
         huggingface_cache_models = os.path.join(huggingface_cache, "hub")
         huggingface_cache_models_files = os.listdir(huggingface_cache_models)
@@ -82,7 +83,7 @@ class hf_embed:
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
         # config = AutoConfig.from_pretrained(model)
-        task = get_openvino_pipeline_type(model, model_type)
+        task = get_openvino_pipeline_type(model_name, model_type)
         openvino_index = int(openvino_label.split(":")[1])
         weight_format = ""
         if openvino_index is not None:
@@ -95,27 +96,51 @@ class hf_embed:
         model_dst_path = model_dst_path+"_"+weight_format
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
-            openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
+            openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
         tokenizer =  AutoTokenizer.from_pretrained(
             model_dst_path
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
-        model = get_optimum_openvino_model(model, model_type)
-        endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
+        model = get_optimum_openvino_model(model_name, model_type)
+        endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model_name, tokenizer, openvino_label, model)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
 
-    def create_openvino_text_embedding_endpoint_handler(self, tokenizer , endpoint_model, openvino_label, endpoint=None, ):
-        def handler(x, self, tokenizer, endpoint_model, openvino_label, endpoint=None):
-            if "eval" in dir(endpoint):
-                endpoint.eval()
-            else:
+    def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, tokenizer,  openvino_label, endpoint=None):
+        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=endpoint):
+            text = None
+            tokens = None
+            if type(x) == str:
+                text = x
+                tokens = tokenizer(text, return_tensors="pt")
+            elif type(x) == list:
+                if "input_ids" in x[0].keys():
+                    tokens = x
+                else:
+                    text = x
+                    tokens = tokenizer(text, return_tensors="pt")
+            elif type(x) == dict:
+                if "input_ids" in x.keys():
+                    tokens = x
+                else:
+                    text = x
+                    tokens = tokenizer(text, return_tensors="pt")
+
+            try:
+                results = endpoint.generate(**tokens, max_new_tokens=30)
+            except Exception as e:
+                print(e)
+                try:
+                    results = endpoint.generate(text, max_new_tokens=30)
+                except Exception as e:
+                    print(e)
                 pass
-            return None
+            
+            return results
         return handler
 
     def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
-        def handler(x):
+        def handler(x, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint, tokenizer=tokenizer):
             if "eval" in dir(endpoint):
                 endpoint.eval()
             else:
