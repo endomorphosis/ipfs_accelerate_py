@@ -147,11 +147,11 @@ class worker_py:
             self.hf_llava = hf_llava
         
         if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
-            self.hf_embed = hf_embed
+            self.hf_embed = hf_embed(self.resources, self.metadata)
         elif "hf_embed" in list(self.resources.keys()):
             self.hf_embed = self.resources["hf_embed"]
         elif "hf_embed" in globals():
-            self.hf_embed = hf_embed
+            self.hf_embed = hf_embed(self.resources, self.metadata)
 
         if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
             self.hf_lm = hf_lm

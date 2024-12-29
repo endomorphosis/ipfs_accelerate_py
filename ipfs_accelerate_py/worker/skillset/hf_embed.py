@@ -6,9 +6,8 @@ from torch import inference_mode, float16, Tensor
 from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
 from transformers.generation.streamers import TextStreamer
 from ipfs_transformers_py import AutoModel
-# from sentence_transformers import SentenceTransformer
-# from InstructorEmbedding import INSTRUCTOR
 import json
+import time
 
 class hf_embed:
     def __init__(self, resources=None, metadata=None):
@@ -24,8 +23,28 @@ class hf_embed:
     
     def init(self):
         return None
-    
-    def __test__(self):
+
+    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
+        sentence_1 = "The quick brown fox jumps over the lazy dog"
+        timestamp1 = time.time()
+        try:
+            test_batch = endpoint_handler(sentence_1)
+        except Exception as e:
+            print(e)
+            pass
+        timestamp2 = time.time()
+        elapsed_time = timestamp2 - timestamp1
+        tokens = tokenizer[endpoint_label]()
+        len_tokens = len(tokens["input_ids"])
+        tokens_per_second = len_tokens / elapsed_time
+        print(f"elapsed time: {elapsed_time}")
+        print(f"tokens: {len_tokens}")
+        print(f"tokens per second: {tokens_per_second}")
+        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        with torch.no_grad():
+            if "cuda" in dir(torch):
+                torch.cuda.empty_cache()
+        print("hf_llava test")
         return None
 
     def init_cuda(self, model, device, cuda_label):
@@ -58,7 +77,7 @@ class hf_embed:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
-        config = AutoConfig.from_pretrained(model)
+        # config = AutoConfig.from_pretrained(model)
         task = get_openvino_pipeline_type(model, model_type)
         openvino_index = int(openvino_label.split(":")[1])
         weight_format = ""
@@ -82,12 +101,13 @@ class hf_embed:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
 
-    def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, openvino_label, endpoint=None, ):
-        def handler(x):
-            if endpoint is None:
-                return self.local_endpoints[endpoint_model][openvino_label](x)
+    def create_openvino_text_embedding_endpoint_handler(self, tokenizer , endpoint_model, openvino_label, endpoint=None, ):
+        def handler(x, self, tokenizer, endpoint_model, openvino_label, endpoint=None):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
             else:
-                return endpoint(x)
+                pass
+            return None
         return handler
 
     def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
