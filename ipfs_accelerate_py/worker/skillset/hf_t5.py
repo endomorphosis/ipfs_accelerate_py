@@ -6,11 +6,7 @@ from transformers.generation.streamers import TextStreamer
 from ipfs_transformers_py import AutoModel
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
-import worker 
-
+import worker
 from chat_format import chat_format
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 

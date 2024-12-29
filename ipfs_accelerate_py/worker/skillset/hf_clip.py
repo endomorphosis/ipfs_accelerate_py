@@ -132,23 +132,23 @@ class hf_clip:
             return None
         return handler
 
-    def __call__(self, method, text=None, image=None):
-        if method == 'clip_text':
-            inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
+    # def __call__(self, method, text=None, image=None):
+    #     if method == 'clip_text':
+    #         inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
 
-            with no_grad():
-                text_features = self.model.get_text_features(**inputs)
+    #         with no_grad():
+    #             text_features = self.model.get_text_features(**inputs)
 
-            return {
-                'embedding': text_features[0].cpu().numpy().tolist()
-            }
+    #         return {
+    #             'embedding': text_features[0].cpu().numpy().tolist()
+    #         }
         
-        elif method == 'clip_image':
-            inputs = self.processor(images=image, return_tensors='pt').to('cuda')
+    #     elif method == 'clip_image':
+    #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
 
-            with no_grad():
-                image_features  = self.model.get_image_features(**inputs)
+    #         with no_grad():
+    #             image_features  = self.model.get_image_features(**inputs)
 
-            return {
-                'embedding': image_features[0].cpu().numpy().tolist()
-            }
+    #         return {
+    #             'embedding': image_features[0].cpu().numpy().tolist()
+    #         }

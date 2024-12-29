@@ -29,3 +29,6 @@ optimum[intel]
 onnxruntime==1.19.2
 onnx==1.16.1
 multiformats
+pydub
+openai
+tiktoken
