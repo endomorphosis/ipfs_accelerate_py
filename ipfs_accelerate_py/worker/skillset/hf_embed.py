@@ -127,16 +127,13 @@ class hf_embed:
                     tokens = tokenizer(text, return_tensors="pt")
 
             try:
-                results = endpoint.generate(**tokens, max_new_tokens=30)
+                results =  endpoint(**tokens)
             except Exception as e:
                 print(e)
-                try:
-                    results = endpoint.generate(text, max_new_tokens=30)
-                except Exception as e:
-                    print(e)
                 pass
             
-            return results
+            average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+            return average_pool_results
         return handler
 
     def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
@@ -224,7 +221,7 @@ class hf_embed:
     # 		'done': True
     # 	}
         
-    def average_pool_bak(last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
+    def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
         last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
         return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 
