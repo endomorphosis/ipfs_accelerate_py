@@ -16,11 +16,17 @@ import numpy as np
 import torch
 import json
 import os
+import time
     
 class hf_lm:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
-        self.metadata = metadata    
+        self.metadata = metadata
+        self.init = self.init
+        self.init_cuda = self.init_cuda
+        self.init_openvino = self.init_openvino
+        self.init_cpu = self.init_cpu
+        self.__test__ = self.__test__
         self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
         self.create_llm_endpoint_handler = self.create_llm_endpoint_handler
         return None
@@ -53,6 +59,10 @@ class hf_lm:
                     torch.cuda.empty_cache()
         print("hf_llava test")
         return None
+    
+    def init_cpu (self, model, device, cpu_label):
+        return None
+    
     
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    

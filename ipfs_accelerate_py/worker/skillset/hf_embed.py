@@ -15,6 +15,7 @@ class hf_embed:
         self.metadata = metadata    
         self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
+        self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init = self.init

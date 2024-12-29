@@ -2,13 +2,26 @@ import torch
 from torch import no_grad
 from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
 import time
+import numpy as np
+import asyncio
+from transformers import AutoConfig, AutoTokenizer, AutoProcessor
+import os
 
 class hf_clip:
     def __init__(self, resources=None, metadata=None):
-        # self.model = CLIPModel.from_pretrained(resources['clip'], local_files_only=True).to('cuda')
-        # self.processor = CLIPProcessor.from_pretrained(resources['clip'], local_files_only=True)
-        # self.tokenizer  = AutoTokenizer.from_pretrained(resources['clip'], local_files_only=True)
-        pass
+        self.resources = resources
+        self.metadata = metadata    
+        self.create_openvino_image_embedding_endpoint_handler = self.create_openvino_image_embedding_endpoint_handler
+        self.create_cuda_image_embedding_endpoint_handler = self.create_cuda_image_embedding_endpoint_handler
+        self.init_cpu = self.init_cpu
+        self.init_cuda = self.init_cuda
+        self.init_openvino = self.init_openvino
+        self.init = self.init
+        self.__test__ = self.__test__
+        return None
+
+    def init(self):
+        return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
@@ -35,6 +48,89 @@ class hf_clip:
         print("hf_llava test")
         return None
     
+    def init_cpu(self, model, device, cpu_label):
+        
+        return None
+    
+    def init_cuda(self, model, device, cuda_label):
+        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = AutoTokenizer.from_pretrained(model)
+        processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+        endpoint = None
+        try:
+            endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+        except Exception as e:
+            print(e)
+            pass
+        endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        torch.cuda.empty_cache()
+        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
+
+    def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        endpoint = None
+        tokenizer = None
+        endpoint_handler = None
+        homedir = os.path.expanduser("~")
+        model_name_convert = model.replace("/", "--")
+        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
+        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
+        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
+        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
+        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
+        model_dst_path = os.path.join(model_src_path, "openvino")
+        # config = AutoConfig.from_pretrained(model)
+        task = get_openvino_pipeline_type(model, model_type)
+        openvino_index = int(openvino_label.split(":")[1])
+        weight_format = ""
+        if openvino_index is not None:
+            if openvino_index == 0:
+                weight_format = "int8" ## CPU
+            if openvino_index == 1:
+                weight_format = "int4" ## gpu
+            if openvino_index == 2:
+                weight_format = "int4" ## npu
+        model_dst_path = model_dst_path+"_"+weight_format
+        if not os.path.exists(model_dst_path):
+            os.makedirs(model_dst_path)
+            openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
+        tokenizer =  AutoTokenizer.from_pretrained(
+            model_dst_path
+        )
+        # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
+        model = get_optimum_openvino_model(model, model_type)
+        endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
+    
+    def create_cpu_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
+        def handler(x, self, tokenizer, endpoint_model, openvino_label, endpoint=None):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            return None
+        return handler
+    
+    def create_cuda_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
+        def handler(x, self, tokenizer, endpoint_model, openvino_label, endpoint=None):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            return None
+        return handler
+
+    def create_openvino_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, openvino_label, endpoint=None, ):
+        def handler(x, self, tokenizer, endpoint_model, openvino_label, endpoint=None):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            return None
+        return handler
 
     def __call__(self, method, text=None, image=None):
         if method == 'clip_text':
