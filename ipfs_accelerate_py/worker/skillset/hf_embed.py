@@ -48,6 +48,9 @@ class hf_embed:
         print("hf_llava test")
         return None
 
+    def init_cpu():
+        return None
+
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)
         tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
