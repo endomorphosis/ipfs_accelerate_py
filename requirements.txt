@@ -32,3 +32,4 @@ multiformats
 pydub
 openai
 tiktoken
+open_clip_torch

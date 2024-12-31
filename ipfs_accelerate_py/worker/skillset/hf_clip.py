@@ -6,6 +6,7 @@ import numpy as np
 import asyncio
 from transformers import AutoConfig, AutoTokenizer, AutoProcessor
 import os
+import open_clip
 
 class hf_clip:
     def __init__(self, resources=None, metadata=None):
@@ -96,10 +97,11 @@ class hf_clip:
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
             openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  AutoTokenizer.from_pretrained(
-            model_dst_path
+        tokenizer =  CLIPProcessor.from_pretrained(
+            model_src_path
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
+        # model = get_openvino_model(model, model_type, openvino_label)
         model = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0

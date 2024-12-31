@@ -493,10 +493,10 @@ class worker_py:
                                 model_type,
                                 device,
                                 openvino_label,
-                                self.get_openvino_genai_pipeline,
                                 self.get_optimum_openvino_model,
                                 self.get_openvino_model,
-                                self.get_openvino_pipeline_type
+                                self.get_openvino_pipeline_type,
+                                self.openvino_cli_convert,
                             )
                             torch.cuda.empty_cache()
 

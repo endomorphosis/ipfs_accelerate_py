@@ -418,7 +418,6 @@ class openvino_utils:
         return_model_type = None
         config_model_type = None
         if model_type is not None:
-            model_type = model_type
             try:
                 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 config_model_type = config.__class__.model_type
@@ -436,6 +435,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
+                elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -449,6 +450,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
+                elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -470,6 +473,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
+                elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -483,6 +488,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
+                elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 
