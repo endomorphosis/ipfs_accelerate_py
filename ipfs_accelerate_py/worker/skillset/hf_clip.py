@@ -100,7 +100,7 @@ class hf_clip:
             model_dst_path
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
-        model = get_optimum_openvino_model(model, model_type)
+        model = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              

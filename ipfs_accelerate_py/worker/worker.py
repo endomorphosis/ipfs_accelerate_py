@@ -92,6 +92,15 @@ class worker_py:
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)
+        
+        if "torch" not in globals() and "torch" not in list(self.resources.keys()):
+            self.torch = torch
+        elif "torch" in list(self.resources.keys()):
+            self.torch = self.resources["torch"]
+        elif "torch" in globals():
+            self.torch = torch
+            
+        
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
             from ipfs_transformers_py import ipfs_transformers
             self.ipfs_transformers = { 
@@ -110,12 +119,8 @@ class worker_py:
             self.transformers = self.resources["transformers"]
         elif "transformers" in globals():
             self.transformers = transformers
-        if "torch" not in globals() and "torch" not in list(self.resources.keys()):
-            self.torch = torch
-        elif "torch" in list(self.resources.keys()):
-            self.torch = self.resources["torch"]
-        elif "torch" in globals():
-            self.torch = torch
+            
+
         if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
@@ -180,7 +185,7 @@ class worker_py:
         elif "hf_clip" in list(self.resources.keys()):
             self.hf_clip = self.resources["hf_clip"]
         elif "hf_clip" in globals():
-            self.hf_clip = hf_clip
+            self.hf_clip = hf_clip(resources, metadata)
             
         self.create_openvino_image_embedding_endpoint_handler = self.hf_clip.create_openvino_image_embedding_endpoint_handler
         self.create_cuda_image_embedding_endpoint_handler = self.hf_clip.create_cuda_image_embedding_endpoint_handler
@@ -474,7 +479,7 @@ class worker_py:
                         for gpu in range(gpus):
                             device = 'cuda:' + str(gpu)
                             cuda_label = device
-                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_lm.init_cuda( model, device, cuda_label)
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_clip.init_cuda( model, device, cuda_label)
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
@@ -483,7 +488,16 @@ class worker_py:
                             ov_count = openvino_endpoint.split(":")[1]
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_lm.init_openvino(model, model_type, device, openvino_label, self.get_openvino_genai_pipeline, self.get_optimum_openvino_model, self.get_openvino_model, self.get_openvino_pipeline_type)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_clip.init_openvino(
+                                model,
+                                model_type,
+                                device,
+                                openvino_label,
+                                self.get_openvino_genai_pipeline,
+                                self.get_optimum_openvino_model,
+                                self.get_openvino_model,
+                                self.get_openvino_pipeline_type
+                            )
                             torch.cuda.empty_cache()
 
         worker_endpoint_types = []

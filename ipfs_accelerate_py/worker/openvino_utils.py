@@ -33,7 +33,14 @@ class openvino_utils:
         core = ov.Core()
         import openvino_genai as ov_genai
         openvino_devices = core.available_devices
-        device_index = int(device_name.split(":")[-1])
+        if device_name is None:
+            device_index = 0
+            print("warning: device name not provided, using default device: "+ openvino_devices[0])
+        elif type(device_name) is str and ":" in device_name:
+            device_index = int(device_name.split(":")[-1])
+        else:
+            print("Device name not in correct format, recieved: " + device_name) 
+            raise ValueError("Device name not in correct format, recieved: " + device_name)
         device = openvino_devices[device_index]
         model_type = self.get_model_type(model_name)
         model_task = self.get_openvino_pipeline_type(model_name, model_type)
