@@ -86,20 +86,34 @@ class openvino_utils:
                 hfmodel = None
             
             if hfmodel is not None and "config" in list(dir(hfmodel)):
-                if hfprocessor is not None:
-                    text = "Replace me by any text you'd like."
-                    encoded_input = hfprocessor(text, return_tensors='pt')
-                    ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                    ov.save_model(ov_model, model_dst_path)
-                    ov_model = ov.compile_model(ov_model)
-                    hfmodel = None
-                else:
-                    text = "Replace me by any text you'd like."
-                    encoded_input = hftokenizer(text, return_tensors='pt')
-                    ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                    ov.save_model(ov_model, model_dst_path)
-                    ov_model = ov.compile_model(ov_model)
-                    hfmodel = None
+                hfprocessor = None
+                if model_type in clip_model_types:
+                    if hfprocessor is not None:
+                        text = "Replace me by any text you'd like."
+                        image = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+                        image = hfprocessor(
+                            text = None,
+                            images = [image],
+                            return_tensors="pt"
+                            )["pixel_values"].to(device)
+                        embedding = hfmodel.get_image_features(image)
+                        # convert the embeddings to numpy array
+                        encoded_input = hfprocessor(images=image, text=text, return_tensors='pt')
+                        inputs = hfprocessor(text, return_tensors = "pt").to(device)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel)                    
+                        ov.save_model(ov_model, model_dst_path)
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
+                    if hftokenizer is not None:
+                        text = "Replace me by any text you'd like."
+                        encoded_input = hftokenizer(text, return_tensors='pt')
+                        text_embeddings = hfmodel.get_text_features(**encoded_input)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel)                        
+                        ov.save_model(ov_model, model_dst_path)
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
                 
             if ov_model == None:
                 try:
