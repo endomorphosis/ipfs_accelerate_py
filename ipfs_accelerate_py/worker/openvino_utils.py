@@ -62,30 +62,44 @@ class openvino_utils:
 
         ov_model = None
         hfmodel = None
-        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        vlm_model_types = ["llava", "llava_next"]
+        hftokenizer = None
+        hfprocessor = None
 
+        vlm_model_types = ["llava", "llava_next"]
+        clip_model_types = ["clip"]
+        
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
             try:
-                if model_type not in vlm_model_types:
-                    hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
-                else:
-                    hfmodel = AutoModel.from_pretrained(model_name, trust_remote_code=True)
-            
-                text = "Replace me by any text you'd like."
-                encoded_input = hftokenizer(text, return_tensors='pt')
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
-                hfmodel = None
-                del hftokenizer
-
+                hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:
-                if hfmodel is not None:
-                    hfmodel = None
-                if hftokenizer is not None:
-                    del hftokenizer
                 print(e)
+                hftokenizer = None
+            try:
+                hfprocessor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+            except Exception as e:  
+                print(e)
+                hfprocessor = None
+            try:
+                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+            except Exception as e:
+                print(e)
+                hfmodel = None
+            
+            if hfmodel is not None and "config" in list(dir(hfmodel)):
+                if hfprocessor is not None:
+                    text = "Replace me by any text you'd like."
+                    encoded_input = hfprocessor(text, return_tensors='pt')
+                    ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                    ov.save_model(ov_model, model_dst_path)
+                    ov_model = ov.compile_model(ov_model)
+                    hfmodel = None
+                else:
+                    text = "Replace me by any text you'd like."
+                    encoded_input = hftokenizer(text, return_tensors='pt')
+                    ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                    ov.save_model(ov_model, model_dst_path)
+                    ov_model = ov.compile_model(ov_model)
+                    hfmodel = None
                 
             if ov_model == None:
                 try:
@@ -325,6 +339,36 @@ class openvino_utils:
             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         return model_type
+    
+    def openvino_convert(self, 
+        model_name, 
+        model_dst_path, 
+        task=None, 
+        framework=None, 
+        trust_remote_code=False, 
+        weight_format=None, 
+        library=None, 
+        cache_dir=None, 
+        pad_token_id=None, 
+        ratio=None, 
+        sym=False, 
+        group_size=None, 
+        backup_precision=None, 
+        dataset=None, 
+        all_layers=False, 
+        awq=False,
+        scale_estimation=False,
+        gptq=False,
+        lora_correction=False,
+        sensitivity_metric=None,
+        num_samples=None,
+        disable_stateful=False,
+        disable_convert_tokenizer=False
+        ):
+
+
+
+        return None
     
     def openvino_cli_convert(
         self,

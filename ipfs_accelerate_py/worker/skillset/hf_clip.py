@@ -97,12 +97,31 @@ class hf_clip:
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
             openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  CLIPProcessor.from_pretrained(
-            model_src_path
-        )
+        try:
+            tokenizer =  CLIPProcessor.from_pretrained(
+                model_src_path
+            )
+        except Exception as e:
+            print(e)
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_src_path
+                )
+            except Exception as e:
+                print(e)
+                pass
+        
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
-        # model = get_openvino_model(model, model_type, openvino_label)
-        model = get_optimum_openvino_model(model, model_type, openvino_label)
+        try:
+            model = get_openvino_model(model, model_type, openvino_label)
+        except Exception as e:
+            print(e)
+            try:
+                model = get_optimum_openvino_model(model, model_type, openvino_label)
+            except Exception as e:
+                print(e)
+                pass
+        endpoint = model
         endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
