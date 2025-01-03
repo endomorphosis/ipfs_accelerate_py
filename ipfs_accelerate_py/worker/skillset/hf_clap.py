@@ -34,14 +34,13 @@ class ClapEncoderWrapper(torch.nn.Module):
     def forward(self, input_ids, attention_mask):
         return self.encoder.get_text_features(input_ids, attention_mask)
 
-
-
 class hf_clap:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
-        self.create_openvino_image_embedding_endpoint_handler = self.create_openvino_image_embedding_endpoint_handler
-        self.create_cuda_image_embedding_endpoint_handler = self.create_cuda_image_embedding_endpoint_handler
+        self.create_openvino_audio_embedding_endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler
+        self.create_cuda_audio_embedding_endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler
+        self.create_cpu_audio_embedding_endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -90,7 +89,7 @@ class hf_clap:
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
@@ -173,11 +172,11 @@ class hf_clap:
                 print(e)
                 pass
         endpoint = model
-        endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def create_cpu_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
+    def create_cpu_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
 
             # if method == 'clip_text':
@@ -194,7 +193,7 @@ class hf_clap:
             #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
 
             #         with no_grad():
-            #             image_features  = self.model.get_image_features(**inputs)
+            #             image_features  = self.model.get_audio_features(**inputs)
 
             #         return {
             #             'embedding': image_features[0].cpu().numpy().tolist()
@@ -206,7 +205,7 @@ class hf_clap:
             return None
         return handler
     
-    def create_cuda_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
+    def create_cuda_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
         def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
             if "eval" in dir(endpoint):
                 endpoint.eval()
@@ -215,7 +214,7 @@ class hf_clap:
             return None
         return handler
 
-    def create_openvino_image_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
+    def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             if y is not None:            
                 if type(y) == str:

@@ -33,6 +33,8 @@ from .skillset import default
 from .skillset import hf_embed
 from .skillset import hf_lm
 from .skillset import hf_clip
+from .skillset import hf_clap
+from .skillset import hf_wav2vec
 
 try:
     from openvino_utils import openvino_utils
@@ -99,7 +101,6 @@ class worker_py:
             self.torch = self.resources["torch"]
         elif "torch" in globals():
             self.torch = torch
-            
         
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
             from ipfs_transformers_py import ipfs_transformers
@@ -113,6 +114,7 @@ class worker_py:
             self.ipfs_transformers = { 
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
             }
+            
         if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
             self.transformers = transformers   
         elif "transformers" in list(self.resources.keys()):
@@ -120,7 +122,6 @@ class worker_py:
         elif "transformers" in globals():
             self.transformers = transformers
             
-
         if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
@@ -146,11 +147,11 @@ class worker_py:
             pass
         
         if "hf_llava" not in globals() and "hf_llava" not in list(self.resources.keys()):
-            self.hf_llava = hf_llava
+            self.hf_llava = hf_llava(resources, metadata)
         elif "hf_llava" in list(self.resources.keys()):
             self.hf_llava = self.resources["hf_llava"]
         elif "hf_llava" in globals():
-            self.hf_llava = hf_llava
+            self.hf_llava = hf_llava(resources, metadata)
         
         if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
             self.hf_embed = hf_embed(self.resources, self.metadata)
@@ -160,11 +161,11 @@ class worker_py:
             self.hf_embed = hf_embed(self.resources, self.metadata)
 
         if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
-            self.hf_lm = hf_lm
+            self.hf_lm = hf_lm(resources, metadata)
         elif "hf_lm" in list(self.resources.keys()):
             self.hf_lm = self.resources["hf_lm"]
         elif "hf_lm" in globals():
-            self.hf_lm = hf_lm
+            self.hf_lm = hf_lm(resources, metadata)
 
         if "default" not in globals() and "default" not in list(self.resources.keys()):
             self.default = default
@@ -187,6 +188,24 @@ class worker_py:
         elif "hf_clip" in globals():
             self.hf_clip = hf_clip(resources, metadata)
             
+        if "hf_clap" not in globals() and "hf_clap" not in list(self.resources.keys()):
+            self.hf_clap = hf_clap(resources, metadata)
+        elif "hf_clap" in list(self.resources.keys()):
+            self.hf_clap = self.resources["hf_clap"]
+        elif "hf_clap" in globals():
+            self.hf_clap = hf_clap(resources, metadata)
+            
+        if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
+            self.hf_wav2vec = hf_wav2vec(resources, metadata)
+        elif "hf_wav2vec" in list(self.resources.keys()):
+            self.hf_wav2vec = self.resources["hf_wav2vec"]
+        elif "hf_wav2vec" in globals():
+            self.hf_wav2vec = hf_wav2vec(resources, metadata)
+
+
+        self.create_openvino_audio_embedding_endpoint_handler = self.hf_clap.create_openvino_audio_embedding_endpoint_handler
+        self.create_cuda_audio_embedding_endpoint_handler = self.hf_clap.create_cuda_audio_embedding_endpoint_handler
+        self.create_cpu_audio_embedding_endpoint_handler = self.hf_clap.create_cpu_audio_embedding_endpoint_handler            
         self.create_openvino_image_embedding_endpoint_handler = self.hf_clip.create_openvino_image_embedding_endpoint_handler
         self.create_cuda_image_embedding_endpoint_handler = self.hf_clip.create_cuda_image_embedding_endpoint_handler
         self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
