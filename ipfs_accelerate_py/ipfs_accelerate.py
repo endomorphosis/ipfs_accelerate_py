@@ -1107,6 +1107,7 @@ class ipfs_accelerate_py:
                 vlm_model_types = ["llava", "llava_next"]
                 llm_model_types = ["qwen2", "llama"]
                 text_embedding_types = ["bert"]
+                clip_model_types = ["clip"]
                 test = None
                 if model_type in vlm_model_types:
                     from worker.skillset import hf_llava
@@ -1129,6 +1130,15 @@ class ipfs_accelerate_py:
                     test_results[endpoint[1]] = test
                     del hf_embed
                     del this_hf_embed
+                elif model_type in clip_model_types:
+                    from worker.skillset import hf_clip
+                    this_hf_clip = hf_clip(self.resources, self.metadata)
+                    test = this_hf_clip.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_clip
+                    del this_hf_clip
+                else:
+                    test_results[endpoint[1]] = ValueError("Model type not found")
         return test_results
 
     async def get_https_endpoint(self, model):

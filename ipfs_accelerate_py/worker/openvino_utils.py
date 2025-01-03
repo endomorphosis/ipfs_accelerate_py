@@ -6,6 +6,30 @@ import openvino_genai as ov_genai
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
 from transformers import AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelForQuestionAnswering, AutoModelForAudioClassification, AutoModelForImageClassification, AutoModelForMaskedLM, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForSpeechSeq2Seq, AutoModelForVision2Seq
 from transformers import AutoModelForImageTextToText
+from PIL import Image
+import requests
+from io import BytesIO
+import numpy as np
+
+def load_image(image_file):
+    if image_file.startswith("http") or image_file.startswith("https"):
+        response = requests.get(image_file)
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+    else:
+        image = Image.open(image_file).convert("RGB")
+    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
+    return image
+
+def load_image_tensor(image_file):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
+        response = requests.get(image_file)
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+    else:
+        image = Image.open(image_file).convert("RGB")
+    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
+    return ov.Tensor(image_data)
+
+
 
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
@@ -42,6 +66,9 @@ class openvino_utils:
             print("Device name not in correct format, recieved: " + device_name) 
             raise ValueError("Device name not in correct format, recieved: " + device_name)
         device = openvino_devices[device_index]
+        ###
+        
+        ###
         model_type = self.get_model_type(model_name)
         model_task = self.get_openvino_pipeline_type(model_name, model_type)
         homedir = os.path.expanduser("~")
@@ -54,6 +81,17 @@ class openvino_utils:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
+        openvino_index = int(device_name.split(":")[1])
+        weight_format = ""
+        if openvino_index is not None:
+            if openvino_index == 0:
+                weight_format = "int8" ## CPU
+            if openvino_index == 1:
+                weight_format = "int4" ## gpu
+            if openvino_index == 2:
+                weight_format = "int4" ## npu
+        model_dst_path = model_dst_path+"_"+weight_format
+        
         try:
             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
@@ -69,6 +107,7 @@ class openvino_utils:
         clip_model_types = ["clip"]
         
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
+            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:
@@ -80,37 +119,36 @@ class openvino_utils:
                 print(e)
                 hfprocessor = None
             try:
-                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True).to('cpu')
             except Exception as e:
                 print(e)
                 hfmodel = None
             
             if hfmodel is not None and "config" in list(dir(hfmodel)):
-                hfprocessor = None
                 if model_type in clip_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
-                        image = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-                        image = hfprocessor(
-                            text = None,
+                        image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+                        image = load_image(image_url)
+                        processed_data = hfprocessor(
+                            text = "Replace me by any text you'd like.",
                             images = [image],
-                            return_tensors="pt"
-                            )["pixel_values"].to(device)
-                        embedding = hfmodel.get_image_features(image)
-                        # convert the embeddings to numpy array
-                        encoded_input = hfprocessor(images=image, text=text, return_tensors='pt')
-                        inputs = hfprocessor(text, return_tensors = "pt").to(device)
+                            return_tensors="pt", 
+                            padding=True
+                            )
+                        results = hfmodel(**processed_data)
                         hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel)                    
-                        ov.save_model(ov_model, model_dst_path)
+                        ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
+                        if not os.path.exists(model_dst_path):
+                            os.mkdir(model_dst_path)
+                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
-                    if hftokenizer is not None:
+                    elif hftokenizer is not None:
                         text = "Replace me by any text you'd like."
-                        encoded_input = hftokenizer(text, return_tensors='pt')
-                        text_embeddings = hfmodel.get_text_features(**encoded_input)
-                        hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel)                        
+                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
+                        input_dict = {k: v for k, v in encoded_input.items()}
+                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
                         ov.save_model(ov_model, model_dst_path)
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
@@ -140,12 +178,17 @@ class openvino_utils:
                 model_type = config.model_type
 
         if os.path.exists(model_dst_path):
+            core = ov.Core()
+
             if model_task is not None and model_task == "image-text-to-text":
                 ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
             elif model_task is not None and model_task == "text-generation-with-past":
                 ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
-            elif model_type == 'qwen2' or model_type == 'llama':
+            elif model_type == 'qwen2' or model_task == "text-generation-with-past":
                 ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
+            elif model_type == 'clip' and model_task == 'feature-extraction':
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model)
         return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
@@ -467,6 +510,7 @@ class openvino_utils:
         parsed_cmd = ' '.join(command)
         # Execute the command
         convert_model = subprocess.check_output(parsed_cmd, shell=True)
+        convert_model = convert_model.decode('utf-8')
         return convert_model
     
     

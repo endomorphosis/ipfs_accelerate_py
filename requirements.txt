@@ -34,3 +34,4 @@ openai
 tiktoken
 open_clip_torch
 open_clip
+librosa
