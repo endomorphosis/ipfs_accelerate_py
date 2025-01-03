@@ -1505,7 +1505,7 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             # "openai/clip-vit-base-patch16",
-            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## not yet supported
             # "llava-hf/llava-v1.6-mistral-7b-hf",
             # "BAAI/bge-small-en-v1.5", 
             # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",

@@ -1,23 +1,42 @@
 import torch
-import librosa
-from datasets import Dataset, Audio
-from transformers import pipeline
-import os
-import numpy as np
-from pydub import AudioSegment
-import tempfile
-import io
-from transformers import AutoModelForAudioClassification
-from transformers import AutoFeatureExtractor
-from transformers import AutoTokenizer
-from transformers import AutoConfig
-import json
+from torch import no_grad
+from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
 import time
-from transformers import AutoProcessor
-from transformers import AutoModel
+import numpy as np
 import asyncio
+from transformers import AutoConfig, AutoTokenizer, AutoProcessor
+import os
+import open_clip
+from PIL import Image
+import requests
+from io import BytesIO
+import numpy as np
+import os
+import openvino as ov
 
-class hf_wav2vec:
+
+
+
+def cleanup_torchscript_cache():
+    """
+    Helper for removing cached model representation
+    """
+    torch._C._jit_clear_class_registry()
+    torch.jit._recursive.concrete_type_store = torch.jit._recursive.ConcreteTypeStore()
+    torch.jit._state._clear_class_state()
+
+class ClapEncoderWrapper(torch.nn.Module):
+    def __init__(self, encoder):
+        super().__init__()
+        encoder.eval()
+        self.encoder = encoder
+
+    def forward(self, input_ids, attention_mask):
+        return self.encoder.get_text_features(input_ids, attention_mask)
+
+
+
+class hf_clap:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
@@ -32,7 +51,6 @@ class hf_wav2vec:
 
     def init(self):
         return None
-    
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
@@ -65,11 +83,10 @@ class hf_wav2vec:
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
-        # processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+        processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
         endpoint = None
         try:
-            # endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
-            pass
+            endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
@@ -122,6 +139,27 @@ class hf_wav2vec:
             except Exception as e:
                 print(e)
                 pass
+        
+            models_base_folder = Path("models")
+        
+            clap_text_encoder_ir_path = models_base_folder / "clap_text_encoder.xml"
+
+            if not clap_text_encoder_ir_path.exists():
+                with torch.no_grad():
+                    ov_model = ov.convert_model(
+                        ClapEncoderWrapper(pipe.text_encoder),  # model instance
+                        example_input={
+                            "input_ids": torch.ones((1, 512), dtype=torch.long),
+                            "attention_mask": torch.ones((1, 512), dtype=torch.long),
+                        },  # inputs for model tracing
+                    )
+                ov.save_model(ov_model, clap_text_encoder_ir_path)
+                del ov_model
+                cleanup_torchscript_cache()
+                gc.collect()
+                print("Text Encoder successfully converted to IR")
+            else:
+                print(f"Text Encoder will be loaded from {clap_text_encoder_ir_path}")
         
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         try:
@@ -215,82 +253,4 @@ class hf_wav2vec:
                         'embedding': text_embeddings
                     }            
             return None
-        return handler    
-    
-        # def __init__(self, resources=None, metadata=None):
-        #         if os.path.exists(resources['checkpoint']) and os.path.isfile(resources['checkpoint'] + "/config.json"):
-        #                 self.model = AutoModelForAudioClassification.from_pretrained(
-        #         resources['checkpoint'],
-        #         local_files_only=True
-        #     ).eval()
-        #                 self.feature_extractor = AutoFeatureExtractor.from_pretrained(
-        #         resources['checkpoint'],
-        #         local_files_only=True
-        #     )
-        #         else:
-        #                 self.classifier = pipeline("audio-classification", model=resources['checkpoint'])
-        #         with open(os.path.join(resources['checkpoint'], "header.bin"), "rb") as f:
-        #                 self.header = f.read()
-
-        # def __call__(self, method, **kwargs):
-        #         if method == 'wav2vec_classify':
-        #                 return self.wav2vec_classify(**kwargs)
-        #         else:
-        #                 raise Exception('unknown method: %s' % method)
-
-        # def map_to_array(self, example):
-        #         speech, _ = librosa.load(example["file"], sr=16000, mono=True)
-        #         example["speech"] = speech
-        #         return example
-
-        # def wav2vec_classify(self, audio, **kwargs):
-        #         if os.path.exists(audio) and os.path.isfile(audio):
-        #                 audio_filename = audio
-        #                 audio_dataset = Dataset.from_dict({"audio": [audio_filename],"file":[audio_filename]}).cast_column("audio", Audio())
-        #                 audio_dataset = audio_dataset.map(self.map_to_array)
-        #                 speech = audio_dataset[:4]["speech"]
-        #         else:
-        #                 with tempfile.NamedTemporaryFile(suffix=".ogg") as temp_audio:
-        #                         if type(audio) == str:
-        #                                 audio = audio.encode()
-        #                         else:
-        #                                 pass
-        #                         AudioSegment.from_file(io.BytesIO(self.header + audio),format="webm").export(temp_audio.name, format="ogg")
-        #                         audio_filename = temp_audio.name
-        #                         audio_dataset = Dataset.from_dict({"audio": [audio_filename],"file":[audio_filename]}).cast_column("audio", Audio())
-        #                         audio_dataset = audio_dataset.map(self.map_to_array)
-        #                         speech = audio_dataset[:4]["speech"]
-
-        #         if "classifier" in self.__dict__.keys():
-        #                 ## audio file path
-        #                 results = self.classifier(audio, top_k=5)
-        #                 #results = json.dumps(results)
-
-        #         else:
-        #                 if "sampling_rate" in kwargs.keys():
-        #                         sampling_rate = kwargs["sampling_rate"]
-        #                 else:
-        #                         sampling_rate = 16000
-        #                 inputs = self.feature_extractor(speech, sampling_rate=16_000, return_tensors="pt", padding=True)
-        #     #convert audio from base64 to numpy array of doubles
-        #                 with torch.no_grad():
-        #                         logits = self.model(**inputs).logits
-
-        #                 predicted_class_ids = torch.argmax(logits).item()
-        #                 predicted_label = self.model.config.id2label[predicted_class_ids]
-        #                 results = predicted_label
-
-        #         return {
-        #     'text': results, 
-        #     'done': True
-        # }
-
-        # def test(self, **kwargs):
-        #         audio_filename = "/tmp/temp.ogg"
-        #         return self.wav2vec_classify(audio_filename)
-
-        # def test2(self, **kwargs):
-        #         audio_filename = "/tmp/base64ogg.txt"
-        #         with open(audio_filename, "rb") as audio_file:
-        #                 audio = audio_file.read()
-        #         return self.wav2vec_classify(audio)
+        return handler
