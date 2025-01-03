@@ -1504,7 +1504,7 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            "openai/clip-vit-base-patch16",
+            # "openai/clip-vit-base-patch16",
             # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
             # "llava-hf/llava-v1.6-mistral-7b-hf",
             # "BAAI/bge-small-en-v1.5", 

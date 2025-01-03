@@ -32,8 +32,6 @@ def load_image_tensor(image_file):
     image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
     return ov.Tensor(image_data)
 
-
-
 class hf_clip:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
