@@ -1513,8 +1513,8 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             # "BAAI/bge-small-en-v1.5", 
-            # "facebook/wav2vec2-large-960h-lv60-self",
-            "laion/larger_clap_general",
+            "facebook/wav2vec2-large-960h-lv60-self",
+            # "laion/larger_clap_general",
             # "MCG-NJU/videomae-base",
             # "microsoft/xclip-base-patch16-zero-shot",
             # "google-t5/t5-base",
