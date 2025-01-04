@@ -11,6 +11,38 @@ import requests
 from io import BytesIO
 import numpy as np
 
+def load_audio(audio_file):
+    import soundfile as sf
+    import io
+    import numpy as np
+
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return audio_data, samplerate
+
+def load_audio_tensor(audio_file):
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return ov.Tensor(audio_data.reshape(1, -1))
+
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
         response = requests.get(image_file)
@@ -28,8 +60,6 @@ def load_image_tensor(image_file):
         image = Image.open(image_file).convert("RGB")
     image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
     return ov.Tensor(image_data)
-
-
 
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
@@ -55,7 +85,6 @@ class openvino_utils:
         hftokenizer = None
         import openvino as ov                                
         core = ov.Core()
-        import openvino_genai as ov_genai
         openvino_devices = core.available_devices
         if device_name is None:
             device_index = 0
@@ -66,9 +95,6 @@ class openvino_utils:
             print("Device name not in correct format, recieved: " + device_name) 
             raise ValueError("Device name not in correct format, recieved: " + device_name)
         device = openvino_devices[device_index]
-        ###
-        
-        ###
         model_type = self.get_model_type(model_name)
         model_task = self.get_openvino_pipeline_type(model_name, model_type)
         homedir = os.path.expanduser("~")
@@ -155,11 +181,10 @@ class openvino_utils:
                 if model_type in clap_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
-                        audio = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-                        image = load_image(image_url)
+                        audio_url = "https://datasets-server.huggingface.co/assets/hf-internal-testing/librispeech_asr_dummy/--/5be91486e11a2d616f4ec5db8d3fd248585ac07a/--/clean/validation/0/audio/audio.wav?Expires=1735960170&Signature=l2Ga7aqkSR6gt0o4mRwqj9AfzQBJEUUxM7oyicZui1982tYvqZTcBhFnSlmQ-n98SMFUbZ6x4PcvbTSV8qCQ8xwJ5AkStRvgNBXCyOAN2oMIMnZVfUJGDSQLabP0ysr7t7Z13bxjxRgFdGJ-5RJkU8tREdwGsMQ~vJ3kg3do0auKtfx4IAXZg1vyoXkKTUkNxyw8khsatllP3mW4DLojszPXJ0vunaPhPIeeyJ-Za7jY-yM73UT~rj9RGZfzc6waxXQW9yo9BZy7ViUGnuObqKhdWNPw9L79xApYK-lu4N~fLlcmlfYnxDZnCFePGXAGpaelHp6dqh~7g0JqeVkbQA__&Key-Pair-Id=K3EI6M078Z3AC3"
+                        audio = load_audio(audio_url)
                         processed_data = hfprocessor(
-                            text = "Replace me by any text you'd like.",
-                            audio = [audio],
+                            audios = [audio],
                             return_tensors="pt", 
                             padding=True
                             )
@@ -204,15 +229,10 @@ class openvino_utils:
                 model_type = config.model_type
 
         if os.path.exists(model_dst_path):
-            core = ov.Core()
-
-            if model_task is not None and model_task == "image-text-to-text":
-                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
-            elif model_task is not None and model_task == "text-generation-with-past":
-                ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
-            elif model_type == 'qwen2' or model_task == "text-generation-with-past":
-                ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
-            elif model_type == 'clip' and model_task == 'feature-extraction':
+            if model_type == 'clip' and model_task == 'feature-extraction':
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model)
+            elif model_type == 'clap' and model_task == 'audio-classification':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
         return ov_model
@@ -317,7 +337,7 @@ class openvino_utils:
 
         return ov_model
     
-    def get_optimum_openvino_model(self, model_name, model_type=None):
+    def get_optimum_openvino_model(self, model_name, model_type=None, openvino_label=None):
         homedir = os.path.expanduser("~")
         model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
@@ -565,6 +585,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "clip":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "clap":
+                    return_model_type = "feature-extraction"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -579,6 +601,8 @@ class openvino_utils:
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "clap":
                     return_model_type = "feature-extraction"
                 pass            
             elif config_model_type in model_mapping_list:
@@ -603,6 +627,8 @@ class openvino_utils:
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "clip":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "clap":
+                    return_model_type = "feature-extraction"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -617,6 +643,8 @@ class openvino_utils:
                 elif config_model_type == "llama":
                     return_model_type = "text-generation-with-past"
                 elif config_model_type == "clip":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "clap":
                     return_model_type = "feature-extraction"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
