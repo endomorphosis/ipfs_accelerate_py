@@ -132,8 +132,7 @@ class openvino_utils:
         vlm_model_types = ["llava", "llava_next"]
         clip_model_types = ["clip"]
         clap_model_types = ["clap"]
-        if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
-            
+        if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:
@@ -183,13 +182,16 @@ class openvino_utils:
                         text = "Replace me by any text you'd like."
                         audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
                         audio = load_audio(audio_url)
-                        processed_data = hfprocessor(
-                            audios =[audio[0]],  # Use first channel only
+                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+                        audio_inputs = hfprocessor(
+                            audios=[audio[0]],  # Use first channel only
                             return_tensors="pt", 
                             padding=True
-                            )
+                        )
+                        processed_data = {**audio_inputs}
+                        results = hfmodel(**processed_data)
                         hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
+                        ov_model = ov.convert_model(hfmodel, example_input=processed_data)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))

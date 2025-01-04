@@ -246,25 +246,47 @@ class hf_clap:
     
     def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+
+
+            # text = "Replace me by any text you'd like."
+            # audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+            # audio = load_audio(audio_url)
+            # text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+            # audio_inputs = hfprocessor(
+            #     audios=[audio[0]],  # Use first channel only
+            #     return_tensors="pt", 
+            #     padding=True
+            # )
+            # processed_data = {**audio_inputs}
+            # results = hfmodel(**processed_data)
+            # hfmodel.config.torchscript = True
+            # ov_model = ov.convert_model(hfmodel, example_input=processed_data)
+            # if not os.path.exists(model_dst_path):
+            #     os.mkdir(model_dst_path)
+            # ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            # ov_model = ov.compile_model(ov_model)
+            # hfmodel = None
+
             if y is not None:            
                 if type(y) == str:
-                    image = load_audio(y)
-                    inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
+                    audio =  load_audio(y)
+                    audio_inputs = tokenizer(images=[audio], return_tensors='pt', padding=True)
                 elif type(y) == list:
-                    inputs = tokenizer(images=[load_audio(image) for image in y], return_tensors='pt')
+                    audio_inputs = tokenizer(images=[load_audio(y) for image in y], return_tensors='pt')
                 with no_grad():
-                    image_features = endpoint_model(dict(inputs))
+                    processed_data = {**audio_inputs}
+                    image_features = endpoint_model(**processed_data)
                     image_embeddings = image_features["image_embeds"]
- 
                 pass
             
             if x is not None:
                 if type(x) == str:
-                    inputs = tokenizer(text=y, return_tensors='pt')
+                    text_inputs = tokenizer(text=y, return_tensors='pt')
                 elif type(x) == list:
-                    inputs = tokenizer(text=[text for text in x], return_tensors='pt')
+                    text_inputs = tokenizer(text=[text for text in x], return_tensors='pt')
                 with no_grad():
-                    text_features = endpoint_model(dict(inputs))
+                    processed_data = {**text_inputs}
+                    text_features = endpoint_model(**processed_data)                    
                     text_embeddings = text_features["last_hidden_state"] 
             
             if x is not None or y is not None:
