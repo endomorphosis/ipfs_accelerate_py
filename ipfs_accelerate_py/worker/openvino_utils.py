@@ -233,7 +233,7 @@ class openvino_utils:
             if model_type == 'clip' and model_task == 'feature-extraction':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
-            elif model_type == 'clap' and model_task == 'audio-classification':
+            elif model_type == 'clap' and model_task == 'feature-extraction':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
         return ov_model

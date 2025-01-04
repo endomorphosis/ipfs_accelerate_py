@@ -270,24 +270,34 @@ class hf_clap:
             if y is not None:            
                 if type(y) == str:
                     audio =  load_audio(y)
-                    audio_inputs = tokenizer(images=[audio], return_tensors='pt', padding=True)
+                    audio_inputs = tokenizer(
+                        audios=[audio[0]], 
+                        return_tensors='pt', 
+                        padding=True
+                    )
                 elif type(y) == list:
-                    audio_inputs = tokenizer(images=[load_audio(y) for image in y], return_tensors='pt')
+                    audio_inputs = tokenizer(images=[load_audio(y)[0] for image in y], return_tensors='pt')
                 with no_grad():
                     processed_data = {**audio_inputs}
-                    image_features = endpoint_model(**processed_data)
-                    image_embeddings = image_features["image_embeds"]
+                    image_features = endpoint_model(dict(processed_data))
+                    # image_features = endpoint_model(**processed_data)
+                    image_embeddings = image_features["audio_embeds"]
                 pass
             
             if x is not None:
                 if type(x) == str:
-                    text_inputs = tokenizer(text=y, return_tensors='pt')
+                    text_inputs = tokenizer(
+                        text=y,
+                        return_tensors='pt',
+                        padding=True
+                    )
                 elif type(x) == list:
-                    text_inputs = tokenizer(text=[text for text in x], return_tensors='pt')
+                    text_inputs = tokenizer(text=[text for text in x], return_tensors='pt', padding=True)
                 with no_grad():
                     processed_data = {**text_inputs}
-                    text_features = endpoint_model(**processed_data)                    
-                    text_embeddings = text_features["last_hidden_state"] 
+                    text_features = endpoint_model(dict(processed_data))                    
+                    # text_features = endpoint_model(**processed_data)                    
+                    text_embeddings = text_features["text_embeds"] 
             
             if x is not None or y is not None:
                 if x is not None and y is not None:
