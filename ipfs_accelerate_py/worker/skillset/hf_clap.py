@@ -1,6 +1,6 @@
 import torch
 from torch import no_grad
-from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
+from transformers import ClapModel, ClapProcessor
 import time
 import numpy as np
 import asyncio
@@ -51,10 +51,10 @@ class hf_clap:
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
-        image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+        audio_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
         timestamp1 = time.time()
         try:
-            test_batch = endpoint_handler(sentence_1, image_1)
+            test_batch = endpoint_handler(sentence_1, audio_1)
         except Exception as e:
             print(e)
             pass
@@ -80,14 +80,14 @@ class hf_clap:
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
-        processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+        processor = ClapProcessor.from_pretrained(model, trust_remote_code=True)
         endpoint = None
         try:
-            endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = ClapProcessor.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
@@ -124,13 +124,13 @@ class hf_clap:
             # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
         try:
-            tokenizer =  CLIPProcessor.from_pretrained(
+            tokenizer =  ClapProcessor.from_pretrained(
                 model
             )
         except Exception as e:
             print(e)
             try:
-                tokenizer =  CLIPProcessor.from_pretrained(
+                tokenizer =  ClapProcessor.from_pretrained(
                     model_src_path
                 )
             except Exception as e:
@@ -211,7 +211,7 @@ class hf_clap:
                 pass
             return None
         return handler
-
+    
     def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             if y is not None:            

@@ -391,10 +391,11 @@ class worker_py:
             pipeline_model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text", "image-text-to-text"]
             model_mapping_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
             clip_model_types = ["clip"]
+            clap_model_types = ["clap"]
             vlm_model_types = ["llava", "llava_next"]
             llm_model_types = ["qwen2", "llama"]
             text_embedding_types = ["bert"]
-            custom_types = vlm_model_types + text_embedding_types + llm_model_types + clip_model_types
+            custom_types = vlm_model_types + text_embedding_types + llm_model_types + clip_model_types + clap_model_types
             if model_type != "llama_cpp" and model_type not in custom_types:
                 # if cuda and gpus > 0:
                 #     if cuda_test and type(cuda_test) != ValueError:
@@ -508,6 +509,32 @@ class worker_py:
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
                             self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_clip.init_openvino(
+                                model,
+                                model_type,
+                                device,
+                                openvino_label,
+                                self.get_optimum_openvino_model,
+                                self.get_openvino_model,
+                                self.get_openvino_pipeline_type,
+                                self.openvino_cli_convert,
+                            )
+                            torch.cuda.empty_cache()
+            elif model_type in clap_model_types:
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_clap.init_cuda( model, device, cuda_label)
+                            torch.cuda.empty_cache()
+                if local > 0 and cpus > 0:
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                        for openvino_endpoint in openvino_local_endpont_types:
+                            ov_count = openvino_endpoint.split(":")[1]
+                            openvino_label = "openvino:" + str(ov_count)
+                            device = "openvino:" + str(ov_count)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_clap.init_openvino(
                                 model,
                                 model_type,
                                 device,

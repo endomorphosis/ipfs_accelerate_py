@@ -105,7 +105,7 @@ class openvino_utils:
 
         vlm_model_types = ["llava", "llava_next"]
         clip_model_types = ["clip"]
-        
+        clap_model_types = ["clap"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
             
             try:
@@ -152,7 +152,33 @@ class openvino_utils:
                         ov.save_model(ov_model, model_dst_path)
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
-                
+                if model_type in clap_model_types:
+                    if hfprocessor is not None:
+                        text = "Replace me by any text you'd like."
+                        audio = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+                        image = load_image(image_url)
+                        processed_data = hfprocessor(
+                            text = "Replace me by any text you'd like.",
+                            audio = [audio],
+                            return_tensors="pt", 
+                            padding=True
+                            )
+                        results = hfmodel(**processed_data)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
+                        if not os.path.exists(model_dst_path):
+                            os.mkdir(model_dst_path)
+                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
+                    elif hftokenizer is not None:
+                        text = "Replace me by any text you'd like."
+                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
+                        input_dict = {k: v for k, v in encoded_input.items()}
+                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
+                        ov.save_model(ov_model, model_dst_path)
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
