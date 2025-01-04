@@ -413,6 +413,3 @@ class hf_llava:
                 except Exception as e:
                     raise e
         return handler
-
-    
-hf_llava = hf_llava()

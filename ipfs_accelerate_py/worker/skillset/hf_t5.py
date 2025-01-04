@@ -7,7 +7,7 @@ from ipfs_transformers_py import AutoModel
 import sys
 import os
 import worker
-from chat_format import chat_format
+from .chat_format import chat_format
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 
 class hf_t5:

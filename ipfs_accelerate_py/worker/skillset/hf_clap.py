@@ -15,8 +15,6 @@ import os
 import openvino as ov
 
 
-
-
 def cleanup_torchscript_cache():
     """
     Helper for removing cached model representation

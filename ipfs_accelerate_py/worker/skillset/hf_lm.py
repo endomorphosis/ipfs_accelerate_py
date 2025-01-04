@@ -174,5 +174,3 @@ class hf_lm:
             #     streamer=streamer,
             return results
         return handler
-
-hf_lm = hf_lm()

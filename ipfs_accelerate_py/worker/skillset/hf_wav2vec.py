@@ -2,7 +2,6 @@ import torch
 import librosa
 from datasets import Dataset, Audio
 from transformers import pipeline
-import AudioSegment
 import os
 import numpy as np
 from pydub import AudioSegment
