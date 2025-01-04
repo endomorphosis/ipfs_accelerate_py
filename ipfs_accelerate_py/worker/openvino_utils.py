@@ -132,6 +132,7 @@ class openvino_utils:
         vlm_model_types = ["llava", "llava_next"]
         clip_model_types = ["clip"]
         clap_model_types = ["clap"]
+        wav2vec_model_types = ["wav2vec2", "wav2vec"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -588,6 +589,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "clap":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "wav2vec2":
+                    return_model_type = "feature-extraction"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -604,6 +607,8 @@ class openvino_utils:
                 elif config_model_type == "clip":
                     return_model_type = "feature-extraction"
                 elif config_model_type == "clap":
+                    return_model_type = "feature-extraction"
+                elif config_model_type == "wav2vec2":
                     return_model_type = "feature-extraction"
                 pass            
             elif config_model_type in model_mapping_list:
@@ -647,6 +652,9 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "clap":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "wav2vec2":
+                    return_model_type = "feature-extraction"
+ 
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 
