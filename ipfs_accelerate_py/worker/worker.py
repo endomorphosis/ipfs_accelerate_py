@@ -153,6 +153,13 @@ class worker_py:
         elif "hf_llava" in globals():
             self.hf_llava = hf_llava(resources, metadata)
         
+        if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
+            self.hf_wav2vec = hf_llava(resources, metadata)
+        elif "hf_wav2vec" in list(self.resources.keys()):
+            self.hf_wav2vec = self.resources["hf_wav2vec"]
+        elif "hf_wav2vec" in globals():
+            self.hf_wav2vec = hf_llava(resources, metadata)
+        
         if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
             self.hf_embed = hf_embed(self.resources, self.metadata)
         elif "hf_embed" in list(self.resources.keys()):
@@ -211,8 +218,10 @@ class worker_py:
         self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
         self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
+        # self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
         self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
+        # self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
         self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
         self.create_llm_endpoint_handler = self.hf_lm.create_llm_endpoint_handler
         self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
