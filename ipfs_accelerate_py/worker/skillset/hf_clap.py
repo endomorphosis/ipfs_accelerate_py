@@ -173,22 +173,22 @@ class hf_clap:
         
             clap_text_encoder_ir_path = models_base_folder / "clap_text_encoder.xml"
 
-            if not clap_text_encoder_ir_path.exists():
-                with torch.no_grad():
-                    ov_model = ov.convert_model(
-                        ClapEncoderWrapper(pipe.text_encoder),  # model instance
-                        example_input={
-                            "input_ids": torch.ones((1, 512), dtype=torch.long),
-                            "attention_mask": torch.ones((1, 512), dtype=torch.long),
-                        },  # inputs for model tracing
-                    )
-                ov.save_model(ov_model, clap_text_encoder_ir_path)
-                del ov_model
-                cleanup_torchscript_cache()
-                gc.collect()
-                print("Text Encoder successfully converted to IR")
-            else:
-                print(f"Text Encoder will be loaded from {clap_text_encoder_ir_path}")
+            # if not clap_text_encoder_ir_path.exists():
+            #     with torch.no_grad():
+            #         ov_model = ov.convert_model(
+            #             ClapEncoderWrapper(pipe.text_encoder),  # model instance
+            #             example_input={
+            #                 "input_ids": torch.ones((1, 512), dtype=torch.long),
+            #                 "attention_mask": torch.ones((1, 512), dtype=torch.long),
+            #             },  # inputs for model tracing
+            #         )
+            #     ov.save_model(ov_model, clap_text_encoder_ir_path)
+            #     del ov_model
+            #     cleanup_torchscript_cache()
+            #     gc.collect()
+            #     print("Text Encoder successfully converted to IR")
+            # else:
+            #     print(f"Text Encoder will be loaded from {clap_text_encoder_ir_path}")
         
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         try:

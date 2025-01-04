@@ -184,11 +184,10 @@ class openvino_utils:
                         audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
                         audio = load_audio(audio_url)
                         processed_data = hfprocessor(
-                            audios =[audio],
+                            audios =[audio[0]],  # Use first channel only
                             return_tensors="pt", 
                             padding=True
                             )
-                        results = hfmodel(**processed_data)
                         hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
                         if not os.path.exists(model_dst_path):
