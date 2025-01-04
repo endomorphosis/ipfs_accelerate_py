@@ -3,6 +3,7 @@ from torch import no_grad
 from transformers import ClapModel, ClapProcessor
 import time
 import numpy as np
+import gc
 import asyncio
 from transformers import AutoConfig, AutoTokenizer, AutoProcessor
 import os
@@ -13,7 +14,38 @@ from io import BytesIO
 import numpy as np
 import os
 import openvino as ov
+import soundfile as sf
+import io
+import numpy as np
 
+def load_audio(audio_file):
+
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return audio_data, samplerate
+
+def load_audio_tensor(audio_file):
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return ov.Tensor(audio_data.reshape(1, -1))
 
 def cleanup_torchscript_cache():
     """
@@ -51,7 +83,7 @@ class hf_clap:
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
-        audio_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+        audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(sentence_1, audio_1)
@@ -137,7 +169,7 @@ class hf_clap:
                 print(e)
                 pass
         
-            models_base_folder = Path("models")
+            models_base_folder = model_dst_path
         
             clap_text_encoder_ir_path = models_base_folder / "clap_text_encoder.xml"
 
@@ -216,10 +248,10 @@ class hf_clap:
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             if y is not None:            
                 if type(y) == str:
-                    image = load_image(y)
+                    image = load_audio(y)
                     inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
                 elif type(y) == list:
-                    inputs = tokenizer(images=[load_image(image) for image in y], return_tensors='pt')
+                    inputs = tokenizer(images=[load_audio(image) for image in y], return_tensors='pt')
                 with no_grad():
                     image_features = endpoint_model(dict(inputs))
                     image_embeddings = image_features["image_embeds"]

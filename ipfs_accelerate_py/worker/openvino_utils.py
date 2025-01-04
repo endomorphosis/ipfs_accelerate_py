@@ -10,11 +10,11 @@ from PIL import Image
 import requests
 from io import BytesIO
 import numpy as np
-
+import soundfile as sf
+import io
+import numpy as np
+    
 def load_audio(audio_file):
-    import soundfile as sf
-    import io
-    import numpy as np
 
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
@@ -181,10 +181,10 @@ class openvino_utils:
                 if model_type in clap_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
-                        audio_url = "https://datasets-server.huggingface.co/assets/hf-internal-testing/librispeech_asr_dummy/--/5be91486e11a2d616f4ec5db8d3fd248585ac07a/--/clean/validation/0/audio/audio.wav?Expires=1735960170&Signature=l2Ga7aqkSR6gt0o4mRwqj9AfzQBJEUUxM7oyicZui1982tYvqZTcBhFnSlmQ-n98SMFUbZ6x4PcvbTSV8qCQ8xwJ5AkStRvgNBXCyOAN2oMIMnZVfUJGDSQLabP0ysr7t7Z13bxjxRgFdGJ-5RJkU8tREdwGsMQ~vJ3kg3do0auKtfx4IAXZg1vyoXkKTUkNxyw8khsatllP3mW4DLojszPXJ0vunaPhPIeeyJ-Za7jY-yM73UT~rj9RGZfzc6waxXQW9yo9BZy7ViUGnuObqKhdWNPw9L79xApYK-lu4N~fLlcmlfYnxDZnCFePGXAGpaelHp6dqh~7g0JqeVkbQA__&Key-Pair-Id=K3EI6M078Z3AC3"
+                        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
                         audio = load_audio(audio_url)
                         processed_data = hfprocessor(
-                            audios = [audio],
+                            audios =[audio],
                             return_tensors="pt", 
                             padding=True
                             )

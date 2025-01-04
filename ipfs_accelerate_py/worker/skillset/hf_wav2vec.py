@@ -16,6 +16,46 @@ import time
 from transformers import AutoProcessor
 from transformers import AutoModel
 import asyncio
+import requests
+import soundfile as sf
+import torch
+import numpy as np
+import gc
+from transformers import AutoTokenizer, AutoConfig
+from transformers import pipeline
+from transformers import AutoModel
+from transformers import AutoProcessor
+import openvino as ov
+from torch import no_grad
+
+def load_audio(audio_file):
+
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return audio_data, samplerate
+
+def load_audio_tensor(audio_file):
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return ov.Tensor(audio_data.reshape(1, -1))
 
 class hf_wav2vec:
     def __init__(self, resources=None, metadata=None):
@@ -183,10 +223,10 @@ class hf_wav2vec:
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             if y is not None:            
                 if type(y) == str:
-                    image = load_image(y)
+                    image = load_audio(y)
                     inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
                 elif type(y) == list:
-                    inputs = tokenizer(images=[load_image(image) for image in y], return_tensors='pt')
+                    inputs = tokenizer(images=[load_audio(image) for image in y], return_tensors='pt')
                 with no_grad():
                     image_features = endpoint_model(dict(inputs))
                     image_embeddings = image_features["image_embeds"]
