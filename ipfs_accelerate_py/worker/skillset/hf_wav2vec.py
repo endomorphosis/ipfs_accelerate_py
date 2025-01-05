@@ -237,12 +237,14 @@ class hf_wav2vec:
                         audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
                     image_features = endpoint_model({'input_values': audio_inputs})
                     image_embeddings = list(image_features.values())[0]
-                    image_embeddings = torch.mean(image_embeddings, dim=1)
+                    image_embeddings = torch.tensor(image_embeddings)
+                    image_embeddings = torch.mean(image_embeddings, dim=(1,))
                     results.append(image_embeddings)
                 elif type(x) == list:
                     inputs = tokenizer(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
                     image_features = endpoint_model({'input_values': audio_inputs})
                     image_embeddings = list(image_features.values())[0]
+                    image_embeddings = torch.tensor(image_embeddings)
                     image_embeddings = torch.mean(image_embeddings, dim=1)
                     results.append(image_embeddings)
                 pass            
