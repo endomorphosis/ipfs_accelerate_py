@@ -221,6 +221,7 @@ class hf_wav2vec:
 
     def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+            results = []
             if x is not None:            
                 if type(x) == str:
                     audio_data, audio_sampling_rate = load_audio_16khz(x)                    
@@ -235,17 +236,22 @@ class hf_wav2vec:
                     if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
                         audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
                     image_features = endpoint_model({'input_values': audio_inputs})
-                    image_embeddings = image_features["image_embeds"]
+                    image_embeddings = list(image_features.values())[0]
+                    image_embeddings = torch.mean(image_embeddings, dim=1)
+                    results.append(image_embeddings)
                 elif type(x) == list:
                     inputs = tokenizer(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
-                    image_features = endpoint_model(dict(inputs))
-                    image_embeddings = image_features["image_embeds"]
-                pass
-            
-                if x is not None:
-                    return {
-                        'embedding': image_embeddings
-                    }            
+                    image_features = endpoint_model({'input_values': audio_inputs})
+                    image_embeddings = list(image_features.values())[0]
+                    image_embeddings = torch.mean(image_embeddings, dim=1)
+                    results.append(image_embeddings)
+                pass            
+
+                if results is not None:                                        
+                    if x is not None:
+                        return {
+                            'embedding': image_embeddings[0]
+                        }            
             return None
         return handler    
     
