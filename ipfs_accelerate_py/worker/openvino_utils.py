@@ -1,3 +1,4 @@
+import librosa
 import subprocess
 from transformers import AutoConfig
 import os
@@ -29,6 +30,14 @@ def load_audio(audio_file):
     audio_data = audio_data.astype(np.float32)
     
     return audio_data, samplerate
+
+def load_audio_16khz(audio_file):
+    audio_data, samplerate = load_audio(audio_file)
+    if samplerate != 16000:
+        ## convert to 16khz
+        audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
+    return audio_data, 16000
+
 
 def load_audio_tensor(audio_file):
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
@@ -171,14 +180,6 @@ class openvino_utils:
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
-                    elif hftokenizer is not None:
-                        text = "Replace me by any text you'd like."
-                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
-                        input_dict = {k: v for k, v in encoded_input.items()}
-                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
-                        ov.save_model(ov_model, model_dst_path)
-                        ov_model = ov.compile_model(ov_model)
-                        hfmodel = None
                 if model_type in clap_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
@@ -199,25 +200,12 @@ class openvino_utils:
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
-                    elif hftokenizer is not None:
-                        text = "Replace me by any text you'd like."
-                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
-                        input_dict = {k: v for k, v in encoded_input.items()}
-                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
-                        ov.save_model(ov_model, model_dst_path)
-                        ov_model = ov.compile_model(ov_model)
-                        hfmodel = None
                 if model_type in wav2vec_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
                         audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-                        audio_data, audio_sampling_rate = audio = load_audio(audio_url)
-                        # text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
-                        # audio_inputs = hfprocessor(
-                        #     audios=[audio[0]],  # Use first channel only
-                        #     return_tensors="pt", 
-                        #     padding=True
-                        # )
+                        audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
+                        preprocessed_signal = None
                         preprocessed_signal = hfprocessor(
                             audio_data,
                             return_tensors="pt",
@@ -225,23 +213,12 @@ class openvino_utils:
                             sampling_rate=audio_sampling_rate,
                         )
                         audio_inputs = preprocessed_signal.input_values
-                        BATCH_SIZE = 1
-                        MAX_SEQ_LENGTH = 30480                        
-                        processed_data = {**audio_inputs}
-                        results = hfmodel(**processed_data)
+                        MAX_SEQ_LENGTH = 30480
                         hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                        ov_model = ov.compile_model(ov_model)
-                        hfmodel = None
-                    elif hftokenizer is not None:
-                        text = "Replace me by any text you'd like."
-                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
-                        input_dict = {k: v for k, v in encoded_input.items()}
-                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
-                        ov.save_model(ov_model, model_dst_path)
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
             if ov_model == None:
