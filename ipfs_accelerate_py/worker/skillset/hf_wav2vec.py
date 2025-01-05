@@ -38,6 +38,13 @@ def load_audio(audio_file):
     
     return audio_data, samplerate
 
+def load_audio_16khz(audio_file):
+    audio_data, samplerate = load_audio(audio_file)
+    if samplerate != 16000:
+        ## convert to 16khz
+        audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
+    return audio_data, 16000
+
 def load_audio_tensor(audio_file):
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
