@@ -1,32 +1,27 @@
 import torch
 import librosa
-from datasets import Dataset, Audio
-from transformers import pipeline
 import os
 import numpy as np
-from pydub import AudioSegment
 import tempfile
 import io
-from transformers import AutoModelForAudioClassification
-from transformers import AutoFeatureExtractor
-from transformers import AutoTokenizer
-from transformers import AutoConfig
+import openvino as ov
+from torch import no_grad
 import json
 import time
-from transformers import AutoProcessor
-from transformers import AutoModel
 import asyncio
 import requests
 import soundfile as sf
 import torch
-import numpy as np
 import gc
-from transformers import AutoTokenizer, AutoConfig
+from pydub import AudioSegment
+from datasets import Dataset, Audio
 from transformers import pipeline
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from transformers import AutoModelForAudioClassification
+from transformers import AutoFeatureExtractor
+from transformers import AutoTokenizer, AutoConfig
 from transformers import AutoModel
 from transformers import AutoProcessor
-import openvino as ov
-from torch import no_grad
 
 def load_audio(audio_file):
 
@@ -150,20 +145,19 @@ class hf_wav2vec:
             # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
 
-
-        # try:
-        #     tokenizer =  CLIPProcessor.from_pretrained(
-        #         model
-        #     )
-        # except Exception as e:
-        #     print(e)
-        #     try:
-        #         tokenizer =  CLIPProcessor.from_pretrained(
-        #             model_src_path
-        #         )
-        #     except Exception as e:
-        #         print(e)
-        #         pass
+        try:
+            tokenizer =  Wav2Vec2Processor.from_pretrained(
+                model
+            )
+        except Exception as e:
+            print(e)
+            try:
+                tokenizer =  Wav2Vec2Processor.from_pretrained(
+                    model_src_path
+                )
+            except Exception as e:
+                print(e)
+                pass
         
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         try:

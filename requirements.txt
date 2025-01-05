@@ -35,3 +35,4 @@ tiktoken
 open_clip_torch
 librosa
 pysbd
+ffmpeg-python

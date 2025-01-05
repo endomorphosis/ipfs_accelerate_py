@@ -1,6 +1,7 @@
 import subprocess
 from transformers import AutoConfig
 import os
+import torch
 import openvino as ov
 import openvino_genai as ov_genai
 from transformers import AutoTokenizer, AutoModel, AutoProcessor
@@ -206,6 +207,43 @@ class openvino_utils:
                         ov.save_model(ov_model, model_dst_path)
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
+                if model_type in wav2vec_model_types:
+                    if hfprocessor is not None:
+                        text = "Replace me by any text you'd like."
+                        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+                        audio_data, audio_sampling_rate = audio = load_audio(audio_url)
+                        # text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+                        # audio_inputs = hfprocessor(
+                        #     audios=[audio[0]],  # Use first channel only
+                        #     return_tensors="pt", 
+                        #     padding=True
+                        # )
+                        preprocessed_signal = hfprocessor(
+                            audio_data,
+                            return_tensors="pt",
+                            padding="longest",
+                            sampling_rate=audio_sampling_rate,
+                        )
+                        audio_inputs = preprocessed_signal.input_values
+                        BATCH_SIZE = 1
+                        MAX_SEQ_LENGTH = 30480                        
+                        processed_data = {**audio_inputs}
+                        results = hfmodel(**processed_data)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
+                        if not os.path.exists(model_dst_path):
+                            os.mkdir(model_dst_path)
+                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
+                    elif hftokenizer is not None:
+                        text = "Replace me by any text you'd like."
+                        encoded_input = hftokenizer(text, return_tensors='pt').to('cpu')
+                        input_dict = {k: v for k, v in encoded_input.items()}
+                        ov_model = ov.convert_model(hfmodel.to('cpu'), example_input=input_dict)
+                        ov.save_model(ov_model, model_dst_path)
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
@@ -235,6 +273,9 @@ class openvino_utils:
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
             elif model_type == 'clap' and model_task == 'feature-extraction':
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model)
+            elif model_type == 'wav2vec' and model_task == 'feature-extraction':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
         return ov_model
