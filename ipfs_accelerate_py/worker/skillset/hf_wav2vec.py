@@ -77,11 +77,10 @@ class hf_wav2vec:
     
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
-        sentence_1 = "The quick brown fox jumps over the lazy dog"
-        image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+        audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         timestamp1 = time.time()
         try:
-            test_batch = endpoint_handler(sentence_1, image_1)
+            test_batch = endpoint_handler(audio_1)
         except Exception as e:
             print(e)
             pass
@@ -178,7 +177,7 @@ class hf_wav2vec:
                 print(e)
                 pass
         endpoint = model
-        endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler(model, tokenizer, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
@@ -221,41 +220,31 @@ class hf_wav2vec:
         return handler
 
     def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
-        def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
-            if y is not None:            
-                if type(y) == str:
-                    image = load_audio(y)
-                    inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
-                elif type(y) == list:
-                    inputs = tokenizer(images=[load_audio(image) for image in y], return_tensors='pt')
-                with no_grad():
+        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+            if x is not None:            
+                if type(x) == str:
+                    audio_data, audio_sampling_rate = load_audio_16khz(x)                    
+                    preprocessed_signal = tokenizer(
+                        audio_data,
+                        return_tensors="pt",
+                        padding="longest",
+                        sampling_rate=audio_sampling_rate,
+                    )
+                    audio_inputs = preprocessed_signal.input_values
+                    MAX_SEQ_LENGTH = 30480
+                    if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
+                        audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
+                    image_features = endpoint_model({'input_values': audio_inputs})
+                    image_embeddings = image_features["image_embeds"]
+                elif type(x) == list:
+                    inputs = tokenizer(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
                     image_features = endpoint_model(dict(inputs))
                     image_embeddings = image_features["image_embeds"]
- 
                 pass
             
-            if x is not None:
-                if type(x) == str:
-                    inputs = tokenizer(text=y, return_tensors='pt')
-                elif type(x) == list:
-                    inputs = tokenizer(text=[text for text in x], return_tensors='pt')
-                with no_grad():
-                    text_features = endpoint_model(dict(inputs))
-                    text_embeddings = text_features["last_hidden_state"] 
-            
-            if x is not None or y is not None:
-                if x is not None and y is not None:
-                    return {
-                        'image_embedding': image_embeddings,
-                        'text_embedding': text_embeddings
-                    }
-                elif x is not None:
+                if x is not None:
                     return {
                         'embedding': image_embeddings
-                    }
-                elif y is not None:
-                    return {
-                        'embedding': text_embeddings
                     }            
             return None
         return handler    
