@@ -1520,15 +1520,17 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            # "BAAI/bge-small-en-v1.5", 
-            "facebook/wav2vec2-large-960h-lv60-self",
-            # "laion/larger_clap_general",
+            "google-t5/t5-base",
+            # "distil-whisper/distil-large-v3",
+            # "openai/whisper-large-v3-turbo",
             # "MCG-NJU/videomae-base",
             # "microsoft/xclip-base-patch16-zero-shot",
-            # "google-t5/t5-base",
             # "MCG-NJU/videomae-large",
+            # "BAAI/bge-small-en-v1.5", 
+            # "laion/larger_clap_general",
+            # "facebook/wav2vec2-large-960h-lv60-self",
             # "openai/clip-vit-base-patch16",
-            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## not yet supported
+            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
             # "llava-hf/llava-v1.6-mistral-7b-hf",
             # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
             # "TIGER-Lab/Mantis-8B-siglip-llama3",
