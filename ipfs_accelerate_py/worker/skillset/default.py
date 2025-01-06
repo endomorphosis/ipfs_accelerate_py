@@ -12,126 +12,129 @@ import json
 
 class default:
     def __init__(self, resources=None, metadata=None):
+        self.resources = resources
+        self.metadata = metadata    
+        self.create_openvino_mlm_endpoint_handler = self.create_openvino_mlm_endpoint_handler
+        self.create_cuda_mlm_endpoint_handler = self.create_cuda_mlm_endpoint_handler
+        self.create_cpu_mlm_endpoint_handler = self.create_cpu_mlm_endpoint_handler
+        self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
-        self.create_endpoint_handler = self.create_endpoint_handler
-        self.create_openvino_endpoint_handler = self.create_openvino_endpoint_handler
-        self.metadata = metadata
-        self.resources = resources
-
-    def init(self):
+        self.init = self.init
+        self.__test__ = self.__test__
         return None
 
+    def init_cpu (self, model, device, cpu_label):
+        return None
+    
+    
     def init_cuda(self, model, device, cuda_label):
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = AutoProcessor.from_pretrained(model)
+        endpoint = None
         try:
             endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
-            try:
-                endpoint = AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
-            except Exception as e:
-                print(e)
-                pass
-        endpoint_handler = self.create_endpoint_handler(endpoint, cuda_label)
+            print(e)
+            pass
+        endpoint_handler = self.create_llm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
-
+        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+    
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
-        ov_count = 0
-        device = "openvino:" + str(ov_count)
-        openvino_label = "openvino:" + str(ov_count)
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True,  trust_remote_code=True)
-            model_type =  str(get_openvino_pipeline_type(model))
-            endpoint = pipeline(model_type, model = get_optimum_openvino_model(model, model_type), tokenizer=tokenizer)
-            endpoint_handler = self.create_openvino_endpoint_handler(model, openvino_label)
-            batch_size = 0
-        # elif self.hwtest["openvino"] == True:                            
-        except Exception as e:
-            try:
-                tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-                model = get_openvino_model(model, model_type, openvino_label)
-                endpoint_handler = lambda x: model({**tokenizer(x, 0, return_tensors='pt')})
-                batch_size = 0
-            except Exception as e:
-                print(e)
-                pass
-        ov_count = ov_count + 1  
+        endpoint = None
+        tokenizer = None
+        endpoint_handler = None
+        batch_size = 0                
+        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        endpoint = get_openvino_model(model, model_type, openvino_label)
+        endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
+        batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
-            
-    def create_openvino_endpoint_handler(self, endpoint_model, openvino_label, endpoint_handler=None, tokenizer=None ):
-        def handler(x, endpoint_handler=None):
-            if endpoint_handler is None:
-                return self.local_endpoints[endpoint_model][openvino_label](x)
-            else:
-                return endpoint_handler(x)
-        return handler
-
-    def create_endpoint_handler(self, endpoint_model, cuda_label, endpoint_handler=None, tokenizer=None ):
-        def handler(x, endpoint_handler=None):
-            if "eval" in dir(endpoint_handler):
-                endpoint_handler.eval()
+    
+    def create_llm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
+        def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+            # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
+            #       self.local_endpoints[endpoint_model][cuda_label].eval()
+            if "eval" in dir(local_cuda_endpoint):
+                local_cuda_endpoint.eval()
             else:
                 pass
             with torch.no_grad():
                 try:
                     torch.cuda.empty_cache()
-                    # Tokenize input with truncation and padding
-                    tokens = tokenizer(
-                        x, 
-                        return_tensors='pt', 
-                        padding=True, 
-                        truncation=True,
-                        max_length=endpoint_handler.config.max_position_embeddings
-                    )
+                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
-                    # Move tokens to the correct device
-                    input_ids = tokens['input_ids'].to(endpoint_handler.device)
-                    attention_mask = tokens['attention_mask'].to(endpoint_handler.device)
-                    
-                    # Run model inference
-                    outputs = endpoint_handler(
-                        input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        return_dict=True
-                    )
-                        
-                    # Process and prepare outputs
-                    if hasattr(outputs, 'last_hidden_state'):
-                        hidden_states = outputs.last_hidden_state.cpu().numpy()
-                        attention_mask_np = attention_mask.cpu().numpy()
-                        result = {
-                            'hidden_states': hidden_states,
-                            'attention_mask': attention_mask_np
-                        }
+                    if x is not None and type(x) == str:
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image"},
+                                    {"type": "text", "text": x},
+                                ],
+                            },
+                        ]
+                    elif type(x) == tuple:
+                        conversation = x
+                    elif type(x) == dict:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    elif type(x) == list:
+                        # conversation = x
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image"},
+                                    {"type": "text", "text": x},
+                                ],
+                            },
+                        ]
                     else:
-                        result = outputs.to('cpu').detach().numpy()
-
-                    # Cleanup GPU memory
-                    del tokens, input_ids, attention_mask, outputs
-                    if 'hidden_states' in locals(): del hidden_states
-                    if 'attention_mask_np' in locals(): del attention_mask_np
+                        raise Exception("Invalid input to vlm endpoint handler")
+                  
+                    prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
+                    result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    # Run model inference
                     torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    if 'tokens' in locals(): del tokens
-                    if 'input_ids' in locals(): del input_ids
-                    if 'attention_mask' in locals(): del attention_mask
-                    if 'outputs' in locals(): del outputs
-                    if 'hidden_states' in locals(): del hidden_states
-                    if 'attention_mask_np' in locals(): del attention_mask_np
                     torch.cuda.empty_cache()
                     raise e
         return handler
 
-    def get_model(self):
-        return self.model
+    def create_openvino_llm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+        def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+            chat = None
+            if y is not None and x is not None:
+                chat = x
+            elif x is not None:
+                if type(x) == tuple:
+                    chat, image_file = x
+                elif type(x) == list:
+                    chat = x[0]
+                    image_file = x[1]
+                elif type(x) == dict:
+                    chat = x["chat"]
+                    image_file = x["image"]
+                elif type(x) == str:
+                    chat = x
+                else:
+                    pass
 
-    def get_openvino_model(self):
-        return self.openvino_model
-
-    def get_tokenizer(self):
-        return self.tokenizer
+            pipeline_config = { "MAX_PROMPT_LEN": 1024, "MIN_RESPONSE_LEN": 512 ,  "NPUW_CACHE_DIR": ".npucache" }
+            results = openvino_endpoint_handler.generate(x, max_new_tokens=100, do_sample=False)
+            # prompt = openvino_endpoint_handler.apply_chat_template(chat, add_generation_prompt=True)
+            # inputs = openvino_endpoint_handler(text=prompt, return_tensors="pt")
+            # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
+            # output_ids = openvino_endpoint_handler.generate(
+            #     **inputs,
+            #     do_sample=False,
+            #     max_new_tokens=50,
+            #     streamer=streamer,
+            return results
+        return handler
