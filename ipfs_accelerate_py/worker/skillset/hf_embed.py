@@ -15,6 +15,7 @@ class hf_embed:
         self.metadata = metadata    
         self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
+        self.create_cpu_text_embedding_endpoint_handler = self.create_cpu_text_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -105,6 +106,23 @@ class hf_embed:
         endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model_name, tokenizer, openvino_label, model)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
+
+    def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, cpu_label, endpoint=None, tokenizer=None):
+        def handler(x, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint, tokenizer=tokenizer):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            with torch.no_grad():
+                try:
+                    tokens = tokenizer(x, return_tensors="pt")
+                    results =  endpoint(**tokens)
+                    average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+                    return average_pool_results
+                except Exception as e:
+                    print(e)
+                    pass
+        return handler
 
     def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, tokenizer,  openvino_label, endpoint=None):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=endpoint):

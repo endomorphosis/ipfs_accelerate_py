@@ -46,6 +46,7 @@ class ipfs_accelerate_py:
             self.resources["caches"] = {}
         if "tokenizer" not in list(self.resources.keys()):
             self.resources["tokenizer"] = {}
+        
         # if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
         #     try:
         #         from .test_ipfs_accelerate import test_ipfs_accelerate
