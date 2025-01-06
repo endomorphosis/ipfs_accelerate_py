@@ -35,6 +35,8 @@ from .skillset import hf_lm
 from .skillset import hf_clip
 from .skillset import hf_clap
 from .skillset import hf_wav2vec
+from .skillset import hf_t5
+from .skillset import hf_whisper
 
 try:
     from openvino_utils import openvino_utils
@@ -209,7 +211,27 @@ class worker_py:
         elif "hf_wav2vec" in globals():
             self.hf_wav2vec = hf_wav2vec(resources, metadata)
 
+        if "hf_t5" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
+            self.hf_t5 = hf_t5(resources, metadata)
+        elif "hf_t5" in list(self.resources.keys()):
+            self.hf_t5 = self.resources["hf_wav2vec"]
+        elif "hf_t5" in globals():
+            self.hf_t5 = hf_t5(resources, metadata)
 
+        if "hf_whisper" not in globals() and "hf_whisper" not in list(self.resources.keys()):
+            self.hf_whisper = hf_whisper(resources, metadata)
+        elif "hf_whisper" in list(self.resources.keys()):
+            self.hf_whisper = self.resources["hf_whisper"]
+        elif "hf_whisper" in globals():
+            self.hf_whisper = hf_whisper(resources, metadata)
+
+
+        self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_mlm_endpoint_handler
+        self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_mlm_endpoint_handler
+        self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_mlm_endpoint_handler
+        self.create_cuda_mlm_endpoint_handler = self.hf_t5.create_cuda_mlm_endpoint_handler
+        self.create_cpu_mlm_endpoint_handler = self.hf_t5.create_cpu_mlm_endpoint_handler
+        self.create_openvino_mlm_endpoint_handler = self.hf_t5.create_openvino_mlm_endpoint_handler
         self.create_openvino_audio_embedding_endpoint_handler = self.hf_clap.create_openvino_audio_embedding_endpoint_handler
         self.create_cuda_audio_embedding_endpoint_handler = self.hf_clap.create_cuda_audio_embedding_endpoint_handler
         self.create_cpu_audio_embedding_endpoint_handler = self.hf_clap.create_cpu_audio_embedding_endpoint_handler            
