@@ -225,7 +225,6 @@ class worker_py:
         elif "hf_whisper" in globals():
             self.hf_whisper = hf_whisper(resources, metadata)
 
-
         self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_mlm_endpoint_handler
         self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_mlm_endpoint_handler
         self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_mlm_endpoint_handler
