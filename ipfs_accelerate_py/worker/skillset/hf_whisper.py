@@ -15,7 +15,7 @@ import datetime
 import torch
 import asyncio
 
-class hf_whisper():
+class hf_whisper:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
@@ -197,6 +197,7 @@ class hf_whisper():
             #     streamer=streamer,
             return results
         return handler
+
 
     # 	# self.model = WhisperModel(resources['checkpoint'], device="cuda", compute_type="float16")
     # 	self.nlp = pysbd.Segmenter(language="en", clean=False)

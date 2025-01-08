@@ -23,10 +23,15 @@ class hf_t5:
         self.init = self.init
         self.__test__ = self.__test__
         return None
+    
+    def init(self):
+        return None
 
     def init_cpu (self, model, device, cpu_label):
         return None
     
+    def __test__(self):
+        return None
     
     def init_cuda(self, model, device, cuda_label):
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
