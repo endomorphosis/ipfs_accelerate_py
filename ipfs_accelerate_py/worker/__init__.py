@@ -12,6 +12,13 @@ from .skillset.hf_clip import hf_clip
 from .skillset.hf_clip import *
 from .skillset.hf_wav2vec import hf_wav2vec
 from .skillset.hf_wav2vec import *
+from .skillset.hf_t5 import hf_t5
+from .skillset.hf_t5 import *
+from .skillset.chat_format import chat_format
+from .skillset.chat_format import *
+from .skillset.hf_whisper import hf_whisper
+from .skillset.hf_whisper import *
 from .openvino_utils import *
-
+from .worker import worker_py
+from .worker import *
 import torch

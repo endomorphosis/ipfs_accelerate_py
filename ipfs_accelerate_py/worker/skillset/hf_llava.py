@@ -145,6 +145,8 @@ class hf_llava:
         self.create_openvino_vlm_endpoint_handler = self.create_openvino_vlm_endpoint_handler
         self.create_openvino_genai_vlm_endpoint_handler = self.create_openvino_genai_vlm_endpoint_handler
         self.create_optimum_vlm_endpoint_handler = self.create_optimum_vlm_endpoint_handler
+        self.create_cuda_vlm_endpoint_handler = self.create_cuda_vlm_endpoint_handler
+        self.create_cpu_vlm_endpoint_handler = self.create_cpu_vlm_endpoint_handler
         self.build_transform = build_transform
         self.load_image = load_image
         self.load_image_tensor = load_image_tensor
@@ -360,6 +362,117 @@ class hf_llava:
 
     
     def create_openvino_vlm_endpoint_handler(self, openvino_endpoint_handler, local_openvino_processor, endpoint_model, cuda_label):
+        def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+                try:
+                    if y.startswith("http") or y.startswith("https"):
+                        response = requests.get(y)
+                        image = Image.open(BytesIO(response.content)).convert("RGB")
+                    else:
+                        image = Image.open(y).convert("RGB")
+                    if x is not None and type(x) == str:
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": x},
+                                    {"type": "image"}
+                                ]
+                            }
+                        ]
+                    elif type(x) == tuple:
+                        conversation = x
+                    elif type(x) == dict:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    elif type(x) == list:
+                        # conversation = x
+
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": x},
+                                    {"type": "image"}
+                                ]
+                            }
+                        ]
+                        
+                    else:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    result = None
+                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
+                    prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                    inputs = local_openvino_processor(image, prompt, return_tensors="pt")
+
+                    output_ids = endpoint_model.generate(
+                        **inputs,
+                        do_sample=False,
+                        max_new_tokens=50,
+                        streamer=streamer,
+                    )
+                    outputs = local_openvino_processor.decode(output_ids[0], skip_special_tokens=True)
+                    # result = local_openvino_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    return outputs
+                except Exception as e:
+                    raise e
+        return handler
+
+    def create_cpu_vlm_endpoint_handler(self, openvino_endpoint_handler, local_openvino_processor, endpoint_model, cuda_label):
+        def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+                try:
+                    if y.startswith("http") or y.startswith("https"):
+                        response = requests.get(y)
+                        image = Image.open(BytesIO(response.content)).convert("RGB")
+                    else:
+                        image = Image.open(y).convert("RGB")
+                    if x is not None and type(x) == str:
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": x},
+                                    {"type": "image"}
+                                ]
+                            }
+                        ]
+                    elif type(x) == tuple:
+                        conversation = x
+                    elif type(x) == dict:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    elif type(x) == list:
+                        # conversation = x
+
+                        conversation = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": x},
+                                    {"type": "image"}
+                                ]
+                            }
+                        ]
+                        
+                    else:
+                        raise Exception("Invalid input to vlm endpoint handler")
+                    result = None
+                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
+                    prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                    inputs = local_openvino_processor(image, prompt, return_tensors="pt")
+
+                    output_ids = endpoint_model.generate(
+                        **inputs,
+                        do_sample=False,
+                        max_new_tokens=50,
+                        streamer=streamer,
+                    )
+                    outputs = local_openvino_processor.decode(output_ids[0], skip_special_tokens=True)
+                    # result = local_openvino_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                    return outputs
+                except Exception as e:
+                    raise e
+        return handler
+    
+    
+    def create_cuda_vlm_endpoint_handler(self, openvino_endpoint_handler, local_openvino_processor, endpoint_model, cuda_label):
         def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
                 try:
                     if y.startswith("http") or y.startswith("https"):

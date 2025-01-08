@@ -29,6 +29,12 @@ class hf_whisper:
         self.__test__ = self.__test__
         return None
 
+    def init(self):
+        return None
+    
+    def __test__(self):
+        return None
+
     def init_cpu (self, model, device, cpu_label):
         return None
     

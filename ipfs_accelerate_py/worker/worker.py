@@ -225,9 +225,9 @@ class worker_py:
         elif "hf_whisper" in globals():
             self.hf_whisper = hf_whisper(resources, metadata)
 
-        self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_mlm_endpoint_handler
-        self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_mlm_endpoint_handler
-        self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_mlm_endpoint_handler
+        self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
+        self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
+        self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_whisper_endpoint_handler
         self.create_cuda_mlm_endpoint_handler = self.hf_t5.create_cuda_mlm_endpoint_handler
         self.create_cpu_mlm_endpoint_handler = self.hf_t5.create_cpu_mlm_endpoint_handler
         self.create_openvino_mlm_endpoint_handler = self.hf_t5.create_openvino_mlm_endpoint_handler
@@ -239,28 +239,22 @@ class worker_py:
         self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
         self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
         self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
-        # self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
+        self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
         self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
-        # self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
+        self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
         self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
-        self.create_llm_endpoint_handler = self.hf_lm.create_llm_endpoint_handler
-        self.create_openvino_endpoint_handler = self.default.create_openvino_endpoint_handler
-        self.create_endpoint_handler = self.default.create_endpoint_handler
+        self.create_cpu_llm_endpoint_handler = self.hf_lm.create_cpu_llm_endpoint_handler
+        self.create_cuda_llm_endpoint_handler = self.hf_lm.create_cuda_llm_endpoint_handler        
+        self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
+        self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
+        self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
         self.get_openvino_model = self.openvino_utils.get_openvino_model
         self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
         self.get_model_type = self.openvino_utils.get_model_type
         self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
-        
-        
-        # if "hf_embed" not in globals() and "hf_embed" not in list(self.resources.keys()):
-        #     self.hf_embed = hf_embed
-        # elif "hf_embed" in list(self.resources.keys()):
-        #     self.hf_embed = self.resources["hf_embed"]
-        # elif "hf_embed" in globals():
-        #     self.hf_embed = hf_embed
         
         # if "should_abort" not in globals() and "should_abort" not in list(self.resources.keys()):
         #     self.should_abort = should_abort(resources, metadata)
@@ -626,9 +620,7 @@ class worker_py:
 
         resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types), "hwtest": self.hwtest}
         return resources    
-        
-export = worker_py
-    
+            
 # if __name__ == '__main__':
 #     # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
 #     resources = {}
