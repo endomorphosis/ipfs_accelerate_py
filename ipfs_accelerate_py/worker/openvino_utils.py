@@ -240,7 +240,7 @@ class openvino_utils:
                         except Exception as e:
                             print(e)
                             self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-                            ov_model = ov.Core.read_model(model_dst_path)
+                            ov_model = ov.Core.read_model(model_name, model_dst_path)
             
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
