@@ -225,8 +225,10 @@ class openvino_utils:
                 if model_type in mlm_model_types:
                     if hftokenizer is not None:
                         text = "Replace me by any text you'd like."
-                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
-                        results = hfmodel(**text_inputs)
+                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True).ipput_ids
+                        labels = "Das Haus ist wunderbar."
+                        labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
+                        results = hfmodel(input_ids=text_inputs, labels=labels).loss
                         hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel, example_input=text_inputs)
                         if not os.path.exists(model_dst_path):
@@ -268,6 +270,9 @@ class openvino_utils:
             elif model_type == 'wav2vec2' and model_task == 'feature-extraction':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
+            elif model_type == 't5' and model_task == 'feature-extraction':
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model) 
         return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
@@ -501,9 +506,6 @@ class openvino_utils:
         disable_stateful=False,
         disable_convert_tokenizer=False
         ):
-
-
-
         return None
     
     def openvino_cli_convert(
