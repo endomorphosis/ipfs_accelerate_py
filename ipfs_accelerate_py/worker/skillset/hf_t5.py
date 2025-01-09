@@ -8,6 +8,7 @@ from transformers import AutoConfig, AutoProcessor
 import sys
 import os
 import worker
+import time
 import asyncio
 
 class hf_t5:
@@ -30,7 +31,28 @@ class hf_t5:
     def init_cpu (self, model, device, cpu_label):
         return None
     
-    def __test__(self):
+
+    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
+        text1  = "The quick brown fox jumps over the lazy dog"
+        timestamp1 = time.time()
+        try:
+            test_batch = endpoint_handler(text1)
+        except Exception as e:
+            print(e)
+            pass
+        timestamp2 = time.time()
+        elapsed_time = timestamp2 - timestamp1
+        len_tokens = 1
+        tokens_per_second = len_tokens / elapsed_time
+        print(f"elapsed time: {elapsed_time}")
+        print(f"samples: {len_tokens}")
+        print(f"samples per second: {tokens_per_second}")
+        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        if "openvino" not in endpoint_label:
+            with torch.no_grad():
+                if "cuda" in dir(torch):
+                    torch.cuda.empty_cache()
+        print("hf_t5 test")
         return None
     
     def init_cuda(self, model, device, cuda_label):
