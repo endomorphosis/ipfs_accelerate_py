@@ -143,6 +143,7 @@ class openvino_utils:
         clip_model_types = ["clip"]
         clap_model_types = ["clap"]
         wav2vec_model_types = ["wav2vec2", "wav2vec"]
+        mlm_model_types = ["t5"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -216,6 +217,18 @@ class openvino_utils:
                         MAX_SEQ_LENGTH = 30480
                         hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
+                        if not os.path.exists(model_dst_path):
+                            os.mkdir(model_dst_path)
+                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
+                if model_type in mlm_model_types:
+                    if hftokenizer is not None:
+                        text = "Replace me by any text you'd like."
+                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+                        results = hfmodel(**text_inputs)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel, example_input=text_inputs)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
@@ -630,6 +643,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "wav2vec2":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "t5": 
+                    return_model_type = "text2text-generation-with-past"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -655,6 +670,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "clap":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "t5": 
+                    return_model_type = "text2text-generation-with-past"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -674,7 +691,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "wav2vec2":
                     return_model_type = "feature-extraction"
- 
+                elif config_model_type == "t5": 
+                    return_model_type = "text2text-generation-with-past" 
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 

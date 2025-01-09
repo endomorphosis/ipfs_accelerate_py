@@ -189,6 +189,7 @@ class hf_t5:
         return handler
 
     def create_openvino_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+        print('create_openvino_mlm_endpoint_handler')
         def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
             chat = None
             if y is not None and x is not None:
