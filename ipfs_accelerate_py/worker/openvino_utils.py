@@ -232,10 +232,16 @@ class openvino_utils:
                         labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
                         outputs = hfmodel(input_ids=text_inputs, decoder_input_ids=labels_inputs)
                         hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel, example_input=text_inputs)
-                        if not os.path.exists(model_dst_path):
-                            os.mkdir(model_dst_path)
-                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        try:
+                            ov_model = ov.convert_model(hfmodel)
+                            if not os.path.exists(model_dst_path):
+                                os.mkdir(model_dst_path)
+                            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        except Exception as e:
+                            print(e)
+                            self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                            ov_model = ov.Core.read_model(model_dst_path)
+            
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
             if ov_model == None:
