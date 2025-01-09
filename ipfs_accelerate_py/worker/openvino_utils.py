@@ -609,6 +609,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "wav2vec2":
                     return_model_type = "feature-extraction"
+                elif config_model_type == "t5":
+                    return_model_type = "text2text-generation-with-past"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type

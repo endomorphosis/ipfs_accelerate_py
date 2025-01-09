@@ -42,7 +42,7 @@ class hf_t5:
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_mlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_mlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
@@ -53,7 +53,7 @@ class hf_t5:
         endpoint_handler = None
         batch_size = 0                
         tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        endpoint = get_openvino_model(model, model_type, openvino_label)
+        endpoint = get_openvino_model(model, model_type)
         endpoint_handler = self.create_openvino_mlm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          

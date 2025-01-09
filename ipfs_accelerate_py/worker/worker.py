@@ -420,7 +420,8 @@ class worker_py:
             llm_model_types = ["qwen2", "llama"]
             text_embedding_types = ["bert"]
             wav2vec_types = ["wav2vec", "wav2vec2"]
-            custom_types = vlm_model_types + text_embedding_types + llm_model_types + clip_model_types + clap_model_types + wav2vec_types
+            mlm_types = ['t5']
+            custom_types = vlm_model_types + text_embedding_types + llm_model_types + clip_model_types + clap_model_types + wav2vec_types + mlm_types
             if model_type != "llama_cpp" and model_type not in custom_types:
                 # if cuda and gpus > 0:
                 #     if cuda_test and type(cuda_test) != ValueError:
@@ -596,7 +597,32 @@ class worker_py:
                                 self.openvino_cli_convert,
                             )
                             torch.cuda.empty_cache()
-
+            elif model_type in mlm_types:
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_t5.init_cuda( model, device, cuda_label)
+                            torch.cuda.empty_cache()
+                if local > 0 and cpus > 0:
+                    if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                        openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                        for openvino_endpoint in openvino_local_endpont_types:
+                            ov_count = openvino_endpoint.split(":")[1]
+                            openvino_label = "openvino:" + str(ov_count)
+                            device = "openvino:" + str(ov_count)
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_t5.init_openvino(
+                                model,
+                                model_type,
+                                device,
+                                openvino_label,
+                                self.get_optimum_openvino_model,
+                                self.get_openvino_model,
+                                self.get_openvino_pipeline_type,
+                                self.openvino_cli_convert,
+                            )
+                            torch.cuda.empty_cache()
 
         worker_endpoint_types = []
         worker_model_types = []

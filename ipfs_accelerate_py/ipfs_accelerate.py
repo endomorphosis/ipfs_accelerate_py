@@ -1111,6 +1111,7 @@ class ipfs_accelerate_py:
                 clip_model_types = ["clip"]
                 clap_model_types = ["clap"]
                 wav2vec_model_types = ["wav2vec", "wav2vec2"]
+                mlm_model_types = ["t5"]
                 test = None
                 if model_type in vlm_model_types:
                     from worker.skillset import hf_llava
@@ -1151,6 +1152,13 @@ class ipfs_accelerate_py:
                     from worker.skillset import hf_wav2vec
                     this_hf_wav2vec = hf_wav2vec(self.resources, self.metadata)
                     test = this_hf_wav2vec.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_wav2vec
+                    del this_hf_wav2vec
+                elif model_type in mlm_model_types:
+                    from worker.skillset import hf_t5
+                    this_hf_t5 = hf_t5(self.resources, self.metadata)
+                    test = this_hf_t5.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint[1]] = test
                     del hf_wav2vec
                     del this_hf_wav2vec
