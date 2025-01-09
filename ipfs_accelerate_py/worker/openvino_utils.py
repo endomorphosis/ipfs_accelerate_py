@@ -192,10 +192,9 @@ class openvino_utils:
                             return_tensors="pt", 
                             padding=True
                         )
-                        hfmodel.config.torchscript = True
-
                         processed_data = {**audio_inputs}
                         results = hfmodel(**processed_data)
+                        hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel, example_input=processed_data)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
@@ -229,8 +228,10 @@ class openvino_utils:
                         hfmodel = T5ForConditionalGeneration.from_pretrained(model_name)
                         text = "Replace me by any text you'd like."
                         text_inputs = hftokenizer(text, return_tensors="pt", padding=True).input_ids
+                        labels = "Das Haus ist wunderbar."
+                        labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
+                        outputs = hfmodel(input_ids=text_inputs, decoder_input_ids=labels_inputs)
                         hfmodel.config.torchscript = True
-                        output = hfmodel.generate(text_inputs)
                         ov_model = ov.convert_model(hfmodel, example_input=text_inputs)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
