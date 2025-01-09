@@ -7,7 +7,6 @@ from transformers import AutoConfig, AutoProcessor
 # from ipfs_transformers_py import AutoModel
 import sys
 import os
-import worker
 import time
 import asyncio
 

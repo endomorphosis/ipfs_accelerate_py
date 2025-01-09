@@ -172,7 +172,7 @@ class openvino_utils:
                             images = [image],
                             return_tensors="pt", 
                             padding=True
-                            )
+                        )
                         results = hfmodel(**processed_data)
                         hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
@@ -192,9 +192,10 @@ class openvino_utils:
                             return_tensors="pt", 
                             padding=True
                         )
+                        hfmodel.config.torchscript = True
+
                         processed_data = {**audio_inputs}
                         results = hfmodel(**processed_data)
-                        hfmodel.config.torchscript = True
                         ov_model = ov.convert_model(hfmodel, example_input=processed_data)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
@@ -224,12 +225,12 @@ class openvino_utils:
                         hfmodel = None
                 if model_type in mlm_model_types:
                     if hftokenizer is not None:
+                        from transformers import T5ForConditionalGeneration
+                        hfmodel = T5ForConditionalGeneration.from_pretrained(model_name)
                         text = "Replace me by any text you'd like."
-                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True).ipput_ids
-                        labels = "Das Haus ist wunderbar."
-                        labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
-                        results = hfmodel(input_ids=text_inputs, labels=labels).loss
+                        text_inputs = hftokenizer(text, return_tensors="pt", padding=True).input_ids
                         hfmodel.config.torchscript = True
+                        output = hfmodel.generate(text_inputs)
                         ov_model = ov.convert_model(hfmodel, example_input=text_inputs)
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
