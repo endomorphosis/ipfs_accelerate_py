@@ -239,8 +239,14 @@ class openvino_utils:
                             ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                         except Exception as e:
                             print(e)
+                            if os.path.exists(model_dst_path):
+                                os.remove(model_dst_path)
+                            if not os.path.exists(model_dst_path):
+                                os.mkdir(model_dst_path)
                             self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-                            ov_model = ov.Core.read_model(model_name, model_dst_path)
+                            core = ov.Core()
+                            ov_model = core.read_model(model_name, os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
+ 
             
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
@@ -278,8 +284,8 @@ class openvino_utils:
             elif model_type == 'wav2vec2' and model_task == 'feature-extraction':
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
-            elif model_type == 't5' and model_task == 'feature-extraction':
-                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            elif model_type == 't5' and model_task == 'text2text-generation-with-past':
+                ov_model = core.read_model(os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
                 ov_model = core.compile_model(ov_model) 
         return ov_model
 

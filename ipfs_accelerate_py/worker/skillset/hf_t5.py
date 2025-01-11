@@ -74,7 +74,7 @@ class hf_t5:
         endpoint_handler = None
         batch_size = 0                
         tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        endpoint = get_openvino_model(model, model_type, openvino_label)
+        endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_mlm_endpoint_handler( endpoint, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
@@ -156,15 +156,16 @@ class hf_t5:
 
     def create_openvino_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
         def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+            results = None
             chat = None
             if x is not None and x is not None:
                 chat = x
+            
             inputs = openvino_tokenizer(chat, return_tensors="pt")
-            # prompt = openvino_endpoint_handler.apply_chat_template(chat, add_generation_prompt=True)
-            outputs = openvino_endpoint_handler(**inputs)
-            results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+            outputs = openvino_endpoint_handler.generate(**inputs)
+            results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
             # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
-            return results
+            return outputs
         return handler
     
     # def __init__(self, resources, meta=None):

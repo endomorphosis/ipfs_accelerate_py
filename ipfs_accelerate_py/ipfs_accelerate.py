@@ -1160,8 +1160,8 @@ class ipfs_accelerate_py:
                     this_hf_t5 = hf_t5(self.resources, self.metadata)
                     test = this_hf_t5.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint[1]] = test
-                    del hf_wav2vec
-                    del this_hf_wav2vec
+                    del hf_t5
+                    del this_hf_t5
                 else:
                     test_results[endpoint[1]] = ValueError("Model type not found")
         return test_results
