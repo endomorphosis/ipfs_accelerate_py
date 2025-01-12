@@ -1112,6 +1112,7 @@ class ipfs_accelerate_py:
                 clap_model_types = ["clap"]
                 wav2vec_model_types = ["wav2vec", "wav2vec2"]
                 mlm_model_types = ["t5"]
+                whisper_model_types = ["whisper"]
                 test = None
                 if model_type in vlm_model_types:
                     from worker.skillset import hf_llava
@@ -1162,6 +1163,13 @@ class ipfs_accelerate_py:
                     test_results[endpoint[1]] = test
                     del hf_t5
                     del this_hf_t5
+                elif model_type in whisper_model_types:
+                    from worker.skillset import hf_whisper
+                    this_hf_whisper = hf_whisper(self.resources, self.metadata)
+                    test = this_hf_whisper.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_whisper
+                    del this_hf_whisper
                 else:
                     test_results[endpoint[1]] = ValueError("Model type not found")
         return test_results
@@ -1529,8 +1537,8 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            "google-t5/t5-base",
-            # "distil-whisper/distil-large-v3",
+            # "google-t5/t5-base",
+            "distil-whisper/distil-large-v3",
             # "openai/whisper-large-v3-turbo",
             # "MCG-NJU/videomae-base",
             # "microsoft/xclip-base-patch16-zero-shot",
@@ -1599,6 +1607,7 @@ if __name__ == "__main__":
             ["BAAI/bge-small-en-v1.5", "cpu", 32768],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cpu", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "cpu", 32768],
+            ["distil-whisper/distil-large-v3", "cpu", 32768],
             ["facebook/wav2vec2-large-960h-lv60-self", "cuda:0", 32768],
             ["google-t5/t5-base", "cuda:0", 32768],
             ["openai/whisper-large-v3-turbo", "cuda:0", 32768],
@@ -1640,8 +1649,9 @@ if __name__ == "__main__":
             ["laion/larger_clap_general", "cuda:1", 32768],
             ["openai/clip-vit-base-patch16", "cuda:1", 32768],
             ["BAAI/bge-small-en-v1.5", "cuda:1", 32768],
-            ["llava-hf/llava-v1.6-mistral-7b-hf", "cuda:1", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "cuda:1", 32768],
+            ["distil-whisper/distil-large-v3", "cuda:1", 32768],
+            ["distil-whisper/distil-large-v3", "openvino:0", 32768],
             ["google-t5/t5-base", "openvino:0", 32768],
             ["openai/whisper-large-v3-turbo", "openvino:0", 32768],
             ["MCG-NJU/videomae-base", "openvino:0", 32768],
@@ -1658,8 +1668,8 @@ if __name__ == "__main__":
             ["BAAI/bge-small-en-v1.5", "llama_cpp", 512],
             ["llava-hf/llava-v1.6-mistral-7b-hf", "llama_cpp", 8192],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "llama_cpp", 32768],
-            ["BAAI/bge-small-en-v1.5", "ipex", 512],
-            ["llava-hf/llava-v1.6-mistral-7b-hf", "ipex", 8192],
+            ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "ipex", 32768],
+            ["distil-whisper/distil-large-v3", "ipex", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "ipex", 32768],
         ],
         "openvino_endpoints": [],

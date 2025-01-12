@@ -144,6 +144,7 @@ class openvino_utils:
         clap_model_types = ["clap"]
         wav2vec_model_types = ["wav2vec2", "wav2vec"]
         mlm_model_types = ["t5"]
+        whisper_model_types = ["whisper"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -175,7 +176,7 @@ class openvino_utils:
                         )
                         results = hfmodel(**processed_data)
                         hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel ,  example_input=dict(processed_data))
+                        ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
                         if not os.path.exists(model_dst_path):
                             os.mkdir(model_dst_path)
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
@@ -246,8 +247,53 @@ class openvino_utils:
                             self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
                             core = ov.Core()
                             ov_model = core.read_model(model_name, os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
- 
             
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
+                if model_type in whisper_model_types:
+                    if hftokenizer is not None:
+                        from transformers import AutoModelForSpeechSeq2Seq
+                        _hfmodel = None
+                        try:
+                            _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+                        except Exception as e:
+                            print(e)
+                            try:
+                                _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_dst_path)
+                            except Exception as e:
+                                print(e)
+                                pass
+                        if _hfmodel is not None:
+                            hfmodel = _hfmodel  
+                        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+                        audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
+                        preprocessed_signal = None
+                        hfmodel.eval()
+                        preprocessed_signal = hfprocessor(
+                            audio_data,
+                            return_tensors="pt",
+                            padding="longest",
+                            sampling_rate=audio_sampling_rate,
+                        )
+                        audio_inputs = preprocessed_signal.input_features
+                        hfmodel.config.torchscript = True
+                        outputs = hfmodel.generate(audio_inputs)
+                        results = hfprocessor.batch_decode(outputs, skip_special_tokens=True)
+                        print(results)
+                        try:
+                            ov_model = ov.convert_model(hfmodel, example_input=audio_inputs)
+                            if not os.path.exists(model_dst_path):
+                                os.mkdir(model_dst_path)
+                            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        except Exception as e:
+                            print(e)
+                            if os.path.exists(model_dst_path):
+                                os.remove(model_dst_path)
+                            if not os.path.exists(model_dst_path):
+                                os.mkdir(model_dst_path)
+                            self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                            core = ov.Core()
+                            ov_model = core.read_model(model_name, os.path.join(model_dst_path))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
             if ov_model == None:
@@ -287,6 +333,9 @@ class openvino_utils:
             elif model_type == 't5' and model_task == 'text2text-generation-with-past':
                 ov_model = core.read_model(os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
                 ov_model = core.compile_model(ov_model) 
+            elif model_type == "whisper" and model_task == "automatic-speech-recognition":
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model)
         return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
@@ -640,6 +689,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "t5":
                     return_model_type = "text2text-generation-with-past"
+                elif config_model_type == "whisper":
+                    return_model_type = "automatic-speech-recognition"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -661,6 +712,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "t5": 
                     return_model_type = "text2text-generation-with-past"
+                elif config_model_type == "whisper":
+                    return_model_type = "automatic-speech-recognition"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -688,6 +741,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "t5": 
                     return_model_type = "text2text-generation-with-past"
+                elif config_model_type == "whisper":
+                    return_model_type = "automatic-speech-recognition"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -709,6 +764,8 @@ class openvino_utils:
                     return_model_type = "feature-extraction"
                 elif config_model_type == "t5": 
                     return_model_type = "text2text-generation-with-past" 
+                elif config_model_type == "whisper":
+                    return_model_type = "automatic-speech-recognition"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 
