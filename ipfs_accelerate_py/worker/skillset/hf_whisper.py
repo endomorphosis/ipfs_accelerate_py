@@ -14,6 +14,33 @@ from io import BytesIO
 import datetime
 import torch
 import asyncio
+import time
+import requests
+import librosa
+import soundfile as sf
+from numpy import ndarray, mean
+    
+def load_audio(audio_file):
+
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(io.BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return audio_data, samplerate
+
+def load_audio_16khz(audio_file):
+    audio_data, samplerate = load_audio(audio_file)
+    if samplerate != 16000:
+        ## convert to 16khz
+        audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
+    return audio_data, 16000
 
 class hf_whisper:
     def __init__(self, resources=None, metadata=None):
@@ -32,7 +59,28 @@ class hf_whisper:
     def init(self):
         return None
     
-    def __test__(self):
+    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
+        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+        audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
+        timestamp1 = time.time()
+        try:
+            test_batch = endpoint_handler(audio_data)
+        except Exception as e:
+            print(e)
+            pass
+        timestamp2 = time.time()
+        elapsed_time = timestamp2 - timestamp1
+        len_tokens = 1
+        tokens_per_second = len_tokens / elapsed_time
+        print(f"elapsed time: {elapsed_time}")
+        print(f"samples: {len_tokens}")
+        print(f"samples per second: {tokens_per_second}")
+        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
+        if "openvino" not in endpoint_label:
+            with torch.no_grad():
+                if "cuda" in dir(torch):
+                    torch.cuda.empty_cache()
+        print("hf_t5 test")
         return None
 
     def init_cpu (self, model, device, cpu_label):
@@ -58,7 +106,7 @@ class hf_whisper:
         tokenizer = None
         endpoint_handler = None
         batch_size = 0                
-        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        tokenizer =  AutoProcessor.from_pretrained(model, use_fast=True, trust_remote_code=True)
         endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_whisper_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
@@ -105,9 +153,27 @@ class hf_whisper:
         return handler
 
     def create_openvino_whisper_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
-        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
-            chat = None
-            results = None
+        def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+            if type(x) == str:
+                if os.path.exists (x):
+                    audio_data, audio_sampling_rate = load_audio_16khz(x)
+                pass
+            elif type(x) == ndarray:
+                audio_data = x
+                audio_sampling_rate = 16000
+                pass
+            preprocessed_signal = None
+            openvino_endpoint_handler.eval()
+            preprocessed_signal = openvino_tokenizer(
+                audio_data,
+                return_tensors="pt",
+                padding="longest",
+                sampling_rate=audio_sampling_rate,
+            )
+            audio_inputs = preprocessed_signal.input_features
+            openvino_endpoint_handler.config.torchscript = True
+            outputs = openvino_endpoint_handler.generate(audio_inputs)
+            results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True)
             return results
         return handler
 

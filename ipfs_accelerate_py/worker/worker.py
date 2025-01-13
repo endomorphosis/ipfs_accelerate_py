@@ -3,7 +3,6 @@ import sys
 import subprocess
 import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from test_ipfs_accelerate import test_ipfs_accelerate
 from PIL import Image
 import tempfile
 import torchvision.transforms as T

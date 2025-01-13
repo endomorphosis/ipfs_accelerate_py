@@ -84,7 +84,7 @@ class ipfs_accelerate_py:
                 from .ipfs_multiformats import ipfs_multiformats_py
             except:
                 from ipfs_multiformats import ipfs_multiformats_py
-            self.ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
+            self.ipfs_multiformats = ipfs_multiformats_py({}, metadata)
             resources["ipfs_multiformats"] = self.ipfs_multiformats
 
         # if "ipfs_transformers" not in globals():
@@ -537,7 +537,7 @@ class ipfs_accelerate_py:
                     if self.endpoint_status[endpoint] >= incoming_batch_size:
                         return endpoint
             return None
-        
+        resources
     async def request_openvino_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         batch_size = len(batch)
         if model in self.openvino_endpoints:

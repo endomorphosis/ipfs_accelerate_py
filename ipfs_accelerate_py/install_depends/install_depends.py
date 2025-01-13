@@ -16,7 +16,7 @@ class install_depends_py():
         self.install_results = {}
         self.test_hardware = self.test_hardware   
         if "test_ipfs_accelerate" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
-            import test_ipfs_accelerate
+            import test.test_ipfs_accelerate as test_ipfs_accelerate
             self.test_ipfs_accelerate = test_ipfs_accelerate.test_ipfs_accelerate(resources, metadata)
         elif "test_ipfs_accelerate" in list(self.resources.keys()): 
             self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
