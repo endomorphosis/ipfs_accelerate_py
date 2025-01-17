@@ -276,6 +276,10 @@ class openvino_utils:
                             sampling_rate=audio_sampling_rate,
                         )
                         audio_inputs = preprocessed_signal.input_features
+                        # Pad the input mel features to length 3000
+                        if audio_inputs.shape[-1] < 3000:
+                            pad_size = 3000 - audio_inputs.shape[-1]
+                            audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
                         hfmodel.config.torchscript = True
                         outputs = hfmodel.generate(audio_inputs)
                         results = hfprocessor.batch_decode(outputs, skip_special_tokens=True)

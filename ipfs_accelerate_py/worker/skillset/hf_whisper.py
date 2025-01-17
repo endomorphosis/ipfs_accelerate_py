@@ -107,7 +107,11 @@ class hf_whisper:
         endpoint_handler = None
         batch_size = 0                
         tokenizer =  AutoProcessor.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
+        try:
+            endpoint = get_openvino_model(model, model_type, openvino_label)
+        except Exception as e:
+            print(e)
+            endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_whisper_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
@@ -153,7 +157,7 @@ class hf_whisper:
         return handler
 
     def create_openvino_whisper_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
-        def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer):
             if type(x) == str:
                 if os.path.exists (x):
                     audio_data, audio_sampling_rate = load_audio_16khz(x)
@@ -167,16 +171,46 @@ class hf_whisper:
             preprocessed_signal = openvino_tokenizer(
                 audio_data,
                 return_tensors="pt",
-                padding="longest",
+                padding="max_length",
+                max_length=3000,
                 sampling_rate=audio_sampling_rate,
             )
+            # Pad the input mel features to length 3000
             audio_inputs = preprocessed_signal.input_features
+            if audio_inputs.shape[-1] < 3000:
+                pad_size = 3000 - audio_inputs.shape[-1]
+                audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
             openvino_endpoint_handler.config.torchscript = True
             outputs = openvino_endpoint_handler.generate(audio_inputs)
             results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True)
             return results
         return handler
 
+
+    # def create_openvino_whisper_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+    #     def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+    #         if type(x) == str:
+    #             if os.path.exists (x):
+    #                 audio_data, audio_sampling_rate = load_audio_16khz(x)
+    #             pass
+    #         elif type(x) == ndarray:
+    #             audio_data = x
+    #             audio_sampling_rate = 16000
+    #             pass
+    #         preprocessed_signal = None
+    #         openvino_endpoint_handler.eval()
+    #         preprocessed_signal = openvino_tokenizer(
+    #             audio_data,
+    #             return_tensors="pt",
+    #             padding="longest",
+    #             sampling_rate=audio_sampling_rate,
+    #         )
+    #         audio_inputs = preprocessed_signal.input_features
+    #         openvino_endpoint_handler.config.torchscript = True
+    #         outputs = openvino_endpoint_handler.generate(audio_inputs)
+    #         results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    #         return results
+    #     return handler
 
     # 	# self.model = WhisperModel(resources['checkpoint'], device="cuda", compute_type="float16")
     # 	self.nlp = pysbd.Segmenter(language="en", clean=False)

@@ -1538,8 +1538,8 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             # "google-t5/t5-base",
-            "distil-whisper/distil-large-v3",
-            # "openai/whisper-large-v3-turbo",
+            # "distil-whisper/distil-large-v3",
+            "openai/whisper-large-v3-turbo",
             # "MCG-NJU/videomae-base",
             # "microsoft/xclip-base-patch16-zero-shot",
             # "MCG-NJU/videomae-large",
