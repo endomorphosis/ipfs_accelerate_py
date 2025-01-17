@@ -1539,9 +1539,9 @@ if __name__ == "__main__":
         "models": [
             # "google-t5/t5-base",
             # "distil-whisper/distil-large-v3",
-            "openai/whisper-large-v3-turbo",
+            # "openai/whisper-large-v3-turbo",
+            "microsoft/xclip-base-patch16-zero-shot",
             # "MCG-NJU/videomae-base",
-            # "microsoft/xclip-base-patch16-zero-shot",
             # "MCG-NJU/videomae-large",
             # "BAAI/bge-small-en-v1.5", 
             # "laion/larger_clap_general",
