@@ -36,6 +36,7 @@ from .skillset import hf_clap
 from .skillset import hf_wav2vec
 from .skillset import hf_t5
 from .skillset import hf_whisper
+from .skillset import hf_xclip
 
 try:
     from openvino_utils import openvino_utils
@@ -223,6 +224,13 @@ class worker_py:
             self.hf_whisper = self.resources["hf_whisper"]
         elif "hf_whisper" in globals():
             self.hf_whisper = hf_whisper(resources, metadata)
+
+        if "hf_xclip" not in globals() and "hf_xclip" not in list(self.resources.keys()):
+            self.hf_xclip = hf_xclip(resources, metadata)
+        elif "hf_xclip" in list(self.resources.keys()):
+            self.hf_xclip = self.resources["hf_xclip"]
+        elif "hf_xclip" in globals():
+            self.hf_xclip = hf_xclip(resources, metadata)
 
         self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
         self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
@@ -422,7 +430,7 @@ class worker_py:
             wav2vec_types = ["wav2vec", "wav2vec2"]
             mlm_types = ['t5']
             whisper_types = ["whisper"]
-            custom_types = vlm_model_types + text_embedding_types + whisper_types + llm_model_types + clip_model_types + clap_model_types + wav2vec_types + mlm_types
+            custom_types = vlm_model_types + text_embedding_types + whisper_types + llm_model_types + clip_model_types + clap_model_types + wav2vec_types + mlm_types + xclip_model_types
             if model_type != "llama_cpp" and model_type not in custom_types:
                 # if cuda and gpus > 0:
                 #     if cuda_test and type(cuda_test) != ValueError:
@@ -656,7 +664,7 @@ class worker_py:
                         for gpu in range(gpus):
                             device = 'cuda:' + str(gpu)
                             cuda_label = device
-                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_whisper.init_cuda( model, device, cuda_label)
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.hf_xclip.init_cuda( model, device, cuda_label)
                             torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
@@ -665,7 +673,7 @@ class worker_py:
                             ov_count = openvino_endpoint.split(":")[1]
                             openvino_label = "openvino:" + str(ov_count)
                             device = "openvino:" + str(ov_count)
-                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_whisper.init_openvino(
+                            self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_xclip.init_openvino(
                                 model,
                                 model_type,
                                 device,

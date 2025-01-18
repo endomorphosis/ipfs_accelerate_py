@@ -1113,6 +1113,7 @@ class ipfs_accelerate_py:
                 wav2vec_model_types = ["wav2vec", "wav2vec2"]
                 mlm_model_types = ["t5"]
                 whisper_model_types = ["whisper"]
+                xclip_model_types = ['xclip']
                 test = None
                 if model_type in vlm_model_types:
                     from worker.skillset import hf_llava
@@ -1167,6 +1168,13 @@ class ipfs_accelerate_py:
                     from worker.skillset import hf_whisper
                     this_hf_whisper = hf_whisper(self.resources, self.metadata)
                     test = this_hf_whisper.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                    test_results[endpoint[1]] = test
+                    del hf_whisper
+                    del this_hf_whisper
+                elif model_type in xclip_model_types:
+                    from worker.skillset import hf_xclip
+                    this_hf_xclip = hf_xclip(self.resources, self.metadata)
+                    test = this_hf_xclip.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint[1]] = test
                     del hf_whisper
                     del this_hf_whisper

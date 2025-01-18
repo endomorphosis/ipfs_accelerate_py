@@ -8,6 +8,7 @@ from .hf_t5 import *
 from .default import *
 from .chat_format import *
 from .hf_whisper import *
+from .hf_xclip import *
 # from .llama_cpp_kit import *
 # from .openai_api import *
 # from .s3_kit import *

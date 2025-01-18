@@ -36,8 +36,9 @@ class hf_xclip:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
-        self.create_openvino_image_embedding_endpoint_handler = self.create_openvino_image_embedding_endpoint_handler
-        self.create_cuda_image_embedding_endpoint_handler = self.create_cuda_image_embedding_endpoint_handler
+        self.create_openvino_video_embedding_endpoint_handler = self.create_openvino_video_embedding_endpoint_handler
+        self.create_cuda_video_embedding_endpoint_handler = self.create_cuda_video_embedding_endpoint_handler
+        self.create_cpu_video_embedding_endpoint_handler = self.create_cpu_video_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -86,7 +87,7 @@ class hf_xclip:
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_video_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
@@ -148,11 +149,11 @@ class hf_xclip:
                 print(e)
                 pass
         endpoint = model
-        endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def create_cpu_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
+    def create_cpu_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
 
             # if method == 'clip_text':
@@ -181,7 +182,7 @@ class hf_xclip:
             return None
         return handler
     
-    def create_cuda_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
+    def create_cuda_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
         def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
             if "eval" in dir(endpoint):
                 endpoint.eval()
@@ -190,7 +191,7 @@ class hf_xclip:
             return None
         return handler
 
-    def create_openvino_image_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
+    def create_openvino_video_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             if y is not None:            
                 if type(y) == str:
@@ -200,7 +201,7 @@ class hf_xclip:
                     inputs = tokenizer(images=[load_image(image) for image in y], return_tensors='pt')
                 with no_grad():
                     image_features = endpoint_model(dict(inputs))
-                    image_embeddings = image_features["image_embeds"]
+                    video_embeddings = image_features["image_embeds"]
  
                 pass
             
@@ -216,12 +217,12 @@ class hf_xclip:
             if x is not None or y is not None:
                 if x is not None and y is not None:
                     return {
-                        'image_embedding': image_embeddings,
+                        'video_embedding': video_embeddings,
                         'text_embedding': text_embeddings
                     }
                 elif x is not None:
                     return {
-                        'embedding': image_embeddings
+                        'embedding': video_embeddings
                     }
                 elif y is not None:
                     return {
