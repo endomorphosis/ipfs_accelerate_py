@@ -15,6 +15,30 @@ import numpy as np
 import soundfile as sf
 import io
 import numpy as np
+import cv2
+
+
+def load_video(video_file):
+    video_data = None
+    video = None
+    if video_file.startswith("http") or video_file.startswith("https"):
+        response = requests.get(video_file)
+        video_data = np.frombuffer(response.content, np.uint8)
+        video = cv2.imdecode(video_data, cv2.IMREAD_COLOR)
+    else:
+        video = cv2.VideoCapture(video_file)
+    frames = []
+    while True:
+        if video is not None:
+            ret, frame = video.read()
+            if not ret:
+                video.release()
+                break
+            frames.append(frame)
+        elif video_data is not None:
+            frames.append(video_data)
+            break
+    return frames
     
 def load_audio(audio_file):
 
@@ -52,6 +76,22 @@ def load_audio_tensor(audio_file):
     audio_data = audio_data.astype(np.float32)
     
     return ov.Tensor(audio_data.reshape(1, -1))
+
+def load_video_tensor(video_file):
+    if isinstance(video_file, str) and (video_file.startswith("http") or video_file.startswith("https")):
+        response = requests.get(video_file)
+        video_data = np.frombuffer(response.content, np.uint8)
+        video = cv2.imdecode(video_data, cv2.IMREAD_COLOR)
+    else:
+        video = cv2.VideoCapture(video_file)
+    frames = []
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            break
+        frames.append(frame)
+    video.release()
+    return ov.Tensor(np.array(frames))
 
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
@@ -145,6 +185,7 @@ class openvino_utils:
         wav2vec_model_types = ["wav2vec2", "wav2vec"]
         mlm_model_types = ["t5"]
         whisper_model_types = ["whisper"]
+        xclip_model_types = ["xclip"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -300,6 +341,53 @@ class openvino_utils:
                             ov_model = core.read_model(model_name, os.path.join(model_dst_path))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
+                if model_type in xclip_model_types:
+                    if hfprocessor is not None:
+                        text = "Replace me by any text you'd like."
+                        ##xclip processor
+                        video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+                        video = cv2.VideoCapture(video_url)
+                        frames = []
+                        batch_size = 16
+                        while True:
+                            ret, frame = video.read()
+                            if not ret:
+                                break
+                            frames.append(torch.tensor(frame))
+                            if len(frames) == batch_size:
+                                video_tensor = torch.stack(frames)
+                                if video_tensor.dim() == 4:
+                                    video_tensor = video_tensor.permute(0, 3, 1, 2)
+                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
+                                video_tensor = torch.nn.functional.interpolate(video_tensor, size=(224, 224))  # Resize frames to 224x224
+                                processed_data = hfprocessor(
+                                    text = "Replace me by any text you'd like.",
+                                    videos = video_tensor,
+                                    return_tensors="pt", 
+                                    padding=True
+                                )
+                                results = hfmodel(**processed_data)
+                                frames = []
+                        if frames:
+                            video_tensor = torch.stack(frames)
+                            if video_tensor.dim() == 4:
+                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
+                                video_tensor = torch.nn.functional.interpolate(video_tensor, size=(224, 224))  # Resize frames to 224x224
+                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
+                                processed_data = hfprocessor(
+                                    text = "Replace me by any text you'd like.",
+                                    videos = video_tensor,
+                                    return_tensors="pt", 
+                                    padding=True
+                                )
+                                results = hfmodel(**processed_data)
+                        hfmodel.config.torchscript = True
+                        ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+                        if not os.path.exists(model_dst_path):
+                            os.mkdir(model_dst_path)
+                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                        ov_model = ov.compile_model(ov_model)
+                        hfmodel = None
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
@@ -340,7 +428,10 @@ class openvino_utils:
             elif model_type == "whisper" and model_task == "automatic-speech-recognition":
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
-        return ov_model
+            if model_type == "xclip" and model_task == 'feature-extraction':
+                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = core.compile_model(ov_model)
+            return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
         architecture = None
@@ -695,6 +786,8 @@ class openvino_utils:
                     return_model_type = "text2text-generation-with-past"
                 elif config_model_type == "whisper":
                     return_model_type = "automatic-speech-recognition"
+                elif config_model_type == "xclip":
+                    return_model_type = "feature-extraction"
                 pass
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -718,6 +811,8 @@ class openvino_utils:
                     return_model_type = "text2text-generation-with-past"
                 elif config_model_type == "whisper":
                     return_model_type = "automatic-speech-recognition"
+                elif config_model_type == "xclip":
+                    return_model_type = "feature-extraction"
                 pass            
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type         
@@ -747,6 +842,8 @@ class openvino_utils:
                     return_model_type = "text2text-generation-with-past"
                 elif config_model_type == "whisper":
                     return_model_type = "automatic-speech-recognition"
+                elif config_model_type == "xclip":
+                    return_model_type = "feature-extraction"
                 pass            
             elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
                 config_model_type = config_model_type if config_model_type is not None else model_type
@@ -770,6 +867,8 @@ class openvino_utils:
                     return_model_type = "text2text-generation-with-past" 
                 elif config_model_type == "whisper":
                     return_model_type = "automatic-speech-recognition"
+                elif config_model_type == "xclip":
+                    return_model_type = "feature-extraction"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 

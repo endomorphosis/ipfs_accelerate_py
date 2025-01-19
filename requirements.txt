@@ -36,3 +36,4 @@ open_clip_torch
 librosa
 pysbd
 ffmpeg-python
+opencv-python
