@@ -16,6 +16,16 @@ import soundfile as sf
 import io
 import numpy as np
 import cv2
+from decord import VideoReader, cpu
+
+
+def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
+    converted_len = int(clip_len * frame_sample_rate)
+    end_idx = np.random.randint(converted_len, seg_len)
+    start_idx = end_idx - converted_len
+    indices = np.linspace(start_idx, end_idx, num=clip_len)
+    indices = np.clip(indices, start_idx, end_idx - 1).astype(np.int64)
+    return indices
 
 
 def load_video(video_file):
@@ -346,48 +356,29 @@ class openvino_utils:
                         text = "Replace me by any text you'd like."
                         ##xclip processor
                         video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-                        video = cv2.VideoCapture(video_url)
-                        frames = []
-                        batch_size = 16
-                        while True:
-                            ret, frame = video.read()
-                            if not ret:
-                                break
-                            frames.append(torch.tensor(frame))
-                            if len(frames) == batch_size:
-                                video_tensor = torch.stack(frames)
-                                if video_tensor.dim() == 4:
-                                    video_tensor = video_tensor.permute(0, 3, 1, 2)
-                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
-                                video_tensor = torch.nn.functional.interpolate(video_tensor, size=(224, 224))  # Resize frames to 224x224
-                                processed_data = hfprocessor(
-                                    text = "Replace me by any text you'd like.",
-                                    videos = video_tensor,
-                                    return_tensors="pt", 
-                                    padding=True
-                                )
-                                results = hfmodel(**processed_data)
-                                frames = []
-                        if frames:
-                            video_tensor = torch.stack(frames)
-                            if video_tensor.dim() == 4:
-                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
-                                video_tensor = torch.nn.functional.interpolate(video_tensor, size=(224, 224))  # Resize frames to 224x224
-                                video_tensor = video_tensor.unsqueeze(0)  # Ensure batch dimension
-                                processed_data = hfprocessor(
-                                    text = "Replace me by any text you'd like.",
-                                    videos = video_tensor,
-                                    return_tensors="pt", 
-                                    padding=True
-                                )
-                                results = hfmodel(**processed_data)
-                        hfmodel.config.torchscript = True
-                        ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
-                        if not os.path.exists(model_dst_path):
-                            os.mkdir(model_dst_path)
-                        ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                        ov_model = ov.compile_model(ov_model)
-                        hfmodel = None
+                        np.random.seed(0)
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+                            f.write(requests.get(video_url).content)
+                            f.flush()
+                            videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
+                            videoreader.seek(0)
+                            indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+                            video = videoreader.get_batch(indices).asnumpy()
+                            processed_data = hfprocessor(
+                                text=text,
+                                videos=list(video),
+                                return_tensors="pt",
+                                padding=True,
+                            )
+                            results = hfmodel(**processed_data)
+                            hfmodel.config.torchscript = True
+                            ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+                            if not os.path.exists(model_dst_path):
+                                os.mkdir(model_dst_path)
+                            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                            ov_model = ov.compile_model(ov_model)
+                            hfmodel = None
             if ov_model == None:
                 try:
                     # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
@@ -754,7 +745,6 @@ class openvino_utils:
     
     
     def get_openvino_pipeline_type(self, model_name, model_type=None):
-        model_mapping_list = ["text-classification", "token-classification", "question-answering", "audio-classification", "image-classification", "feature-extraction", "fill-mask", "text-generation-with-past", "text2text-generation-with-past", "automatic-speech-recognition", "image-to-text"]
         model_mapping_list = ['image-text-to-text', 'fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         return_model_type = None
         config_model_type = None

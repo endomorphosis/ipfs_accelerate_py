@@ -37,3 +37,4 @@ librosa
 pysbd
 ffmpeg-python
 opencv-python
+decord

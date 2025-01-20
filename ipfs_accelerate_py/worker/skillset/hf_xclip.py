@@ -13,6 +13,45 @@ from io import BytesIO
 import numpy as np
 import os
 import openvino as ov
+from decord import VideoReader, cpu
+
+    # video = cv2.VideoCapture(video_url)
+    # frames = []
+    # batch_size = 16
+    # while True:
+    #     ret, frame = video.read()
+    #     if not ret:
+    #         break
+    #     frame = cv2.resize(frame, (224, 224))
+    #     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
+    #     frame = frame.astype(np.float32) / 255.0  # Normalize to [0, 1]
+    #     frame = np.transpose(frame, (2, 0, 1))  # Convert shape to (C, H, W)
+    #     frame_tensor = torch.from_numpy(frame)  # Convert numpy array to tensor
+    #     frames.append(frame_tensor)
+    #     if len(frames) == batch_size:
+    #         break
+    # video.release()
+    # if frames:
+    #     video_tensor = torch.stack(frames)  # Keep 4D input
+    #     video_tensor = video_tensor.unsqueeze(0)  # shape: [1, 16, 3, 224, 224]
+
+np.random.seed(0)
+
+def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
+    converted_len = int(clip_len * frame_sample_rate)
+    end_idx = np.random.randint(converted_len, seg_len)
+    start_idx = end_idx - converted_len
+    indices = np.linspace(start_idx, end_idx, num=clip_len)
+    indices = np.clip(indices, start_idx, end_idx - 1).astype(np.int64)
+    return indices
+
+# videoreader = VideoReader(file_path, num_threads=1, ctx=cpu(0))
+
+# sample 32 frames
+# videoreader.seek(0)
+# indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+# video = videoreader.get_batch(indices).asnumpy()
+     
 
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
@@ -124,13 +163,13 @@ class hf_xclip:
             # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
         try:
-            tokenizer =  CLIPProcessor.from_pretrained(
+            tokenizer =  AutoProcessor.from_pretrained(
                 model
             )
         except Exception as e:
             print(e)
             try:
-                tokenizer =  CLIPProcessor.from_pretrained(
+                tokenizer =  AutoProcessor.from_pretrained(
                     model_src_path
                 )
             except Exception as e:
