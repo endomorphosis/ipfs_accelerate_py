@@ -91,10 +91,10 @@ class hf_xclip:
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
-        image_1 = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+        video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
         timestamp1 = time.time()
         try:
-            test_batch = endpoint_handler(sentence_1, image_1)
+            test_batch = endpoint_handler(sentence_1, video_url)
         except Exception as e:
             print(e)
             pass
@@ -110,7 +110,7 @@ class hf_xclip:
             with torch.no_grad():
                 if "cuda" in dir(torch):
                     torch.cuda.empty_cache()
-        print("hf_llava test")
+        print("hf_xclip test")
         return None
     
     def init_cpu(self, model, device, cpu_label):
@@ -238,7 +238,7 @@ class hf_xclip:
             videoreader = None
             if y is not None:            
                 if type(y) == str:
-                    if os.path.exist(y):
+                    if os.path.exists(y):
                         videoreader = VideoReader(y, num_threads=1, ctx=cpu(0))
                     elif "http" in y:
                         with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
@@ -249,12 +249,15 @@ class hf_xclip:
                     videoreader.seek(0)
                     indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
                     video = videoreader.get_batch(indices).asnumpy()
-
                 pass
             
             if x is not None:
                 if type(x) == str:
                     text = x
+                else:
+                    text = ""
+            else:
+                text = ""
             
             processed_data = tokenizer(
                 text=text,
@@ -262,11 +265,18 @@ class hf_xclip:
                 return_tensors="pt",
                 padding=True,
             )
-            results = endpoint_model(**processed_data)
+
+            new_processed_data = {
+                'input_ids': processed_data["input_ids"],
+                'attention_mask': processed_data["attention_mask"],
+                'pixel_values': processed_data["pixel_values"]
+            }
+
+            inference_results = endpoint_model(dict(new_processed_data))
+            results_list = list(inference_results.values())
             
-            video_embeddings = results['video_embedding']
-            text_embeddings = results['text_embedding']
-                        
+            text_embeddings = results_list[3]
+            video_embeddings = results_list[5]
             if x is not None or y is not None:
                 if x is not None and y is not None:
                     return {
