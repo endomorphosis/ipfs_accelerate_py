@@ -1176,8 +1176,8 @@ class ipfs_accelerate_py:
                     this_hf_xclip = hf_xclip(self.resources, self.metadata)
                     test = this_hf_xclip.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint[1]] = test
-                    del hf_whisper
-                    del this_hf_whisper
+                    del hf_xclip
+                    del this_hf_xclip
                 else:
                     test_results[endpoint[1]] = ValueError("Model type not found")
         return test_results

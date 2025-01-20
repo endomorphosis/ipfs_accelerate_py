@@ -14,6 +14,7 @@ import numpy as np
 import os
 import openvino as ov
 from decord import VideoReader, cpu
+import tempfile
 
     # video = cv2.VideoCapture(video_url)
     # frames = []
@@ -232,27 +233,40 @@ class hf_xclip:
 
     def create_openvino_video_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+            np.random.seed(0)                       
+            
+            videoreader = None
             if y is not None:            
                 if type(y) == str:
-                    image = load_image(y)
-                    inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
-                elif type(y) == list:
-                    inputs = tokenizer(images=[load_image(image) for image in y], return_tensors='pt')
-                with no_grad():
-                    image_features = endpoint_model(dict(inputs))
-                    video_embeddings = image_features["image_embeds"]
- 
+                    if os.path.exist(y):
+                        videoreader = VideoReader(y, num_threads=1, ctx=cpu(0))
+                    elif "http" in y:
+                        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+                            f.write(requests.get(y).content)
+                            f.flush()
+                            videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
+                if videoreader is not None:
+                    videoreader.seek(0)
+                    indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+                    video = videoreader.get_batch(indices).asnumpy()
+
                 pass
             
             if x is not None:
                 if type(x) == str:
-                    inputs = tokenizer(text=y, return_tensors='pt')
-                elif type(x) == list:
-                    inputs = tokenizer(text=[text for text in x], return_tensors='pt')
-                with no_grad():
-                    text_features = endpoint_model(dict(inputs))
-                    text_embeddings = text_features["last_hidden_state"] 
+                    text = x
             
+            processed_data = tokenizer(
+                text=text,
+                videos=list(video),
+                return_tensors="pt",
+                padding=True,
+            )
+            results = endpoint_model(**processed_data)
+            
+            video_embeddings = results['video_embedding']
+            text_embeddings = results['text_embedding']
+                        
             if x is not None or y is not None:
                 if x is not None and y is not None:
                     return {
