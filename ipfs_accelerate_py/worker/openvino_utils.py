@@ -754,8 +754,10 @@ class openvino_utils:
                 config_model_type = config.__class__.model_type
             except Exception as e:
                 config_model_type = None
+                                
             if config_model_type is None:
                 config_model_type = config_model_type if config_model_type is not None else model_type
+            if config_model_type is not None:
                 if config_model_type == "bert":
                     return_model_type = "feature-extraction"
                 elif config_model_type == "llava":
@@ -779,86 +781,6 @@ class openvino_utils:
                 elif config_model_type == "xclip":
                     return_model_type = "feature-extraction"
                 pass
-            elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
-                config_model_type = config_model_type if config_model_type is not None else model_type
-                if config_model_type == "bert":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "llava":
-                    return_model_type = "image-text-to-text"
-                elif config_model_type == "llava_next":
-                    return_model_type = "image-text-to-text"
-                elif config_model_type == "qwen2":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "llama":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "clip":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "clap":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "wav2vec2":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "t5": 
-                    return_model_type = "text2text-generation-with-past"
-                elif config_model_type == "whisper":
-                    return_model_type = "automatic-speech-recognition"
-                elif config_model_type == "xclip":
-                    return_model_type = "feature-extraction"
-                pass            
-            elif config_model_type in model_mapping_list:
-                return_model_type = config_model_type         
-        elif model_type is None:
-            try:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                config_model_type = config.__class__.model_type
-            except Exception as e:
-                config_model_type = None
-            if config_model_type is None:
-                config_model_type = config_model_type if config_model_type is not None else model_type
-                if config_model_type == "bert":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "llava":
-                    return_model_type = "image-text-to-text"
-                elif config_model_type == "llava_next":
-                    return_model_type = "image-text-to-text"
-                elif config_model_type == "qwen2":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "llama":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "clip":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "clap":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "t5": 
-                    return_model_type = "text2text-generation-with-past"
-                elif config_model_type == "whisper":
-                    return_model_type = "automatic-speech-recognition"
-                elif config_model_type == "xclip":
-                    return_model_type = "feature-extraction"
-                pass            
-            elif config_model_type not in model_mapping_list and model_type not in model_mapping_list:
-                config_model_type = config_model_type if config_model_type is not None else model_type
-                if config_model_type == "bert":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "llava":
-                    return_model_type = "image-text-to-text"            
-                elif config_model_type == "llava_next":
-                    return_model_type = "image-text-to-text"
-                elif config_model_type == "qwen2":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "llama":
-                    return_model_type = "text-generation-with-past"
-                elif config_model_type == "clip":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "clap":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "wav2vec2":
-                    return_model_type = "feature-extraction"
-                elif config_model_type == "t5": 
-                    return_model_type = "text2text-generation-with-past" 
-                elif config_model_type == "whisper":
-                    return_model_type = "automatic-speech-recognition"
-                elif config_model_type == "xclip":
-                    return_model_type = "feature-extraction"
             elif config_model_type in model_mapping_list:
                 return_model_type = config_model_type   
 
