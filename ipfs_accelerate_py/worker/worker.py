@@ -14,7 +14,6 @@ import optimum
 import torch 
 import asyncio
 import openvino as ov
-from optimum.intel.openvino import OVModelForVisualCausalLM
 import platform
 from io import BytesIO
 import os
