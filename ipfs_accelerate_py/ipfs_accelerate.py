@@ -1483,10 +1483,10 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            # "google-t5/t5-base",
+            "google-t5/t5-base",
             # "distil-whisper/distil-large-v3",
             # "openai/whisper-large-v3-turbo",
-            "microsoft/xclip-base-patch16-zero-shot",
+            # "microsoft/xclip-base-patch16-zero-shot",
             # "MCG-NJU/videomae-base",
             # "MCG-NJU/videomae-large",
             # "BAAI/bge-small-en-v1.5", 
