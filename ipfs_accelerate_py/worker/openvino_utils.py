@@ -131,7 +131,7 @@ class openvino_utils:
         self.get_openvino_genai_pipeline = self.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.get_optimum_openvino_model
         self.get_model_type = self.get_model_type
-        self.init = self.init
+        self.init()
         self.get_openvino_model = self.get_openvino_model
         return None
     
@@ -189,13 +189,16 @@ class openvino_utils:
         hftokenizer = None
         hfprocessor = None
 
-        vlm_model_types = ["llava", "llava_next"]
-        clip_model_types = ["clip"]
-        clap_model_types = ["clap"]
-        wav2vec_model_types = ["wav2vec2", "wav2vec"]
-        mlm_model_types = ["t5"]
-        whisper_model_types = ["whisper"]
-        xclip_model_types = ["xclip"]
+        # vlm_model_types = ["llava", "llava_next"]
+        # clip_model_types = ["clip"]
+        # clap_model_types = ["clap"]
+        # wav2vec2_model_types = ["wav2vec2"]
+        # mlm_model_types = ["t5"]
+        # whisper_model_types = ["whisper"]
+        # xclip_model_types = ["xclip"]
+        genai_model_types = ["llava", "llava_next"]
+        optimum_model_types = []
+        openvino_model_types = ["llava_next", "llava", "wav2vec2", "t5", "whisper", "xclip", "clip", "clap", "bert"]
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -212,8 +215,26 @@ class openvino_utils:
             except Exception as e:
                 print(e)
                 hfmodel = None
-            
+            ov_model = None
             if hfmodel is not None and "config" in list(dir(hfmodel)):
+                if ov_model is None and  model_type in genai_model_types:
+                    if hfprocessor is not None:
+                        ov_model = ''
+                        hf_model = None
+                if ov_model is None and model_type in openvino_model_types:
+                    if hfprocessor is not None:
+                        method_name = "hf_" + model_type
+                        method = getattr(self, method_name, None)
+                        if method:
+                            ov_model = method(hfmodel, hfprocessor)
+                        else:
+                            ov_model = ''
+                        hf_model = None
+                if  ov_model is None and model_type in optimum_model_types:
+                    if hfprocessor is not None:
+                        ov_model = ''
+                        hf_model = None                    
+            if hf_model is None and "config" in list(dir(hfmodel)):
                 if model_type in clip_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
@@ -253,7 +274,7 @@ class openvino_utils:
                         ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                         ov_model = ov.compile_model(ov_model)
                         hfmodel = None
-                if model_type in wav2vec_model_types:
+                if model_type in wav2vec2_model_types:
                     if hfprocessor is not None:
                         text = "Replace me by any text you'd like."
                         audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
@@ -404,22 +425,13 @@ class openvino_utils:
                 model_type = config.model_type
 
         if os.path.exists(model_dst_path):
-            if model_type == 'clip' and model_task == 'feature-extraction':
-                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                ov_model = core.compile_model(ov_model)
-            elif model_type == 'clap' and model_task == 'feature-extraction':
-                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                ov_model = core.compile_model(ov_model)
-            elif model_type == 'wav2vec2' and model_task == 'feature-extraction':
-                ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                ov_model = core.compile_model(ov_model)
-            elif model_type == 't5' and model_task == 'text2text-generation-with-past':
+            if model_type == 't5' and model_task == 'text2text-generation-with-past':
                 ov_model = core.read_model(os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
                 ov_model = core.compile_model(ov_model) 
             elif model_type == "whisper" and model_task == "automatic-speech-recognition":
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
-            if model_type == "xclip" and model_task == 'feature-extraction':
+            else:
                 ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = core.compile_model(ov_model)
             return ov_model
