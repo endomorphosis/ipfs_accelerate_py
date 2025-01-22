@@ -188,17 +188,10 @@ class openvino_utils:
         hfmodel = None
         hftokenizer = None
         hfprocessor = None
-
-        # vlm_model_types = ["llava", "llava_next"]
-        # clip_model_types = ["clip"]
-        # clap_model_types = ["clap"]
-        # wav2vec2_model_types = ["wav2vec2"]
-        # mlm_model_types = ["t5"]
-        # whisper_model_types = ["whisper"]
-        # xclip_model_types = ["xclip"]
         genai_model_types = ["llava", "llava_next"]
         optimum_model_types = []
         openvino_model_types = ["llava_next", "llava", "wav2vec2", "t5", "whisper", "xclip", "clip", "clap", "bert"]
+        method_name = "hf_" + model_type
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
                 hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -223,12 +216,12 @@ class openvino_utils:
                         hf_model = None
                 if ov_model is None and model_type in openvino_model_types:
                     if hfprocessor is not None:
-                        method_name = "hf_" + model_type
-                        method = getattr(self, method_name, None)
-                        if method:
-                            ov_model = method(hfmodel, hfprocessor)
-                        else:
-                            ov_model = ''
+                        module = __import__('worker.skillset', fromlist=[method_name])
+                        this_method = getattr(module, method_name)
+                        this_hf = this_method(self.resources, self.metadata)
+                        convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                        ov_model = core.read_model(model_name, model_dst_path)
+                        ov_model = core.compile_model(ov_model)
                         hf_model = None
                 if  ov_model is None and model_type in optimum_model_types:
                     if hfprocessor is not None:

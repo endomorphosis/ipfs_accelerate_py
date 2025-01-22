@@ -82,12 +82,16 @@ class hf_xclip:
         self.create_cpu_video_embedding_endpoint_handler = self.create_cpu_video_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
+        self.init_qualcomm = self.init_qualcomm
         self.init_openvino = self.init_openvino
         self.init = self.init
         self.__test__ = self.__test__
         return None
 
     def init(self):
+        return None
+    
+    def init_qualcomm(self, model, device, qualcomm_label):
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -205,7 +209,20 @@ class hf_xclip:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def openvino_skill_convert(hf_model, hfprocessor, model_name, model_dst_path, task, weight_format):
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        from decord import VideoReader, cpu
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+    
+        if hfprocessor is None:
+            hfprocessor = AutoProcessor.from_pretrained(model_name)
+        
         if hfprocessor is not None:
             text = "Replace me by any text you'd like."
             ##xclip processor
@@ -233,30 +250,22 @@ class hf_xclip:
                 ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
                 ov_model = ov.compile_model(ov_model)
                 hfmodel = None
-        return None
+                hfprocessor = None
+        return ov_model
     
     def create_cpu_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
 
-            # if method == 'clip_text':
-            #         inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            return None
+        return handler
+    
+    def create_qualcomm_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
+        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
 
-            #         with no_grad():
-            #             text_features = self.model.get_text_features(**inputs)
-
-            #         return {
-            #             'embedding': text_features[0].cpu().numpy().tolist()
-            #         }
-                
-            #     elif method == 'clip_image':
-            #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             image_features  = self.model.get_image_features(**inputs)
-
-            #         return {
-            #             'embedding': image_features[0].cpu().numpy().tolist()
-            #         }
             if "eval" in dir(endpoint):
                 endpoint.eval()
             else:
@@ -335,3 +344,48 @@ class hf_xclip:
                     }            
             return None
         return handler
+
+
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        from decord import VideoReader, cpu
+        import tempfile
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+    
+        if hfprocessor is None:
+            hfprocessor = AutoProcessor.from_pretrained(model_name)
+
+        if hfprocessor is not None:
+            text = "Replace me by any text you'd like."
+            ##xclip processor
+            video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+            np.random.seed(0)
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+                f.write(requests.get(video_url).content)
+                f.flush()
+                videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
+                videoreader.seek(0)
+                indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+                video = videoreader.get_batch(indices).asnumpy()
+                processed_data = hfprocessor(
+                    text=text,
+                    videos=list(video),
+                    return_tensors="pt",
+                    padding=True,
+                )
+                results = hfmodel(**processed_data)
+                hfmodel.config.torchscript = True
+                ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = ov.compile_model(ov_model)
+                hfmodel = None
+        return ov_model

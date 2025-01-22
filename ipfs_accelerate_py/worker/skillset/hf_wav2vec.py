@@ -65,6 +65,7 @@ class hf_wav2vec:
         self.metadata = metadata    
         self.create_openvino_audio_embedding_endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler
         self.create_cuda_audio_embedding_endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler
+        self.init_qualcomm = self.init_qualcomm
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -75,6 +76,8 @@ class hf_wav2vec:
     def init(self):
         return None
     
+    def init_qualcomm(self, model, device, qualcomm_label):
+        return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
@@ -256,6 +259,42 @@ class hf_wav2vec:
                         }            
             return None
         return handler    
+    
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+    
+        if hfprocessor is None:
+            hfprocessor = AutoProcessor.from_pretrained(model_name)
+
+        if hfprocessor is not None:
+            text = "Replace me by any text you'd like."
+            audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+            audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
+            preprocessed_signal = None
+            preprocessed_signal = hfprocessor(
+                audio_data,
+                return_tensors="pt",
+                padding="longest",
+                sampling_rate=audio_sampling_rate,
+            )
+            audio_inputs = preprocessed_signal.input_values
+            MAX_SEQ_LENGTH = 30480
+            hfmodel.config.torchscript = True
+            ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
+            if not os.path.exists(model_dst_path):
+                os.mkdir(model_dst_path)
+            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            ov_model = ov.compile_model(ov_model)
+            hfmodel = None
+        return ov_model
+    
     
         # def __init__(self, resources=None, metadata=None):
         #         if os.path.exists(resources['checkpoint']) and os.path.isfile(resources['checkpoint'] + "/config.json"):

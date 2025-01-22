@@ -52,11 +52,16 @@ class hf_whisper:
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
         self.init = self.init
         self.__test__ = self.__test__
         return None
 
     def init(self):
+        return None
+    
+    
+    def init_qualcomm(self, model, device, qualcomm_label):
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -186,6 +191,68 @@ class hf_whisper:
             return results
         return handler
 
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+    
+        if hfprocessor is None:
+            hfprocessor = AutoProcessor.from_pretrained(model_name)
+        if hfprocessor is not None:
+            from transformers import AutoModelForSpeechSeq2Seq
+            _hfmodel = None
+            try:
+                _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+            except Exception as e:
+                print(e)
+                try:
+                    _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_dst_path)
+                except Exception as e:
+                    print(e)
+                    pass
+            if _hfmodel is not None:
+                hfmodel = _hfmodel  
+            audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+            audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
+            preprocessed_signal = None
+            hfmodel.eval()
+            preprocessed_signal = hfprocessor(
+                audio_data,
+                return_tensors="pt",
+                padding="longest",
+                sampling_rate=audio_sampling_rate,
+            )
+            audio_inputs = preprocessed_signal.input_features
+            # Pad the input mel features to length 3000
+            if audio_inputs.shape[-1] < 3000:
+                pad_size = 3000 - audio_inputs.shape[-1]
+                audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
+            hfmodel.config.torchscript = True
+            outputs = hfmodel.generate(audio_inputs)
+            results = hfprocessor.batch_decode(outputs, skip_special_tokens=True)
+            print(results)
+            try:
+                ov_model = ov.convert_model(hfmodel, example_input=audio_inputs)
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            except Exception as e:
+                print(e)
+                if os.path.exists(model_dst_path):
+                    os.remove(model_dst_path)
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                core = ov.Core()
+                ov_model = core.read_model(model_name, os.path.join(model_dst_path))
+            ov_model = ov.compile_model(ov_model)
+            hfmodel = None
+        return ov_model
 
     # def create_openvino_whisper_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
     #     def handler(x, y=None, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):

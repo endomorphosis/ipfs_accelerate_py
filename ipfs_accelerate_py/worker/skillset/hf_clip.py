@@ -40,6 +40,7 @@ class hf_clip:
         self.create_cuda_image_embedding_endpoint_handler = self.create_cuda_image_embedding_endpoint_handler
         self.create_cpu_image_embedding_endpoint_handler = self.create_cpu_image_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
+        self.init_qualcomm = self.init_qualcomm
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init = self.init
@@ -75,6 +76,9 @@ class hf_clip:
     
     def init_cpu(self, model, device, cpu_label):
         
+        return None
+    
+    def init_qualcomm(self, model, device, qualcomm_label):
         return None
     
     def init_cuda(self, model, device, cuda_label):
@@ -230,3 +234,35 @@ class hf_clip:
                     }            
             return None
         return handler
+
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+    
+        if hfprocessor is None:
+            hfprocessor = AutoProcessor.from_pretrained(model_name)
+        if hfprocessor is not None:
+            text = "Replace me by any text you'd like."
+            image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+            image = load_image(image_url)
+            processed_data = hfprocessor(
+                text = "Replace me by any text you'd like.",
+                images = [image],
+                return_tensors="pt", 
+                padding=True
+            )
+            results = hfmodel(**processed_data)
+            hfmodel.config.torchscript = True
+            ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+            if not os.path.exists(model_dst_path):
+                os.mkdir(model_dst_path)
+            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            ov_model = ov.compile_model(ov_model)
+            hfmodel = None
+        return ov_model

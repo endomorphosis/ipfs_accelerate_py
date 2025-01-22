@@ -909,10 +909,10 @@ class ipfs_accelerate_py:
             memory_increase = end_memory - start_mem
             free_memory = psutil.virtual_memory().free
             log = {
-            "batch size": batch_size,
-            "elapsed_time": elapsed_time,
-            "memory_increase": memory_increase,
-            "free_memory": free_memory
+                "batch size": batch_size,
+                "elapsed_time": elapsed_time,
+                "memory_increase": memory_increase,
+                "free_memory": free_memory
             }
             print(log)
             self.resources["batch_sizes"][model][endpoint] = int(2**(exponent-1))

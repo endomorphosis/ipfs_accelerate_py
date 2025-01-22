@@ -20,6 +20,7 @@ class hf_t5:
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
         self.init = self.init
         self.__test__ = self.__test__
         return None
@@ -30,6 +31,8 @@ class hf_t5:
     def init_cpu (self, model, device, cpu_label):
         return None
     
+    def init_qualcomm(self, model, device, qualcomm_label):
+        return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         text1  = "The quick brown fox jumps over the lazy dog"
@@ -167,70 +170,45 @@ class hf_t5:
             # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
             return outputs
         return handler
+
+    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        import openvino as ov
+        import os
+        import numpy as np
+        import requests
+        import tempfile
+        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
+        if hfmodel is None:
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
     
-    # def __init__(self, resources, meta=None):
-    # 	self.tokenizer = T5Tokenizer.from_pretrained(
-    # 		resources['checkpoint'], 
-    # 		local_files_only=True,
-    # 		device_map='auto',
-    # 		legacy=False
-    # 	)
-    # 	self.model = T5ForConditionalGeneration.from_pretrained(
-    # 		resources['checkpoint'], 
-    # 		local_files_only=True, 
-    # 		low_cpu_mem_usage=True,
-    # 		device_map='auto',
-    # 		torch_dtype=float16,
-    # 	).eval()
-    # 	self.worker = worker
-    # 	self.TaskAbortion = self.worker.TaskAbortion
-    # 	self.should_abort = self.worker.should_abort
+        if hfprocessor is None:
+            hftokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    # def __call__(self, method, **kwargs):
-    # 	if method == 'instruct_t5':
-    # 		return self.instruct_t5(**kwargs)
-    # 	elif method == 'unmask_t5':
-    # 		return self.unmask_t5(**kwargs)
-    # 	else:
-    # 		raise Exception('unknown method: %s' % method)
+        if hftokenizer is not None:
+            from transformers import T5ForConditionalGeneration
+            hfmodel = T5ForConditionalGeneration.from_pretrained(model_name)
+            text = "Replace me by any text you'd like."
+            text_inputs = hftokenizer(text, return_tensors="pt", padding=True).input_ids
+            labels = "Das Haus ist wunderbar."
+            labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
+            outputs = hfmodel(input_ids=text_inputs, decoder_input_ids=labels_inputs)
+            hfmodel.config.torchscript = True
+            try:
+                ov_model = ov.convert_model(hfmodel)
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            except Exception as e:
+                print(e)
+                if os.path.exists(model_dst_path):
+                    os.remove(model_dst_path)
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                core = ov.Core()
+                ov_model = core.read_model(model_name, os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
 
-    # def instruct_t5(self, instruction, input, max_tokens,  **kwargs):
-
-    # 	input_ids = self.tokenizer(instruction + input , return_tensors="pt").input_ids.to(self.model.device)
-    # 	outputs = self.model.generate(input_ids, max_length=max_tokens)
-    # 	#print(self.tokenizer.decode(outputs[0], skip_special_tokens=True))
-
-    # 	return {
-    #         'text': self.tokenizer.decode(outputs[0], skip_special_tokens=True), 
-    #         'done': True
-    #     }
-
-    # def unmask_t5(self, masked_words, input, max_tokens, **kwargs):
-    # 	if masked_words is None:
-    # 		masked_words = []
-    # 	if isinstance(masked_words, str):
-    # 		masked_words = [masked_words]
-    # 	if not isinstance(masked_words, list):
-    # 		raise Exception('masked_words must be a list of strings')
-    # 	else:
-    # 		masked_words_len = len(masked_words)
-    # 		for i in range(masked_words_len):
-    # 			input = input.replace(masked_words[i], "<extra_id_"+str(i)+">")
-    # 		pass
-                
-    # 	input_ids = self.tokenizer(input, return_tensors="pt").input_ids.to(self.model.device)
-    # 	sequence_ids = self.model.generate(input_ids, max_length=max_tokens )
-    # 	sequence = self.tokenizer.decode(sequence_ids[0])
-    # 	print(sequence)
-    # 	sequences = []
-    # 	for i in range(len(sequence_ids)):
-    # 		sequences.append(self.tokenizer.decode(sequence_ids[i]))
-    # 	print(sequences)
-    # 	return {
-    #         'text': sequences, 
-    #         'done': True
-    #     }
+            ov_model = ov.compile_model(ov_model)
+            hfmodel = None
+        return ov_model    
     
-#if __name__ == '__main__':
-#    test_t5 = HF_T5({'checkpoint': '/storage/cloudkit-models/flan-t5-small@hf/'})
-#    print(test_t5.task("translate English to German: ", "How old are you?", 100))
