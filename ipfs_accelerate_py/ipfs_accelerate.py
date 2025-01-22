@@ -1105,79 +1105,17 @@ class ipfs_accelerate_py:
             for endpoint in local_endpoints_by_model_by_endpoint_list:
                 endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
                 model_type = self.get_model_type(model)
-                vlm_model_types = ["llava", "llava_next"]
-                llm_model_types = ["qwen2", "llama"]
-                text_embedding_types = ["bert"]
-                clip_model_types = ["clip"]
-                clap_model_types = ["clap"]
-                wav2vec_model_types = ["wav2vec", "wav2vec2"]
-                mlm_model_types = ["t5"]
-                whisper_model_types = ["whisper"]
-                xclip_model_types = ['xclip']
                 test = None
-                if model_type in vlm_model_types:
-                    from worker.skillset import hf_llava
-                    this_hf_llava = hf_llava(self.resources, self.metadata)
-                    test = this_hf_llava.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )   
+                hf_model_types = ["llava", "llama", "qwen2", "bert", "clip", "clap", "wav2vec", "wav2vec2", "t5", "whisper", "xclip"]
+                method_name = "hf_" + model_type
+                if model_type in hf_model_types:
+                    module = __import__('worker.skillset', fromlist=[method_name])
+                    this_method = getattr(module, method_name)
+                    this_hf = this_method(self.resources, self.metadata)
+                    test = this_hf.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
                     test_results[endpoint[1]] = test
-                    del hf_llava
-                    del this_hf_llava
-                elif model_type in llm_model_types:
-                    from worker.skillset import hf_lm
-                    this_hf_lm = hf_lm(self.resources, self.metadata)
-                    test = this_hf_lm.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1],  tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_lm
-                    del this_hf_lm
-                elif model_type in text_embedding_types:
-                    from worker.skillset import hf_embed
-                    this_hf_embed = hf_embed(self.resources, self.metadata)
-                    test = this_hf_embed.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_embed
-                    del this_hf_embed
-                elif model_type in clip_model_types:
-                    from worker.skillset import hf_clip
-                    this_hf_clip = hf_clip(self.resources, self.metadata)
-                    test = this_hf_clip.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_clip
-                    del this_hf_clip
-                elif model_type in clap_model_types:
-                    from worker.skillset import hf_clap
-                    this_hf_clap = hf_clap(self.resources, self.metadata)
-                    test = this_hf_clap.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_clap
-                    del this_hf_clap
-                elif model_type in wav2vec_model_types:
-                    from worker.skillset import hf_wav2vec
-                    this_hf_wav2vec = hf_wav2vec(self.resources, self.metadata)
-                    test = this_hf_wav2vec.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_wav2vec
-                    del this_hf_wav2vec
-                elif model_type in mlm_model_types:
-                    from worker.skillset import hf_t5
-                    this_hf_t5 = hf_t5(self.resources, self.metadata)
-                    test = this_hf_t5.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_t5
-                    del this_hf_t5
-                elif model_type in whisper_model_types:
-                    from worker.skillset import hf_whisper
-                    this_hf_whisper = hf_whisper(self.resources, self.metadata)
-                    test = this_hf_whisper.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_whisper
-                    del this_hf_whisper
-                elif model_type in xclip_model_types:
-                    from worker.skillset import hf_xclip
-                    this_hf_xclip = hf_xclip(self.resources, self.metadata)
-                    test = this_hf_xclip.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del hf_xclip
-                    del this_hf_xclip
+                    del this_hf
+                    del this_method          
                 else:
                     test_results[endpoint[1]] = ValueError("Model type not found")
         return test_results

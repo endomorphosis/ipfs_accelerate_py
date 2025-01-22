@@ -430,32 +430,68 @@ class worker_py:
             wav2vec_types = ["wav2vec", "wav2vec2"]
             mlm_types = ['t5']
             whisper_types = ["whisper"]
+            optimum_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
+            openvino_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
+            openvino_genai_model_types = ["llava", "llava_next"]
             custom_types = vlm_model_types + text_embedding_types + whisper_types + llm_model_types + clip_model_types + clap_model_types + wav2vec_types + mlm_types + xclip_model_types
+            custom_types = []
+            method_name = "hf_" + model_type
+            this_method = None
+            try:
+                this_method = getattr(self, method_name, None)
+            except Exception as e:
+                print(e)
+                pass
             if model_type != "llama_cpp" and model_type not in custom_types:
-                # if cuda and gpus > 0:
-                #     if cuda_test and type(cuda_test) != ValueError:
-                #         for gpu in range(gpus):
-                #             device = 'cuda:' + str(gpu)
-                #             cuda_label = 'cuda:' + str(gpu)
-                #             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = self.default.init_cuda(model, device, cuda_label)
-                # if local > 0 and cpus > 0:
-                #     if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
-                #         openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
-                #         for openvino_endpoint in openvino_local_endpont_types:
-                #             ov_count = openvino_endpoint.split(":")[1]
-                #             openvino_label = "openvino:" + str(ov_count)
-                #             device = "openvino:" + str(ov_count)	
-                #             self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = self.hf_embed.init_openvino(
-                #                 model,
-                #                 model_type,
-                #                 device,
-                #                 openvino_label,
-                #                 self.get_openvino_genai_pipeline,
-                #                 self.get_optimum_openvino_model,
-                #                 self.get_openvino_model,
-                #                 self.get_openvino_pipeline_type,
-                #                 self.openvino_cli_convert,
-                #             )
+                if cuda and gpus > 0:
+                    if cuda_test and type(cuda_test) != ValueError:
+                        for gpu in range(gpus):
+                            device = 'cuda:' + str(gpu)
+                            cuda_label = device
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(model, device, cuda_label)
+                            torch.cuda.empty_cache()
+                if local > 0 and cpus > 0:
+                    if model_type in openvino_genai_model_types or model_type in openvino_model_types or model_type in optimum_model_types:
+                        if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":
+                            openvino_local_endpont_types = [ x for x in local_endpoint_types if "openvino" in x]
+                            for openvino_endpoint in openvino_local_endpont_types:
+                                ov_count = openvino_endpoint.split(":")[1]
+                                openvino_label = "openvino:" + str(ov_count)
+                                device = "openvino:" + str(ov_count)
+                                if model_type in openvino_genai_model_types:
+                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                        model,
+                                        model_type,
+                                        device,
+                                        openvino_label,
+                                        self.get_openvino_genai_pipeline,
+                                        self.get_optimum_openvino_model,
+                                        self.get_openvino_model,
+                                        self.get_openvino_pipeline_type,
+                                        self.openvino_cli_convert,
+                                    )
+                                elif model_type in openvino_model_types:
+                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                        model,
+                                        model_type,
+                                        device,
+                                        openvino_label,
+                                        self.get_optimum_openvino_model,
+                                        self.get_openvino_model,
+                                        self.get_openvino_pipeline_type,
+                                        self.openvino_cli_convert,
+                                    )
+                                elif model_type in optimum_model_types:
+                                    self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
+                                        model,
+                                        model_type,
+                                        device,
+                                        openvino_label,
+                                        self.get_optimum_openvino_model,
+                                        self.get_openvino_model,
+                                        self.get_openvino_pipeline_type,
+                                        self.openvino_cli_convert,
+                                    )
                 pass
             elif model_type in vlm_model_types:
                 if cuda and gpus > 0:

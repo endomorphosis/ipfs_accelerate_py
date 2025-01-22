@@ -76,6 +76,7 @@ class hf_xclip:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
+        self.openvino_skill_convert = self.openvino_skill_convert
         self.create_openvino_video_embedding_endpoint_handler = self.create_openvino_video_embedding_endpoint_handler
         self.create_cuda_video_embedding_endpoint_handler = self.create_cuda_video_embedding_endpoint_handler
         self.create_cpu_video_embedding_endpoint_handler = self.create_cpu_video_embedding_endpoint_handler
@@ -132,7 +133,7 @@ class hf_xclip:
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
-    def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+    def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         endpoint = None
         tokenizer = None
         endpoint_handler = None
@@ -176,6 +177,17 @@ class hf_xclip:
             except Exception as e:
                 print(e)
                 pass
+            
+        if not os.path.exists(model_dst_path):
+            try:
+                convert = self.openvino_skill_convert(model, model_dst_path, task, weight_format)
+            except Exception as e:
+                print(e)
+                try: 
+                    convert = openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
+                except Exception as e:
+                    print(e)
+                pass
         
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         try:
@@ -192,6 +204,36 @@ class hf_xclip:
         endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
+    
+    def openvino_skill_convert(hf_model, hfprocessor, model_name, model_dst_path, task, weight_format):
+        if hfprocessor is not None:
+            text = "Replace me by any text you'd like."
+            ##xclip processor
+            video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
+            np.random.seed(0)
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+                f.write(requests.get(video_url).content)
+                f.flush()
+                videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
+                videoreader.seek(0)
+                indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+                video = videoreader.get_batch(indices).asnumpy()
+                processed_data = hfprocessor(
+                    text=text,
+                    videos=list(video),
+                    return_tensors="pt",
+                    padding=True,
+                )
+                results = hfmodel(**processed_data)
+                hfmodel.config.torchscript = True
+                ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = ov.compile_model(ov_model)
+                hfmodel = None
+        return None
     
     def create_cpu_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
         def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
