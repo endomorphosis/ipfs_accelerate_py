@@ -212,198 +212,58 @@ class openvino_utils:
             if hfmodel is not None and "config" in list(dir(hfmodel)):
                 if ov_model is None and  model_type in genai_model_types:
                     if hfprocessor is not None:
-                        ov_model = ''
+                        module = __import__('worker.skillset', fromlist=[method_name])
+                        this_method = getattr(module, method_name)
+                        this_hf = this_method(self.resources, self.metadata)
+                        try:
+                            convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                        except Exception as e:
+                            print(e)
+                            try:
+                                convert = self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format=weight_format,  ratio="1.0", group_size=128, sym=True )
+                            except Exception as e:
+                                print(e)
+                                convert = None
+                                pass
+                        ov_model = core.read_model(model_name, model_dst_path)
+                        ov_model = core.compile_model(ov_model)
                         hf_model = None
                 if ov_model is None and model_type in openvino_model_types:
                     if hfprocessor is not None:
                         module = __import__('worker.skillset', fromlist=[method_name])
                         this_method = getattr(module, method_name)
                         this_hf = this_method(self.resources, self.metadata)
-                        convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                        try:
+                            convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                        except Exception as e:
+                            print(e)
+                            try:
+                                convert = self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format=weight_format,  ratio="1.0", group_size=128, sym=True )
+                            except Exception as e:
+                                print(e)
+                                convert = None
+                                pass
                         ov_model = core.read_model(model_name, model_dst_path)
                         ov_model = core.compile_model(ov_model)
                         hf_model = None
                 if  ov_model is None and model_type in optimum_model_types:
                     if hfprocessor is not None:
-                        ov_model = ''
-                        hf_model = None                    
-            # if hf_model is None and "config" in list(dir(hfmodel)):
-            #     if model_type in clip_model_types:
-            #         if hfprocessor is not None:
-            #             text = "Replace me by any text you'd like."
-            #             image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-            #             image = load_image(image_url)
-            #             processed_data = hfprocessor(
-            #                 text = "Replace me by any text you'd like.",
-            #                 images = [image],
-            #                 return_tensors="pt", 
-            #                 padding=True
-            #             )
-            #             results = hfmodel(**processed_data)
-            #             hfmodel.config.torchscript = True
-            #             ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
-            #             if not os.path.exists(model_dst_path):
-            #                 os.mkdir(model_dst_path)
-            #             ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #             ov_model = ov.compile_model(ov_model)
-            #             hfmodel = None
-            #     if model_type in clap_model_types:
-            #         if hfprocessor is not None:
-            #             text = "Replace me by any text you'd like."
-            #             audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            #             audio = load_audio(audio_url)
-            #             text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
-            #             audio_inputs = hfprocessor(
-            #                 audios=[audio[0]],  # Use first channel only
-            #                 return_tensors="pt", 
-            #                 padding=True
-            #             )
-            #             processed_data = {**audio_inputs}
-            #             results = hfmodel(**processed_data)
-            #             hfmodel.config.torchscript = True
-            #             ov_model = ov.convert_model(hfmodel, example_input=processed_data)
-            #             if not os.path.exists(model_dst_path):
-            #                 os.mkdir(model_dst_path)
-            #             ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #             ov_model = ov.compile_model(ov_model)
-            #             hfmodel = None
-            #     if model_type in wav2vec2_model_types:
-            #         if hfprocessor is not None:
-            #             text = "Replace me by any text you'd like."
-            #             audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            #             audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
-            #             preprocessed_signal = None
-            #             preprocessed_signal = hfprocessor(
-            #                 audio_data,
-            #                 return_tensors="pt",
-            #                 padding="longest",
-            #                 sampling_rate=audio_sampling_rate,
-            #             )
-            #             audio_inputs = preprocessed_signal.input_values
-            #             MAX_SEQ_LENGTH = 30480
-            #             hfmodel.config.torchscript = True
-            #             ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
-            #             if not os.path.exists(model_dst_path):
-            #                 os.mkdir(model_dst_path)
-            #             ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #             ov_model = ov.compile_model(ov_model)
-            #             hfmodel = None
-            #     if model_type in mlm_model_types:
-            #         if hftokenizer is not None:
-            #             from transformers import T5ForConditionalGeneration
-            #             hfmodel = T5ForConditionalGeneration.from_pretrained(model_name)
-            #             text = "Replace me by any text you'd like."
-            #             text_inputs = hftokenizer(text, return_tensors="pt", padding=True).input_ids
-            #             labels = "Das Haus ist wunderbar."
-            #             labels_inputs = hftokenizer(labels, return_tensors="pt", padding=True).input_ids
-            #             outputs = hfmodel(input_ids=text_inputs, decoder_input_ids=labels_inputs)
-            #             hfmodel.config.torchscript = True
-            #             try:
-            #                 ov_model = ov.convert_model(hfmodel)
-            #                 if not os.path.exists(model_dst_path):
-            #                     os.mkdir(model_dst_path)
-            #                 ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #             except Exception as e:
-            #                 print(e)
-            #                 if os.path.exists(model_dst_path):
-            #                     os.remove(model_dst_path)
-            #                 if not os.path.exists(model_dst_path):
-            #                     os.mkdir(model_dst_path)
-            #                 self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-            #                 core = ov.Core()
-            #                 ov_model = core.read_model(model_name, os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
-            
-            #             ov_model = ov.compile_model(ov_model)
-            #             hfmodel = None
-            #     if model_type in whisper_model_types:
-            #         if hftokenizer is not None:
-            #             from transformers import AutoModelForSpeechSeq2Seq
-            #             _hfmodel = None
-            #             try:
-            #                 _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
-            #             except Exception as e:
-            #                 print(e)
-            #                 try:
-            #                     _hfmodel = AutoModelForSpeechSeq2Seq.from_pretrained(model_dst_path)
-            #                 except Exception as e:
-            #                     print(e)
-            #                     pass
-            #             if _hfmodel is not None:
-            #                 hfmodel = _hfmodel  
-            #             audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            #             audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
-            #             preprocessed_signal = None
-            #             hfmodel.eval()
-            #             preprocessed_signal = hfprocessor(
-            #                 audio_data,
-            #                 return_tensors="pt",
-            #                 padding="longest",
-            #                 sampling_rate=audio_sampling_rate,
-            #             )
-            #             audio_inputs = preprocessed_signal.input_features
-            #             # Pad the input mel features to length 3000
-            #             if audio_inputs.shape[-1] < 3000:
-            #                 pad_size = 3000 - audio_inputs.shape[-1]
-            #                 audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
-            #             hfmodel.config.torchscript = True
-            #             outputs = hfmodel.generate(audio_inputs)
-            #             results = hfprocessor.batch_decode(outputs, skip_special_tokens=True)
-            #             print(results)
-            #             try:
-            #                 ov_model = ov.convert_model(hfmodel, example_input=audio_inputs)
-            #                 if not os.path.exists(model_dst_path):
-            #                     os.mkdir(model_dst_path)
-            #                 ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #             except Exception as e:
-            #                 print(e)
-            #                 if os.path.exists(model_dst_path):
-            #                     os.remove(model_dst_path)
-            #                 if not os.path.exists(model_dst_path):
-            #                     os.mkdir(model_dst_path)
-            #                 self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-            #                 core = ov.Core()
-            #                 ov_model = core.read_model(model_name, os.path.join(model_dst_path))
-            #             ov_model = ov.compile_model(ov_model)
-            #             hfmodel = None
-            #     if model_type in xclip_model_types:
-            #         if hfprocessor is not None:
-            #             text = "Replace me by any text you'd like."
-            #             ##xclip processor
-            #             video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            #             np.random.seed(0)
-            #             import tempfile
-            #             with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
-            #                 f.write(requests.get(video_url).content)
-            #                 f.flush()
-            #                 videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
-            #                 videoreader.seek(0)
-            #                 indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
-            #                 video = videoreader.get_batch(indices).asnumpy()
-            #                 processed_data = hfprocessor(
-            #                     text=text,
-            #                     videos=list(video),
-            #                     return_tensors="pt",
-            #                     padding=True,
-            #                 )
-            #                 results = hfmodel(**processed_data)
-            #                 hfmodel.config.torchscript = True
-            #                 ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
-            #                 if not os.path.exists(model_dst_path):
-            #                     os.mkdir(model_dst_path)
-            #                 ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            #                 ov_model = ov.compile_model(ov_model)
-            #                 hfmodel = None
-            # if ov_model == None:
-                try:
-                    # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
-                    # self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int4", ratio="1.0", group_size=128, sym=True )
-
-                    # ov_model = ov.load_model(model_dst_path)
-                    # ov_model = ov.compile_model(ov_model)
-                    pass
-                except Exception as e:
-                    print(e)
-                    pass
+                        module = __import__('worker.skillset', fromlist=[method_name])
+                        this_method = getattr(module, method_name)
+                        this_hf = this_method(self.resources, self.metadata)
+                        try:
+                            convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                        except Exception as e:
+                            print(e)
+                            try:
+                                convert = self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format=weight_format,  ratio="1.0", group_size=128, sym=True )
+                            except Exception as e:
+                                print(e)
+                                convert = None
+                                pass
+                        ov_model = core.read_model(model_name, model_dst_path)
+                        ov_model = core.compile_model(ov_model)
+                        hf_model = None
             
             if hfmodel is not None and "config" in list(dir(hfmodel)):
                 config = hfmodel.config
