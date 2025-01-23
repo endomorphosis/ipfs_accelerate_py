@@ -155,25 +155,32 @@ class worker_py:
             self.dispatch_result = dispatch_result
             pass
         
+        import importlib.util
+
         files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
-        filter_files_for_hf_prefix = [ x for x in files_in_skills_folder if x.startswith("hf_")]
+        filter_files_for_hf_prefix = [x for x in files_in_skills_folder if x.startswith("hf_")]
         for file in filter_files_for_hf_prefix:
             if file.endswith(".py"):
                 file_name = file.split(".")[0]
-                if file_name not in globals() and file_name not in list(self.resources.keys()):
+                if file_name not in sys.modules and file_name not in list(self.resources.keys()):
                     this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+                    this_file = os.path.abspath(this_file)
                     try:
-                        exec(open(this_file).read())
+                        spec = importlib.util.spec_from_file_location(file_name, this_file)
+                        module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        this_class = getattr(module, file_name)
+                        self.resources[file_name] = this_class(resources, metadata)
+                        self.__dict__[file_name] =  this_class(resources, metadata)
                     except Exception as e:
                         print(e)
                         pass
-                    self.resources[file_name] = eval(file_name)
-                    self.__dict__[file_name] = eval(file_name)
                 elif file_name in list(self.resources.keys()):
                     self.__dict__[file_name] = self.resources[file_name]
-                elif file_name in globals():
-                    self.resources[file_name] = eval(file_name)
-                    self.__dict__[file_name] = eval(file_name)
+                elif file_name in sys.modules:
+                    module = sys.modules[file_name]
+                    this_class = getattr(module, file_name)
+                    self.resources[file_name] = this_class(resources, metadata)
                 else:
                     pass
         
@@ -191,36 +198,38 @@ class worker_py:
         # elif "default" in globals():
         #     self.default = default
             
-        self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
-        self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
-        self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_whisper_endpoint_handler
-        self.create_cuda_mlm_endpoint_handler = self.hf_t5.create_cuda_mlm_endpoint_handler
-        self.create_cpu_mlm_endpoint_handler = self.hf_t5.create_cpu_mlm_endpoint_handler
-        self.create_openvino_mlm_endpoint_handler = self.hf_t5.create_openvino_mlm_endpoint_handler
-        self.create_openvino_audio_embedding_endpoint_handler = self.hf_clap.create_openvino_audio_embedding_endpoint_handler
-        self.create_cuda_audio_embedding_endpoint_handler = self.hf_clap.create_cuda_audio_embedding_endpoint_handler
-        self.create_cpu_audio_embedding_endpoint_handler = self.hf_clap.create_cpu_audio_embedding_endpoint_handler            
-        self.create_openvino_image_embedding_endpoint_handler = self.hf_clip.create_openvino_image_embedding_endpoint_handler
-        self.create_cuda_image_embedding_endpoint_handler = self.hf_clip.create_cuda_image_embedding_endpoint_handler
-        self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
-        self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
-        self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
-        self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
-        self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
-        self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
-        self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
-        self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
-        self.create_cpu_llm_endpoint_handler = self.hf_lm.create_cpu_llm_endpoint_handler
-        self.create_cuda_llm_endpoint_handler = self.hf_lm.create_cuda_llm_endpoint_handler        
-        # self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
-        # self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
-        # self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
+        # self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
+        # self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
+        # self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_whisper_endpoint_handler
+        # self.create_cuda_mlm_endpoint_handler = self.hf_t5.create_cuda_mlm_endpoint_handler
+        # self.create_cpu_mlm_endpoint_handler = self.hf_t5.create_cpu_mlm_endpoint_handler
+        # self.create_openvino_mlm_endpoint_handler = self.hf_t5.create_openvino_mlm_endpoint_handler
+        # self.create_openvino_audio_embedding_endpoint_handler = self.hf_clap.create_openvino_audio_embedding_endpoint_handler
+        # self.create_cuda_audio_embedding_endpoint_handler = self.hf_clap.create_cuda_audio_embedding_endpoint_handler
+        # self.create_cpu_audio_embedding_endpoint_handler = self.hf_clap.create_cpu_audio_embedding_endpoint_handler            
+        # self.create_openvino_image_embedding_endpoint_handler = self.hf_clip.create_openvino_image_embedding_endpoint_handler
+        # self.create_cuda_image_embedding_endpoint_handler = self.hf_clip.create_cuda_image_embedding_endpoint_handler
+        # self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
+        # self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
+        # self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
+        # self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
+        # self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
+        # self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
+        # self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
+        # self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
+        # self.create_cpu_llm_endpoint_handler = self.hf_lm.create_cpu_llm_endpoint_handler
+        # self.create_cuda_llm_endpoint_handler = self.hf_lm.create_cuda_llm_endpoint_handler        
+
         self.get_openvino_model = self.openvino_utils.get_openvino_model
         self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
         self.get_model_type = self.openvino_utils.get_model_type
         self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
+        
+        # self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
+        # self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
+        # self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
         
         # if "should_abort" not in globals() and "should_abort" not in list(self.resources.keys()):
         #     self.should_abort = should_abort(resources, metadata)
