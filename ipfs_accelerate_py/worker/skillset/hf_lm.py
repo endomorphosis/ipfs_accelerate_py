@@ -33,7 +33,17 @@ class hf_lm:
         return None
     
     def init(self):
+            import numpy as np
+            import torch
+            from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+            from transformers.generation.streamers import TextStreamer
+            from ipfs_transformers_py import AutoModel
+            import torch
+            from torch import Tensor as T
+            from torchvision.transforms import InterpolationMode
+            import torch 
         return None
+
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
@@ -42,8 +52,11 @@ class hf_lm:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(sentence_1, image_1)
+            print(test_batch)
+            print("Test batch completed")
         except Exception as e:
             print(e)
+            print("Failed to run test batch")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
@@ -61,10 +74,12 @@ class hf_lm:
         return None
     
     def init_cpu (self, model, device, cpu_label):
+        self.init()
         return None
     
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
         endpoint = None
@@ -79,6 +94,7 @@ class hf_lm:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+        self.init()
         endpoint = None
         tokenizer = None
         endpoint_handler = None

@@ -1,10 +1,4 @@
 import re
-from torch import inference_mode, float16
-import torch
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from transformers import AutoConfig, AutoProcessor
-# from ipfs_transformers_py import AutoModel
 import sys
 import os
 import time
@@ -26,9 +20,16 @@ class hf_t5:
         return None
     
     def init(self):
+        from torch import inference_mode, float16
+        import torch
+        from transformers import T5Tokenizer, T5ForConditionalGeneration
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        from transformers import AutoConfig, AutoProcessor
+        # from ipfs_transformers_py import AutoModel
         return None
 
     def init_cpu (self, model, device, cpu_label):
+        self.init() 
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
@@ -61,6 +62,7 @@ class hf_t5:
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
         endpoint = None
@@ -75,6 +77,7 @@ class hf_t5:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        self.init()
         endpoint = None
         tokenizer = None
         endpoint_handler = None
