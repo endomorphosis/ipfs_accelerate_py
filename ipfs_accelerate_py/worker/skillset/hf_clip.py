@@ -56,8 +56,11 @@ class hf_clip:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(sentence_1, image_1)
+            print(test_batch)
+            print("hf_clip test passed")
         except Exception as e:
             print(e)
+            print("hf_clip test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
@@ -71,7 +74,6 @@ class hf_clip:
             with torch.no_grad():
                 if "cuda" in dir(torch):
                     torch.cuda.empty_cache()
-        print("hf_llava test")
         return None
     
     def init_cpu(self, model, device, cpu_label):

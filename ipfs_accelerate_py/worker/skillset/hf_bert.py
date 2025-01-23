@@ -9,7 +9,7 @@ from ipfs_transformers_py import AutoModel
 import json
 import time
 
-class hf_embed:
+class hf_bert:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
@@ -244,3 +244,4 @@ class hf_embed:
     def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
         last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
         return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+

@@ -39,8 +39,11 @@ class hf_t5:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(text1)
+            print(test_batch)
+            print("hf_t5 test passed")
         except Exception as e:
             print(e)
+            print("hf_t5 test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1

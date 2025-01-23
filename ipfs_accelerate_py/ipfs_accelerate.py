@@ -1483,26 +1483,31 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            "google-t5/t5-base",
-            # "distil-whisper/distil-large-v3",
-            # "openai/whisper-large-v3-turbo",
-            # "microsoft/xclip-base-patch16-zero-shot",
-            # "MCG-NJU/videomae-base",
-            # "MCG-NJU/videomae-large",
-            # "BAAI/bge-small-en-v1.5", 
             # "laion/larger_clap_general",
+            # "google-t5/t5-base",
             # "facebook/wav2vec2-large-960h-lv60-self",
-            # "openai/clip-vit-base-patch16",
-            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
-            # "llava-hf/llava-v1.6-mistral-7b-hf",
-            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            # "TIGER-Lab/Mantis-8B-siglip-llama3",
-            # "lmms-lab/llava-onevision-qwen2-7b-si",  
-            # "lmms-lab/llava-onevision-qwen2-7b-ov", 
-            # "lmms-lab/LLaVA-Video-7B-Qwen2",
+            # "BAAI/bge-small-en-v1.5", 
+            # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
+            # "openai/whisper-large-v3-turbo",
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            # "distil-whisper/distil-large-v3",
+
+
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
+            # "lmms-lab/LLaVA-Video-7B-Qwen2",
+            "llava-hf/llava-v1.6-mistral-7b-hf",
+            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            # "TIGER-Lab/Mantis-8B-siglip-llama3",  ## make sure sthat optimum-cli-convert works on windows.
+            # "microsoft/xclip-base-patch16-zero-shot",
+            # "google/vit-base-patch16-224"
+
+
+            # "MCG-NJU/videomae-base",
+            # "MCG-NJU/videomae-large",
+            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
+            # "lmms-lab/llava-onevision-qwen2-7b-si",  
+            # "lmms-lab/llava-onevision-qwen2-7b-ov", 
             # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
             # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
             # "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
@@ -1511,8 +1516,6 @@ if __name__ == "__main__":
             # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
             # "AIDC-AI/Ovis1.6-Llama3.2-3B", # ValueError: Trying to export a ovis model, that is a custom or unsupported architecture,
             # "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
-            # "laion/larger_clap_general",
-            # "google/vit-base-patch16-224"
         ],
         "chunk_settings": {
 
@@ -1568,11 +1571,13 @@ if __name__ == "__main__":
             ["llava-hf/llava-v1.6-mistral-7b-hf", "cuda:0", 32768],
             ["TinyLlama/TinyLlama-1.1B-Chat-v1.0", "cuda:0", 32768],
             ["TIGER-Lab/Mantis-8B-siglip-llama3", "cuda:0", 32768],
+            ["TIGER-Lab/Mantis-8B-siglip-llama3", "openvino:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-7b-si", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-7b-ov", "cuda:0", 32768],
             ["lmms-lab/LLaVA-Video-7B-Qwen2", "cuda:0", 32768],
             ["meta-llama/Meta-Llama-3.1-8B-Instruct", "cuda:0", 32768],
             ["Qwen/Qwen2-7B", "cuda:0", 32768],
+            ["Qwen/Qwen2-7B", "openvino:0", 32768],
             ["llava-hf/llava-interleave-qwen-0.5b-hf", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-si", "cuda:0", 32768],
             ["lmms-lab/llava-onevision-qwen2-0.5b-ov", "cuda:0", 32768],

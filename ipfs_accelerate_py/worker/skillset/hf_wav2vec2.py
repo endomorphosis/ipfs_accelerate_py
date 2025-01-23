@@ -59,7 +59,7 @@ def load_audio_tensor(audio_file):
     
     return ov.Tensor(audio_data.reshape(1, -1))
 
-class hf_wav2vec:
+class hf_wav2vec2:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
@@ -84,8 +84,11 @@ class hf_wav2vec:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(audio_1)
+            print(test_batch)
+            print("hf_wav2vec2 test passed")
         except Exception as e:
             print(e)
+            print("hf_wav2vec2 test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1

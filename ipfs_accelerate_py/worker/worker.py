@@ -27,12 +27,16 @@ except:
     
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 from .skillset import hf_llava
+from .skillset import hf_llava_next
 from .skillset import default
+from .skillset import hf_llama
 from .skillset import hf_embed
+from .skillset import hf_bert
 from .skillset import hf_lm
+from .skillset import hf_qwen2
 from .skillset import hf_clip
 from .skillset import hf_clap
-from .skillset import hf_wav2vec
+from .skillset import hf_wav2vec2
 from .skillset import hf_t5
 from .skillset import hf_whisper
 from .skillset import hf_xclip
@@ -153,6 +157,13 @@ class worker_py:
             self.hf_llava = self.resources["hf_llava"]
         elif "hf_llava" in globals():
             self.hf_llava = hf_llava(resources, metadata)
+            
+        if "hf_llava_next" not in globals() and "hf_llava" not in list(self.resources.keys()):
+            self.hf_llava_next = hf_llava_next(resources, metadata)
+        elif "hf_llava_next" in list(self.resources.keys()):
+            self.hf_llava_next = self.resources["hf_llava_next"]
+        elif "hf_llava_next" in globals():
+            self.hf_llava_next = hf_llava_next(resources, metadata)
         
         if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
             self.hf_wav2vec = hf_llava(resources, metadata)
@@ -174,6 +185,20 @@ class worker_py:
             self.hf_lm = self.resources["hf_lm"]
         elif "hf_lm" in globals():
             self.hf_lm = hf_lm(resources, metadata)
+
+        if "hf_bert" not in globals() and "default" not in list(self.resources.keys()):
+            self.hf_bert = hf_bert(self.resources, self.metadata)
+        elif "hf_bert" in list(self.resources.keys()):
+            self.hf_bert = self.resources["hf_bert"]
+        elif "hf_bert" in globals():
+            self.hf_bert = hf_bert(self.resources, self.metadata)
+
+        if "hf_llama" not in globals() and "default" not in list(self.resources.keys()):
+            self.hf_llama = hf_llama(self.resources, self.metadata)
+        elif "hf_llama" in list(self.resources.keys()):
+            self.hf_llama = self.resources["hf_llama"]
+        elif "hf_llama" in globals():
+            self.hf_llama = hf_llama(self.resources, self.metadata)
 
         if "default" not in globals() and "default" not in list(self.resources.keys()):
             self.default = default
@@ -204,18 +229,26 @@ class worker_py:
             self.hf_clap = hf_clap(resources, metadata)
             
         if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
-            self.hf_wav2vec = hf_wav2vec(resources, metadata)
+            self.hf_wav2vec2 = hf_wav2vec2(resources, metadata)
         elif "hf_wav2vec" in list(self.resources.keys()):
-            self.hf_wav2vec = self.resources["hf_wav2vec"]
+            self.hf_wav2vec2 = self.resources["hf_wav2vec2"]
         elif "hf_wav2vec" in globals():
-            self.hf_wav2vec = hf_wav2vec(resources, metadata)
+            self.hf_wav2vec2 = hf_wav2vec2(resources, metadata)
 
-        if "hf_t5" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
+        if "hf_t5" not in globals() and "hf_t5" not in list(self.resources.keys()):
             self.hf_t5 = hf_t5(resources, metadata)
         elif "hf_t5" in list(self.resources.keys()):
-            self.hf_t5 = self.resources["hf_wav2vec"]
+            self.hf_t5 = self.resources["hf_t5"]
         elif "hf_t5" in globals():
             self.hf_t5 = hf_t5(resources, metadata)
+            
+        if "hf_qwen2" not in globals() and "hf_qwen2" not in list(self.resources.keys()):
+            self.hf_qwen2 = hf_qwen2(resources, metadata)
+        elif "hf_qwen2" in list(self.resources.keys()):
+            self.hf_qwen2 = self.resources["hf_qwen2"]
+        elif "hf_qwen2" in globals():
+            self.hf_qwen2 = hf_qwen2(resources, metadata)
+            
 
         if "hf_whisper" not in globals() and "hf_whisper" not in list(self.resources.keys()):
             self.hf_whisper = hf_whisper(resources, metadata)

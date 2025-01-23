@@ -2,6 +2,12 @@ from .skillset.hf_lm import hf_lm
 from .skillset.hf_lm import *
 from .skillset.hf_embed import hf_embed
 from .skillset.hf_embed import *
+from .skillset.hf_xclip import hf_xclip
+from .skillset.hf_xclip import *
+from .skillset.hf_llama import hf_llama
+from .skillset.hf_llama import *
+from .skillset.hf_bert import hf_bert
+from .skillset.hf_bert import *
 from .skillset.hf_llava import hf_llava
 from .skillset.hf_llava import *
 from .skillset.default import default
@@ -10,8 +16,8 @@ from .skillset.hf_clap import hf_clap
 from .skillset.hf_clap import *
 from .skillset.hf_clip import hf_clip
 from .skillset.hf_clip import *
-from .skillset.hf_wav2vec import hf_wav2vec
-from .skillset.hf_wav2vec import *
+from .skillset.hf_wav2vec2 import hf_wav2vec2
+from .skillset.hf_wav2vec2 import *
 from .skillset.hf_t5 import hf_t5
 from .skillset.hf_t5 import *
 from .skillset.chat_format import chat_format

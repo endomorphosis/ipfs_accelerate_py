@@ -58,7 +58,6 @@ class hf_lm:
             with torch.no_grad():
                 if "cuda" in dir(torch):
                     torch.cuda.empty_cache()
-        print("hf_llava test")
         return None
     
     def init_cpu (self, model, device, cpu_label):

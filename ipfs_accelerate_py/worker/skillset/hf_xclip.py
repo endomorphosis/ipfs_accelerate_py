@@ -100,8 +100,11 @@ class hf_xclip:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(sentence_1, video_url)
+            print(test_batch)
+            print("hf_xclip test passed")
         except Exception as e:
             print(e)
+            print("hf_xclip test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1

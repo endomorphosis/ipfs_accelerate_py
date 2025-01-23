@@ -54,6 +54,7 @@ class hf_whisper:
         self.init_openvino = self.init_openvino
         self.init_qualcomm = self.init_qualcomm
         self.init = self.init
+        self.openvino_cli_convert = None
         self.__test__ = self.__test__
         return None
 
@@ -70,8 +71,11 @@ class hf_whisper:
         timestamp1 = time.time()
         try:
             test_batch = endpoint_handler(audio_data)
+            print(test_batch)
+            print("hf_whisper test passed")
         except Exception as e:
             print(e)
+            print("hf_whisper test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
@@ -85,7 +89,7 @@ class hf_whisper:
             with torch.no_grad():
                 if "cuda" in dir(torch):
                     torch.cuda.empty_cache()
-        print("hf_t5 test")
+        print("hf_whisper test")
         return None
 
     def init_cpu (self, model, device, cpu_label):
@@ -107,6 +111,7 @@ class hf_whisper:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        self.openvino_cli_convert = openvino_cli_convert
         endpoint = None
         tokenizer = None
         endpoint_handler = None
