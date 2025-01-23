@@ -1,19 +1,9 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-from transformers.generation.streamers import TextStreamer
-from ipfs_transformers_py import AutoModel
 import json
-import torch
-from torch import Tensor as T
-from torchvision.transforms import InterpolationMode
-import torch 
 import asyncio
-import openvino as ov
 from pathlib import Path
-import numpy as np
-import torch
 import json
 import os
 import time
@@ -25,6 +15,7 @@ class hf_llama:
         self.init = self.init
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
         self.init_cpu = self.init_cpu
         self.__test__ = self.__test__
         self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
@@ -33,8 +24,28 @@ class hf_llama:
         return None
     
     def init(self):
+            import numpy as np
+            import torch
+            from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+            from transformers.generation.streamers import TextStreamer
+            from ipfs_transformers_py import AutoModel
+            import torch
+            from torch import Tensor as T
+            from torchvision.transforms import InterpolationMode
+            import torch 
         return None
 
+    def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline, get_optimum_qualcomm_model, get_qualcomm_model, get_qualcomm_pipeline_type):
+        endpoint = None
+        tokenizer = None
+        endpoint_handler = None
+        batch_size = 0
+        tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        endpoint = get_qualcomm_model(model, model_type, qualcomm_label)
+        endpoint_handler = self.create_qualcomm_llm_endpoint_handler(endpoint,tokenizer, model, qualcomm_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+    
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
         sentence_2 = "The quick brown fox jumps over the lazy dog"
@@ -64,10 +75,11 @@ class hf_llama:
         return None
     
     def init_cpu (self, model, device, cpu_label):
+        self.init()
         return None
     
-    
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
         endpoint = None
@@ -82,6 +94,8 @@ class hf_llama:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

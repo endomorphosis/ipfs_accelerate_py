@@ -1,25 +1,12 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-# from transformers.generation.streamers import TextStreamer
-from ipfs_transformers_py import AutoModel
-import torch
-from torch import Tensor as T
-import torchvision 
-from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
-import torch 
 import asyncio
-import openvino as ov
 from pathlib import Path
-import numpy as np
-import torch
 import json
 import time
 import os
 import tempfile
-import openvino_genai as ov_genai
-from transformers import TextStreamer
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -160,6 +147,16 @@ class hf_llava_next:
         return None
     
     def init(self):
+        import torch
+        import torchvision 
+        from torch import Tensor as T
+        from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
+        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+        import numpy as np
+        import torch
+        from transformers import TextStreamer
+        from ipfs_transformers_py import AutoModel
+
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -206,6 +203,9 @@ class hf_llava_next:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
 
     def init_openvino(self, model , model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert ):
+        self.init()
+        import openvino as ov
+        import openvino_genai as ov_genai
         endpoint = None
         tokenizer = None
         endpoint_handler = None
