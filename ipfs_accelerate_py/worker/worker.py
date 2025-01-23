@@ -197,29 +197,7 @@ class worker_py:
         #     self.default = self.resources["default"]
         # elif "default" in globals():
         #     self.default = default
-            
-        # self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
-        # self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
-        # self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_whisper_endpoint_handler
-        # self.create_cuda_mlm_endpoint_handler = self.hf_t5.create_cuda_mlm_endpoint_handler
-        # self.create_cpu_mlm_endpoint_handler = self.hf_t5.create_cpu_mlm_endpoint_handler
-        # self.create_openvino_mlm_endpoint_handler = self.hf_t5.create_openvino_mlm_endpoint_handler
-        # self.create_openvino_audio_embedding_endpoint_handler = self.hf_clap.create_openvino_audio_embedding_endpoint_handler
-        # self.create_cuda_audio_embedding_endpoint_handler = self.hf_clap.create_cuda_audio_embedding_endpoint_handler
-        # self.create_cpu_audio_embedding_endpoint_handler = self.hf_clap.create_cpu_audio_embedding_endpoint_handler            
-        # self.create_openvino_image_embedding_endpoint_handler = self.hf_clip.create_openvino_image_embedding_endpoint_handler
-        # self.create_cuda_image_embedding_endpoint_handler = self.hf_clip.create_cuda_image_embedding_endpoint_handler
-        # self.create_cpu_image_embedding_endpoint_handler = self.hf_clip.create_cpu_image_embedding_endpoint_handler
-        # self.create_openvino_genai_vlm_endpoint_handler = self.hf_llava.create_openvino_genai_vlm_endpoint_handler
-        # self.create_openvino_vlm_endpoint_handler = self.hf_llava.create_openvino_vlm_endpoint_handler
-        # self.create_cpu_vlm_endpoint_handler = self.hf_llava.create_cpu_vlm_endpoint_handler
-        # self.create_openvino_text_embedding_endpoint_handler = self.hf_embed.create_openvino_text_embedding_endpoint_handler
-        # self.create_cuda_text_embedding_endpoint_handler = self.hf_embed.create_cuda_text_embedding_endpoint_handler
-        # self.create_cpu_text_embedding_endpoint_handler = self.hf_embed.create_cpu_text_embedding_endpoint_handler
-        # self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
-        # self.create_cpu_llm_endpoint_handler = self.hf_lm.create_cpu_llm_endpoint_handler
-        # self.create_cuda_llm_endpoint_handler = self.hf_lm.create_cuda_llm_endpoint_handler        
-
+                 
         self.get_openvino_model = self.openvino_utils.get_openvino_model
         self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
