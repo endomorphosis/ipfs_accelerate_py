@@ -1,27 +1,14 @@
-import torch
-import librosa
 import os
-import numpy as np
 import tempfile
 import io
-import openvino as ov
-from torch import no_grad
 import json
 import time
 import asyncio
 import requests
 import soundfile as sf
-import torch
 import gc
 from pydub import AudioSegment
 from datasets import Dataset, Audio
-from transformers import pipeline
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-from transformers import AutoModelForAudioClassification
-from transformers import AutoFeatureExtractor
-from transformers import AutoTokenizer, AutoConfig
-from transformers import AutoModel
-from transformers import AutoProcessor
 
 def load_audio(audio_file):
 
@@ -46,6 +33,7 @@ def load_audio_16khz(audio_file):
     return audio_data, 16000
 
 def load_audio_tensor(audio_file):
+    from openvino import ov, Tensor
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
         audio_data, samplerate = sf.read(io.BytesIO(response.content))
@@ -57,7 +45,7 @@ def load_audio_tensor(audio_file):
         audio_data = np.mean(audio_data, axis=1)
     audio_data = audio_data.astype(np.float32)
     
-    return ov.Tensor(audio_data.reshape(1, -1))
+    return Tensor(audio_data.reshape(1, -1))
 
 class hf_wav2vec2:
     def __init__(self, resources=None, metadata=None):
@@ -74,6 +62,19 @@ class hf_wav2vec2:
         return None
 
     def init(self):
+        import torch
+        import librosa
+        import numpy as np
+        from torch import no_grad
+        import torch
+        from transformers import pipeline
+        from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+        from transformers import AutoModelForAudioClassification
+        from transformers import AutoFeatureExtractor
+        from transformers import AutoTokenizer, AutoConfig
+        from transformers import AutoModel
+        from transformers import AutoProcessor
+
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
@@ -106,10 +107,11 @@ class hf_wav2vec2:
         return None
     
     def init_cpu(self, model, device, cpu_label):
-        
+        self.init()        
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
         # processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
@@ -126,6 +128,8 @@ class hf_wav2vec2:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

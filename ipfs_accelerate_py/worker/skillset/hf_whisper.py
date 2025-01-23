@@ -1,24 +1,19 @@
 import base64
 import os
 import subprocess
-import tiktoken
 # from faster_whisper import WhisperModel
-from transformers import AutoTokenizer, AutoConfig, AutoProcessor, AutoModel
 import pysbd
 from pydub import AudioSegment
 from pydub.silence import split_on_silence, detect_nonsilent
 import tempfile
-import numpy as np
 import io 
 from io import BytesIO
 import datetime
-import torch
 import asyncio
 import time
 import requests
-import librosa
 import soundfile as sf
-from numpy import ndarray, mean
+
     
 def load_audio(audio_file):
 
@@ -59,6 +54,12 @@ class hf_whisper:
         return None
 
     def init(self):
+        from numpy import ndarray, mean
+        import tiktoken
+        from transformers import AutoTokenizer, AutoConfig, AutoProcessor, AutoModel
+        import numpy as np
+        import torch
+        import librosa
         return None
     
     
@@ -93,10 +94,12 @@ class hf_whisper:
         return None
 
     def init_cpu (self, model, device, cpu_label):
+        self.init()
         return None
     
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
         endpoint = None
@@ -111,6 +114,8 @@ class hf_whisper:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        self.init()
+        import openvino as ov
         self.openvino_cli_convert = openvino_cli_convert
         endpoint = None
         tokenizer = None
