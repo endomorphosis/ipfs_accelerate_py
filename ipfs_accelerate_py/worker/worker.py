@@ -45,21 +45,6 @@ for file in filter_skillset_folder_files:
         else:
             pass
 
-# from .skillset import hf_llava
-# from .skillset import hf_llava_next
-# from .skillset import default
-# from .skillset import hf_llama
-# from .skillset import hf_embed
-# from .skillset import hf_bert
-# from .skillset import hf_lm
-# from .skillset import hf_qwen2
-# from .skillset import hf_clip
-# from .skillset import hf_clap
-# from .skillset import hf_wav2vec2
-# from .skillset import hf_t5
-# from .skillset import hf_whisper
-# from .skillset import hf_xclip
-
 try:
     from openvino_utils import openvino_utils
 except:
