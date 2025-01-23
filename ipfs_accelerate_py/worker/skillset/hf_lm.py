@@ -94,6 +94,7 @@ class hf_lm:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+        import openvino as ov
         self.init()
         endpoint = None
         tokenizer = None

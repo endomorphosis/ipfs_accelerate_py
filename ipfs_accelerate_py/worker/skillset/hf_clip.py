@@ -1,18 +1,10 @@
-import torch
-from torch import no_grad
-from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
 import time
-import numpy as np
 import asyncio
-from transformers import AutoConfig, AutoTokenizer, AutoProcessor
 import os
-import open_clip
 from PIL import Image
 import requests
 from io import BytesIO
-import numpy as np
 import os
-import openvino as ov
 
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
@@ -48,6 +40,13 @@ class hf_clip:
         return None
 
     def init(self):
+        import torch
+        from torch import no_grad
+        from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
+        from transformers import AutoConfig, AutoTokenizer, AutoProcessor
+        import open_clip
+        import numpy as np
+
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -77,13 +76,14 @@ class hf_clip:
         return None
     
     def init_cpu(self, model, device, cpu_label):
-        
+        self.init()
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
         processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
@@ -99,6 +99,8 @@ class hf_clip:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

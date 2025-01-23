@@ -1,11 +1,5 @@
 import asyncio
 import os
-import torch
-import torch.nn.functional as F
-from torch import inference_mode, float16, Tensor
-from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
-from transformers.generation.streamers import TextStreamer
-from ipfs_transformers_py import AutoModel
 import json
 import time
 
@@ -19,11 +13,18 @@ class hf_bert:
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_openvino
         self.init = self.init
         self.__test__ = self.__test__
         return None
     
     def init(self):
+        import torch
+        import torch.nn.functional as F
+        from torch import inference_mode, float16, Tensor
+        from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
+        from transformers.generation.streamers import TextStreamer
+        from ipfs_transformers_py import AutoModel
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -53,9 +54,11 @@ class hf_bert:
         return True
 
     def init_cpu():
+        self.init()
         return None
 
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)
         tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
         try:
@@ -72,6 +75,8 @@ class hf_bert:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
     def init_openvino(self, model_name=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

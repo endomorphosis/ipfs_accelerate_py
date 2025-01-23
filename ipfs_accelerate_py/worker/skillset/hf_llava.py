@@ -1,25 +1,12 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-# from transformers.generation.streamers import TextStreamer
-from ipfs_transformers_py import AutoModel
-import torch
-from torch import Tensor as T
-import torchvision 
-from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
-import torch 
 import asyncio
-import openvino as ov
 from pathlib import Path
-import numpy as np
-import torch
 import json
 import time
 import os
 import tempfile
-import openvino_genai as ov_genai
-from transformers import TextStreamer
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -153,6 +140,8 @@ class hf_llava:
         self.dynamic_preprocess = dynamic_preprocess
         self.load_image_bak = load_image_bak
         self.find_closest_aspect_ratio = find_closest_aspect_ratio
+        self.init_cpu = self.init_cpu
+        self.init_qualcomm = self.init_qualcomm
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init = self.init
@@ -160,6 +149,18 @@ class hf_llava:
         return None
     
     def init(self):
+        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+        # from transformers.generation.streamers import TextStreamer
+        from ipfs_transformers_py import AutoModel
+        import torch
+        from torch import Tensor as T
+        import torchvision 
+        from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
+        import torch 
+        import numpy as np
+        import torch
+        from transformers import TextStreamer
+
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -191,7 +192,21 @@ class hf_llava:
         print("hf_llava test")
         return None
     
+    def init_cpu(self, model, device, cpu_label):
+        self.init()
+        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = AutoProcessor.from_pretrained(model)
+        endpoint = AutoModelForImageTextToText.from_pretrained(model, trust_remote_code=True)
+        endpoint_handler = self.create_optimum_vlm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
+        torch.cuda.empty_cache()
+        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+    
+    def init_qualcomm(self, model, device, qualcomm_label):
+        return None
+    
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoProcessor.from_pretrained(model)
         endpoint = None
@@ -206,6 +221,9 @@ class hf_llava:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
 
     def init_openvino(self, model , model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert ):
+        self.init()
+        import openvino_genai as ov_genai
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

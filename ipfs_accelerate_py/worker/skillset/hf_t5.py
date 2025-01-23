@@ -78,6 +78,7 @@ class hf_t5:
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None

@@ -1,22 +1,12 @@
-import torch
-from torch import no_grad
-from transformers import ClapModel, ClapProcessor
 import time
-import numpy as np
-import gc
 import asyncio
-from transformers import AutoConfig, AutoTokenizer, AutoProcessor
 import os
-import open_clip
 from PIL import Image
 import requests
 from io import BytesIO
-import numpy as np
 import os
-import openvino as ov
 import soundfile as sf
 import io
-import numpy as np
 
 def load_audio(audio_file):
 
@@ -80,6 +70,13 @@ class hf_clap:
         return None
 
     def init(self):
+        import torch
+        from torch import no_grad
+        from transformers import ClapModel, ClapProcessor
+        import numpy as np
+        import gc
+        from transformers import AutoConfig, AutoTokenizer, AutoProcessor
+        import numpy as np
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
@@ -110,10 +107,11 @@ class hf_clap:
         return None
     
     def init_cpu(self, model, device, cpu_label):
-        
+        self.init()
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
         processor = ClapProcessor.from_pretrained(model, trust_remote_code=True)
@@ -129,6 +127,8 @@ class hf_clap:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None
