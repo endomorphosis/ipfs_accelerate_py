@@ -1,20 +1,15 @@
 import tempfile
-import torch
 import requests
 import json
 import os
 import sys
 import asyncio
 import random
-import aiohttp
-from aiohttp import ClientSession, ClientTimeout
-from transformers import AutoTokenizer, AutoModel, AutoConfig
 import ipfs_kit_py
 import ipfs_model_manager_py
 import libp2p_kit_py
 import hashlib
 import time
-from torch import Tensor
 
 class ipfs_accelerate_py:
     def __init__(self, resources=None, metadata=None):
@@ -241,6 +236,7 @@ class ipfs_accelerate_py:
         return handler
     
     def create_openvino_endpoint_handler(self, model, endpoint, context_length):
+        from transformers import AutoTokenizer, AutoModel, AutoConfig
         async def handler(x):
             tokenizer = None
             tokens = None
@@ -571,6 +567,7 @@ class ipfs_accelerate_py:
         return None
 
     async def make_local_request(self, model, endpoint, endpoint_type, data):
+        import torch
         device = torch.device(endpoint)
         inputs = self.tokenizer[model][endpoint](data, return_tensors="pt", padding=True, truncation=True).to(device)
         self.local_endpoints[model][endpoint].to(device).eval()
@@ -726,6 +723,7 @@ class ipfs_accelerate_py:
         return return_results
     
     async def endpoint_consumer(self, queue, batch_size, model_name, endpoint):
+        from torch import Tensor
         # print("consumer started for model " + model_name + " at endpoint " + endpoint)
         batch = []
         results = None
@@ -819,6 +817,7 @@ class ipfs_accelerate_py:
 
     
     async def max_batch_size(self, model, endpoint, endpoint_handler):
+        import torch
         import psutil
         process = psutil.Process(os.getpid())
         embed_fail = False
@@ -1081,6 +1080,7 @@ class ipfs_accelerate_py:
         return test_results
     
     def get_model_type(self, model_name, model_type=None):
+        from transformers import AutoConfig
         if model_type is None:
             config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
@@ -1177,6 +1177,8 @@ class ipfs_accelerate_py:
             return None
     
     async def make_post_request_tei(self, endpoint, data=None):
+        import aiohttp
+        from aiohttp import ClientSession, ClientTimeout
         if data is None:
             return None
         else:
@@ -1219,6 +1221,8 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
 
     async def make_post_request_libp2p(self, endpoint, data):
+        import aiohttp
+        from aiohttp import ClientSession, ClientTimeout
         headers = {'Content-Type': 'application/json'}
         timeout = ClientTimeout(total=300) 
         async with ClientSession(timeout=timeout) as session:
