@@ -1,40 +1,11 @@
-import torch
-from torch import no_grad
-from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
 import time
-import numpy as np
 import asyncio
-from transformers import AutoConfig, AutoTokenizer, AutoProcessor
 import os
-import open_clip
 from PIL import Image
 import requests
 from io import BytesIO
-import numpy as np
 import os
-import openvino as ov
-from decord import VideoReader, cpu
 import tempfile
-
-    # video = cv2.VideoCapture(video_url)
-    # frames = []
-    # batch_size = 16
-    # while True:
-    #     ret, frame = video.read()
-    #     if not ret:
-    #         break
-    #     frame = cv2.resize(frame, (224, 224))
-    #     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-    #     frame = frame.astype(np.float32) / 255.0  # Normalize to [0, 1]
-    #     frame = np.transpose(frame, (2, 0, 1))  # Convert shape to (C, H, W)
-    #     frame_tensor = torch.from_numpy(frame)  # Convert numpy array to tensor
-    #     frames.append(frame_tensor)
-    #     if len(frames) == batch_size:
-    #         break
-    # video.release()
-    # if frames:
-    #     video_tensor = torch.stack(frames)  # Keep 4D input
-    #     video_tensor = video_tensor.unsqueeze(0)  # shape: [1, 16, 3, 224, 224]
 
 np.random.seed(0)
 
@@ -45,14 +16,6 @@ def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
     indices = np.linspace(start_idx, end_idx, num=clip_len)
     indices = np.clip(indices, start_idx, end_idx - 1).astype(np.int64)
     return indices
-
-# videoreader = VideoReader(file_path, num_threads=1, ctx=cpu(0))
-
-# sample 32 frames
-# videoreader.seek(0)
-# indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
-# video = videoreader.get_batch(indices).asnumpy()
-     
 
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
@@ -89,6 +52,13 @@ class hf_xclip:
         return None
 
     def init(self):
+        import torch
+        from torch import no_grad
+        from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
+        import numpy as np
+        from transformers import AutoConfig, AutoTokenizer, AutoProcessor
+        from decord import VideoReader, cpu
+        
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
@@ -122,10 +92,11 @@ class hf_xclip:
         return None
     
     def init_cpu(self, model, device, cpu_label):
-        
+        self.init()
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        self.init()
         config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = AutoTokenizer.from_pretrained(model)
         processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
@@ -141,6 +112,8 @@ class hf_xclip:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
+        self.init()
+        import openvino as ov
         endpoint = None
         tokenizer = None
         endpoint_handler = None
