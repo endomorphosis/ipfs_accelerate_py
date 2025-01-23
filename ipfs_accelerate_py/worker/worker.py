@@ -26,20 +26,39 @@ except:
     from .ipfs_multiformats import ipfs_multiformats_py
     
 sys.path.append(os.path.join(os.path.dirname(__file__)))
-from .skillset import hf_llava
-from .skillset import hf_llava_next
-from .skillset import default
-from .skillset import hf_llama
-from .skillset import hf_embed
-from .skillset import hf_bert
-from .skillset import hf_lm
-from .skillset import hf_qwen2
-from .skillset import hf_clip
-from .skillset import hf_clap
-from .skillset import hf_wav2vec2
-from .skillset import hf_t5
-from .skillset import hf_whisper
-from .skillset import hf_xclip
+skillset_folder_files = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
+filter_skillset_folder_files = [ x for x in skillset_folder_files if x.endswith(".py") and "hf_" in x]
+for file in filter_skillset_folder_files:
+    if file.endswith(".py"):
+        file_name = file.split(".")[0]
+        this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+        absolute_path = os.path.abspath(this_file)
+        if file_name not in globals():
+            try:
+                with open(absolute_path, encoding='utf-8') as f:
+                    exec(f.read())
+            except Exception as e:
+                print(e)
+                pass
+            with open(absolute_path, encoding='utf-8') as f:
+                globals()[file_name] = exec(f.read())
+        else:
+            pass
+
+# from .skillset import hf_llava
+# from .skillset import hf_llava_next
+# from .skillset import default
+# from .skillset import hf_llama
+# from .skillset import hf_embed
+# from .skillset import hf_bert
+# from .skillset import hf_lm
+# from .skillset import hf_qwen2
+# from .skillset import hf_clip
+# from .skillset import hf_clap
+# from .skillset import hf_wav2vec2
+# from .skillset import hf_t5
+# from .skillset import hf_whisper
+# from .skillset import hf_xclip
 
 try:
     from openvino_utils import openvino_utils
@@ -151,119 +170,42 @@ class worker_py:
             self.dispatch_result = dispatch_result
             pass
         
-        if "hf_llava" not in globals() and "hf_llava" not in list(self.resources.keys()):
-            self.hf_llava = hf_llava(resources, metadata)
-        elif "hf_llava" in list(self.resources.keys()):
-            self.hf_llava = self.resources["hf_llava"]
-        elif "hf_llava" in globals():
-            self.hf_llava = hf_llava(resources, metadata)
-            
-        if "hf_llava_next" not in globals() and "hf_llava" not in list(self.resources.keys()):
-            self.hf_llava_next = hf_llava_next(resources, metadata)
-        elif "hf_llava_next" in list(self.resources.keys()):
-            self.hf_llava_next = self.resources["hf_llava_next"]
-        elif "hf_llava_next" in globals():
-            self.hf_llava_next = hf_llava_next(resources, metadata)
+        files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
+        filter_files_for_hf_prefix = [ x for x in files_in_skills_folder if x.startswith("hf_")]
+        for file in filter_files_for_hf_prefix:
+            if file.endswith(".py"):
+                file_name = file.split(".")[0]
+                if file_name not in globals() and file_name not in list(self.resources.keys()):
+                    this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+                    try:
+                        exec(open(this_file).read())
+                    except Exception as e:
+                        print(e)
+                        pass
+                    self.resources[file_name] = eval(file_name)
+                    self.__dict__[file_name] = eval(file_name)
+                elif file_name in list(self.resources.keys()):
+                    self.__dict__[file_name] = self.resources[file_name]
+                elif file_name in globals():
+                    self.resources[file_name] = eval(file_name)
+                    self.__dict__[file_name] = eval(file_name)
+                else:
+                    pass
         
-        if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
-            self.hf_wav2vec = hf_llava(resources, metadata)
-        elif "hf_wav2vec" in list(self.resources.keys()):
-            self.hf_wav2vec = self.resources["hf_wav2vec"]
-        elif "hf_wav2vec" in globals():
-            self.hf_wav2vec = hf_llava(resources, metadata)
-        
-        if "hf_embed" not in globals() and "default" not in list(self.resources.keys()):
-            self.hf_embed = hf_embed(self.resources, self.metadata)
-        elif "hf_embed" in list(self.resources.keys()):
-            self.hf_embed = self.resources["hf_embed"]
-        elif "hf_embed" in globals():
-            self.hf_embed = hf_embed(self.resources, self.metadata)
-
-        if "hf_lm" not in globals() and "hf_lm" not in list(self.resources.keys()):
-            self.hf_lm = hf_lm(resources, metadata)
-        elif "hf_lm" in list(self.resources.keys()):
-            self.hf_lm = self.resources["hf_lm"]
-        elif "hf_lm" in globals():
-            self.hf_lm = hf_lm(resources, metadata)
-
-        if "hf_bert" not in globals() and "default" not in list(self.resources.keys()):
-            self.hf_bert = hf_bert(self.resources, self.metadata)
-        elif "hf_bert" in list(self.resources.keys()):
-            self.hf_bert = self.resources["hf_bert"]
-        elif "hf_bert" in globals():
-            self.hf_bert = hf_bert(self.resources, self.metadata)
-
-        if "hf_llama" not in globals() and "default" not in list(self.resources.keys()):
-            self.hf_llama = hf_llama(self.resources, self.metadata)
-        elif "hf_llama" in list(self.resources.keys()):
-            self.hf_llama = self.resources["hf_llama"]
-        elif "hf_llama" in globals():
-            self.hf_llama = hf_llama(self.resources, self.metadata)
-
-        if "default" not in globals() and "default" not in list(self.resources.keys()):
-            self.default = default
-        elif "default" in list(self.resources.keys()):
-            self.default = self.resources["default"]
-        elif "default" in globals():
-            self.default = default
+        # if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
+        #     self.openvino_utils = openvino_utils(resources, metadata)
+        # elif "openvino_utils" in list(self.resources.keys()):
+        #     self.openvino_utils = self.resources["openvino_utils"]
+        # elif "openvino_utils" in globals():
+        #     self.openvino_utils = openvino_utils(resources, metadata)
             
-        if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-            self.openvino_utils = openvino_utils(resources, metadata)
-        elif "openvino_utils" in list(self.resources.keys()):
-            self.openvino_utils = self.resources["openvino_utils"]
-        elif "openvino_utils" in globals():
-            self.openvino_utils = openvino_utils(resources, metadata)
+        # if "default" not in globals() and "default" not in list(self.resources.keys()):
+        #     self.default = default
+        # elif "default" in list(self.resources.keys()):
+        #     self.default = self.resources["default"]
+        # elif "default" in globals():
+        #     self.default = default
             
-        if "hf_clip" not in globals() and "hf_clip" not in list(self.resources.keys()):
-            self.hf_clip = hf_clip(resources, metadata)
-        elif "hf_clip" in list(self.resources.keys()):
-            self.hf_clip = self.resources["hf_clip"]
-        elif "hf_clip" in globals():
-            self.hf_clip = hf_clip(resources, metadata)
-            
-        if "hf_clap" not in globals() and "hf_clap" not in list(self.resources.keys()):
-            self.hf_clap = hf_clap(resources, metadata)
-        elif "hf_clap" in list(self.resources.keys()):
-            self.hf_clap = self.resources["hf_clap"]
-        elif "hf_clap" in globals():
-            self.hf_clap = hf_clap(resources, metadata)
-            
-        if "hf_wav2vec" not in globals() and "hf_wav2vec" not in list(self.resources.keys()):
-            self.hf_wav2vec2 = hf_wav2vec2(resources, metadata)
-        elif "hf_wav2vec" in list(self.resources.keys()):
-            self.hf_wav2vec2 = self.resources["hf_wav2vec2"]
-        elif "hf_wav2vec" in globals():
-            self.hf_wav2vec2 = hf_wav2vec2(resources, metadata)
-
-        if "hf_t5" not in globals() and "hf_t5" not in list(self.resources.keys()):
-            self.hf_t5 = hf_t5(resources, metadata)
-        elif "hf_t5" in list(self.resources.keys()):
-            self.hf_t5 = self.resources["hf_t5"]
-        elif "hf_t5" in globals():
-            self.hf_t5 = hf_t5(resources, metadata)
-            
-        if "hf_qwen2" not in globals() and "hf_qwen2" not in list(self.resources.keys()):
-            self.hf_qwen2 = hf_qwen2(resources, metadata)
-        elif "hf_qwen2" in list(self.resources.keys()):
-            self.hf_qwen2 = self.resources["hf_qwen2"]
-        elif "hf_qwen2" in globals():
-            self.hf_qwen2 = hf_qwen2(resources, metadata)
-            
-
-        if "hf_whisper" not in globals() and "hf_whisper" not in list(self.resources.keys()):
-            self.hf_whisper = hf_whisper(resources, metadata)
-        elif "hf_whisper" in list(self.resources.keys()):
-            self.hf_whisper = self.resources["hf_whisper"]
-        elif "hf_whisper" in globals():
-            self.hf_whisper = hf_whisper(resources, metadata)
-
-        if "hf_xclip" not in globals() and "hf_xclip" not in list(self.resources.keys()):
-            self.hf_xclip = hf_xclip(resources, metadata)
-        elif "hf_xclip" in list(self.resources.keys()):
-            self.hf_xclip = self.resources["hf_xclip"]
-        elif "hf_xclip" in globals():
-            self.hf_xclip = hf_xclip(resources, metadata)
-
         self.create_cuda_whisper_endpoint_handler = self.hf_whisper.create_cuda_whisper_endpoint_handler
         self.create_cpu_whisper_endpoint_handler = self.hf_whisper.create_cpu_whisper_endpoint_handler
         self.create_openvino_whisper_endpoint_handler = self.hf_whisper.create_openvino_whisper_endpoint_handler
@@ -285,9 +227,9 @@ class worker_py:
         self.create_openvino_llm_endpoint_handler = self.hf_lm.create_openvino_llm_endpoint_handler
         self.create_cpu_llm_endpoint_handler = self.hf_lm.create_cpu_llm_endpoint_handler
         self.create_cuda_llm_endpoint_handler = self.hf_lm.create_cuda_llm_endpoint_handler        
-        self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
-        self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
-        self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
+        # self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
+        # self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
+        # self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
         self.get_openvino_model = self.openvino_utils.get_openvino_model
         self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model

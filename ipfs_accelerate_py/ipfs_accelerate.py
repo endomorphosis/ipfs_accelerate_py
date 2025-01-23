@@ -1484,7 +1484,7 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             # "laion/larger_clap_general",
-            # "google-t5/t5-base",
+            "google-t5/t5-base",
             # "facebook/wav2vec2-large-960h-lv60-self",
             # "BAAI/bge-small-en-v1.5", 
             # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
@@ -1496,7 +1496,7 @@ if __name__ == "__main__":
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            "llava-hf/llava-v1.6-mistral-7b-hf",
+            # "llava-hf/llava-v1.6-mistral-7b-hf",
             # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
             # "TIGER-Lab/Mantis-8B-siglip-llama3",  ## make sure sthat optimum-cli-convert works on windows.
             # "microsoft/xclip-base-patch16-zero-shot",
