@@ -5,10 +5,9 @@ import json
 import time
 import asyncio
 import requests
-import soundfile as sf
 import gc
 from pydub import AudioSegment
-from datasets import Dataset, Audio
+# from datasets import Dataset, Audio
 
 def load_audio(audio_file):
 
@@ -74,7 +73,7 @@ class hf_wav2vec2:
         from transformers import AutoTokenizer, AutoConfig
         from transformers import AutoModel
         from transformers import AutoProcessor
-
+        import soundfile as sf
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):

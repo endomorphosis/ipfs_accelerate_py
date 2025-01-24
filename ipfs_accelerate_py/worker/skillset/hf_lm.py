@@ -1,19 +1,9 @@
 import requests
 from PIL import Image
 from io import BytesIO
-from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-from transformers.generation.streamers import TextStreamer
-from ipfs_transformers_py import AutoModel
 import json
-import torch
-from torch import Tensor as T
-from torchvision.transforms import InterpolationMode
-import torch 
 import asyncio
-import openvino as ov
 from pathlib import Path
-import numpy as np
-import torch
 import json
 import os
 import time
@@ -33,15 +23,15 @@ class hf_lm:
         return None
     
     def init(self):
-            import numpy as np
-            import torch
-            from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-            from transformers.generation.streamers import TextStreamer
-            from ipfs_transformers_py import AutoModel
-            import torch
-            from torch import Tensor as T
-            from torchvision.transforms import InterpolationMode
-            import torch 
+        import torch 
+        import numpy as np
+        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+        from transformers.generation.streamers import TextStreamer
+        from ipfs_transformers_py import AutoModel
+        from torch import Tensor as T
+        from torchvision.transforms import InterpolationMode
+        from ipfs_transformers_py import AutoModel
+ 
         return None
 
 

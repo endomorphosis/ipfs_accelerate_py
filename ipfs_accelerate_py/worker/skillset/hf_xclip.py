@@ -7,7 +7,6 @@ from io import BytesIO
 import os
 import tempfile
 
-np.random.seed(0)
 
 def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
     converted_len = int(clip_len * frame_sample_rate)
@@ -58,7 +57,7 @@ class hf_xclip:
         import numpy as np
         from transformers import AutoConfig, AutoTokenizer, AutoProcessor
         from decord import VideoReader, cpu
-        
+        np.random.seed(0)
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):

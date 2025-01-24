@@ -12,7 +12,6 @@ import datetime
 import asyncio
 import time
 import requests
-import soundfile as sf
 
     
 def load_audio(audio_file):
@@ -60,6 +59,7 @@ class hf_whisper:
         import numpy as np
         import torch
         import librosa
+        import soundfile as sf
         return None
     
     

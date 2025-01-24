@@ -156,7 +156,9 @@ class hf_embed:
                 print(e)
                 pass
             
-            average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+            last_hidden = results.last_hidden_state.masked_fill(~tokens['attention_mask'].bool(), 0.0)
+            average_pool_results =  last_hidden.sum(dim=1) / tokens['attention_mask'].sum(dim=1)[..., None]
+
             return average_pool_results
         return handler
 
@@ -244,7 +246,4 @@ class hf_embed:
     # 		'text': embeddings, 
     # 		'done': True
     # 	}
-        
-    def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
-        last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
-        return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+       

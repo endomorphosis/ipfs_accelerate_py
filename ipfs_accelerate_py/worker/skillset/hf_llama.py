@@ -24,15 +24,15 @@ class hf_llama:
         return None
     
     def init(self):
-            import numpy as np
-            import torch
-            from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-            from transformers.generation.streamers import TextStreamer
-            from ipfs_transformers_py import AutoModel
-            import torch
-            from torch import Tensor as T
-            from torchvision.transforms import InterpolationMode
-            import torch 
+        import numpy as np
+        import torch
+        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
+        from transformers.generation.streamers import TextStreamer
+        from ipfs_transformers_py import AutoModel
+        import torch
+        from torch import Tensor as T
+        from torchvision.transforms import InterpolationMode
+        import torch 
         return None
 
     def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline, get_optimum_qualcomm_model, get_qualcomm_model, get_qualcomm_pipeline_type):

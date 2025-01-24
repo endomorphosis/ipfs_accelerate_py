@@ -5,7 +5,6 @@ from PIL import Image
 import requests
 from io import BytesIO
 import os
-import soundfile as sf
 import io
 
 def load_audio(audio_file):
@@ -45,14 +44,14 @@ def cleanup_torchscript_cache():
     torch.jit._recursive.concrete_type_store = torch.jit._recursive.ConcreteTypeStore()
     torch.jit._state._clear_class_state()
 
-class ClapEncoderWrapper(torch.nn.Module):
-    def __init__(self, encoder):
-        super().__init__()
-        encoder.eval()
-        self.encoder = encoder
+# class ClapEncoderWrapper(torch.nn.Module):
+#     def __init__(self, encoder):
+#         super().__init__()
+#         encoder.eval()
+#         self.encoder = encoder
 
-    def forward(self, input_ids, attention_mask):
-        return self.encoder.get_text_features(input_ids, attention_mask)
+#     def forward(self, input_ids, attention_mask):
+#         return self.encoder.get_text_features(input_ids, attention_mask)
 
 class hf_clap:
     def __init__(self, resources=None, metadata=None):
@@ -77,6 +76,7 @@ class hf_clap:
         import gc
         from transformers import AutoConfig, AutoTokenizer, AutoProcessor
         import numpy as np
+        import soundfile as sf
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):

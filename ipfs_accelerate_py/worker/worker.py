@@ -5,20 +5,16 @@ import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from PIL import Image
 import tempfile
-import torchvision.transforms as T
-from torchvision.transforms import InterpolationMode
 from install_depends import install_depends_py
-import transformers
-from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer, AutoModelForImageTextToText
-import optimum
-import torch 
 import asyncio
-import openvino as ov
 import platform
 from io import BytesIO
 import os
 from PIL import Image
 import requests
+from pathlib import Path
+import json
+import hashlib
 
 try:
     from ipfs_multiformats import ipfs_multiformats_py
@@ -44,19 +40,6 @@ for file in filter_skillset_folder_files:
                 globals()[file_name] = exec(f.read())
         else:
             pass
-
-try:
-    from openvino_utils import openvino_utils
-except:
-    from .openvino_utils import openvino_utils
-
-from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
-import ipfs_transformers_py
-from pathlib import Path
-import numpy as np
-import torch
-import json
-import hashlib
 
 class should_abort:
     def __init__(self, resources, metadata):
@@ -104,33 +87,6 @@ class worker_py:
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)
         
-        if "torch" not in globals() and "torch" not in list(self.resources.keys()):
-            self.torch = torch
-        elif "torch" in list(self.resources.keys()):
-            self.torch = self.resources["torch"]
-        elif "torch" in globals():
-            self.torch = torch
-        
-        if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
-            from ipfs_transformers_py import ipfs_transformers
-            self.ipfs_transformers = { 
-                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
-            }        
-        elif "ipfs_transformers_py" in list(self.resources.keys()):
-            self.ipfs_transformers_py = self.resources["ipfs_transformers_py"]
-        elif "ipfs_transformers_py" in globals():
-            from ipfs_transformers_py import ipfs_transformers
-            self.ipfs_transformers = { 
-                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
-            }
-            
-        if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
-            self.transformers = transformers   
-        elif "transformers" in list(self.resources.keys()):
-            self.transformers = self.resources["transformers"]
-        elif "transformers" in globals():
-            self.transformers = transformers
-            
         if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
@@ -139,13 +95,7 @@ class worker_py:
         elif "ipfs_multiformats_py" in globals():
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
-            
-        if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-            self.openvino_utils = openvino_utils(resources, metadata)
-        elif "openvino_utils" in list(self.resources.keys()):
-            self.openvino_utils = self.resources["openvino_utils"]
-        elif "openvino_utils" in globals():
-            self.openvino_utils = openvino_utils(resources, metadata)
+
 
         if "dispatch_result" not in globals() and "dispatch_result" not in list(self.resources.keys()):
             self.dispatch_result = dispatch_result
@@ -184,12 +134,6 @@ class worker_py:
                 else:
                     pass
         
-        # if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-        #     self.openvino_utils = openvino_utils(resources, metadata)
-        # elif "openvino_utils" in list(self.resources.keys()):
-        #     self.openvino_utils = self.resources["openvino_utils"]
-        # elif "openvino_utils" in globals():
-        #     self.openvino_utils = openvino_utils(resources, metadata)
             
         # if "default" not in globals() and "default" not in list(self.resources.keys()):
         #     self.default = default
@@ -197,13 +141,6 @@ class worker_py:
         #     self.default = self.resources["default"]
         # elif "default" in globals():
         #     self.default = default
-                 
-        self.get_openvino_model = self.openvino_utils.get_openvino_model
-        self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
-        self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
-        self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
-        self.get_model_type = self.openvino_utils.get_model_type
-        self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         
         # self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
         # self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
@@ -229,6 +166,81 @@ class worker_py:
             for backend in self.hardware_backends:
                 if backend not in list(self.__dict__[endpoint].keys()):
                     self.__dict__[endpoint][backend] = {}
+        return None
+    
+    def init():
+        import numpy as np
+        import torch
+        from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
+        import torchvision.transforms as T
+        from torchvision.transforms import InterpolationMode
+        import transformers
+        from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer, AutoModelForImageTextToText
+        
+        if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
+            self.transformers = transformers   
+        elif "transformers" in list(self.resources.keys()):
+            self.transformers = self.resources["transformers"]
+        elif "transformers" in globals():
+            self.transformers = transformers
+            
+        if "torch" not in globals() and "torch" not in list(self.resources.keys()):
+            self.torch = torch
+        elif "torch" in list(self.resources.keys()):
+            self.torch = self.resources["torch"]
+        elif "torch" in globals():
+            self.torch = torch
+        return None
+    
+    def init_cuda(self, model, device, cuda_label):
+        return None
+    
+    def init_qualcomm(self, model, device, qualcomm_label):
+        return None
+    
+    def init_cpu(self, model, device, cpu_label):
+        self.init()
+        return None
+    
+    def init_networking(self, model, device, networking_label):
+        import ipfs_transformers_py
+
+        if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
+            from ipfs_transformers_py import ipfs_transformers
+            self.ipfs_transformers = { 
+                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
+            }        
+        elif "ipfs_transformers_py" in list(self.resources.keys()):
+            self.ipfs_transformers_py = self.resources["ipfs_transformers_py"]
+        elif "ipfs_transformers_py" in globals():
+            from ipfs_transformers_py import ipfs_transformers
+            self.ipfs_transformers = { 
+                # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
+            }
+            
+        return None
+    
+    def init_openvino():
+        self.init()
+        import optimum
+        import openvino as ov
+        try:
+            from openvino_utils import openvino_utils
+        except:
+            from .openvino_utils import openvino_utils
+        if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
+            self.openvino_utils = openvino_utils(resources, metadata)
+        elif "openvino_utils" in list(self.resources.keys()):
+            self.openvino_utils = self.resources["openvino_utils"]
+        elif "openvino_utils" in globals():
+            self.openvino_utils = openvino_utils(resources, metadata)
+            
+        self.get_openvino_model = self.openvino_utils.get_openvino_model
+        self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
+        self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
+        self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
+        self.get_model_type = self.openvino_utils.get_model_type
+        self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         return None
     
     async def dispatch_result(self, result):

@@ -1,12 +1,3 @@
-import librosa
-import subprocess
-from transformers import AutoConfig
-import os
-import torch
-import openvino as ov
-import openvino_genai as ov_genai
-from transformers import AutoTokenizer, AutoModel, AutoProcessor
-
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -22,6 +13,13 @@ class openvino_utils:
         return None
     
     def init(self):
+        import subprocess
+        from transformers import AutoConfig
+        import os
+        import torch
+        import openvino as ov
+        import openvino_genai as ov_genai
+        from transformers import AutoTokenizer, AutoModel, AutoProcessor
         return None
             
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):

@@ -124,7 +124,10 @@ class hf_bert:
                 try:
                     tokens = tokenizer(x, return_tensors="pt")
                     results =  endpoint(**tokens)
-                    average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+                    # average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+                    last_hidden = results.last_hidden_state.masked_fill(~tokens['attention_mask'].bool(), 0.0)
+                    average_pool_results =  last_hidden.sum(dim=1) / tokens['attention_mask'].sum(dim=1)[..., None]
+
                     return average_pool_results
                 except Exception as e:
                     print(e)
@@ -157,8 +160,15 @@ class hf_bert:
                 print(e)
                 pass
             
-            average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+            # average_pool_results = self.average_pool(results.last_hidden_state, tokens['attention_mask'])
+            
+            last_hidden = results.last_hidden_state.masked_fill(~tokens['attention_mask'].bool(), 0.0)
+            average_pool_results =  last_hidden.sum(dim=1) / tokens['attention_mask'].sum(dim=1)[..., None]
+
             return average_pool_results
+        
+        
+        
         return handler
 
     def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
@@ -246,7 +256,7 @@ class hf_bert:
     # 		'done': True
     # 	}
         
-    def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
-        last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
-        return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+    # def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
+    #     last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
+    #     return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
 

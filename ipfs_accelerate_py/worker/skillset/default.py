@@ -1,12 +1,6 @@
 import asyncio
 import os
-import torch
-import torch.nn.functional as F
-from torch import inference_mode, float16, Tensor
-from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
-from transformers.generation.streamers import TextStreamer
-from sentence_transformers import SentenceTransformer
-from InstructorEmbedding import INSTRUCTOR
+# from InstructorEmbedding import INSTRUCTOR
 # from FlagEmbedding import FlagModel
 import json
 
@@ -25,6 +19,12 @@ class default:
         return None
     
     def init(self):
+        import torch
+        import torch.nn.functional as F
+        from torch import inference_mode, float16, Tensor
+        from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
+        from transformers.generation.streamers import TextStreamer
+        from sentence_transformers import SentenceTransformer
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):

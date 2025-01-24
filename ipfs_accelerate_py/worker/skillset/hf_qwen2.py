@@ -3,7 +3,6 @@ from PIL import Image
 from io import BytesIO
 import json
 import asyncio
-import openvino as ov
 from pathlib import Path
 import json
 import os

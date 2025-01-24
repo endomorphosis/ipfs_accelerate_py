@@ -27,4 +27,3 @@ from .skillset.hf_whisper import *
 from .openvino_utils import *
 from .worker import worker_py
 from .worker import *
-import torch
