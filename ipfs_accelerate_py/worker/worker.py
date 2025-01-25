@@ -294,9 +294,12 @@ class worker_py:
         return test_results
     
     def get_model_type(self, model_name, model_type=None):
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
+        if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
+            return None
+        else:
+            if model_type is None:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
         return model_type
                 
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):
@@ -362,9 +365,12 @@ class worker_py:
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
         ipex_test = self.hwtest["ipex"]
+        cuda = cuda_test
         cpus = os.cpu_count()
-        cuda = torch.cuda.is_available()
-        gpus = torch.cuda.device_count()
+        gpus = False
+        # cpus = os.cpu_count()
+        # cuda = torch.cuda.is_available()
+        # gpus = torch.cuda.device_count()
         for model in models:
             model_type = self.get_model_type(model)
             if model not in list(self.tokenizer.keys()):
