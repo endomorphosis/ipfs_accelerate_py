@@ -55,24 +55,24 @@ class hf_t5:
         print(f"samples per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
-            with torch.no_grad():
-                if "cuda" in dir(torch):
-                    torch.cuda.empty_cache()
+            with self.torch.no_grad():
+                if "cuda" in dir(self.torch):
+                    self.torch.cuda.empty_cache()
         print("hf_t5 test")
         return None
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoProcessor.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
         endpoint = None
         try:
-            endpoint = T5ForConditionalGeneration.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
         endpoint_handler = self.create_cuda_mlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
@@ -83,7 +83,7 @@ class hf_t5:
         tokenizer = None
         endpoint_handler = None
         batch_size = 0                
-        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_mlm_endpoint_handler( endpoint, tokenizer, model, openvino_label)
         batch_size = 0
@@ -97,16 +97,16 @@ class hf_t5:
                 local_cuda_endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
                     # Run model inference
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
     
@@ -118,10 +118,10 @@ class hf_t5:
                 local_cuda_endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
                     if x is not None and type(x) == str:
                         conversation = [
@@ -152,15 +152,15 @@ class hf_t5:
                         raise Exception("Invalid input to vlm endpoint handler")
                   
                     prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, self.torch.float16)
                     output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
                     result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
                     # Run model inference
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 
@@ -186,7 +186,7 @@ class hf_t5:
         import tempfile
         from transformers import AutoModel, AutoTokenizer, AutoProcessor  
         if hfmodel is None:
-            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
     
         if hfprocessor is None:
             hftokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -211,7 +211,7 @@ class hf_t5:
                     os.remove(model_dst_path)
                 if not os.path.exists(model_dst_path):
                     os.mkdir(model_dst_path)
-                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
                 core = ov.Core()
                 ov_model = core.read_model(model_name, os.path.join(model_dst_path, 'openvino_decoder_with_past_model.xml'))
 

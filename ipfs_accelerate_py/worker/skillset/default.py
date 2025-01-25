@@ -35,16 +35,16 @@ class default:
     
     
     def init_cuda(self, model, device, cuda_label):
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoProcessor.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
         endpoint = None
         try:
-            endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
         endpoint_handler = self.create_llm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
@@ -53,7 +53,7 @@ class default:
         tokenizer = None
         endpoint_handler = None
         batch_size = 0                
-        tokenizer =  AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        tokenizer =  self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         endpoint = get_openvino_model(model, model_type, openvino_label)
         endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
@@ -67,10 +67,10 @@ class default:
                 local_cuda_endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
                     if x is not None and type(x) == str:
                         conversation = [
@@ -101,15 +101,15 @@ class default:
                         raise Exception("Invalid input to vlm endpoint handler")
                   
                     prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, self.torch.float16)
                     output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
                     result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
                     # Run model inference
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 
@@ -122,10 +122,10 @@ class default:
                 local_cuda_endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
                     if x is not None and type(x) == str:
                         conversation = [
@@ -156,15 +156,15 @@ class default:
                         raise Exception("Invalid input to vlm endpoint handler")
                   
                     prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, torch.float16)
+                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, self.torch.float16)
                     output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
                     result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
                     # Run model inference
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 

@@ -10,6 +10,8 @@ from pydub import AudioSegment
 # from datasets import Dataset, Audio
 
 def load_audio(audio_file):
+    import soundfile as sf
+    import numpy as np
 
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
@@ -25,6 +27,7 @@ def load_audio(audio_file):
     return audio_data, samplerate
 
 def load_audio_16khz(audio_file):
+    import librosa
     audio_data, samplerate = load_audio(audio_file)
     if samplerate != 16000:
         ## convert to 16khz
@@ -33,6 +36,8 @@ def load_audio_16khz(audio_file):
 
 def load_audio_tensor(audio_file):
     from openvino import ov, Tensor
+    import soundfile as sf
+    import numpy as np
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
         audio_data, samplerate = sf.read(io.BytesIO(response.content))
@@ -99,9 +104,9 @@ class hf_wav2vec2:
         print(f"samples per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
-            with torch.no_grad():
-                if "cuda" in dir(torch):
-                    torch.cuda.empty_cache()
+            with self.torch.no_grad():
+                if "cuda" in dir(self.torch):
+                    self.torch.cuda.empty_cache()
         print("hf_wav2vec test")
         return None
     
@@ -111,8 +116,8 @@ class hf_wav2vec2:
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoTokenizer.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
         # processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
         endpoint = None
         try:
@@ -122,7 +127,7 @@ class hf_wav2vec2:
             print(e)
             pass
         endpoint_handler = self.create_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
@@ -161,13 +166,13 @@ class hf_wav2vec2:
             pass
 
         try:
-            tokenizer =  Wav2Vec2Processor.from_pretrained(
+            tokenizer =  self.transformers.Wav2Vec2Processor.from_pretrained(
                 model
             )
         except Exception as e:
             print(e)
             try:
-                tokenizer =  Wav2Vec2Processor.from_pretrained(
+                tokenizer =  self.transformers.Wav2Vec2Processor.from_pretrained(
                     model_src_path
                 )
             except Exception as e:
@@ -246,15 +251,15 @@ class hf_wav2vec2:
                         audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
                     image_features = endpoint_model({'input_values': audio_inputs})
                     image_embeddings = list(image_features.values())[0]
-                    image_embeddings = torch.tensor(image_embeddings)
-                    image_embeddings = torch.mean(image_embeddings, dim=(1,))
+                    image_embeddings = self.torch.tensor(image_embeddings)
+                    image_embeddings = self.torch.mean(image_embeddings, dim=(1,))
                     results.append(image_embeddings)
                 elif type(x) == list:
                     inputs = tokenizer(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
                     image_features = endpoint_model({'input_values': audio_inputs})
                     image_embeddings = list(image_features.values())[0]
-                    image_embeddings = torch.tensor(image_embeddings)
-                    image_embeddings = torch.mean(image_embeddings, dim=1)
+                    image_embeddings = self.torch.tensor(image_embeddings)
+                    image_embeddings = self.torch.mean(image_embeddings, dim=1)
                     results.append(image_embeddings)
                 pass            
 
@@ -267,17 +272,11 @@ class hf_wav2vec2:
         return handler    
     
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
-        import openvino as ov
-        import os
-        import numpy as np
-        import requests
-        import tempfile
-        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
         if hfmodel is None:
-            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+            hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
     
         if hfprocessor is None:
-            hfprocessor = AutoProcessor.from_pretrained(model_name)
+            hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
 
         if hfprocessor is not None:
             text = "Replace me by any text you'd like."
@@ -293,11 +292,11 @@ class hf_wav2vec2:
             audio_inputs = preprocessed_signal.input_values
             MAX_SEQ_LENGTH = 30480
             hfmodel.config.torchscript = True
-            ov_model = ov.convert_model(hfmodel, example_input=torch.zeros([1, MAX_SEQ_LENGTH], dtype=torch.float))
+            ov_model = self.ov.convert_model(hfmodel, example_input=self.torch.zeros([1, MAX_SEQ_LENGTH], dtype=self.torch.float))
             if not os.path.exists(model_dst_path):
                 os.mkdir(model_dst_path)
-            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = ov.compile_model(ov_model)
+            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            ov_model = self.ov.compile_model(ov_model)
             hfmodel = None
         return ov_model
     

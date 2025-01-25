@@ -12,6 +12,8 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 def build_transform(input_size):
+    import torch
+    from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
     transform = Compose([
         Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
@@ -142,7 +144,7 @@ class hf_llava:
         self.load_image = load_image
         self.load_image_tensor = load_image_tensor
         self.dynamic_preprocess = dynamic_preprocess
-        self.load_image_bak = load_image_bak
+        # self.load_image_bak = load_image_bak
         self.find_closest_aspect_ratio = find_closest_aspect_ratio
         self.init_cpu = self.init_cpu
         self.init_qualcomm = self.init_qualcomm

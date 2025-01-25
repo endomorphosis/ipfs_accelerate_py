@@ -15,7 +15,10 @@ import requests
 
     
 def load_audio(audio_file):
-
+    import soundfile as sf
+    import numpy as np
+    import librosa
+    
     if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
         response = requests.get(audio_file)
         audio_data, samplerate = sf.read(io.BytesIO(response.content))
@@ -30,6 +33,7 @@ def load_audio(audio_file):
     return audio_data, samplerate
 
 def load_audio_16khz(audio_file):
+    import librosa
     audio_data, samplerate = load_audio(audio_file)
     if samplerate != 16000:
         ## convert to 16khz
@@ -87,9 +91,9 @@ class hf_whisper:
         print(f"samples per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
-            with torch.no_grad():
-                if "cuda" in dir(torch):
-                    torch.cuda.empty_cache()
+            with self.torch.no_grad():
+                if "cuda" in dir(self.torch):
+                    self.torch.cuda.empty_cache()
         print("hf_whisper test")
         return None
 
@@ -100,16 +104,16 @@ class hf_whisper:
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoProcessor.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
         endpoint = None
         try:
-            endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
         endpoint_handler = self.create_cuda_whisper_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
@@ -121,7 +125,7 @@ class hf_whisper:
         tokenizer = None
         endpoint_handler = None
         batch_size = 0                
-        tokenizer =  AutoProcessor.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        tokenizer = self.AutoProcessor.from_pretrained(model, use_fast=True, trust_remote_code=True)
         try:
             endpoint = get_openvino_model(model, model_type, openvino_label)
         except Exception as e:
@@ -138,16 +142,16 @@ class hf_whisper:
                 local_cuda_endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
                     
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 
@@ -159,15 +163,15 @@ class hf_whisper:
             else:
                 pass
             
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
-                    config = AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)                    
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
+                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)                    
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 
@@ -177,7 +181,7 @@ class hf_whisper:
                 if os.path.exists (x):
                     audio_data, audio_sampling_rate = load_audio_16khz(x)
                 pass
-            elif type(x) == ndarray:
+            elif type(x) == self.np.ndarray:
                 audio_data = x
                 audio_sampling_rate = 16000
                 pass
@@ -194,7 +198,7 @@ class hf_whisper:
             audio_inputs = preprocessed_signal.input_features
             if audio_inputs.shape[-1] < 3000:
                 pad_size = 3000 - audio_inputs.shape[-1]
-                audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
+                audio_inputs = self.torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
             openvino_endpoint_handler.config.torchscript = True
             outputs = openvino_endpoint_handler.generate(audio_inputs)
             results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -209,7 +213,7 @@ class hf_whisper:
         import tempfile
         from transformers import AutoModel, AutoTokenizer, AutoProcessor  
         if hfmodel is None:
-            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
     
         if hfprocessor is None:
             hfprocessor = AutoProcessor.from_pretrained(model_name)
@@ -241,7 +245,7 @@ class hf_whisper:
             # Pad the input mel features to length 3000
             if audio_inputs.shape[-1] < 3000:
                 pad_size = 3000 - audio_inputs.shape[-1]
-                audio_inputs = torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
+                audio_inputs = self.torch.nn.functional.pad(audio_inputs, (0, pad_size), "constant", 0)
             hfmodel.config.torchscript = True
             outputs = hfmodel.generate(audio_inputs)
             results = hfprocessor.batch_decode(outputs, skip_special_tokens=True)
@@ -257,7 +261,7 @@ class hf_whisper:
                     os.remove(model_dst_path)
                 if not os.path.exists(model_dst_path):
                     os.mkdir(model_dst_path)
-                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=model_task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
+                self.openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=task, weight_format="int8",  ratio="1.0", group_size=128, sym=True )
                 core = ov.Core()
                 ov_model = core.read_model(model_name, os.path.join(model_dst_path))
             ov_model = ov.compile_model(ov_model)
