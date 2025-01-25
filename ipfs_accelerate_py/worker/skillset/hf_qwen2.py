@@ -23,14 +23,25 @@ class hf_qwen2:
         return None
     
     def init(self):
-        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-        from transformers.generation.streamers import TextStreamer
-        from ipfs_transformers_py import AutoModel
-        import numpy as np
-        import torch
-        from torch import Tensor as T
-        from torchvision.transforms import InterpolationMode
         
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -79,8 +90,12 @@ class hf_qwen2:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
-        from openvino import ov
         self.init()
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None

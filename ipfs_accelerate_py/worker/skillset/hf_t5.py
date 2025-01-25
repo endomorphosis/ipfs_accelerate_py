@@ -19,15 +19,30 @@ class hf_t5:
         self.__test__ = self.__test__
         return None
     
-    def init(self):
-        from torch import inference_mode, float16
-        import torch
-        from transformers import T5Tokenizer, T5ForConditionalGeneration
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-        from transformers import AutoConfig, AutoProcessor
-        # from ipfs_transformers_py import AutoModel
-        return None
 
+    def init(self):
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+            
+        return None
+    
+    
     def init_cpu (self, model, device, cpu_label):
         self.init() 
         return None
@@ -78,7 +93,11 @@ class hf_t5:
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None

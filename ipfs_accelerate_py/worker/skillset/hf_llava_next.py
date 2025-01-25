@@ -12,6 +12,8 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 def build_transform(input_size):
+    import torch
+    from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
     MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
     transform = Compose([
         Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
@@ -85,29 +87,31 @@ def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbna
         processed_images.append(thumbnail_img)
     return processed_images
 
-def load_image_bak(image_file, input_size=448, max_num=12):
-    if os.path.exists(image_file):
-        image = Image.open(image_file).convert('RGB')
-    transform = build_transform(input_size=input_size)
-    if os.path.exists(image_file):
-        image = Image.open(image_file).convert('RGB')
-    elif "http" in image_file:
-        try:
-            with tempfile.NamedTemporaryFile(delete=True) as f:
-                f.write(requests.get(image_file).content)
-                image = Image.open(f).convert('RGB')
-        except Exception as e:
-            print(e)
-            raise ValueError("Invalid image file")
-    else:
-        raise ValueError("Invalid image file")
+# def load_image_bak(image_file, input_size=448, max_num=12):
+#     if os.path.exists(image_file):
+#         image = Image.open(image_file).convert('RGB')
+#     transform = build_transform(input_size=input_size)
+#     if os.path.exists(image_file):
+#         image = Image.open(image_file).convert('RGB')
+#     elif "http" in image_file:
+#         try:
+#             with tempfile.NamedTemporaryFile(delete=True) as f:
+#                 f.write(requests.get(image_file).content)
+#                 image = Image.open(f).convert('RGB')
+#         except Exception as e:
+#             print(e)
+#             raise ValueError("Invalid image file")
+#     else:
+#         raise ValueError("Invalid image file")
         
-    images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
-    pixel_values = [transform(image) for image in images]
-    pixel_values = torch.stack(pixel_values)
-    return pixel_values
+#     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
+#     pixel_values = [transform(image) for image in images]
+#     pixel_values = torch.stack(pixel_values)
+#     return pixel_values
 
 def load_image(image_file):
+    import numpy as np
+    import openvino as ov
     if image_file.startswith("http") or image_file.startswith("https"):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -117,6 +121,8 @@ def load_image(image_file):
     return image, ov.Tensor(image_data)
 
 def load_image_tensor(image_file):
+    import numpy as np
+    import openvino as ov
     if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -138,7 +144,7 @@ class hf_llava_next:
         self.load_image = load_image
         self.load_image_tensor = load_image_tensor
         self.dynamic_preprocess = dynamic_preprocess
-        self.load_image_bak = load_image_bak
+        # self.load_image_bak = load_image_bak
         self.find_closest_aspect_ratio = find_closest_aspect_ratio
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -146,17 +152,33 @@ class hf_llava_next:
         self.__test__ = self.__test__
         return None
     
-    def init(self):
-        import torch
-        import torchvision 
-        from torch import Tensor as T
-        from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
-        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-        import numpy as np
-        import torch
-        from transformers import TextStreamer
-        from ipfs_transformers_py import AutoModel
 
+    def init(self):
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+
+        if "decord" not in list(self.resources.keys()):
+            import decord
+            self.decord = decord
+        else:
+            self.decord = self.resources["decord"]
+        self.np.random.seed(0)
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -182,30 +204,39 @@ class hf_llava_next:
         print(f"tokens per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
-            with torch.no_grad():
-                if "cuda" in dir(torch):
-                    torch.cuda.empty_cache()
+            with self.torch.no_grad():
+                if "cuda" in dir(self.torch):
+                    self.torch.cuda.empty_cache()
         print("hf_llava test")
         return None
     
     def init_cuda(self, model, device, cuda_label):
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoProcessor.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
         endpoint = None
         try:
-            endpoint = AutoModelForImageTextToText.from_pretrained(model,  torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(model,  torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
         endpoint_handler = self.create_vlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
 
     def init_openvino(self, model , model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert ):
         self.init()
-        import openvino as ov
-        import openvino_genai as ov_genai
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
+            
+        if "ov_genai" not in list(self.resources.keys()):
+            import openvino_genai as ov_genai
+            self.ov_genai = ov_genai
+        else:
+            self.ov_genai = self.resources["ov_genai"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
@@ -219,7 +250,7 @@ class hf_llava_next:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
-        config = AutoConfig.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model)
         task = get_openvino_pipeline_type(model, model_type)
         openvino_index = int(openvino_label.split(":")[1])
         weight_format = ""
@@ -234,7 +265,7 @@ class hf_llava_next:
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
             openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  AutoProcessor.from_pretrained(
+        tokenizer =  self.transformers.AutoProcessor.from_pretrained(
             model_dst_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
@@ -296,7 +327,7 @@ class hf_llava_next:
 
     def create_openvino_genai_vlm_endpoint_handler(self, openvino_endpoint_handler, openvino_processor, endpoint_model, openvino_label):
         def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, openvino_processor=openvino_processor, endpoint_model=endpoint_model, openvino_label=openvino_label):
-            config = ov_genai.GenerationConfig()
+            config = self.ov_genai.GenerationConfig()
             config.max_new_tokens = 100
 
             try:
@@ -308,8 +339,8 @@ class hf_llava_next:
                             response = requests.get(y, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
                             response.raise_for_status()
                             image = Image.open(BytesIO(response.content)).convert('RGB')
-                            image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-                            image_tensor = ov.Tensor(image_data)
+                            image_data = self.np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(self.np.byte)
+                            image_tensor = self.ov.Tensor(image_data)
                             break
                         except (requests.RequestException, Image.UnidentifiedImageError) as e:
                             if attempt == max_retries - 1:
@@ -402,7 +433,7 @@ class hf_llava_next:
                     else:
                         raise Exception("Invalid input to vlm endpoint handler")
                     result = None
-                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
+                    streamer = self.transformers.TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
                     prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
                     inputs = local_openvino_processor(image, prompt, return_tensors="pt")
 
@@ -457,7 +488,7 @@ class hf_llava_next:
                     else:
                         raise Exception("Invalid input to vlm endpoint handler")
                     result = None
-                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
+                    streamer = self.transformers.TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
                     prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
                     inputs = local_openvino_processor(image, prompt, return_tensors="pt")
 
@@ -513,7 +544,7 @@ class hf_llava_next:
                     else:
                         raise Exception("Invalid input to vlm endpoint handler")
                     result = None
-                    streamer = TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
+                    streamer = self.transformers.TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
                     prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
                     inputs = local_openvino_processor(image, prompt, return_tensors="pt")
 

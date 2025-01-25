@@ -66,19 +66,37 @@ class hf_wav2vec2:
         return None
 
     def init(self):
-        import torch
-        import librosa
-        import numpy as np
-        from torch import no_grad
-        import torch
-        from transformers import pipeline
-        from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-        from transformers import AutoModelForAudioClassification
-        from transformers import AutoFeatureExtractor
-        from transformers import AutoTokenizer, AutoConfig
-        from transformers import AutoModel
-        from transformers import AutoProcessor
-        import soundfile as sf
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+            
+        if "librosa" not in list(self.resources.keys()):
+            import librosa
+            self.librosa = librosa
+        else:
+            self.librosa = self.resources["librosa"]
+            
+        if "sf" not in list(self.resources.keys()):
+            import soundfile as sf
+            self.sf = sf
+        else:
+            self.sf = self.resources["sf"]
+
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
@@ -133,7 +151,11 @@ class hf_wav2vec2:
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None

@@ -18,13 +18,26 @@ class default:
         self.__test__ = self.__test__
         return None
     
+
     def init(self):
-        import torch
-        import torch.nn.functional as F
-        from torch import inference_mode, float16, Tensor
-        from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
-        from transformers.generation.streamers import TextStreamer
-        from sentence_transformers import SentenceTransformer
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
         return None
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -49,6 +62,13 @@ class default:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
+        self.init()
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
+
         endpoint = None
         tokenizer = None
         endpoint_handler = None

@@ -180,12 +180,12 @@ class hf_clap:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+        self.init()
         if "openvino" not in list(self.resources.keys()):
             import openvino as ov
             self.ov = ov
         else:
             self.ov = self.resources["openvino"]
-        self.init()
         endpoint = None
         tokenizer = None
         endpoint_handler = None

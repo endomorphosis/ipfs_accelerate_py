@@ -57,13 +57,37 @@ class hf_whisper:
         return None
 
     def init(self):
-        from numpy import ndarray, mean
-        import tiktoken
-        from transformers import AutoTokenizer, AutoConfig, AutoProcessor, AutoModel
-        import numpy as np
-        import torch
-        import librosa
-        import soundfile as sf
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+            
+        if "librosa" not in list(self.resources.keys()):
+            import librosa
+            self.librosa = librosa
+        else:
+            self.librosa = self.resources["librosa"]
+            
+        if "sf" not in list(self.resources.keys()):
+            import soundfile as sf
+            self.sf = sf
+        else:
+            self.sf = self.resources["sf"]
+            
         return None
     
     
@@ -119,7 +143,11 @@ class hf_whisper:
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         self.openvino_cli_convert = openvino_cli_convert
         endpoint = None
         tokenizer = None

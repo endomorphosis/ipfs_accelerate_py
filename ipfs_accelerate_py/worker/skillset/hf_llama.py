@@ -23,16 +23,27 @@ class hf_llama:
         self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
         return None
     
+
     def init(self):
-        import numpy as np
-        import torch
-        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-        from transformers.generation.streamers import TextStreamer
-        from ipfs_transformers_py import AutoModel
-        import torch
-        from torch import Tensor as T
-        from torchvision.transforms import InterpolationMode
-        import torch 
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+
         return None
 
     def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline, get_optimum_qualcomm_model, get_qualcomm_model, get_qualcomm_pipeline_type):
@@ -95,7 +106,11 @@ class hf_llama:
     
     def init_openvino(self, model, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
