@@ -1079,11 +1079,19 @@ class ipfs_accelerate_py:
             return ValueError("No endpoint_handlers found")
         return test_results
     
+
     def get_model_type(self, model_name, model_type=None):
-        from transformers import AutoConfig
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
+        if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
+            try:
+                from transformers import AutoConfig
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            except:
+                return None
+        else:
+            if model_type is None:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
         return model_type
     
     async def test_local_endpoint(self, model, endpoint_list=None):
@@ -1256,6 +1264,8 @@ class ipfs_accelerate_py:
                 return ValueError(f"Unexpected error: {str(e)}")
                     
     async def make_post_request_openvino(self, endpoint, data):
+        import aiohttp
+        from aiohttp import ClientSession, ClientTimeout
         if type(data) is dict:
             raise ValueError("Data must be a string")
         if type(data) is list:

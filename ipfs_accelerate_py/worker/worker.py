@@ -133,7 +133,6 @@ class worker_py:
                     self.resources[file_name] = this_class(resources, metadata)
                 else:
                     pass
-        
             
         # if "default" not in globals() and "default" not in list(self.resources.keys()):
         #     self.default = default
@@ -168,78 +167,98 @@ class worker_py:
                     self.__dict__[endpoint][backend] = {}
         return None
     
-    def init():
-        import numpy as np
-        import torch
-        from transformers import AutoTokenizer, AutoModel, AutoConfig, pipeline
-        import torchvision.transforms as T
-        from torchvision.transforms import InterpolationMode
-        import transformers
-        from transformers import AutoProcessor, AutoTokenizer, AutoModel, AutoConfig, TextStreamer, AutoModelForImageTextToText
-        
+    def init(self):
         if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
-            self.transformers = transformers   
+            import transformers
+            self.transformers = transformers
+            self.resources["transformers"] = self.transformers   
         elif "transformers" in list(self.resources.keys()):
             self.transformers = self.resources["transformers"]
         elif "transformers" in globals():
+            import transformers
             self.transformers = transformers
+            self.resources["transformers"] = self.transformers
+            
+        self.resources["transformers"] = self.transformers
             
         if "torch" not in globals() and "torch" not in list(self.resources.keys()):
+            import torch
             self.torch = torch
+            self.resources["torch"] = self.torch
         elif "torch" in list(self.resources.keys()):
             self.torch = self.resources["torch"]
         elif "torch" in globals():
+            import torch
             self.torch = torch
+            self.resources["torch"] = self.torch
+            
+        self.resources["torch"] = self.torch
+        
+        if "np" not in globals() and "np" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+            self.resources["np"] = self.np
+        elif "np" in list(self.resources.keys()):
+            self.np = self.resources["np"]
+        elif "np" in globals():
+            import numpy as np 
+            self.np = np
+            self.resources["np"] = self.np
+    
         return None
     
-    def init_cuda(self, model, device, cuda_label):
+    def init_cuda(self):
         return None
     
-    def init_qualcomm(self, model, device, qualcomm_label):
+    def init_qualcomm(self):
         return None
     
-    def init_cpu(self, model, device, cpu_label):
+    def init_cpu(self):
         self.init()
         return None
     
     def init_networking(self, model, device, networking_label):
-        import ipfs_transformers_py
-
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
             from ipfs_transformers_py import ipfs_transformers
+            self.resources["ipfs_transformers"] = ipfs_transformers
             self.ipfs_transformers = { 
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
             }        
-        elif "ipfs_transformers_py" in list(self.resources.keys()):
-            self.ipfs_transformers_py = self.resources["ipfs_transformers_py"]
-        elif "ipfs_transformers_py" in globals():
+        elif "ipfs_transformers" in list(self.resources.keys()):
+            self.ipfs_transformers = self.resources["ipfs_transformers"]
+        elif "ipfs_transformers" in globals():
             from ipfs_transformers_py import ipfs_transformers
+            self.resources["ipfs_transformers"] = ipfs_transformers
             self.ipfs_transformers = { 
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
             }
-            
         return None
     
-    def init_openvino():
+    def init_openvino(self):
         self.init()
         import optimum
+        self.resources["optimum"] = optimum
         import openvino as ov
+        self.resources["openvino"] = ov
+        
         try:
             from openvino_utils import openvino_utils
         except:
             from .openvino_utils import openvino_utils
+        self.resources["openvino_utils"] = openvino_utils
+        
         if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-            self.openvino_utils = openvino_utils(resources, metadata)
+            self.openvino_utils = openvino_utils(self.resources, self.metadata)
         elif "openvino_utils" in list(self.resources.keys()):
             self.openvino_utils = self.resources["openvino_utils"]
         elif "openvino_utils" in globals():
-            self.openvino_utils = openvino_utils(resources, metadata)
+            self.openvino_utils = openvino_utils(self.resources, self.metadata)
             
         self.get_openvino_model = self.openvino_utils.get_openvino_model
         self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
         self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
         self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
-        self.get_model_type = self.openvino_utils.get_model_type
+        # self.get_model_type = self.openvino_utils.get_model_type
         self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         return None
     
@@ -295,7 +314,12 @@ class worker_py:
     
     def get_model_type(self, model_name, model_type=None):
         if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
-            return None
+            try:
+                from transformers import AutoConfig
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            except:
+                return None
         else:
             if model_type is None:
                 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
@@ -361,6 +385,10 @@ class worker_py:
                 hwtest = await self.test_hardware()
         self.hwtest = hwtest
         self.resources["hwtest"] = hwtest
+        if "cuda" in list(self.hwtest.keys()) and self.hwtest["cuda"] is True:
+            self.init_cuda()
+        if "openvino" in list(self.hwtest.keys()) and self.hwtest["openvino"] is True:
+            self.init_openvino()
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
@@ -401,7 +429,6 @@ class worker_py:
                             device = 'cuda:' + str(gpu)
                             cuda_label = device
                             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(model, device, cuda_label)
-                            torch.cuda.empty_cache()
                 if local > 0 and cpus > 0:
                     if model_type in openvino_genai_model_types or model_type in openvino_model_types or model_type in optimum_model_types:
                         if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":

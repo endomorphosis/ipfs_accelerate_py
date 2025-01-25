@@ -1,12 +1,12 @@
 import time
 import asyncio
-import os
 from PIL import Image
 import requests
 from io import BytesIO
 import os
 
 def load_image(image_file):
+    import numpy as np
     if image_file.startswith("http") or image_file.startswith("https"):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -16,6 +16,8 @@ def load_image(image_file):
     return image
 
 def load_image_tensor(image_file):
+    import numpy as np
+    import openvino as ov
     if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -37,16 +39,30 @@ class hf_clip:
         self.init_openvino = self.init_openvino
         self.init = self.init
         self.__test__ = self.__test__
+        # self.init()
         return None
 
-    def init(self):
-        import torch
-        from torch import no_grad
-        from transformers import CLIPProcessor, CLIPModel, AutoTokenizer
-        from transformers import AutoConfig, AutoTokenizer, AutoProcessor
-        import open_clip
-        import numpy as np
 
+    def init(self):
+            
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+            
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -70,9 +86,9 @@ class hf_clip:
         print(f"samples per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
-            with torch.no_grad():
-                if "cuda" in dir(torch):
-                    torch.cuda.empty_cache()
+            with self.torch.no_grad():
+                if "cuda" in dir(self.torch):
+                    self.torch.cuda.empty_cache()
         return None
     
     def init_cpu(self, model, device, cpu_label):
@@ -84,23 +100,27 @@ class hf_clip:
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = AutoTokenizer.from_pretrained(model)
-        processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+        processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
         endpoint = None
         try:
-            endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.CLIPModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
         endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
@@ -132,13 +152,13 @@ class hf_clip:
             # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
         try:
-            tokenizer =  CLIPProcessor.from_pretrained(
+            tokenizer =  self.transformers.CLIPProcessor.from_pretrained(
                 model
             )
         except Exception as e:
             print(e)
             try:
-                tokenizer =  CLIPProcessor.from_pretrained(
+                tokenizer =  self.transformers.CLIPProcessor.from_pretrained(
                     model_src_path
                 )
             except Exception as e:
@@ -207,7 +227,7 @@ class hf_clip:
                     inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
                 elif type(y) == list:
                     inputs = tokenizer(images=[load_image(image) for image in y], return_tensors='pt')
-                with no_grad():
+                with self.torch.no_grad():
                     image_features = endpoint_model(dict(inputs))
                     image_embeddings = image_features["image_embeds"]
  
@@ -218,7 +238,7 @@ class hf_clip:
                     inputs = tokenizer(text=y, return_tensors='pt')
                 elif type(x) == list:
                     inputs = tokenizer(text=[text for text in x], return_tensors='pt')
-                with no_grad():
+                with self.torch.no_grad():
                     text_features = endpoint_model(dict(inputs))
                     text_embeddings = text_features["last_hidden_state"] 
             
@@ -240,17 +260,11 @@ class hf_clip:
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
-        import openvino as ov
-        import os
-        import numpy as np
-        import requests
-        import tempfile
-        from transformers import AutoModel, AutoTokenizer, AutoProcessor  
         if hfmodel is None:
-            hfmodel = AutoModel.from_pretrained(model_name, torch_dtype=torch.float16)
+            hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
     
         if hfprocessor is None:
-            hfprocessor = AutoProcessor.from_pretrained(model_name)
+            hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
         if hfprocessor is not None:
             text = "Replace me by any text you'd like."
             image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
@@ -263,10 +277,10 @@ class hf_clip:
             )
             results = hfmodel(**processed_data)
             hfmodel.config.torchscript = True
-            ov_model = ov.convert_model(hfmodel,  example_input=dict(processed_data))
+            ov_model = self.ov.convert_model(hfmodel,  example_input=dict(processed_data))
             if not os.path.exists(model_dst_path):
                 os.mkdir(model_dst_path)
-            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = ov.compile_model(ov_model)
+            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            ov_model = self.ov.compile_model(ov_model)
             hfmodel = None
         return ov_model

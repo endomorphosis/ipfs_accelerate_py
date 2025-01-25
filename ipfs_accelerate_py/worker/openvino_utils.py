@@ -1,3 +1,4 @@
+import os
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -23,6 +24,8 @@ class openvino_utils:
         return None
             
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):
+        from transformers import AutoConfig
+        from transformers import AutoTokenizer, AutoModel, AutoProcessor
         architecture = None
         config = None
         hfmodel = None
@@ -174,13 +177,16 @@ class openvino_utils:
             return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
+        import openvino as ov                                
+        import openvino_genai as ov_genai
+        import os
+        import torch
+        from transformers import AutoTokenizer, AutoModel, AutoProcessor, AutoConfig
+        core = ov.Core()
         architecture = None
         config = None
         hfmodel = None
         hftokenizer = None
-        import openvino as ov                                
-        core = ov.Core()
-        import openvino_genai as ov_genai
         openvino_devices = core.available_devices
         device_index = int(device_name.split(":")[-1])
         device = openvino_devices[device_index]
@@ -220,12 +226,13 @@ class openvino_utils:
                 ov.save_model(ov_model, model_dst_path)
                 ov_model = ov.compile_model(ov_model)
                 hfmodel = None
-                del hftokenizer
+                if hftokenizer:
+                    del hftokenizer
 
             except Exception as e:
-                if hfmodel is not None:
+                if hfmodel:
                     hfmodel = None
-                if hftokenizer is not None:
+                if hftokenizer:
                     del hftokenizer
                 print(e)
                 
@@ -274,6 +281,7 @@ class openvino_utils:
         return ov_model
     
     def get_optimum_openvino_model(self, model_name, model_type=None, openvino_label=None):
+        from transformers import AutoConfig
         homedir = os.path.expanduser("~")
         model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
@@ -369,11 +377,18 @@ class openvino_utils:
         results.compile()
         return results
     
-    
     def get_model_type(self, model_name, model_type=None):
-        if model_type is None:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
+        if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
+            try:
+                from transformers import AutoConfig
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            except:
+                return None
+        else:
+            if model_type is None:
+                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
         return model_type
     
     def openvino_convert(self, 
@@ -429,6 +444,9 @@ class openvino_utils:
         disable_stateful=False,
         disable_convert_tokenizer=False,
     ):
+        if "subprocess" not in globals():
+            import subprocess
+        
         command = ['optimum-cli', 'export', 'openvino', '-m', model_name]
         tasks_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         if task is not None:
@@ -491,6 +509,7 @@ class openvino_utils:
     
     
     def get_openvino_pipeline_type(self, model_name, model_type=None):
+        from transformers import AutoConfig
         model_mapping_list = ['image-text-to-text', 'fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         return_model_type = None
         config_model_type = None
