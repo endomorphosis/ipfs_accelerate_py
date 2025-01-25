@@ -395,10 +395,10 @@ class hf_clap:
             processed_data = {**audio_inputs}
             results = hfmodel(**processed_data)
             hfmodel.config.torchscript = True
-            ov_model = ov.convert_model(hfmodel, example_input=processed_data)
+            ov_model = self.ov.convert_model(hfmodel, example_input=processed_data)
             if not os.path.exists(model_dst_path):
                 os.mkdir(model_dst_path)
-            ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = ov.compile_model(ov_model)
+            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+            ov_model = self.ov.compile_model(ov_model)
             hfmodel = None
         return ov_model

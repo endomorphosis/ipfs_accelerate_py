@@ -290,7 +290,7 @@ class hf_xclip:
                         with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
                             f.write(requests.get(y).content)
                             f.flush()
-                            videoreader = VideoReader(f.name, num_threads=1, ctx=cpu(0))
+                            videoreader = self.decord.VideoReader(f.name, num_threads=1, ctx=self.decord.cpu(0))
                 if videoreader is not None:
                     videoreader.seek(0)
                     indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))

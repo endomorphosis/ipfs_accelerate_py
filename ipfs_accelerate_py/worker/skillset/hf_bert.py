@@ -18,14 +18,27 @@ class hf_bert:
         self.__test__ = self.__test__
         return None
     
-    def init(self):
-        import torch
-        import torch.nn.functional as F
-        from torch import inference_mode, float16, Tensor
-        from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
-        from transformers.generation.streamers import TextStreamer
-        from ipfs_transformers_py import AutoModel
+    def init(self):        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+
         return None
+    
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
@@ -48,35 +61,39 @@ class hf_bert:
         print(f"tokens: {len_tokens}")
         print(f"tokens per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
-        with torch.no_grad():
-            if "cuda" in dir(torch):
-                torch.cuda.empty_cache()
+        with self.torch.no_grad():
+            if "cuda" in dir(self.torch):
+                self.torch.cuda.empty_cache()
         return True
 
-    def init_cpu():
+    def init_cpu(self):
         self.init()
         return None
 
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
         try:
-            endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             try:
-                endpoint = AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
+                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
             except Exception as e:
                 print(e)
                 pass
         endpoint_handler = self.create_cuda_text_embedding_endpoint_handler(endpoint, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
     def init_openvino(self, model_name=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         self.init()
-        import openvino as ov
+        if "openvino" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
@@ -105,7 +122,7 @@ class hf_bert:
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
             openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  AutoTokenizer.from_pretrained(
+        tokenizer =  self.transformers.AutoTokenizer.from_pretrained(
             model_dst_path
         )
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
@@ -120,7 +137,7 @@ class hf_bert:
                 endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
                     tokens = tokenizer(x, return_tensors="pt")
                     results =  endpoint(**tokens)
@@ -167,8 +184,6 @@ class hf_bert:
 
             return average_pool_results
         
-        
-        
         return handler
 
     def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, cuda_label, endpoint=None, tokenizer=None):
@@ -177,9 +192,9 @@ class hf_bert:
                 endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     # Tokenize input with truncation and padding
                     tokens = tokenizer[endpoint_model][cuda_label](
                         x, 
@@ -215,7 +230,7 @@ class hf_bert:
                     del tokens, input_ids, attention_mask, outputs
                     if 'hidden_states' in locals(): del hidden_states
                     if 'attention_mask_np' in locals(): del attention_mask_np
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
@@ -225,7 +240,7 @@ class hf_bert:
                     if 'outputs' in locals(): del outputs
                     if 'hidden_states' in locals(): del hidden_states
                     if 'attention_mask_np' in locals(): del attention_mask_np
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
 
