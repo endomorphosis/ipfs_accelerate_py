@@ -253,18 +253,6 @@ class worker_py:
         self.openvino_utils = openvino_utils(self.resources, self.metadata)
         self.resources["openvino_utils"] = self.openvino_utils
         
-        # if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-        #     self.openvino_utils = openvino_utils(self.resources, self.metadata)
-        # elif "openvino_utils" in list(self.resources.keys()):
-        #     self.openvino_utils = self.resources["openvino_utils"]
-        # elif "openvino_utils" in globals():
-        #     self.openvino_utils = openvino_utils(self.resources, self.metadata)
-            
-        # self.get_openvino_model = self.openvino_utils.get_openvino_model
-        # self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
-        # self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
-        # # self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
-        # self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         return None
     
     async def dispatch_result(self, result):
@@ -326,29 +314,6 @@ class worker_py:
         else: 
             raise ValueError("install_depends.py not found")
         return test_results
-    
-    # def get_model_type(self, model_name, model_type=None):
-    #     if model_name is not None:
-    #         if os.path.exists(model_name):
-    #             model_name = os.path.abspath(model_name)
-    #         config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-    #         model_type = config.__class__.model_type
-    #     return model_type
-                
-    # def get_openvino_model(self, model_name, model_type=None, device_name=None ):
-    #     return self.openvino_utils.get_openvino_model(model_name, model_type, device_name)
-        
-    # def get_optimum_openvino_model(self, model_name, model_type=None, device_name=None ):
-    #     results = self.openvino_utils.get_optimum_openvino_model(model_name, model_type, device_name)
-    #     return results
-    
-    # def get_openvino_pipeline_type(self, model_name, model_type=None):
-    #     results = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
-    #     return results
-    
-    # def openvino_cli_convert(self, model_name, model_dst_path):
-    #     results = self.openvino_utils.openvino_cli_convert(model_name, model_dst_path)
-    #     return results
     
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:

@@ -18,7 +18,6 @@ class hf_t5:
         self.init = self.init
         self.__test__ = self.__test__
         return None
-    
 
     def init(self):
         
