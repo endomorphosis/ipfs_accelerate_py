@@ -1,4 +1,6 @@
+import subprocess
 import os
+
 class openvino_utils:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -14,24 +16,45 @@ class openvino_utils:
         return None
     
     def init(self):
-        import subprocess
-        from transformers import AutoConfig
-        import os
-        import torch
-        import openvino as ov
-        import openvino_genai as ov_genai
-        from transformers import AutoTokenizer, AutoModel, AutoProcessor
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+
+        if "ov" not in list(self.resources.keys()):
+            import openvino as ov
+            self.ov = ov
+        else:
+            self.ov = self.resources["ov"]\
+        
+        if "ov_genai" not in list(self.resources.keys()):
+            import openvino_genai as ov_genai
+            self.ov_genai = ov_genai
+        else:
+            self.ov_genai = self.resources["ov_genai"]
         return None
             
     def get_openvino_model(self, model_name, model_type=None, device_name=None ):
-        from transformers import AutoConfig
-        from transformers import AutoTokenizer, AutoModel, AutoProcessor
         architecture = None
         config = None
         hfmodel = None
         hftokenizer = None
         import openvino as ov                                
-        core = ov.Core()
+        core = self.ov.Core()
         openvino_devices = core.available_devices
         if device_name is None:
             device_index = 0
@@ -66,7 +89,7 @@ class openvino_utils:
         model_dst_path = model_dst_path+"_"+weight_format
         
         try:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         except Exception as e:
             config = None
@@ -81,17 +104,17 @@ class openvino_utils:
         method_name = "hf_" + model_type
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):            
             try:
-                hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                hftokenizer = self.transformers.AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:
                 print(e)
                 hftokenizer = None
             try:
-                hfprocessor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+                hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
             except Exception as e:  
                 print(e)
                 hfprocessor = None
             try:
-                hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True).to('cpu')
+                hfmodel = self.transformers.AutoModel.from_pretrained(model_name,  trust_remote_code=True).to('cpu')
             except Exception as e:
                 print(e)
                 hfmodel = None
@@ -156,7 +179,7 @@ class openvino_utils:
                 config = hfmodel.config
             else:
                 try:
-                    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                    config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 except Exception as e:
                     config = None
             if config is not None and "architectures" in dir(config):        
@@ -177,12 +200,7 @@ class openvino_utils:
             return ov_model
 
     def get_openvino_genai_pipeline(self, model_name, model_type=None, device_name=None):
-        import openvino as ov                                
-        import openvino_genai as ov_genai
-        import os
-        import torch
-        from transformers import AutoTokenizer, AutoModel, AutoProcessor, AutoConfig
-        core = ov.Core()
+        core = self.ov.Core()
         architecture = None
         config = None
         hfmodel = None
@@ -203,28 +221,28 @@ class openvino_utils:
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
         try:
-            config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
         except Exception as e:
             config = None
 
         ov_model = None
         hfmodel = None
-        hftokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        hftokenizer = self.transformers.AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         vlm_model_types = ["llava", "llava_next"]
 
         if os.path.exists(model_src_path) and not os.path.exists(model_dst_path):
             try:
                 if model_type not in vlm_model_types:
-                    hfmodel = AutoModel.from_pretrained(model_name,  trust_remote_code=True)
+                    hfmodel = self.transformers.AutoModel.from_pretrained(model_name,  trust_remote_code=True)
                 else:
-                    hfmodel = AutoModel.from_pretrained(model_name, trust_remote_code=True)
+                    hfmodel = self.transformers.AutoModel.from_pretrained(model_name, trust_remote_code=True)
             
                 text = "Replace me by any text you'd like."
                 encoded_input = hftokenizer(text, return_tensors='pt')
-                ov_model = ov.convert_model(hfmodel, example_input={**encoded_input})                        
-                ov.save_model(ov_model, model_dst_path)
-                ov_model = ov.compile_model(ov_model)
+                ov_model = self.ov.convert_model(hfmodel, example_input={**encoded_input})                        
+                self.ov.save_model(ov_model, model_dst_path)
+                ov_model = self.ov.compile_model(ov_model)
                 hfmodel = None
                 if hftokenizer:
                     del hftokenizer
@@ -252,7 +270,7 @@ class openvino_utils:
                 config = hfmodel.config
             else:
                 try:
-                    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                    config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 except Exception as e:
                     config = None
             if config is not None and "architectures" in dir(config):        
@@ -265,16 +283,16 @@ class openvino_utils:
         model_dst_path = model_dir
         if os.path.exists(model_dst_path):
             if model_task is not None and model_task == "image-text-to-text":
-                ov_model = ov_genai.VLMPipeline(model_dst_path, device=device)
+                ov_model = self.ov_genai.VLMPipeline(model_dst_path, device=device)
             elif model_task is not None and model_task == "text-generation-with-past":
-                ov_model = ov_genai.LLMPipeline(model_dst_path, device=device)
+                ov_model = self.ov_genai.LLMPipeline(model_dst_path, device=device)
             elif model_task is not None and model_task == "automatic-speech-recognition":
-                whisper_config = ov_genai.WhisperGenerationConfig
-                ov_model = ov_genai.WhisperPipeline(model_dst_path, device=device)
+                whisper_config = self.ov_genai.WhisperGenerationConfig
+                ov_model = self.ov_genai.WhisperPipeline(model_dst_path, device=device)
             elif model_task is not None and model_task == "image-to-image":
-                ov_model = ov_genai.Text2ImagePipeline(model_dst_path, device=device)
+                ov_model = self.ov_genai.Text2ImagePipeline(model_dst_path, device=device)
             elif model_task is not None and model_task == "'imge-to-text":
-                ov_model = ov_genai.CLIPTextModelWithProjection(model_dst_path, device=device)
+                ov_model = self.ov_genai.CLIPTextModelWithProjection(model_dst_path, device=device)
             else:
                 raise ValueError("Loading Model: " + model_name + " Task not supported: " + model_task + " Supported tasks: " + str(model_mapping_list))
 
@@ -378,17 +396,9 @@ class openvino_utils:
         return results
     
     def get_model_type(self, model_name, model_type=None):
-        if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
-            try:
-                from transformers import AutoConfig
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                model_type = config.__class__.model_type
-            except:
-                return None
-        else:
-            if model_type is None:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                model_type = config.__class__.model_type
+        if model_type is None:
+            config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            model_type = config.__class__.model_type
         return model_type
     
     def openvino_convert(self, 
@@ -509,13 +519,12 @@ class openvino_utils:
     
     
     def get_openvino_pipeline_type(self, model_name, model_type=None):
-        from transformers import AutoConfig
         model_mapping_list = ['image-text-to-text', 'fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         return_model_type = None
         config_model_type = None
         if model_type is not None:
             try:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 config_model_type = config.__class__.model_type
             except Exception as e:
                 config_model_type = None
