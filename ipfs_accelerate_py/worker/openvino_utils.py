@@ -395,10 +395,14 @@ class openvino_utils:
         results.compile()
         return results
     
-    def get_model_type(self, model_name, model_type=None):
-        if model_type is None:
-            config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            model_type = config.__class__.model_type
+    def get_model_type(self, model_name=None, model_type=None):
+        if model_name is not None:
+            if os.path.exists(model_name):
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            else:
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
         return model_type
     
     def openvino_convert(self, 

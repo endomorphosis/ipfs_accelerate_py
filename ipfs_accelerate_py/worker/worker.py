@@ -82,6 +82,8 @@ class worker_py:
         self.endpoint_types = ["local_endpoints"]
         self.local_endpoints = {}
         self.dispatch_result = self.dispatch_result
+        self.get_model_type = self.get_model_type
+
         self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
@@ -238,36 +240,49 @@ class worker_py:
         self.init()
         import optimum
         self.resources["optimum"] = optimum
+        self.optimum = self.resources["optimum"]
         import openvino as ov
-        self.resources["openvino"] = ov
+        self.resources["ov"] = ov
+        self.ov = self.resources["ov"]
         
         try:
             from openvino_utils import openvino_utils
         except:
             from .openvino_utils import openvino_utils
         self.resources["openvino_utils"] = openvino_utils
+        self.openvino_utils = openvino_utils(self.resources, self.metadata)
+        self.resources["openvino_utils"] = self.openvino_utils
         
-        if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
-            self.openvino_utils = openvino_utils(self.resources, self.metadata)
-        elif "openvino_utils" in list(self.resources.keys()):
-            self.openvino_utils = self.resources["openvino_utils"]
-        elif "openvino_utils" in globals():
-            self.openvino_utils = openvino_utils(self.resources, self.metadata)
+        # if "openvino_utils" not in globals() and "openvino_utils" not in list(self.resources.keys()):
+        #     self.openvino_utils = openvino_utils(self.resources, self.metadata)
+        # elif "openvino_utils" in list(self.resources.keys()):
+        #     self.openvino_utils = self.resources["openvino_utils"]
+        # elif "openvino_utils" in globals():
+        #     self.openvino_utils = openvino_utils(self.resources, self.metadata)
             
-        self.get_openvino_model = self.openvino_utils.get_openvino_model
-        self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
-        self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
-        self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
-        # self.get_model_type = self.openvino_utils.get_model_type
-        self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
+        # self.get_openvino_model = self.openvino_utils.get_openvino_model
+        # self.get_openvino_genai_pipeline = self.openvino_utils.get_openvino_genai_pipeline
+        # self.get_optimum_openvino_model = self.openvino_utils.get_optimum_openvino_model
+        # # self.get_openvino_pipeline_type = self.openvino_utils.get_openvino_pipeline_type
+        # self.openvino_cli_convert = self.openvino_utils.openvino_cli_convert
         return None
     
     async def dispatch_result(self, result):
 
         return None
     
-    def get_openvino_genai_pipeline(self, model_name, model_type=None):
-        return self.openvino_utils.get_openvino_genai_pipeline(model_name, model_type)
+    def get_model_type(self, model_name=None, model_type=None):
+        if model_name is not None:
+            if os.path.exists(model_name):
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            else:
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+        return model_type
+    
+    # def get_openvino_genai_pipeline(self, model_name, model_type=None):
+    #     return self.openvino_utils.get_openvino_genai_pipeline(model_name, model_type)
 
     async def test_hardware(self):
         install_file_hash = None
@@ -312,34 +327,28 @@ class worker_py:
             raise ValueError("install_depends.py not found")
         return test_results
     
-    def get_model_type(self, model_name, model_type=None):
-        if "AutoConfig" not in globals() and "AutoConfig" not in list(self.resources.keys()):
-            try:
-                from transformers import AutoConfig
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                model_type = config.__class__.model_type
-            except:
-                return None
-        else:
-            if model_type is None:
-                config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                model_type = config.__class__.model_type
-        return model_type
+    # def get_model_type(self, model_name, model_type=None):
+    #     if model_name is not None:
+    #         if os.path.exists(model_name):
+    #             model_name = os.path.abspath(model_name)
+    #         config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    #         model_type = config.__class__.model_type
+    #     return model_type
                 
-    def get_openvino_model(self, model_name, model_type=None, device_name=None ):
-        return self.openvino_utils.get_openvino_model(model_name, model_type, device_name)
+    # def get_openvino_model(self, model_name, model_type=None, device_name=None ):
+    #     return self.openvino_utils.get_openvino_model(model_name, model_type, device_name)
         
-    def get_optimum_openvino_model(self, model_name, model_type=None, device_name=None ):
-        results = self.openvino_utils.get_optimum_openvino_model(model_name, model_type, device_name)
-        return results
+    # def get_optimum_openvino_model(self, model_name, model_type=None, device_name=None ):
+    #     results = self.openvino_utils.get_optimum_openvino_model(model_name, model_type, device_name)
+    #     return results
     
-    def get_openvino_pipeline_type(self, model_name, model_type=None):
-        results = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
-        return results
+    # def get_openvino_pipeline_type(self, model_name, model_type=None):
+    #     results = self.openvino_utils.get_openvino_pipeline_type(model_name, model_type)
+    #     return results
     
-    def openvino_cli_convert(self, model_name, model_dst_path):
-        results = self.openvino_utils.openvino_cli_convert(model_name, model_dst_path)
-        return results
+    # def openvino_cli_convert(self, model_name, model_dst_path):
+    #     results = self.openvino_utils.openvino_cli_convert(model_name, model_dst_path)
+    #     return results
     
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
@@ -443,11 +452,11 @@ class worker_py:
                                         model_type,
                                         device,
                                         openvino_label,
-                                        self.get_openvino_genai_pipeline,
-                                        self.get_optimum_openvino_model,
-                                        self.get_openvino_model,
-                                        self.get_openvino_pipeline_type,
-                                        self.openvino_cli_convert,
+                                        self.openvino_utils.get_openvino_genai_pipeline,
+                                        self.openvino_utils.get_optimum_openvino_model,
+                                        self.openvino_utils.get_openvino_model,
+                                        self.openvino_utils.get_openvino_pipeline_type,
+                                        self.openvino_utils.openvino_cli_convert,
                                     )
                                 elif model_type in openvino_model_types:
                                     self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
@@ -455,10 +464,10 @@ class worker_py:
                                         model_type,
                                         device,
                                         openvino_label,
-                                        self.get_optimum_openvino_model,
-                                        self.get_openvino_model,
-                                        self.get_openvino_pipeline_type,
-                                        self.openvino_cli_convert,
+                                        self.openvino_utils.get_optimum_openvino_model,
+                                        self.openvino_utils.get_openvino_model,
+                                        self.openvino_utils.get_openvino_pipeline_type,
+                                        self.openvino_utils.openvino_cli_convert,
                                     )
                                 elif model_type in optimum_model_types:
                                     self.local_endpoints[model][openvino_label], self.tokenizer[model][openvino_label], self.endpoint_handler[model][openvino_label], self.queues[model][openvino_label], self.batch_sizes[model][openvino_label] = this_method.init_openvino(
@@ -466,10 +475,10 @@ class worker_py:
                                         model_type,
                                         device,
                                         openvino_label,
-                                        self.get_optimum_openvino_model,
-                                        self.get_openvino_model,
-                                        self.get_openvino_pipeline_type,
-                                        self.openvino_cli_convert,
+                                        self.openvino_utils.get_optimum_openvino_model,
+                                        self.openvino_utils.get_openvino_model,
+                                        self.openvino_utils.get_openvino_pipeline_type,
+                                        self.openvino_utils.openvino_cli_convert,
                                     )
                 pass
         worker_endpoint_types = []

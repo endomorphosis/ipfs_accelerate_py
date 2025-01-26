@@ -69,6 +69,7 @@ class hf_clap:
         self.init_cuda = self.init_cuda
         self.init_qualcomm = self.init_qualcomm
         self.init_openvino = self.init_openvino
+        self.transformers = None
         self.init = self.init
         self.__test__ = self.__test__
         # self.init()
@@ -104,6 +105,7 @@ class hf_clap:
         return self.ov.Tensor(audio_data.reshape(1, -1))
 
     def cleanup_torchscript_cache(self):
+        self.init()
         self.torch._C._jit_clear_class_registry()
         self.torch.jit._recursive.concrete_type_store = self.torch.jit._recursive.ConcreteTypeStore()
         self.torch.jit._state._clear_class_state()
@@ -114,17 +116,21 @@ class hf_clap:
             self.sf = sf
         else:
             self.sf = self.resources["sf"]
+            
         if "torch" not in list(self.resources.keys()):
             import torch
-            self.torch = torch
+            self.resources["torch"] = torch
+            self.torch = self.resources["torch"]
         else:
             self.torch = self.resources["torch"]
 
         if "transformers" not in list(self.resources.keys()):
             import transformers
-            self.transformers = transformers
+            self.resources["transformers"] = transformers
+            self.transformers = self.resources["transformers"]
         else:
             self.transformers = self.resources["transformers"]
+            
         if "numpy" not in list(self.resources.keys()):
             import numpy as np
             self.np = np
@@ -136,6 +142,7 @@ class hf_clap:
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
+        self.init()
         sentence_1 = "The quick brown fox jumps over the lazy dog"
         audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         timestamp1 = time.time()
@@ -181,11 +188,11 @@ class hf_clap:
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         self.init()
-        if "openvino" not in list(self.resources.keys()):
+        if "ov" not in list(self.resources.keys()):
             import openvino as ov
             self.ov = ov
         else:
-            self.ov = self.resources["openvino"]
+            self.ov = self.resources["ov"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
@@ -306,6 +313,7 @@ class hf_clap:
         return handler
     
     def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
+        self.init()
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             # text = "Replace me by any text you'd like."
             # audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
@@ -376,6 +384,14 @@ class hf_clap:
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
+        self.init()
+        if self.transformers is None:
+            import transformers
+            self.transformers = transformers
+        if self.torch is None:
+            import torch
+            self.torch = torch
+        
         hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
 
         hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
