@@ -210,13 +210,19 @@ class worker_py:
         return None
     
     def init_cuda(self):
+        # self.init()
         return None
     
     def init_qualcomm(self):
+        # self.init()
+        return None
+    
+    def init_qualcomm(self):
+        # self.init()
         return None
     
     def init_cpu(self):
-        self.init()
+        # self.init()
         return None
     
     def init_networking(self, model, device, networking_label):
@@ -362,6 +368,10 @@ class worker_py:
             self.init_cuda()
         if "openvino" in list(self.hwtest.keys()) and self.hwtest["openvino"] is True:
             self.init_openvino()
+        if "qualcomm" in list(self.hwtest.keys()) and self.hwtest["qualcomm"] is True:
+            self.init_qualcomm()
+        if "apple" in list(self.hwtest.keys()) and self.hwtest["apple"] is True:
+            self.init_apple()
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
