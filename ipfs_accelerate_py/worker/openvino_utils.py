@@ -87,7 +87,7 @@ class openvino_utils:
             if openvino_index == 2:
                 weight_format = "int4" ## npu
         model_dst_path = model_dst_path+"_"+weight_format
-        
+        model_dst_path = os.path.abspath(model_dst_path)
         try:
             config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
             model_type = config.__class__.model_type
@@ -126,7 +126,7 @@ class openvino_utils:
                         this_method = getattr(module, method_name)
                         this_hf = this_method(self.resources, self.metadata)
                         try:
-                            convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task,weight_format)
+                            convert = this_hf.openvino_skill_convert(model_name, model_dst_path, model_task, weight_format)
                         except Exception as e:
                             print(e)
                             try:
@@ -458,8 +458,7 @@ class openvino_utils:
         disable_stateful=False,
         disable_convert_tokenizer=False,
     ):
-        if "subprocess" not in globals():
-            import subprocess
+
         
         command = ['optimum-cli', 'export', 'openvino', '-m', model_name]
         tasks_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']

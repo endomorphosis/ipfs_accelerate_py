@@ -90,7 +90,12 @@ class hf_clap:
         return audio_data, samplerate
 
     def load_audio_tensor(self, audio_file):
-
+        if "ov" not in dir(self):
+            if "openvino" not in list(self.resources.keys()):    
+                import openvino as ov
+                self.ov = ov
+            else:
+                self.ov = self.resources["openvino"]
         if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
             response = requests.get(audio_file)
             audio_data, samplerate = self.sf.read(io.BytesIO(response.content))
@@ -188,18 +193,21 @@ class hf_clap:
 
     def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
         self.init()
-        if "ov" not in list(self.resources.keys()):
-            import openvino as ov
-            self.ov = ov
-        else:
-            self.ov = self.resources["ov"]
+        if "ov" not in dir(self):
+            if "openvino" not in list(self.resources.keys()):    
+                import openvino as ov
+                self.ov = ov
+            else:
+                self.ov = self.resources["openvino"]
         endpoint = None
         tokenizer = None
         endpoint_handler = None
         homedir = os.path.expanduser("~")
+        homedir = os.path.abspath(homedir)
         model_name_convert = model.replace("/", "--")
-        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache = os.path.join(homedir, ".cache","huggingface")
         huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+        huggingface_cache_models = os.path.abspath(huggingface_cache_models)
         huggingface_cache_models_files = os.listdir(huggingface_cache_models)
         huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
         huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
@@ -218,11 +226,12 @@ class hf_clap:
             if openvino_index == 2:
                 weight_format = "int4" ## npu
         model_dst_path = model_dst_path+"_"+weight_format
-        if not os.path.exists(model_dst_path):
-            # os.makedirs(model_dst_path)
-            # convert model to openvino format
-            # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-            pass
+        model_dst_path = os.path.abspath(model_dst_path)
+        # if not os.path.exists(model_dst_path):
+        #     # os.makedirs(model_dst_path)
+        #     # convert model to openvino format
+        #     # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
+        #     pass
         try:
             tokenizer =  self.transformers.ClapProcessor.from_pretrained(
                 model
@@ -240,7 +249,7 @@ class hf_clap:
             models_base_folder = model_dst_path
         
             clap_text_encoder_ir_path = os.path.join(models_base_folder, "clap_text_encoder.xml")
-
+            clap_text_encoder_ir_path = os.path.abspath(clap_text_encoder_ir_path)
             # if not clap_text_encoder_ir_path.exists():
             #     with torch.no_grad():
             #         ov_model = ov.convert_model(
@@ -391,6 +400,12 @@ class hf_clap:
         if self.torch is None:
             import torch
             self.torch = torch
+        if "ov" not in dir(self):
+            if "openvino" not in list(self.resources.keys()):    
+                import openvino as ov
+                self.ov = ov
+            else:
+                self.ov = self.resources["openvino"]
         
         hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
 
@@ -399,18 +414,18 @@ class hf_clap:
         hftokenizer = self.transformers.AutoTokenizer.from_pretrained(model_name)
 
         if hfprocessor is not None:
-            text = "Replace me by any text you'd like."
             audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            audio = load_audio(audio_url)
-            text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+            audio, samplerate = load_audio(audio_url)
             audio_inputs = hfprocessor(
-                audios=[audio[0]],  # Use first channel only
+                text = "",
+                audios=[audio],  # Use first channel only
                 return_tensors="pt", 
-                padding=True
+                padding=True,
+                sampling_rate=samplerate
             )
-            processed_data = {**audio_inputs}
-            results = hfmodel(**processed_data)
+            ## run the model
             hfmodel.config.torchscript = True
+            outputs = hfmodel(**audio_inputs)
             ov_model = self.ov.convert_model(hfmodel, example_input=processed_data)
             if not os.path.exists(model_dst_path):
                 os.mkdir(model_dst_path)

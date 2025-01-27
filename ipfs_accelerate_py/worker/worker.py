@@ -1,6 +1,6 @@
 import os
 import sys
-import subprocess
+# import subprocess
 import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from PIL import Image

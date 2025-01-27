@@ -1,6 +1,6 @@
 import base64
 import os
-import subprocess
+# import subprocess
 # from faster_whisper import WhisperModel
 import pysbd
 from pydub import AudioSegment
