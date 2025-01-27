@@ -414,22 +414,23 @@ class hf_clap:
         hftokenizer = self.transformers.AutoTokenizer.from_pretrained(model_name)
 
         if hfprocessor is not None:
-            audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            audio, samplerate = load_audio(audio_url)
-            audio_inputs = hfprocessor(
-                text = "",
-                audios=[audio],  # Use first channel only
-                return_tensors="pt", 
-                padding=True,
-                sampling_rate=samplerate
-            )
-            ## run the model
-            hfmodel.config.torchscript = True
-            outputs = hfmodel(**audio_inputs)
-            ov_model = self.ov.convert_model(hfmodel, example_input=processed_data)
-            if not os.path.exists(model_dst_path):
-                os.mkdir(model_dst_path)
-            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = self.ov.compile_model(ov_model)
-            hfmodel = None
+            if hfprocessor is not None:
+                text = "Replace me by any text you'd like."
+                audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+                audio = load_audio(audio_url)
+                text_inputs = hftokenizer(text, return_tensors="pt", padding=True)
+                audio_inputs = hfprocessor(
+                    audios=[audio[0]],  # Use first channel only
+                    return_tensors="pt", 
+                    padding=True
+                )
+                processed_data = {**audio_inputs}
+                results = hfmodel(**processed_data)
+                hfmodel.config.torchscript = True
+                ov_model = ov.convert_model(hfmodel, example_input=processed_data)
+                if not os.path.exists(model_dst_path):
+                    os.mkdir(model_dst_path)
+                ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+                ov_model = ov.compile_model(ov_model)
+                hfmodel = None
         return ov_model
