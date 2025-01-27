@@ -20,25 +20,27 @@ class hf_t5:
         return None
 
     def init(self):
-        
-        if "torch" not in list(self.resources.keys()):
-            import torch
-            self.torch = torch
-        else:
-            self.torch = self.resources["torch"]
+        if "torch" not in dir(self):        
+            if "torch" not in list(self.resources.keys()):
+                import torch
+                self.torch = torch
+            else:
+                self.torch = self.resources["torch"]
 
-        if "transformers" not in list(self.resources.keys()):
-            import transformers
-            self.transformers = transformers
-        else:
-            self.transformers = self.resources["transformers"]
+        if "transformers" not in dir(self):
+            if "transformers" not in list(self.resources.keys()):
+                import transformers
+                self.transformers = transformers
+            else:
+                self.transformers = self.resources["transformers"]
             
-        if "numpy" not in list(self.resources.keys()):
-            import numpy as np
-            self.np = np
-        else:
-            self.np = self.resources["numpy"]
-            
+        if "numpy" not in dir(self):
+            if "numpy" not in list(self.resources.keys()):
+                import numpy as np
+                self.np = np
+            else:
+                self.np = self.resources["numpy"]
+        
         return None
     
     
@@ -107,26 +109,42 @@ class hf_t5:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
-    def create_cuda_mlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
-        def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
-            # if "eval" in dir(self.local_endpoints[endpoint_model][cuda_label]):
-            #       self.local_endpoints[endpoint_model][cuda_label].eval()
-            if "eval" in dir(local_cuda_endpoint):
-                local_cuda_endpoint.eval()
-            else:
+    def create_cuda_mlm_endpoint_handler(self, cuda_endpoint_handler, cuda_processor, endpoint_model, cuda_label):
+        def handler(x, y=None, cuda_endpoint_handler=cuda_endpoint_handler, cuda_processor=cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+            results = None
+            chat = None
+            if x is not None and x is not None:
+                chat = x
                 pass
             with self.torch.no_grad():
                 try:
                     self.torch.cuda.empty_cache()
                     config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
-                    
+                    inputs = cuda_processor(chat, return_tensors="pt")
+                    outputs = cuda_endpoint_handler.generate(**inputs)
+                    results = cuda_processor.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
                     # Run model inference
                     self.torch.cuda.empty_cache()
+                    return results
                 except Exception as e:
                     # Cleanup GPU memory in case of error
                     self.torch.cuda.empty_cache()
                     raise e
         return handler
+    
+    def create_cuda_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+            results = None
+            chat = None
+            if x is not None and x is not None:
+                chat = x
+            inputs = openvino_tokenizer(chat, return_tensors="pt")
+            outputs = openvino_endpoint_handler.generate(**inputs)
+            results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+            # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
+            return results
+        return handler
+    
     
     def create_cpu_mlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
@@ -193,7 +211,7 @@ class hf_t5:
             outputs = openvino_endpoint_handler.generate(**inputs)
             results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
             # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
-            return outputs
+            return results
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
