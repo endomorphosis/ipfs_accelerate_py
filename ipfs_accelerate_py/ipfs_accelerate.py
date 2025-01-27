@@ -1497,8 +1497,8 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            "laion/larger_clap_general",
-            # "google-t5/t5-base",
+            # "laion/larger_clap_general",
+            "google-t5/t5-base",
             # "facebook/wav2vec2-large-960h-lv60-self",
             # "BAAI/bge-small-en-v1.5", 
             # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  

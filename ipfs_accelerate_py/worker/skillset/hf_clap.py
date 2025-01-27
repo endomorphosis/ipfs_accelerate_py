@@ -4,6 +4,14 @@ import asyncio
 import requests
 import io
 
+def load_audio_16khz(audio_file):
+    import librosa
+    audio_data, samplerate = load_audio(audio_file)
+    if samplerate != 16000:
+        ## convert to 16khz
+        audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
+    return audio_data, 16000
+
 def load_audio(audio_file):
     import soundfile as sf
     import numpy as np
@@ -407,11 +415,11 @@ class hf_clap:
             else:
                 self.ov = self.resources["openvino"]
         
-        hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
+        hfmodel = self.transformers.ClapModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
 
-        hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
+        hfprocessor = self.transformers.ClapProcessor.from_pretrained(model_name)
         
-        hftokenizer = self.transformers.AutoTokenizer.from_pretrained(model_name)
+        hftokenizer = self.transformers.ClapProcessor.from_pretrained(model_name)
 
         if hfprocessor is not None:
             if hfprocessor is not None:
@@ -422,12 +430,19 @@ class hf_clap:
                 audio_inputs = hfprocessor(
                     audios=[audio[0]],  # Use first channel only
                     return_tensors="pt", 
-                    padding=True
+                    padding=True,
+                    sampling_rate=audio[1]
                 )
-                processed_data = {**audio_inputs}
-                results = hfmodel(**processed_data)
+                hfmodel_dtype = hfmodel.dtype
+                for key in audio_inputs:
+                    if type(audio_inputs[key]) == self.torch.Tensor:
+                        if audio_inputs[key].dtype != hfmodel_dtype:
+                            audio_inputs[key] = audio_inputs[key].to(hfmodel_dtype)
+                audio_inputs["input_ids"] = audio_inputs["input_features"]
+                results = hfmodel(**audio_inputs)
+                print(results)  # Use the results variable
                 hfmodel.config.torchscript = True
-                ov_model = ov.convert_model(hfmodel, example_input=processed_data)
+                ov_model = ov.convert_model(hfmodel, example_input=audio_inputs)
                 if not os.path.exists(model_dst_path):
                     os.mkdir(model_dst_path)
                 ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))

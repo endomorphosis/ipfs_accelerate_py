@@ -302,7 +302,7 @@ class openvino_utils:
         from transformers import AutoConfig
         homedir = os.path.expanduser("~")
         model_name_convert = model_name.replace("/", "--")
-        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
+        huggingface_cache = os.path.join(homedir, ".cache","huggingface")
         huggingface_cache_models = os.path.join(huggingface_cache, "hub")
         huggingface_cache_models_files = os.listdir(huggingface_cache_models)
         huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
@@ -405,33 +405,6 @@ class openvino_utils:
                 model_type = config.__class__.model_type
         return model_type
     
-    def openvino_convert(self, 
-        model_name, 
-        model_dst_path, 
-        task=None, 
-        framework=None, 
-        trust_remote_code=False, 
-        weight_format=None, 
-        library=None, 
-        cache_dir=None, 
-        pad_token_id=None, 
-        ratio=None, 
-        sym=False, 
-        group_size=None, 
-        backup_precision=None, 
-        dataset=None, 
-        all_layers=False, 
-        awq=False,
-        scale_estimation=False,
-        gptq=False,
-        lora_correction=False,
-        sensitivity_metric=None,
-        num_samples=None,
-        disable_stateful=False,
-        disable_convert_tokenizer=False
-        ):
-        return None
-    
     def openvino_cli_convert(
         self,
         model_name,
@@ -459,7 +432,6 @@ class openvino_utils:
         disable_convert_tokenizer=False,
     ):
 
-        
         command = ['optimum-cli', 'export', 'openvino', '-m', model_name]
         tasks_list = ['fill-mask', 'image-classification', 'image-segmentation', 'feature-extraction', 'token-classification', 'audio-xvector', 'audio-classification', 'zero-shot-image-classification', 'text2text-generation', 'depth-estimation', 'text-to-audio', 'semantic-segmentation', 'masked-im', 'image-to-text', 'zero-shot-object-detection','mask-generation', 'sentence-similarity', 'image-to-image', 'object-detection', 'multiple-choice', 'automatic-speech-recognition', 'text-classification', 'audio-frame-classification', 'text-generation', 'question-answering']
         if task is not None:
@@ -516,8 +488,12 @@ class openvino_utils:
         command.append(model_dst_path)
         parsed_cmd = ' '.join(command)
         # Execute the command
-        convert_model = subprocess.check_output(parsed_cmd, shell=True)
-        convert_model = convert_model.decode('utf-8')
+        try:
+            convert_model = subprocess.check_output(parsed_cmd, shell=True)
+            convert_model = convert_model.decode('utf-8')
+        except Exception as e:
+            print(e)
+            convert_model = None
         return convert_model
     
     
