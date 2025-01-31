@@ -1,10 +1,12 @@
+--find-links https://download.pytorch.org/whl/cu124
+torch
+torchvision
+torchaudio
 ipfs_kit_py==0.0.18
 ipfs_model_manager_py==0.0.23
 libp2p_kit_py==0.0.19
 ipfs_transformers_py
 transformers==4.46
-torch>=2.1
-torchvision
 numpy
 torchtext
 urllib3

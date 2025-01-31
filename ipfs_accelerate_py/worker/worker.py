@@ -379,15 +379,15 @@ class worker_py:
         cuda = cuda_test
         cpus = os.cpu_count()
         torch_gpus = 0
-        if cuda != False and self.torch.cuda.is_available():
+        if cuda == True and self.torch.cuda.is_available():
             torch_gpus = self.torch.cuda.device_count()
         else:    
             torch_gpus = 0
-        if openvino_test != False:
+        if openvino_test == True:
             from openvino import Core
             openvino_gpus = 1 if "GPU" in Core().available_devices else 0
             del Core
-        gpus = torch_gpus if cuda != False else openvino_gpus if openvino_test != False else 0        
+        gpus = torch_gpus if cuda == True else openvino_gpus if openvino_test == True else 0        
         # cpus = os.cpu_count()
         # cuda = torch.cuda.is_available()
         # gpus = torch.cuda.device_count()
@@ -418,7 +418,7 @@ class worker_py:
                 if cuda and torch_gpus > 0:
                     if cuda_test and type(cuda_test) != ValueError:
                         for gpu in range(torch_gpus):
-                            device = 'cuda:' + str(torch_gpus)
+                            device = 'cuda:' + str(gpu)
                             cuda_label = device
                             self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(model, device, cuda_label)
                 if local > 0 and cpus > 0:

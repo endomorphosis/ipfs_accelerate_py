@@ -964,22 +964,32 @@ class ipfs_accelerate_py:
                 test_results[model]["local_endpoint"] = await self.test_local_endpoint(model)
             except Exception as e:
                 test_results[model]["local_endpoint"] = e
+                print(e)
+
             try:
                 test_results[model]["libp2p_endpoint"] = await self.test_libp2p_endpoint(model)
             except Exception as e:
                 test_results[model]["libp2p_endpoint"] = e
+                print(e)
+
             try:
                 test_results[model]["openvino_endpoint"] = await self.test_openvino_endpoint(model)
             except Exception as e:
                 test_results[model]["openvino_endpoint"] = e
+                print(e)
+
             try:
                 test_results[model]["tei_endpoint"] = await self.test_tei_endpoint(model)
             except Exception as e:
                 test_results[model]["tei_endpoint"] = e
+                print(e)
+
             try:
                 test_results[model]["webnn_endpoint"] = "not implemented"
             except Exception as e:
                 test_results[model]["webnn_endpoint"] = e
+                print(e)
+
         try:
             test_results[model]["endpoint_handler_resources"] = endpoint_handler_object
         except Exception as e:
@@ -1106,26 +1116,34 @@ class ipfs_accelerate_py:
         endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
         tokenizers_by_model = self.resources["tokenizer"][model]
         if endpoint_list is not None:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]      
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ( "openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) ]      
         if len(local_endpoints_by_model_by_endpoint_list) > 0:
             for endpoint in local_endpoints_by_model_by_endpoint_list:
-                endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
                 model_type = self.get_model_type(model)
-                test = None
                 hf_model_types = ["llava", "llama", "qwen2", "bert", "clip", "clap", "wav2vec", "wav2vec2", "t5", "whisper", "xclip"]
                 method_name = "hf_" + model_type
                 if model_type in hf_model_types:
-                    module = __import__('worker.skillset', fromlist=[method_name])
-                    this_method = getattr(module, method_name)
-                    this_hf = this_method(self.resources, self.metadata)
-                    test = this_hf.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
-                    test_results[endpoint[1]] = test
-                    del this_hf
-                    del this_method          
+                    if endpoint[1] in list(endpoint_handlers_by_model.keys()):
+                        endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
+                        test = None
+                        try:
+                            module = __import__('worker.skillset', fromlist=[method_name])
+                            this_method = getattr(module, method_name)
+                            this_hf = this_method(self.resources, self.metadata)
+                            test = this_hf.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                            test_results[endpoint[1]] = test
+                            del this_hf
+                            del this_method
+                            del module
+                            del test
+                        except Exception as e:
+                            test_results[endpoint[1]] = e
+                    else:
+                        test_results[endpoint[1]] = ValueError("endpoint not found")          
                 else:
-                    test_results[endpoint[1]] = ValueError("Model type not found")
+                    test_results[endpoint[1]] = ValueError("Model type not supported")
         return test_results
 
     async def get_https_endpoint(self, model):

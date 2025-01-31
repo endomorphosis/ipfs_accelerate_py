@@ -3,7 +3,8 @@ ipfs_model_manager_py==0.0.23
 libp2p_kit_py==0.0.19
 ipfs_transformers_py
 transformers==4.46
-torch>=2.1
+--find-links https://download.pytorch.org/whl/cu124
+torch
 torchvision
 numpy
 torchtext
@@ -27,8 +28,8 @@ Pillow
 nncf>=2.14.0
 optimum[exporters]
 optimum[intel]
-onnxruntime==1.19.2
-onnx==1.16.1
+onnxruntime>=1.19.2
+onnx>=1.16.1
 multiformats
 pydub
 openai

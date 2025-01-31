@@ -57,10 +57,10 @@ class hf_t5:
         try:
             test_batch = endpoint_handler(text1)
             print(test_batch)
-            print("hf_t5 test passed")
+            print("hf_t5 test passed on endpoint " + endpoint_label)
         except Exception as e:
             print(e)
-            print("hf_t5 test failed")
+            print("hf_t5 test failed on endpoint " + endpoint_label)
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
@@ -74,13 +74,13 @@ class hf_t5:
             with self.torch.no_grad():
                 if "cuda" in dir(self.torch):
                     self.torch.cuda.empty_cache()
-        print("hf_t5 test")
+        # print("hf_t5 test")
         return None
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
+        config = self.transformers.AutoConfig.from_pretrained(model)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
         endpoint = None
         try:
             endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
