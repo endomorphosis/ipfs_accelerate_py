@@ -420,7 +420,11 @@ class worker_py:
                         for gpu in range(torch_gpus):
                             device = 'cuda:' + str(gpu)
                             cuda_label = device
-                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(model, device, cuda_label)
+                            self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(
+                                model,
+                                device,
+                                cuda_label
+                            )
                 if local > 0 and cpus > 0:
                     if model_type in openvino_genai_model_types or model_type in openvino_model_types or model_type in optimum_model_types:
                         if openvino_test and type(openvino_test) != ValueError and model_type != "llama_cpp":

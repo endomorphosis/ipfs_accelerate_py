@@ -87,6 +87,7 @@ class hf_t5:
         except Exception as e:
             print(e)
             pass
+                                                                # cuda_endpoint_handler, cuda_processor, endpoint_model, cuda_label):
         endpoint_handler = self.create_cuda_mlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
@@ -110,17 +111,13 @@ class hf_t5:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
     def create_cuda_mlm_endpoint_handler(self, cuda_endpoint_handler, cuda_processor, endpoint_model, cuda_label):
-        def handler(x, y=None, cuda_endpoint_handler=cuda_endpoint_handler, cuda_processor=cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+        def handler(x, cuda_endpoint_handler=cuda_endpoint_handler, cuda_processor=cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
             results = None
-            chat = None
-            if x is not None and x is not None:
-                chat = x
-                pass
+            chat = x if x is not None else ""
             with self.torch.no_grad():
                 try:
                     self.torch.cuda.empty_cache()
-                    config = self.transformers.AutoConfig.from_pretrained(endpoint_model, trust_remote_code=True)
-                    inputs = cuda_processor(chat, return_tensors="pt")
+                    inputs = cuda_processor(chat, return_tensors="pt").to(cuda_label)
                     outputs = cuda_endpoint_handler.generate(**inputs)
                     results = cuda_processor.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
                     # Run model inference
@@ -132,18 +129,18 @@ class hf_t5:
                     raise e
         return handler
     
-    def create_cuda_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
-        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
-            results = None
-            chat = None
-            if x is not None and x is not None:
-                chat = x
-            inputs = openvino_tokenizer(chat, return_tensors="pt")
-            outputs = openvino_endpoint_handler.generate(**inputs)
-            results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-            # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
-            return results
-        return handler
+    # def create_cuda_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+    #     def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+    #         results = None
+    #         chat = None
+    #         if x is not None and x is not None:
+    #             chat = x
+    #         inputs = openvino_tokenizer(chat, return_tensors="pt").to(openvino_label)
+    #         outputs = openvino_endpoint_handler.generate(**inputs)
+    #         results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    #         # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
+    #         return results
+    #     return handler
     
     
     def create_cpu_mlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
@@ -186,7 +183,6 @@ class hf_t5:
                         ]
                     else:
                         raise Exception("Invalid input to vlm endpoint handler")
-                  
                     prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
                     inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, self.torch.float16)
                     output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
