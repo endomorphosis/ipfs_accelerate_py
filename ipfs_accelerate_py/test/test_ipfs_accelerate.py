@@ -2,15 +2,15 @@ import asyncio
 import os
 import sys
 
-class test_ipfs_accelerate:
+class test_ipfs_accelerate_py:
     def __init__(self, resources=None, metadata=None):
         
-        if self.resources is None:
+        if resources is None:
             self.resources = {}
         else:
             self.resources = resources
         
-        if self.metadata is None:
+        if metadata is None:
             self.metadata = {}
         else:
             self.metadata = metadata
@@ -50,6 +50,153 @@ class test_ipfs_accelerate:
             test_results["test_backend"] = e
             
         return test_results
+
+    
+    async def test_local_endpoint(self, model, endpoint_list=None):
+        this_endpoint = None
+        filtered_list = {}
+        test_results = {}
+        local_endpoints = self.resources["local_endpoints"]
+        local_tokenizers = self.resources["tokenizer"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_tokenizers_types = [x[1] for x in local_tokenizers]
+        local_endpoints_by_model = self.endpoints["local_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
+        tokenizers_by_model = self.resources["tokenizer"][model]
+        if endpoint_list is not None:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+        else:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ( "openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) ]      
+        if len(local_endpoints_by_model_by_endpoint_list) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint_list:
+                model_type = self.get_model_type(model)
+                hf_model_types = ["llava", "llama", "qwen2", "bert", "clip", "clap", "wav2vec", "wav2vec2", "t5", "whisper", "xclip"]
+                method_name = "hf_" + model_type
+                if model_type in hf_model_types:
+                    if endpoint[1] in list(endpoint_handlers_by_model.keys()):
+                        endpoint_handler = endpoint_handlers_by_model[endpoint[1]]
+                        test = None
+                        try:
+                            module = __import__('worker.skillset', fromlist=[method_name])
+                            this_method = getattr(module, method_name)
+                            this_hf = this_method(self.resources, self.metadata)
+                            test = this_hf.__test__(model, endpoint_handlers_by_model[endpoint[1]], endpoint[1], tokenizers_by_model[endpoint[1]] )
+                            test_results[endpoint[1]] = test
+                            del this_hf
+                            del this_method
+                            del module
+                            del test
+                        except Exception as e:
+                            test_results[endpoint[1]] = e
+                    else:
+                        test_results[endpoint[1]] = ValueError("endpoint not found")          
+                else:
+                    test_results[endpoint[1]] = ValueError("Model type not supported")
+        return test_results
+
+    
+    async def test_tei_endpoint(self, model, endpoint_list=None):
+        this_endpoint = None
+        filtered_list = {}
+        test_results = {}
+        local_endpoints = self.resources["tei_endpoints"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
+        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+        if len(local_endpoints_by_model_by_endpoint) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
+                try:
+                    test = await endpoint_handler("hello world")
+                    test_results[endpoint] = test
+                except Exception as e:
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
+                    pass
+        else:
+            return ValueError("No endpoint_handlers found")
+        return test_results
+    
+    async def test_libp2p_endpoint(self, model, endpoint=None):
+        return ValueError("Not implemented")
+
+    async def test_openvino_endpoint(self, model, endpoint_list=None):
+        this_endpoint = None
+        filtered_list = {}
+        test_results = {}
+        local_endpoints = self.resources["openvino_endpoints"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
+        if endpoint_list is not None:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+        else:
+            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]
+        if len(local_endpoints_by_model_by_endpoint_list) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint_list:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
+                try:
+                    test = await endpoint_handler("hello world")
+                    test_results[endpoint] = test
+                except Exception as e:
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
+                    pass
+        else:
+            return ValueError("No endpoint_handlers found")
+        return test_results
+
+
+    async def test_endpoints(self, models, endpoint_handler_object=None):
+        test_results = {}
+        for model in models:
+            if model not in list(test_results.keys()):
+                test_results[model] = {}
+            try: 
+                test_results[model]["local_endpoint"] = await self.test_local_endpoint(model)
+            except Exception as e:
+                test_results[model]["local_endpoint"] = e
+                print(e)
+
+            try:
+                test_results[model]["libp2p_endpoint"] = await self.test_libp2p_endpoint(model)
+            except Exception as e:
+                test_results[model]["libp2p_endpoint"] = e
+                print(e)
+
+            try:
+                test_results[model]["openvino_endpoint"] = await self.test_openvino_endpoint(model)
+            except Exception as e:
+                test_results[model]["openvino_endpoint"] = e
+                print(e)
+
+            try:
+                test_results[model]["tei_endpoint"] = await self.test_tei_endpoint(model)
+            except Exception as e:
+                test_results[model]["tei_endpoint"] = e
+                print(e)
+
+            try:
+                test_results[model]["webnn_endpoint"] = "not implemented"
+            except Exception as e:
+                test_results[model]["webnn_endpoint"] = e
+                print(e)
+
+        try:
+            test_results[model]["endpoint_handler_resources"] = endpoint_handler_object
+        except Exception as e:
+            test_results[model]["endpoint_handler_resources"] = e
+            test_results["batch_sizes"] = {}
+            test_results["endpoint_handler"] = {}            
+        return test_results
     
     async def test_ipfs_accelerate(self):
         test_results = {}
@@ -62,6 +209,15 @@ class test_ipfs_accelerate:
         except Exception as e:
             test_results["test_ipfs_accelerate"] = e
             return test_results
+    
+    def __test__(resources, metadata):
+        test_results = {}
+        try:
+            test = test_ipfs_accelerate(resources, metadata)
+            test_results["test_ipfs_accelerate"] = test.test(resources, metadata)
+        except Exception as e:
+            test_results["test_ipfs_accelerate"] = e
+        return test_results
     
 if __name__ == "__main__":
     metadata = {
@@ -215,6 +371,6 @@ if __name__ == "__main__":
         "tei_endpoints": [],
     }
 
-    ipfs_accelerate_py = ipfs_accelerate_py(resources, metadata)
+    ipfs_accelerate_py = test_ipfs_accelerate_py(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")
