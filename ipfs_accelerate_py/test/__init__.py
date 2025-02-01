@@ -1,0 +1,2 @@
+from test_ipfs_accelerate import test_ipfs_accelerate_py
+from test_backend import test_backend_py
