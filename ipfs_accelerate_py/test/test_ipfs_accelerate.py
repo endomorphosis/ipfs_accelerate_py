@@ -38,8 +38,10 @@ class test_ipfs_accelerate_py:
         try:
             # test_results["test_ipfs_accelerate"] = self.ipfs_accelerate.__test__(resources, metadata)
             results = {}
-            ipfs_accelerate_init = await self.ipfs_accelerate_py.init_endpoints( metadata['models'], resources)
-            test_endpoints = await self.ipfs_accelerate_py.test_endpoints(metadata['models'], ipfs_accelerate_init)
+            for model in self.metadata['models']:
+                ipfs_accelerate_init = await self.ipfs_accelerate_py.init_endpoints( [model], resources) 
+                test_endpoints = await self.ipfs_accelerate_py.test_endpoints([model], ipfs_accelerate_init)
+                ipfs_accelerate_del = await self.ipfs_accelerate_py.del_endpoints( [model], resources)
             return test_endpoints
         except Exception as e:
             test_results["test_ipfs_accelerate"] = e
@@ -60,9 +62,9 @@ class test_ipfs_accelerate_py:
         local_tokenizers = self.resources["tokenizer"]
         local_endpoints_types = [x[1] for x in local_endpoints]
         local_tokenizers_types = [x[1] for x in local_tokenizers]
-        local_endpoints_by_model = self.endpoints["local_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["endpoint_handler"][model]
-        tokenizers_by_model = self.resources["tokenizer"][model]
+        local_endpoints_by_model = self.ipfs_accelerate_py.endpoints["local_endpoints"][model]
+        endpoint_handlers_by_model = self.ipfs_accelerate_py.resources["endpoint_handler"][model]
+        tokenizers_by_model = self.ipfs_accelerate_py.resources["tokenizer"][model]
         if endpoint_list is not None:
             local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if ("openvino:" in json.dumps(x) or "cuda:" in json.dumps(x) ) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
@@ -99,10 +101,10 @@ class test_ipfs_accelerate_py:
         this_endpoint = None
         filtered_list = {}
         test_results = {}
-        local_endpoints = self.resources["tei_endpoints"]
+        local_endpoints = self.ipfs_accelerate_py.resources["tei_endpoints"]
         local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
+        local_endpoints_by_model = self.ipfs_accelerate_py.endpoints["tei_endpoints"][model]
+        endpoint_handlers_by_model = self.ipfs_accelerate_py.resources["tei_endpoints"][model]
         local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
         local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
         if len(local_endpoints_by_model_by_endpoint) > 0:
@@ -129,10 +131,10 @@ class test_ipfs_accelerate_py:
         this_endpoint = None
         filtered_list = {}
         test_results = {}
-        local_endpoints = self.resources["openvino_endpoints"]
+        local_endpoints = self.ipfs_accelerate_py.resources["openvino_endpoints"]
         local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
+        local_endpoints_by_model = self.ipfs_accelerate_py.endpoints["openvino_endpoints"][model]
+        endpoint_handlers_by_model = self.ipfs_accelerate_py.resources["openvino_endpoints"][model]
         if endpoint_list is not None:
             local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
@@ -204,7 +206,7 @@ class test_ipfs_accelerate_py:
             ipfs_accelerate_py = self.ipfs_accelerate_py(resources, metadata)
             # test_results["test_ipfs_accelerate"] = await ipfs_acclerate.__test__(resources, metadata)
             ipfs_accelerate_init = ipfs_accelerate_py.init_endpoints( metadata['models'], resources)
-            test_endpoints = ipfs_accelerate_py.test_endpoints(metadata['models'], ipfs_accelerate_init)
+            test_endpoints = self.test_endpoints(metadata['models'], ipfs_accelerate_init)
             return test_endpoints 
         except Exception as e:
             test_results["test_ipfs_accelerate"] = e
@@ -227,35 +229,35 @@ if __name__ == "__main__":
         "role": "master",
         "split": "train",
         "models": [
-            # "laion/larger_clap_general",
-            # "google-t5/t5-base",
-            # "facebook/wav2vec2-large-960h-lv60-self",
-            # "BAAI/bge-small-en-v1.5", 
-            # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
-            # "openai/whisper-large-v3-turbo",
-            # "meta-llama/Meta-Llama-3.1-8B-Instruct",
-            # "distil-whisper/distil-large-v3",
-            # "Qwen/Qwen2-7B",
-            # "llava-hf/llava-interleave-qwen-0.5b-hf",
-            # "lmms-lab/LLaVA-Video-7B-Qwen2",
-            # "llava-hf/llava-v1.6-mistral-7b-hf",
-            # "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-            # "TIGER-Lab/Mantis-8B-siglip-llama3",  ## make sure sthat optimum-cli-convert works on windows.
-            # "microsoft/xclip-base-patch16-zero-shot",
-            # "google/vit-base-patch16-224"
-            # "MCG-NJU/videomae-base",
-            # "MCG-NJU/videomae-large",
-            # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
-            # "lmms-lab/llava-onevision-qwen2-7b-si",  
-            # "lmms-lab/llava-onevision-qwen2-7b-ov", 
-            # "lmms-lab/llava-onevision-qwen2-0.5b-si", 
-            # "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
-            # "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
-            # "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
-            # "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
-            # "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
-            # "AIDC-AI/Ovis1.6-Llama3.2-3B", # ValueError: Trying to export a ovis model, that is a custom or unsupported architecture,
-            # "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
+            "laion/larger_clap_general",
+            "google-t5/t5-base",
+            "facebook/wav2vec2-large-960h-lv60-self",
+            "BAAI/bge-small-en-v1.5", 
+            "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
+            "openai/whisper-large-v3-turbo",
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            "distil-whisper/distil-large-v3",
+            "Qwen/Qwen2-7B",
+            "llava-hf/llava-interleave-qwen-0.5b-hf",
+            "lmms-lab/LLaVA-Video-7B-Qwen2",
+            "llava-hf/llava-v1.6-mistral-7b-hf",
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "TIGER-Lab/Mantis-8B-siglip-llama3",  ## make sure sthat optimum-cli-convert works on windows.
+            "microsoft/xclip-base-patch16-zero-shot",
+            "google/vit-base-patch16-224"
+            "MCG-NJU/videomae-base",
+            "MCG-NJU/videomae-large",
+            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
+            "lmms-lab/llava-onevision-qwen2-7b-si",  
+            "lmms-lab/llava-onevision-qwen2-7b-ov", 
+            "lmms-lab/llava-onevision-qwen2-0.5b-si", 
+            "lmms-lab/llava-onevision-qwen2-0.5b-ov", 
+            "Qwen/Qwen2-VL-7B-Instruct", ## convert_model() ->   ('Couldn\'t get TorchScript module by scripting. With exception:\nComprehension ifs are not supported yet:\n  File "/home/devel/.local/lib/python3.12/site-packages/transformers/models/qwen2_vl/modeling_qwen2_vl.py", line 1187\n    \n        if not return_dict:\n            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)\n        return BaseModelOutputWithPast(\n            last_hidden_state=hidden_states,\n\n\nTracing sometimes provide better results, please provide valid \'example_input\' argument. You can also provide TorchScript module that you obtained yourself, please refer to PyTorch documentation: https://pytorch.org/tutorials/beginner/Intro_to_TorchScript_tutorial.html.',)
+            "OpenGVLab/InternVL2_5-1B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            "OpenGVLab/InternVL2_5-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            "OpenGVLab/PVC-InternVL2-8B", ## convert_model() -> torchscript error Couldn't get TorchScript module by scripting. With exception: try blocks aren't supported:
+            "AIDC-AI/Ovis1.6-Llama3.2-3B", # ValueError: Trying to export a ovis model, that is a custom or unsupported architecture,
+            "BAAI/Aquila-VL-2B-llava-qwen", # Asked to export a qwen2 model for the task visual-question-answering (auto-detected), but the Optimum OpenVINO exporter only supports the tasks feature-extraction, feature-extraction-with-past, text-generation, text-generation-with-past, text-classification for qwen2. Please use a supported task. Please open an issue at https://github.com/huggingface/optimum/issues if you would like the task visual-question-answering to be supported in the ONNX export for qwen2.
         ],
         "chunk_settings": {
 
@@ -263,14 +265,14 @@ if __name__ == "__main__":
         "path": "/storage/gpt4v-dataset/data",
         "dst_path": "/storage/gpt4v-dataset/data",
     }
-    endpoints = ["cpu", "cuda:0", "openvino:0"]
+    endpoint_types = ["cuda:0", "openvino:0"]
     resources = {}
     resources["local_endpoints"] = []
     resources["tei_endpoints"] = []
     resources["libp2p_endpoints"] = []
     resources["openvino_endpoints"] = []      
     for model in metadata["models"]:
-        for endpoint in endpoints:
+        for endpoint in endpoint_types:
             resources["local_endpoints"].append([model, endpoint, 32768])
 
     ipfs_accelerate_py = test_ipfs_accelerate_py(resources, metadata)
