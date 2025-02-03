@@ -1,6 +1,8 @@
 import asyncio
 import os
 import sys
+import json 
+
 
 class test_ipfs_accelerate_py:
     def __init__(self, resources=None, metadata=None):
@@ -44,13 +46,23 @@ class test_ipfs_accelerate_py:
                 ipfs_accelerate_del = await self.ipfs_accelerate_py.del_endpoints( [model], resources)
             return test_endpoints
         except Exception as e:
-            test_results["test_ipfs_accelerate"] = e
-        
+            error = ""
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc() 
+            test_results["test_ipfs_accelerate"] = str(error)
+
         try:
             test_results["test_backend"] = self.test_backend.__test__(resources, metadata)
         except Exception as e:
-            test_results["test_backend"] = e
-            
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc() 
+            test_results["test_backend"] = str(error)
         return test_results
 
     
@@ -195,7 +207,13 @@ class test_ipfs_accelerate_py:
         try:
             test_results[model]["endpoint_handler_resources"] = endpoint_handler_object
         except Exception as e:
-            test_results[model]["endpoint_handler_resources"] = e
+            error = ""
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc()
+            test_results[model]["endpoint_handler_resources"] = str(error)
             test_results["batch_sizes"] = {}
             test_results["endpoint_handler"] = {}            
         return test_results
@@ -209,7 +227,13 @@ class test_ipfs_accelerate_py:
             test_endpoints = self.test_endpoints(metadata['models'], ipfs_accelerate_init)
             return test_endpoints 
         except Exception as e:
-            test_results["test_ipfs_accelerate"] = e
+            error = ""
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc()
+            test_results["test_ipfs_accelerate"] = str(error)
             return test_results
     
     async def __test__(self,resources, metadata):
@@ -217,7 +241,17 @@ class test_ipfs_accelerate_py:
         try:
             test_results["test_ipfs_accelerate"] = await self.test()
         except Exception as e:
-            test_results["test_ipfs_accelerate"] = e
+            error = ""
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc()
+            test_results["test_ipfs_accelerate"] = str(error)
+        this_file = os.path.abspath(sys.modules[__name__].__file__)
+        test_log = os.path.join(os.path.dirname(this_file), "test_results.json")
+        with open(test_log, "w") as f:
+            f.write(json.dumps(test_results, indent=4))
         return test_results
     
     

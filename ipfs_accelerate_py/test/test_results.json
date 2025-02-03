@@ -1,1 +1,6 @@
-{}
+{
+    "test_ipfs_accelerate": {
+        "test_ipfs_accelerate": "Error initializing worker:\nException type: AttributeError\nException message: 'ipfs_accelerate_py' object has no attribute 'del_endpoints'\nTraceback:\nTraceback (most recent call last):\n  File \"C:\\Users\\barberb\\ipfs_accelerate_py\\ipfs_accelerate_py\\test\\test_ipfs_accelerate.py\", line 46, in test\n    ipfs_accelerate_del = await self.ipfs_accelerate_py.del_endpoints( [model], resources)\n                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'ipfs_accelerate_py' object has no attribute 'del_endpoints'. Did you mean: 'get_endpoints'?\n",
+        "test_backend": "Error initializing worker:\nException type: AttributeError\nException message: 'test_backend_py' object has no attribute '__test__'\nTraceback:\nTraceback (most recent call last):\n  File \"C:\\Users\\barberb\\ipfs_accelerate_py\\ipfs_accelerate_py\\test\\test_ipfs_accelerate.py\", line 58, in test\n    test_results[\"test_backend\"] = self.test_backend.__test__(resources, metadata)\n                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'test_backend_py' object has no attribute '__test__'. Did you mean: '__dict__'?\n"
+    }
+}
