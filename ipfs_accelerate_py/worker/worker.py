@@ -320,6 +320,37 @@ class worker_py:
             raise ValueError("install_depends.py not found")
         return test_results
     
+    async def get_huggingface_model_types(self):
+        if "transformers" not in dir(self):
+            if "transformers" not in list(self.resources.keys()):
+                import transformers
+                self.resources["transformers"] = transformers
+                self.transformers = self.resources["transformers"]
+            else:
+                self.transformers = self.resources["transformers"]
+
+        # Get all model types from the MODEL_MAPPING
+        model_types = []
+        for config in self.transformers.MODEL_MAPPING.keys():
+            if hasattr(config, 'model_type'):
+                model_types.append(config.model_type)
+
+        # Add model types from the AutoModel registry
+        model_types.extend(list(self.transformers.MODEL_MAPPING._model_mapping.keys()))
+        
+        # Remove duplicates and sort
+        model_types = sorted(list(set(model_types)))
+        return model_types
+    
+    async def generate_hf_skill(model_type):
+        ## search hf documentation for the model type
+        ## get the data from the class in huggingface transformers
+        ## optional ** get examples using k nearest neighbors
+        ## run LM inference on the examples
+        ## generate the skill
+        ## write to disk
+        return None
+    
     async def init_worker(self, models, local_endpoints, hwtest):
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
@@ -365,11 +396,23 @@ class worker_py:
         self.hwtest = hwtest
         self.resources["hwtest"] = hwtest
         if "cuda" in list(self.hwtest.keys()) and self.hwtest["cuda"] is True:
-            self.init_cuda()
+            try:
+                self.init_cuda()
+            except Exception as e:
+                print(e)
+                pass
         if "openvino" in list(self.hwtest.keys()) and self.hwtest["openvino"] is True:
-            self.init_openvino()
+            try:
+                self.init_openvino()
+            except Exception as e:
+                print(e)
+                pass
         if "qualcomm" in list(self.hwtest.keys()) and self.hwtest["qualcomm"] is True:
-            self.init_qualcomm()
+            try:
+                self.init_qualcomm()
+            except Exception as e:
+                print(e)
+                pass
         if "apple" in list(self.hwtest.keys()) and self.hwtest["apple"] is True:
             self.init_apple()
         cuda_test = self.hwtest["cuda"]
@@ -391,8 +434,18 @@ class worker_py:
         # cpus = os.cpu_count()
         # cuda = torch.cuda.is_available()
         # gpus = torch.cuda.device_count()
+        huggingface_model_types = await self.get_huggingface_model_types()
         for model in models:
             model_type = self.get_model_type(model)
+            if model_type not in huggingface_model_types:
+                print("model type not found in huggingface model types")
+                continue 
+            if "hf_" + model_type not in list(dir(self)):
+                print("model type not found in worker skills but it is a huggingface model type")
+                print("generate the skill for this model type")
+                while generated is not None and generated is not True:
+                    generated = self.generate_hf_skill(model_type)
+                continue
             if model not in list(self.tokenizer.keys()):
                 self.tokenizer[model] = {}
             if model not in list(self.local_endpoints.keys()):
