@@ -67,6 +67,18 @@ class test_ipfs_accelerate_py:
     
     async def test(self):
         test_results = {}
+        
+        
+        try:
+            test_results["test_backend"] = self.test_backend.__test__(resources, metadata)
+        except Exception as e:
+            import traceback
+            error = "Error initializing worker:\n"
+            error += f"Exception type: {type(e).__name__}\n"
+            error += f"Exception message: {str(e)}\n"
+            error += "Traceback:\n" + traceback.format_exc() 
+            test_results["test_backend"] = str(error)
+        
         try:
             # test_results["test_ipfs_accelerate"] = self.ipfs_accelerate.__test__(resources, metadata)
             results = {}
@@ -85,17 +97,7 @@ class test_ipfs_accelerate_py:
             error += "Traceback:\n" + traceback.format_exc() 
             test_results["test_ipfs_accelerate"] = str(error)
 
-        try:
-            test_results["test_backend"] = self.test_backend.__test__(resources, metadata)
-        except Exception as e:
-            import traceback
-            error = "Error initializing worker:\n"
-            error += f"Exception type: {type(e).__name__}\n"
-            error += f"Exception message: {str(e)}\n"
-            error += "Traceback:\n" + traceback.format_exc() 
-            test_results["test_backend"] = str(error)
         return test_results
-
 
     def get_model_type(self, model_name=None, model_type=None):
         if "transformers" not in dir(self):
