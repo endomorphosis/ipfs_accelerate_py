@@ -32,6 +32,14 @@ class test_ipfs_accelerate_py:
                 self.test_backend = self.resources["test_backend"]
             else:
                 self.test_backend = self.resources["test_backend"]
+                
+        if "torch" not in dir(self):
+            if "torch" not in list(self.resources.keys()):
+                import torch
+                self.resources["torch"] = torch
+                self.torch = self.resources["torch"]
+            else:
+                self.torch = self.resources["torch"]
         
         return None
     
@@ -87,6 +95,24 @@ class test_ipfs_accelerate_py:
             test_results["test_backend"] = str(error)
         return test_results
 
+
+    def get_model_type(self, model_name=None, model_type=None):
+        if "transformers" not in dir(self):
+            if "transformers" not in list(self.resources.keys()):
+                import transformers
+                self.resources["transformers"] = transformers
+                self.transformers = self.resources["transformers"]
+            else:
+                self.transformers = self.resources["transformers"]
+
+        if model_name is not None:
+            if os.path.exists(model_name):
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+            else:
+                config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+                model_type = config.__class__.model_type
+        return model_type
     
     async def test_local_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
@@ -106,7 +132,9 @@ class test_ipfs_accelerate_py:
         if len(local_endpoints_by_model_by_endpoint_list) > 0:
             for endpoint in local_endpoints_by_model_by_endpoint_list:
                 model_type = self.get_model_type(model)
-                hf_model_types = ["llava", "llama", "qwen2", "bert", "clip", "clap", "wav2vec", "wav2vec2", "t5", "whisper", "xclip"]
+                hf_model_types = []
+                with open(os.path.join(os.path.dirname(__file__), "hf_model_types.json"), "r") as f:
+                    hf_model_types = json.load(f)
                 method_name = "hf_" + model_type
                 if model_type in hf_model_types:
                     if endpoint[1] in list(endpoint_handlers_by_model.keys()):
