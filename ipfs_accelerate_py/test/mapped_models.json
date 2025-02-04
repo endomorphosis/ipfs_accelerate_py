@@ -37,5 +37,13 @@
     "squeezebert": "squeezebert/squeezebert-uncased",
     "layoutlm": "microsoft/layoutlm-base-uncased",
     "deberta": "microsoft/deberta-base",
-    "whisper": "openai/whisper-small"
+    "whisper": "openai/whisper-small",
+    "clap": "laion/larger_clap_general",
+    "qwen2": "Qwen/Qwen2-7B",
+    "llava": "llava-hf/llava-interleave-qwen-0.5b-hf",
+    "llava_next": "llava-hf/llava-v1.6-mistral-7b-hf",
+    "llama": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "xclip": "microsoft/xclip-base-patch16-zero-shot",
+    "videomae": "MCG-NJU/videomae-base",
+    "qwen2_vl": "Qwen/Qwen2-VL-7B-Instruct"
 }

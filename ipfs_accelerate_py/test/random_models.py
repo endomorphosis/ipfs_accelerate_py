@@ -259,7 +259,36 @@ model_list = [
     "allenai/biomed_roberta_base",
     "microsoft/deberta-base",
     "openai/whisper-small",
-    "openai/whisper-tiny"
+    "openai/whisper-tiny",
+    "google-t5/t5-base",
+    "BAAI/bge-small-en-v1.5",
+    "laion/larger_clap_general",
+    "facebook/wav2vec2-large-960h-lv60-self",
+    "openai/clip-vit-base-patch16",
+    "openai/whisper-large-v3-turbo",
+    "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "distil-whisper/distil-large-v3",
+    "Qwen/Qwen2-7B",
+    "llava-hf/llava-interleave-qwen-0.5b-hf",
+    "lmms-lab/LLaVA-Video-7B-Qwen2",
+    "llava-hf/llava-v1.6-mistral-7b-hf",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "TIGER-Lab/Mantis-8B-siglip-llama3",
+    "microsoft/xclip-base-patch16-zero-shot",
+    "google/vit-base-patch16-224",
+    "MCG-NJU/videomae-base",
+    "MCG-NJU/videomae-large",
+    "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+    "lmms-lab/llava-onevision-qwen2-7b-si",
+    "lmms-lab/llava-onevision-qwen2-7b-ov",
+    "lmms-lab/llava-onevision-qwen2-0.5b-si",
+    "lmms-lab/llava-onevision-qwen2-0.5b-ov",
+    "Qwen/Qwen2-VL-7B-Instruct",
+    "OpenGVLab/InternVL2_5-1B",
+    "OpenGVLab/InternVL2_5-8B",
+    "OpenGVLab/PVC-InternVL2-8B",
+    "AIDC-AI/Ovis1.6-Llama3.2-3B",
+    "BAAI/Aquila-VL-2B-llava-qwen"
 ]
 
 # Iterate over the list and try to load each model's configuration.
@@ -295,8 +324,8 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(this_dir, "mapped_models.json"), "w") as f:
     json.dump(mapped_models, f)
         
-with open(os.path.join(this_dir, "found_models.json"), "w") as f:
-    json.dump(found_models, f)
+# with open(os.path.join(this_dir, "found_models.json"), "w") as f:
+#     json.dump(found_models, f)
 
-with open(os.path.join(this_dir, "model_mapping.json"), "w") as f:
-    json.dump(model_mappping, f)
+# with open(os.path.join(this_dir, "model_mapping.json"), "w") as f:
+#     json.dump(model_mappping, f)
