@@ -72,8 +72,8 @@ class test_ipfs_accelerate_py:
             results = {}
             for model in self.metadata['models']:
                 ipfs_accelerate_init = await self.ipfs_accelerate_py.init_endpoints( [model], resources) 
-                test_endpoints = await self.ipfs_accelerate_py.test_endpoints([model], ipfs_accelerate_init)
-                ipfs_accelerate_del = await self.ipfs_accelerate_py.del_endpoints( [model], resources)
+                test_endpoints = await self.ipfs_accelerate_py.test_endpoints([model])
+                ipfs_accelerate_del = await self.ipfs_accelerate_py.rm_endpoint(model)
             return test_endpoints
         except Exception as e:
             error = ""

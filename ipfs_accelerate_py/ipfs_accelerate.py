@@ -142,7 +142,7 @@ class ipfs_accelerate_py:
         self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
         return None
-    
+ 
     async def test_hardware(self):
         install_file_hash = None
         test_results_file = None
@@ -962,6 +962,37 @@ class ipfs_accelerate_py:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
+    
+    async def test_endpoint(self, model, endpoint=None):
+        test_results = {}
+        if endpoint is None:
+            endpoint = self.local_endpoints[model]["cpu"]
+        try:    
+            test_results["local_endpoint"] = await self.test_local_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["local_endpoint"] = e
+            pass
+        try:
+            test_results["libp2p_endpoint"] = await self.test_libp2p_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["libp2p_endpoint"] = e
+            pass
+        try:
+            test_results["openvino_endpoint"] = await self.test_openvino_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["openvino_endpoint"] = e
+            pass
+        try:
+            test_results["tei_endpoint"] = await self.test_tei_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["tei_endpoint"] = e
+            pass
+        try:
+            test_results["webnn_endpoint"] = "not implemented"
+        except Exception as e:
+            test_results["webnn_endpoint"] = e
+            pass
+        return test_results    
 
     async def test_endpoints(self, models, endpoint_handler_object=None):
         test_results = {}
