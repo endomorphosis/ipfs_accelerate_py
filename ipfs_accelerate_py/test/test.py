@@ -1,6 +1,7 @@
 import torch
 import sys
 
+
 def check_cuda_installation():
     if not torch.cuda.is_available():
         import subprocess

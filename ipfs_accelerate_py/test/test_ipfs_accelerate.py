@@ -35,6 +35,28 @@ class test_ipfs_accelerate_py:
         
         return None
     
+    async def get_huggingface_model_types(self):
+        if "transformers" not in dir(self):
+            if "transformers" not in list(self.resources.keys()):
+                import transformers
+                self.resources["transformers"] = transformers
+                self.transformers = self.resources["transformers"]
+            else:
+                self.transformers = self.resources["transformers"]
+
+        # Get all model types from the MODEL_MAPPING
+        model_types = []
+        for config in self.transformers.MODEL_MAPPING.keys():
+            if hasattr(config, 'model_type'):
+                model_types.append(config.model_type)
+
+        # Add model types from the AutoModel registry
+        model_types.extend(list(self.transformers.MODEL_MAPPING._model_mapping.keys()))
+        
+        # Remove duplicates and sort
+        model_types = sorted(list(set(model_types)))
+        return model_types    
+    
     async def test(self):
         test_results = {}
         try:
