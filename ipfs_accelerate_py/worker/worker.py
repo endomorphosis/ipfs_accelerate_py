@@ -353,6 +353,14 @@ class worker_py:
         return None
     
     async def init_worker(self, models, local_endpoints, hwtest):
+        if "torch" not in dir(self):
+            if "torch" not in list(self.resources.keys()):
+                import torch
+                self.resources["torch"] = torch
+                self.torch = self.resources["torch"]
+            else:
+                self.torch = self.resources["torch"]
+        
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
                 local_endpoints = self.local_endpoints
