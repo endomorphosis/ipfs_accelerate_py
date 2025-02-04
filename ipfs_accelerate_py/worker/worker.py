@@ -164,9 +164,7 @@ class worker_py:
             import torch
             self.torch = torch
             self.resources["torch"] = self.torch
-            
-        self.resources["torch"] = self.torch
-        
+                    
         if "np" not in globals() and "np" not in list(self.resources.keys()):
             import numpy as np
             self.np = np
