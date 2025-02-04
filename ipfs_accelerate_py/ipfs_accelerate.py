@@ -72,7 +72,7 @@ class ipfs_accelerate_py:
             except:
                 from worker import worker
             self.worker = worker.worker_py(resources, metadata)
-            resources["worker"] = self.worker
+            self.resources["worker"] = self.worker
 
         if "ipfs_multiformats" not in globals():
             try:
@@ -80,7 +80,15 @@ class ipfs_accelerate_py:
             except:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py({}, metadata)
-            resources["ipfs_multiformats"] = self.ipfs_multiformats
+            self.resources["ipfs_multiformats"] = self.ipfs_multiformats
+            
+        if "apis" not in globals():
+            try:
+                from .api_backends import apis
+            except:
+                from api_backends import apis
+            self.apis = apis(resources, metadata)
+            self.resources["apis"] = self.apis
 
         # if "ipfs_transformers" not in globals():
         #     try:

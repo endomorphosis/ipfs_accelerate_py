@@ -8,7 +8,7 @@ import tempfile
 import json
 
 class s3_kit:
-	def __init__(self, resources, meta=None):
+	def __init__(self, resources, metadata=None):
 		self.bucket = None
 		self.bucket_files = None
 		self.cp_dir = self.s3_cp_dir
@@ -25,11 +25,11 @@ class s3_kit:
 		self.ul_file = self.s3_ul_file
 		self.mk_dir = self.s3_mk_dir
 		self.get_session = self.get_session
-		if meta is not None:
-			if "s3cfg" in meta:
-				if meta['s3cfg'] is not None:
-					self.config = meta['s3cfg']
-					self.get_session(meta['s3cfg'])
+		if metadata is not None:
+			if "s3cfg" in metadata:
+				if metadata['s3cfg'] is not None:
+					self.config = metadata['s3cfg']
+					self.get_session(metadata['s3cfg'])
 
 	def __call__(self, method, **kwargs):
 		if method == 'ls_dir':
