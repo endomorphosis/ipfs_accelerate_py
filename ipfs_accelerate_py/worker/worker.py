@@ -69,7 +69,7 @@ class dispatch_result:
         return None    
     
 class worker_py:
-    def __init__(self, metadata, resources):
+    def __init__(self, resources=None, metadata=None):
         self.metadata = metadata
         self.resources = resources
         self.inbox = {}
@@ -84,7 +84,7 @@ class worker_py:
         self.dispatch_result = self.dispatch_result
         self.get_model_type = self.get_model_type
 
-        self.hardware_backends = ["llama_cpp", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
+        self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)
@@ -107,35 +107,6 @@ class worker_py:
             self.dispatch_result = dispatch_result
             pass
         
-        import importlib.util
-
-        files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
-        filter_files_for_hf_prefix = [x for x in files_in_skills_folder if x.startswith("hf_")]
-        for file in filter_files_for_hf_prefix:
-            if file.endswith(".py"):
-                file_name = file.split(".")[0]
-                if file_name not in sys.modules and file_name not in list(self.resources.keys()):
-                    this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
-                    this_file = os.path.abspath(this_file)
-                    try:
-                        spec = importlib.util.spec_from_file_location(file_name, this_file)
-                        module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
-                        this_class = getattr(module, file_name)
-                        self.resources[file_name] = this_class(resources, metadata)
-                        self.__dict__[file_name] =  this_class(resources, metadata)
-                    except Exception as e:
-                        print(e)
-                        pass
-                elif file_name in list(self.resources.keys()):
-                    self.__dict__[file_name] = self.resources[file_name]
-                elif file_name in sys.modules:
-                    module = sys.modules[file_name]
-                    this_class = getattr(module, file_name)
-                    self.resources[file_name] = this_class(resources, metadata)
-                else:
-                    pass
-            
         # if "default" not in globals() and "default" not in list(self.resources.keys()):
         #     self.default = default
         # elif "default" in list(self.resources.keys()):
@@ -206,7 +177,39 @@ class worker_py:
             import numpy as np 
             self.np = np
             self.resources["np"] = self.np
-    
+        
+        import importlib.util
+        classes_to_load = [ self.get_model_type(x) for x in self.metadata["models"]]
+        files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
+        filter_files_for_hf_prefix = [x for x in files_in_skills_folder if x.startswith("hf_")]
+        filer_files_remove_suffix = [x.split(".")[0] for x in filter_files_for_hf_prefix]
+        filter_files_remove_prefix = [x.replace("hf_", "") for x in filer_files_remove_suffix]
+        filter_files_classes_to_load = [x for x in filter_files_remove_prefix if x in classes_to_load]   
+        for class_name in filter_files_classes_to_load:
+            file = "hf_" + class_name + ".py"
+            file_name = "hf_" + class_name
+            if file_name not in sys.modules and file_name not in list(self.resources.keys()):
+                this_file = os.path.join(os.path.dirname(__file__), 'skillset', file)
+                this_file = os.path.abspath(this_file)
+                try:
+                    spec = importlib.util.spec_from_file_location(file_name, this_file)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    this_class = getattr(module, file_name)
+                    self.resources[file_name] = this_class(self.resources, self.metadata)
+                    self.__dict__[file_name] =  self.resources[file_name]
+                except Exception as e:
+                    print(e)
+                    pass
+            elif file_name in list(self.resources.keys()):
+                self.__dict__[file_name] = self.resources[file_name]
+            elif file_name in sys.modules:
+                module = sys.modules[file_name]
+                this_class = getattr(module, file_name)
+                self.resources[file_name] = this_class(self.resources, self.metadata)
+            else:
+                pass
+            
         return None
     
     def init_cuda(self):
@@ -443,8 +446,10 @@ class worker_py:
             if "hf_" + model_type not in list(dir(self)):
                 print("model type not found in worker skills but it is a huggingface model type")
                 print("generate the skill for this model type")
+                generated = None
                 while generated is not None and generated is not True:
-                    generated = self.generate_hf_skill(model_type)
+                    generated = True
+                    # generated = self.generate_hf_skill(model_type)
                 continue
             if model not in list(self.tokenizer.keys()):
                 self.tokenizer[model] = {}
