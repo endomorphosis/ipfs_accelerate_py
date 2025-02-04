@@ -258,7 +258,18 @@ class test_ipfs_accelerate_py:
             test_results["test_ipfs_accelerate"] = str(error)
             return test_results
     
-    async def __test__(self,resources, metadata):
+    async def __test__(self, resources, metadata):
+        mapped_models = {}
+        with open(os.path.join(os.path.dirname(__file__), "mapped_models.json"), "r") as f:
+            mapped_models = json.load(f)
+        mapped_models_values = list(mapped_models.values())
+        self.metadata["models"] = mapped_models_values
+        metadata["models"] = mapped_models_values
+        endpoint_types = ["cuda:0", "openvino:0", "cpu:0"]
+        for model in metadata["models"]:
+            for endpoint in endpoint_types:
+                resources["local_endpoints"].append([model, endpoint, 32768])
+        self.resources = resources
         test_results = {}
         try:
             test_results["test_ipfs_accelerate"] = await self.test()
