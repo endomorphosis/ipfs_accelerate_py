@@ -26,15 +26,13 @@ if __name__ == "__main__":
         "split": "train",
         "models": [
             # "laion/larger_clap_general",
-            "google-t5/t5-base",
+            # "google-t5/t5-base",
             # "facebook/wav2vec2-large-960h-lv60-self",
             # "BAAI/bge-small-en-v1.5", 
             # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
             # "openai/whisper-large-v3-turbo",
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
             # "distil-whisper/distil-large-v3",
-
-
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/LLaVA-Video-7B-Qwen2",
@@ -43,8 +41,6 @@ if __name__ == "__main__":
             # "TIGER-Lab/Mantis-8B-siglip-llama3",  ## make sure sthat optimum-cli-convert works on windows.
             # "microsoft/xclip-base-patch16-zero-shot",
             # "google/vit-base-patch16-224"
-
-
             # "MCG-NJU/videomae-base",
             # "MCG-NJU/videomae-large",
             # "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",   ## openclip not yet supported
