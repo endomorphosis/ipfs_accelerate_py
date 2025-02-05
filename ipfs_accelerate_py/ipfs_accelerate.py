@@ -248,30 +248,30 @@ class ipfs_accelerate_py:
     #         return remote_endpoint
     #     return handler
     
-    def create_openvino_endpoint_handler(self, model, endpoint, context_length):
-        from transformers import AutoTokenizer, AutoModel, AutoConfig
-        async def handler(x):
-            tokenizer = None
-            tokens = None
-            if model not in list(self.resources["tokenizer"].keys()):
-                self.resources["tokenizer"][model] = {}
-            tokenizers = list(self.resources["tokenizer"][model].keys())
-            if len(tokenizers) == 0:
-                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
-                tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
-            else:
-                for tokenizer in tokenizers:
-                    try:
-                        this_tokenizer = self.resources["tokenizer"][model][tokenizer]
-                        tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-                    except Exception as e:
-                        pass
-            if tokens is None:
-                raise ValueError("No tokenizer found for model " + model)            
-            tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-            remote_endpoint = await self.make_post_request_openvino(tokens, x)
-            return remote_endpoint
-        return handler
+    # def create_openvino_endpoint_handler(self, model, endpoint, context_length):
+    #     from transformers import AutoTokenizer, AutoModel, AutoConfig
+    #     async def handler(x):
+    #         tokenizer = None
+    #         tokens = None
+    #         if model not in list(self.resources["tokenizer"].keys()):
+    #             self.resources["tokenizer"][model] = {}
+    #         tokenizers = list(self.resources["tokenizer"][model].keys())
+    #         if len(tokenizers) == 0:
+    #             self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
+    #             tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
+    #         else:
+    #             for tokenizer in tokenizers:
+    #                 try:
+    #                     this_tokenizer = self.resources["tokenizer"][model][tokenizer]
+    #                     tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+    #                 except Exception as e:
+    #                     pass
+    #         if tokens is None:
+    #             raise ValueError("No tokenizer found for model " + model)            
+    #         tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+    #         remote_endpoint = await self.make_post_request_openvino(tokens, x)
+    #         return remote_endpoint
+    #     return handler
     
     def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
         def handler(x):
@@ -407,52 +407,6 @@ class ipfs_accelerate_py:
                     self.resources[resource] = self.worker_resources[resource]
                     pass
             pass
-                
-        if "openvino_endpoints" in list(self.endpoints.keys()):
-            if len(self.endpoints["openvino_endpoints"]) > 0 :
-                for endpoint in self.endpoints["openvino_endpoints"][model]:
-                    if len(endpoint) == 3:
-                        this_model = endpoint[0]
-                        this_endpoint = endpoint[1]
-                        context_length = endpoint[2]
-                        if model == this_model:
-                            if endpoint not in list(self.batch_sizes[model].keys()):
-                                # self.batch_sizes[model][this_endpoint] = 0
-                                self.resources["batch_sizes"][model][this_endpoint] = 0
-                            # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.resources["queues"][model][this_endpoint] = None
-                            self.resources["queues"][model][this_endpoint] = asyncio.Queue(1)  # Unbounded queue
-                            # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
-                            self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
-                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-        if "tei_endpoints" in list(self.endpoints.keys()):
-            if len(self.endpoints["tei_endpoints"]) > 0:
-                for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
-                    for endpoint in self.endpoints["tei_endpoints"][endpoint_model]:                            
-                        if len(endpoint) == 3:
-                            this_model = endpoint[0]
-                            this_endpoint = endpoint[1]
-                            context_length = endpoint[2]
-                            if model == this_model:
-                                if endpoint not in list(self.batch_sizes[model].keys()):
-                                    self.resources["batch_sizes"][model][this_endpoint] = 0
-                                self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                                self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
-                                # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-        if "libp2p_endpoints" in list(self.endpoints.keys()):
-            if len(self.endpoints["libp2p_endpoints"]) > 0:
-                for endpoint in self.endpoints["libp2p_endpoints"]:
-                    if len(endpoint) == 3:
-                        this_model = endpoint[0]
-                        this_endpoint = endpoint[1]
-                        context_length = endpoint[2]
-                        if model == this_model:
-                            if endpoint not in list(self.batch_sizes[model].keys()):
-                                # self.batch_sizes[model][this_endpoint] =  0
-                                self.resources["batch_sizes"][model][this_endpoint] = 0
-                            self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                            self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-                            # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         new_resources = {}
         resource_list = ["queues", "queue", "batch_sizes", "endpoint_handler", "consumer_tasks", "caches", "tokenizer"]
         if "resource_list" in globals() or "resource_list" in locals():

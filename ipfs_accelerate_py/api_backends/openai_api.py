@@ -350,9 +350,6 @@ class openai_api:
             'text': json.dumps(embeddings[0]),
             'done': True
         }
-
-
-    
     
     def tokenize(self, text , model, **kwargs):
         self.model = model
@@ -431,7 +428,6 @@ class openai_api:
                         'text': response,
                         'done': True
                     }            
-
 
     def request_complete(self, stopping_regex=None, **kwargs):
 
@@ -774,6 +770,5 @@ class openai_api:
             self.messages = messagesList
         return messagesList
 
-if __name__ == '__main__':
-    #main()
-    pass
+    def __test__(self):
+        return None

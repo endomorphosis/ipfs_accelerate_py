@@ -1,3 +1,4 @@
+import asyncio
 class hf_tei:
     def __init__(self, resources, metadata):
         self.request_tei_endpoint = self.request_tei_endpoint

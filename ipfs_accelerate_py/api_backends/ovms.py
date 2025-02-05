@@ -4,22 +4,48 @@ class ovms:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
-        self.test_openvino_endpoint = self.test_openvino_endpoint
-        self.make_post_request_openvino = self.make_post_request_openvino
+        self.create_ovms_endpoint_handler = self.create_ovms_endpoint_handler
+        self.test_ovms_endpoint = self.test_ovms_endpoint
+        self.make_post_request_ovms = self.make_post_request_ovms
         return None
 
-    async def test_openvino_endpoint(self, model, endpoint_list=None):
+    def create_ovms_endpoint_handler(self, model, endpoint, context_length):
+        from transformers import AutoTokenizer, AutoModel, AutoConfig
+        async def handler(x):
+            tokenizer = None
+            tokens = None
+            if model not in list(self.resources["tokenizer"].keys()):
+                self.resources["tokenizer"][model] = {}
+            tokenizers = list(self.resources["tokenizer"][model].keys())
+            if len(tokenizers) == 0:
+                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
+                tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
+            else:
+                for tokenizer in tokenizers:
+                    try:
+                        this_tokenizer = self.resources["tokenizer"][model][tokenizer]
+                        tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+                    except Exception as e:
+                        pass
+            if tokens is None:
+                raise ValueError("No tokenizer found for model " + model)            
+            tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
+            remote_endpoint = await self.make_post_request_openvino(tokens, x)
+            return remote_endpoint
+        return handler
+    
+    async def test_ovms_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
         test_results = {}
-        local_endpoints = self.resources["openvino_endpoints"]
-        local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
+        api_endpoints = self.resources["ovms_endpoints"]
+        api_endpoints_types = [x[1] for x in api_endpoints]
+        api_endpoints_by_model = self.endpoints["ovms_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["ovms_endpoints"][model]
         if endpoint_list is not None:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
+            api_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]
+            local_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) ]
         if len(local_endpoints_by_model_by_endpoint_list) > 0:
             for endpoint in local_endpoints_by_model_by_endpoint_list:
                 endpoint_handler = endpoint_handlers_by_model[endpoint]
