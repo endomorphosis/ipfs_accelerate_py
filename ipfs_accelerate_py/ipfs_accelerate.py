@@ -579,21 +579,45 @@ class ipfs_accelerate_py:
                     return endpoint
         return None
 
-    async def make_local_request(self, model, endpoint, endpoint_type, data):
-        import torch
-        device = torch.device(endpoint)
-        inputs = self.tokenizer[model][endpoint](data, return_tensors="pt", padding=True, truncation=True).to(device)
-        self.local_endpoints[model][endpoint].to(device).eval()
-        with torch.no_grad():
-            outputs = self.local_endpoints[model][endpoint](**inputs)
-            query_response = outputs.last_hidden_state.mean(dim=1).tolist()  # Use mean of token embeddings
-            results = query_response  # Return the entire batch of results
-            del inputs, outputs  # Unallocate inputs and outputs
-            torch.cuda.synchronize()  # Ensure all operations are complete
-            torch.cuda.empty_cache()  # Free up GPU memory
-        # self.local_endpoints[model][endpoint].to('cpu')  # Move model back to CPU
-        torch.cuda.empty_cache()  # Free up GPU memory again
-        return results
+    # async def make_local_request(self, model, endpoint, endpoint_type, data):
+    #     import torch
+    #     device = torch.device(endpoint)
+    #     inputs = self.tokenizer[model][endpoint](data, return_tensors="pt", padding=True, truncation=True).to(device)
+    #     self.local_endpoints[model][endpoint].to(device).eval()
+    #     with torch.no_grad():
+    #         outputs = self.local_endpoints[model][endpoint](**inputs)
+    #         query_response = outputs.last_hidden_state.mean(dim=1).tolist()  # Use mean of token embeddings
+    #         results = query_response  # Return the entire batch of results
+    #         del inputs, outputs  # Unallocate inputs and outputs
+    #         torch.cuda.synchronize()  # Ensure all operations are complete
+    #         torch.cuda.empty_cache()  # Free up GPU memory
+    #     # self.local_endpoints[model][endpoint].to('cpu')  # Move model back to CPU
+    #     torch.cuda.empty_cache()  # Free up GPU memory again
+    #     return results
+        
+    async def add_ovms_endpoint(self, model, endpoint):
+        return None
+
+    async def add_llvm_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_tei_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_tgi_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_openvino_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_libp2p_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_local_endpoint(self, model, endpoint_type, endpoint):
+        return None
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
         this_model = endpoint[0]
@@ -618,14 +642,19 @@ class ipfs_accelerate_py:
                         print("Hardware type " + this_endpoint_type + " not available")
                     else:
                         if hardware_type == "cuda":
+                            self.add_local_endpoint(model, "cuda", endpoint)
                             pass
                         elif hardware_type == "openvino":
+                            self.add_local_endpoint(model, "openvino", endpoint)
                             pass
                         elif hardware_type == "webnn":
+                            self.add_local_endpoint(model, "webnn", endpoint)
                             pass
                         elif hardware_type == "qualcomm":
+                            self.add_local_endpoint(model, "qualcomm", endpoint)
                             pass
                         elif hardware_type == "cpu":
+                            self.add_local_endpoint(model, "cpu", endpoint)
                             pass
                 elif this_endpoint_type in list(self.apitest.keys()):
                     api_type = this_endpoint_type

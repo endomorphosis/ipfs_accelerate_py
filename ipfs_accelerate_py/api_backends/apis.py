@@ -5,6 +5,7 @@ from .hf_tgi import hf_tgi
 from .llvm import llvm
 from .s3_kit import s3_kit
 from .openai_api import openai_api
+from .ollama import ollama
 
 class apis:
     def __init__(self, resources, metadata):
@@ -51,6 +52,14 @@ class apis:
                 self.llvm = self.resources["llvm"]
             else:
                 self.llvm = self.resources["llvm"]
+                
+        if "ollama" not in dir(self):
+            if "ollama" not in list(self.resources.keys()):
+                from .ollama import ollama
+                self.resources["ollama"] = ollama(self.resources, self.metadata)
+                self.ollama = self.resources["ollama"]
+            else:
+                self.ollama = self.resources["ollama"]
                 
         if "ovms" not in dir(self):
             if "ovms" not in list(self.resources.keys()):
