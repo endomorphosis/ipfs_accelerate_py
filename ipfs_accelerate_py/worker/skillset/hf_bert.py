@@ -122,9 +122,16 @@ class hf_bert:
         if not os.path.exists(model_dst_path):
             os.makedirs(model_dst_path)
             openvino_cli_convert(model_name, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  self.transformers.AutoTokenizer.from_pretrained(
-            model_dst_path
-        )
+        try:
+            tokenizer =  self.transformers.AutoTokenizer.from_pretrained(
+                model_src_path
+            )
+        except Exception as e:
+            print(e)
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                model_name
+            )
+            pass
         # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         model = get_optimum_openvino_model(model_name, model_type)
         endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model_name, tokenizer, openvino_label, model)

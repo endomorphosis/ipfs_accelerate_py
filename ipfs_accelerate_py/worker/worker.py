@@ -423,7 +423,17 @@ class worker_py:
                 print(e)
                 pass
         if "apple" in list(self.hwtest.keys()) and self.hwtest["apple"] is True:
-            self.init_apple()
+            try:
+                self.init_apple()
+            except Exception as e:
+                print(e)
+                pass
+        if "webnn" in list(self.hwtest.keys()) and self.hwtest["webnn"] is True:
+            try:
+                self.init_webnn()
+            except Exception as e:
+                print(e)
+                pass        
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
