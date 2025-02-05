@@ -1,3 +1,11 @@
+from .ovms import ovms
+from .groq import groq
+from .hf_tei import hf_tei
+from .hf_tgi import hf_tgi
+from .llvm import llvm
+from .s3_kit import s3_kit
+from .openai_api import openai_api
+
 class apis:
     def __init__(self, resources, metadata):
         if resources is None:
@@ -7,6 +15,8 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.init()
+        self.make_post_request_openvino = self.ovms.make_post_request_openvino
+        self.test_openvino_endpoint = self.ovms.test_openvino_endpoint
         return None
     
     def init(self):
@@ -57,7 +67,14 @@ class apis:
                 self.s3_kit = self.resources["s3_kit"]
             else:
                 self.s3_kit = self.resources["s3_kit"]
-                
+        
+        if "openai_api" not in dir(self):
+            if "openai_api" not in list(self.resources.keys()):
+                from .openai_api import openai_api
+                self.resources["openai_api"] = openai_api(self.resources, self.metadata)
+                self.openai_api = self.resources["openai_api"]
+            else:
+                self.openai_api = self.resources["openai_api"]
         return None
     
     def __test__(self):
