@@ -82,7 +82,7 @@ class test_ipfs_accelerate_py:
         try:
             # test_results["test_ipfs_accelerate"] = self.ipfs_accelerate.__test__(resources, metadata)
             results = {}
-            ipfs_accelerate_init = await self.ipfs_accelerate_py.init_endpoints( metadata['models'], resources) 
+            ipfs_accelerate_init = await self.ipfs_accelerate_py.init_endpoints( [] , resources) 
             for model in self.metadata['models']:
                 add_endpoint = await self.ipfs_accelerate_py.add_endpoint(model, "cuda:0", 32768)
                 test_endpoints = await self.ipfs_accelerate_py.test_endpoint(model)
@@ -276,7 +276,7 @@ class test_ipfs_accelerate_py:
         try:
             ipfs_accelerate_py = self.ipfs_accelerate_py(resources, metadata)
             # test_results["test_ipfs_accelerate"] = await ipfs_acclerate.__test__(resources, metadata)
-            ipfs_accelerate_init = ipfs_accelerate_py.init_endpoints( metadata['models'], resources)
+            ipfs_accelerate_init = ipfs_accelerate_py.init_endpoints( [] , resources)
             test_endpoints = self.test_endpoints(metadata['models'], ipfs_accelerate_init)
             return test_endpoints 
         except Exception as e:
