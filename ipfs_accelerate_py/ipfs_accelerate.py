@@ -610,21 +610,46 @@ class ipfs_accelerate_py:
                     self.__dict__[endpoint_type][model][backend] = context_length
                 # self.endpoint_status[endpoint] = context_length
                 success = True
-                hardware_type = backend.split(":")[0]
-                if self.hwtest[hardware_type] == False:
-                    # raise ValueError("Hardware type " + hardware_type + " not available")
-                    print("Hardware type " + hardware_type + " not available")
-                else:
-                    if hardware_type == "cuda":
-                        pass
-                    elif hardware_type == "openvino":
-                        pass
-                    elif hardware_type == "webnn":
-                        pass
-                    elif hardware_type == "qualcomm":
-                        pass
-                    elif hardware_type == "cpu":
-                        pass
+                this_endpoint_type = backend.split(":")[0]
+                if this_endpoint_type in list(self.hwtest.keys()):
+                    hardware_type = this_endpoint_type
+                    if self.hwtest[this_endpoint_type] == False:
+                        # raise ValueError("Hardware type " + hardware_type + " not available")
+                        print("Hardware type " + this_endpoint_type + " not available")
+                    else:
+                        if hardware_type == "cuda":
+                            pass
+                        elif hardware_type == "openvino":
+                            pass
+                        elif hardware_type == "webnn":
+                            pass
+                        elif hardware_type == "qualcomm":
+                            pass
+                        elif hardware_type == "cpu":
+                            pass
+                elif this_endpoint_type in list(self.apitest.keys()):
+                    api_type = this_endpoint_type
+                    if self.apitest[this_endpoint_type] == False:
+                        # raise ValueError("API type " + api_type + " not available")
+                        print("API type " + this_endpoint_type + " not available")
+                    else:
+                        if api_type == "tei":
+                            pass
+                        if api_type == "tgi":
+                            pass
+                        if api_type == "groq":
+                            pass
+                        if api_type == "ollama":
+                            pass
+                        elif api_type == "libp2p":
+                            pass
+                        elif api_type == "openvino":
+                            pass
+                        elif api_type == "webnn":
+                            pass
+                        elif api_type == "qualcomm":
+                            pass
+
             except Exception as e:
                 print(e)
                 pass

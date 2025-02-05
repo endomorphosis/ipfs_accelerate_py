@@ -5,4 +5,5 @@ from .hf_tei import hf_tei
 from .hf_tgi import hf_tgi
 from .ovms import ovms
 from .llvm import llvm
+from .ollama import ollama
 from .apis import apis
