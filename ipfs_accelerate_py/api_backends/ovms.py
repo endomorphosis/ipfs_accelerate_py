@@ -4,6 +4,7 @@ class ovms:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
+        self.test_ovms_endpoint = self.test_ovms_endpoint
         self.create_ovms_endpoint_handler = self.create_ovms_endpoint_handler
         self.test_ovms_endpoint = self.test_ovms_endpoint
         self.make_post_request_ovms = self.make_post_request_ovms
@@ -45,9 +46,9 @@ class ovms:
         if endpoint_list is not None:
             api_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
         else:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) ]
-        if len(local_endpoints_by_model_by_endpoint_list) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint_list:
+            api_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) ]
+        if len(api_endpoints_by_model_by_endpoint_list) > 0:
+            for endpoint in api_endpoints_by_model_by_endpoint_list:
                 endpoint_handler = endpoint_handlers_by_model[endpoint]
                 try:
                     test = await endpoint_handler("hello world")
@@ -63,7 +64,7 @@ class ovms:
             return ValueError("No endpoint_handlers found")
         return test_results
                     
-    async def make_post_request_openvino(self, endpoint, data):
+    async def make_post_request_ovms(self, endpoint, data):
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
         if type(data) is dict:

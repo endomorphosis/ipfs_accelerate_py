@@ -4,7 +4,35 @@ class hf_tei:
         self.request_tei_endpoint = self.request_tei_endpoint
         self.make_post_request_tei = self.make_post_request_tei
         self.create_tei_endpoint_handler = self.create_tei_endpoint_handler
+        self.test_tei_endpoint = self.test_tei_endpoint
         return None
+    
+    async def test_tei_endpoint(self, model, endpoint_list=None):
+        this_endpoint = None
+        filtered_list = {}
+        test_results = {}
+        local_endpoints = self.resources["tei_endpoints"]
+        local_endpoints_types = [x[1] for x in local_endpoints]
+        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
+        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
+        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+        if len(local_endpoints_by_model_by_endpoint) > 0:
+            for endpoint in local_endpoints_by_model_by_endpoint:
+                endpoint_handler = endpoint_handlers_by_model[endpoint]
+                try:
+                    test = await endpoint_handler("hello world")
+                    test_results[endpoint] = test
+                except Exception as e:
+                    try:
+                        test = endpoint_handler("hello world")
+                        test_results[endpoint] = test
+                    except Exception as e:
+                        test_results[endpoint] = e
+                    pass
+        else:
+            return ValueError("No endpoint_handlers found")
+        return test_results
     
     async def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         if batch == None:

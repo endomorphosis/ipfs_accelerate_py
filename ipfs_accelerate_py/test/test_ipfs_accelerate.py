@@ -192,36 +192,6 @@ class test_ipfs_accelerate_py:
     async def test_libp2p_endpoint(self, model, endpoint=None):
         return ValueError("Not implemented")
 
-    async def test_openvino_endpoint(self, model, endpoint_list=None):
-        this_endpoint = None
-        filtered_list = {}
-        test_results = {}
-        local_endpoints = self.ipfs_accelerate_py.resources["openvino_endpoints"]
-        local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.ipfs_accelerate_py.endpoints["openvino_endpoints"][model]
-        endpoint_handlers_by_model = self.ipfs_accelerate_py.resources["openvino_endpoints"][model]
-        if endpoint_list is not None:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
-        else:
-            local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]
-        if len(local_endpoints_by_model_by_endpoint_list) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint_list:
-                endpoint_handler = endpoint_handlers_by_model[endpoint]
-                try:
-                    test = await endpoint_handler("hello world")
-                    test_results[endpoint] = test
-                except Exception as e:
-                    try:
-                        test = endpoint_handler("hello world")
-                        test_results[endpoint] = test
-                    except Exception as e:
-                        test_results[endpoint] = e
-                    pass
-        else:
-            return ValueError("No endpoint_handlers found")
-        return test_results
-
-
     async def test_endpoints(self, models, endpoint_handler_object=None):
         test_results = {}
         for model in models:
@@ -240,9 +210,9 @@ class test_ipfs_accelerate_py:
                 print(e)
 
             try:
-                test_results[model]["openvino_endpoint"] = await self.test_openvino_endpoint(model)
+                test_results[model]["ovms_endpoint"] = await self.test_ovms_endpoint(model)
             except Exception as e:
-                test_results[model]["openvino_endpoint"] = e
+                test_results[model]["ovms_endpoint"] = e
                 print(e)
 
             try:
@@ -288,6 +258,37 @@ class test_ipfs_accelerate_py:
             error += "Traceback:\n" + traceback.format_exc()
             test_results["test_ipfs_accelerate"] = str(error)
             return test_results
+    
+    async def test_endpoint(self, model, endpoint=None):
+        test_results = {}
+        if endpoint is None:
+            endpoint = self.local_endpoints[model]["cpu"]
+        try:    
+            test_results["local_endpoint"] = await self.test_local_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["local_endpoint"] = e
+            pass
+        try:
+            test_results["libp2p_endpoint"] = await self.test_libp2p_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["libp2p_endpoint"] = e
+            pass
+        try:
+            test_results["ovms_endpoint"] = await self.test_ovms_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["openvino_endpoint"] = e
+            pass
+        try:
+            test_results["tei_endpoint"] = await self.test_tei_endpoint(model, endpoint)
+        except Exception as e:
+            test_results["tei_endpoint"] = e
+            pass
+        try:
+            test_results["webnn_endpoint"] = "not implemented"
+        except Exception as e:
+            test_results["webnn_endpoint"] = e
+            pass
+        return test_results    
     
     async def __test__(self, resources, metadata):
         mapped_models = {}

@@ -42,19 +42,6 @@ class ipfs_accelerate_py:
         if "tokenizer" not in list(self.resources.keys()):
             self.resources["tokenizer"] = {}
         
-        # if "test_ipfs_accelerate_py" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
-        #     try:
-        #         from .test_ipfs_accelerate import test_ipfs_accelerate
-        #     except:
-        #         from test_ipfs_accelerate import test_ipfs_accelerate
-        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata)
-        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-        # elif "test_ipfs_accelerate" in list(self.resources.keys()):
-        #     self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
-        # elif "test_ipfs_accelerate" in globals():
-        #     self.test_ipfs_accelerate = test_ipfs_accelerate(self.resources, self.metadata) 
-        #     resources["test_ipfs_accelerate"] = self.test_ipfs_accelerate
-
         # if "install_depends_py" not in globals():
         #     try:
         #         from .install_depends import install_depends_py
@@ -242,36 +229,6 @@ class ipfs_accelerate_py:
             "endpoints_set": endpoints_set
         }
 
-    # def create_tei_endpoint_handler(self, model, endpoint, context_length):
-    #     async def handler(x):
-    #         remote_endpoint = await self.make_post_request_tei(endpoint, x)
-    #         return remote_endpoint
-    #     return handler
-    
-    # def create_openvino_endpoint_handler(self, model, endpoint, context_length):
-    #     from transformers import AutoTokenizer, AutoModel, AutoConfig
-    #     async def handler(x):
-    #         tokenizer = None
-    #         tokens = None
-    #         if model not in list(self.resources["tokenizer"].keys()):
-    #             self.resources["tokenizer"][model] = {}
-    #         tokenizers = list(self.resources["tokenizer"][model].keys())
-    #         if len(tokenizers) == 0:
-    #             self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
-    #             tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
-    #         else:
-    #             for tokenizer in tokenizers:
-    #                 try:
-    #                     this_tokenizer = self.resources["tokenizer"][model][tokenizer]
-    #                     tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-    #                 except Exception as e:
-    #                     pass
-    #         if tokens is None:
-    #             raise ValueError("No tokenizer found for model " + model)            
-    #         tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-    #         remote_endpoint = await self.make_post_request_openvino(tokens, x)
-    #         return remote_endpoint
-    #     return handler
     
     def create_libp2p_endpoint_handler(self, model, endpoint, context_length):
         def handler(x):
@@ -415,108 +372,7 @@ class ipfs_accelerate_py:
             new_resources["endpoints"] = self.endpoints
         return new_resources
 
-    # def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
-    #     incoming_batch_size = len(batch)
-    #     endpoint_batch_size = 0
-    #     if endpoint in self.endpoint_status:
-    #         endpoint_batch_size = self.endpoint_status[endpoint]
-    #     elif endpoint_type == None:
-    #         for endpoint_type in self.endpoint_types:
-    #             if endpoint_type in self.__dict__.keys():
-    #                 if model in self.__dict__[endpoint_type]:
-    #                     for endpoint in self.__dict__[endpoint_type][model]:
-    #                         endpoint_batch_size = self.endpoint_status[endpoint]
-    #                         if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                             return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #             else:
-    #                 pass
-    #     else:
-    #         if model in self.__dict__[endpoint_type]:
-    #             for endpoint in self.__dict__[endpoint_type][model]:
-    #                 endpoint_batch_size = self.endpoint_status[endpoint]
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #         else:
-    #             return None
-                
-    #     if incoming_batch_size > endpoint_batch_size:
-    #         return ValueError("Batch size too large")
-    #     else:
-    #         if model in self.endpoints:
-    #             for endpoint in self.tei_endpoints[model]:
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #         return None
-    
-    # def request_tgi_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
-    #     incoming_batch_size = len(batch)
-    #     endpoint_batch_size = 0
-    #     if endpoint in self.endpoint_status:
-    #         endpoint_batch_size = self.endpoint_status[endpoint]
-    #     elif endpoint_type == None:
-    #         for endpoint_type in self.endpoint_types:
-    #             if endpoint_type in self.__dict__.keys():
-    #                 if model in self.__dict__[endpoint_type]:
-    #                     for endpoint in self.__dict__[endpoint_type][model]:
-    #                         endpoint_batch_size = self.endpoint_status[endpoint]
-    #                         if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                             return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #             else:
-    #                 pass
-    #     else:
-    #         if model in self.__dict__[endpoint_type]:
-    #             for endpoint in self.__dict__[endpoint_type][model]:
-    #                 endpoint_batch_size = self.endpoint_status[endpoint]
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #         else:
-    #             return None
-                
-    #     if incoming_batch_size > endpoint_batch_size:
-    #         return ValueError("Batch size too large")
-    #     else:
-    #         if model in self.endpoints:
-    #             for endpoint in self.tei_endpoints[model]:
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #         return None
-    #     resources
         
-    # async def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
-    #     batch_size = len(batch)
-    #     if model in self.openvino_endpoints:
-    #         for endpoint in self.openvino_endpoints[model]:
-    #             if self.batch_sizes[endpoint] >= batch_size:
-    #                 return endpoint
-    #     return None
-    
-    # async def request_ollama_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
-    #     batch_size = len(batch)
-    #     if model in self.local_endpoints:
-    #         for endpoint in self.local_endpoints[model]:
-    #             if self.batch_sizes[endpoint] >= batch_size:
-    #                 return endpoint
-    #     return None
     
     # async def request_libp2p_endpoint(self, model, endpoint, endpoint_type, batch):
     #     batch_size = len(batch)
@@ -955,26 +811,6 @@ class ipfs_accelerate_py:
                 torch.cuda.empty_cache()
             return 2**(exponent-1)
     
-    # async def request_ovms_endpoint(self, model, batch_size):
-    #     if model in self.openvino_endpoints:
-    #         for endpoint in self.openvino_endpoints[model]:
-    #             if self.endpoint_status[endpoint] >= batch_size:
-    #                 return endpoint
-    #     return None
-    
-    # async def request_ollama_endpoint(self, model, batch_size):
-    #     if model in self.local_endpoints:
-    #         for endpoint in self.local_endpoints[model]:
-    #             if self.endpoint_status[endpoint] >= batch_size:
-    #                 return endpoint
-    #     return None
-    
-    # async def request_libp2p_endpoint(self, model, batch_size):
-    #     if model in self.libp2p_endpoints:
-    #         for endpoint in self.libp2p_endpoints[model]:
-    #             if self.endpoint_status[endpoint] >= batch_size:
-    #                 return endpoint
-    #     return None
     
     async def request_local_endpoint(self, model, batch_size):
         if model in self.local_endpoints:
@@ -982,81 +818,7 @@ class ipfs_accelerate_py:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
-    
-    async def test_endpoint(self, model, endpoint=None):
-        test_results = {}
-        if endpoint is None:
-            endpoint = self.local_endpoints[model]["cpu"]
-        try:    
-            test_results["local_endpoint"] = await self.test_local_endpoint(model, endpoint)
-        except Exception as e:
-            test_results["local_endpoint"] = e
-            pass
-        try:
-            test_results["libp2p_endpoint"] = await self.test_libp2p_endpoint(model, endpoint)
-        except Exception as e:
-            test_results["libp2p_endpoint"] = e
-            pass
-        try:
-            test_results["openvino_endpoint"] = await self.test_openvino_endpoint(model, endpoint)
-        except Exception as e:
-            test_results["openvino_endpoint"] = e
-            pass
-        try:
-            test_results["tei_endpoint"] = await self.test_tei_endpoint(model, endpoint)
-        except Exception as e:
-            test_results["tei_endpoint"] = e
-            pass
-        try:
-            test_results["webnn_endpoint"] = "not implemented"
-        except Exception as e:
-            test_results["webnn_endpoint"] = e
-            pass
-        return test_results    
 
-    async def test_endpoints(self, models, endpoint_handler_object=None):
-        test_results = {}
-        for model in models:
-            if model not in list(test_results.keys()):
-                test_results[model] = {}
-            try: 
-                test_results[model]["local_endpoint"] = await self.test_local_endpoint(model)
-            except Exception as e:
-                test_results[model]["local_endpoint"] = e
-                print(e)
-
-            try:
-                test_results[model]["libp2p_endpoint"] = await self.test_libp2p_endpoint(model)
-            except Exception as e:
-                test_results[model]["libp2p_endpoint"] = e
-                print(e)
-
-            try:
-                test_results[model]["openvino_endpoint"] = await self.test_openvino_endpoint(model)
-            except Exception as e:
-                test_results[model]["openvino_endpoint"] = e
-                print(e)
-
-            try:
-                test_results[model]["tei_endpoint"] = await self.test_tei_endpoint(model)
-            except Exception as e:
-                test_results[model]["tei_endpoint"] = e
-                print(e)
-
-            try:
-                test_results[model]["webnn_endpoint"] = "not implemented"
-            except Exception as e:
-                test_results[model]["webnn_endpoint"] = e
-                print(e)
-
-        try:
-            test_results[model]["endpoint_handler_resources"] = endpoint_handler_object
-        except Exception as e:
-            test_results[model]["endpoint_handler_resources"] = e
-            test_results["batch_sizes"] = {}
-            test_results["endpoint_handler"] = {}            
-        return test_results
-    
     async def test_batch_sizes(self, model, endpoint_handler_object=None):
         test_results = {}
         try:    
@@ -1087,33 +849,6 @@ class ipfs_accelerate_py:
             test_results["batch_sizes"] = e
             test_results["endpoint_handler"] = e
             pass
-        return test_results
-    
-    async def test_tei_endpoint(self, model, endpoint_list=None):
-        this_endpoint = None
-        filtered_list = {}
-        test_results = {}
-        local_endpoints = self.resources["tei_endpoints"]
-        local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
-        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
-        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
-        if len(local_endpoints_by_model_by_endpoint) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint:
-                endpoint_handler = endpoint_handlers_by_model[endpoint]
-                try:
-                    test = await endpoint_handler("hello world")
-                    test_results[endpoint] = test
-                except Exception as e:
-                    try:
-                        test = endpoint_handler("hello world")
-                        test_results[endpoint] = test
-                    except Exception as e:
-                        test_results[endpoint] = e
-                    pass
-        else:
-            return ValueError("No endpoint_handlers found")
         return test_results
     
     async def test_libp2p_endpoint(self, model, endpoint=None):
@@ -1185,96 +920,6 @@ class ipfs_accelerate_py:
             return self.libp2p_endpoints[model]
         return None
 
-    # async def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
-    #     if batch == None:
-    #         incoming_batch_size = 0
-    #     else:
-    #         incoming_batch_size = len(batch)
-    #     endpoint_batch_size = 0
-    #     if endpoint in self.endpoint_status:
-    #         endpoint_batch_size = self.endpoint_status[endpoint]
-    #     elif endpoint_type == None:
-    #         for endpoint_type in self.endpoint_types:
-    #             if endpoint_type in self.__dict__.keys():
-    #                 if model in self.__dict__[endpoint_type]:
-    #                     for endpoint in self.__dict__[endpoint_type][model]:
-    #                         endpoint_batch_size = self.endpoint_status[endpoint]
-    #                         if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                             return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #             else:
-    #                 pass
-    #     else:
-    #         if model in self.__dict__[endpoint_type]:
-    #             for endpoint in self.__dict__[endpoint_type][model]:
-    #                 endpoint_batch_size = self.endpoint_status[endpoint]
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #                 else:
-    #                     if incoming_batch_size > endpoint_batch_size:
-    #                         return ValueError("Batch size too large")
-    #                     else:
-    #                         return None
-    #         else:
-    #             return None
-                
-    #     if incoming_batch_size > endpoint_batch_size:
-    #         return ValueError("Batch size too large")
-    #     else:
-    #         if model in self.endpoints:
-    #             for endpoint in self.tei_endpoints[model]:
-    #                 if self.endpoint_status[endpoint] >= incoming_batch_size:
-    #                     return endpoint
-    #         return None
-    
-    # async def make_post_request_tei(self, endpoint, data=None):
-    #     import aiohttp
-    #     from aiohttp import ClientSession, ClientTimeout
-    #     if data is None:
-    #         return None
-    #     else:
-    #         pass
-    #     if type(data) is dict:
-    #         if "inputs" not in list(data.keys()):
-    #             data = {"inputs": data}
-    #     if type(data) is list:
-    #         data = {"inputs": data}
-    #     headers = {'Content-Type': 'application/json'}
-    #     timeout = ClientTimeout(total=300) 
-    #     async with ClientSession(timeout=timeout) as session:
-    #         try:
-    #             async with session.post(endpoint, headers=headers, json=data) as response:
-    #                 if response.status != 200:
-    #                     return ValueError(response)
-    #                 return await response.json()
-    #         except Exception as e:
-    #             print(str(e))
-    #             if "Can not write request body" in str(e):
-    #                 print( "endpoint " + endpoint + " is not accepting requests")
-    #                 return ValueError(e)
-    #             if "Timeout" in str(e):
-    #                 print("Timeout error")
-    #                 return ValueError(e)
-    #             if "Payload is not completed" in str(e):
-    #                 print("Payload is not completed")
-    #                 return ValueError(e)
-    #             if "Can not write request body" in str(e):
-    #                 return ValueError(e)
-    #             pass
-    #         except aiohttp.ClientPayloadError as e:
-    #             print(f"ClientPayloadError: {str(e)}")
-    #             return ValueError(f"ClientPayloadError: {str(e)}")
-    #         except asyncio.TimeoutError as e:
-    #             print(f"Timeout error: {str(e)}")
-    #             return ValueError(f"Timeout error: {str(e)}")
-    #         except Exception as e:
-    #             print(f"Unexpected error: {str(e)}")
-    #             return ValueError(f"Unexpected error: {str(e)}")
-
     async def make_post_request_libp2p(self, endpoint, data):
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
@@ -1310,77 +955,6 @@ class ipfs_accelerate_py:
                 print(f"Unexpected error: {str(e)}")
                 return ValueError(f"Unexpected error: {str(e)}")
 
-
-    # async def test_openvino_endpoint(self, model, endpoint_list=None):
-    #     this_endpoint = None
-    #     filtered_list = {}
-    #     test_results = {}
-    #     local_endpoints = self.resources["openvino_endpoints"]
-    #     local_endpoints_types = [x[1] for x in local_endpoints]
-    #     local_endpoints_by_model = self.endpoints["openvino_endpoints"][model]
-    #     endpoint_handlers_by_model = self.resources["openvino_endpoints"][model]
-    #     if endpoint_list is not None:
-    #         local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
-    #     else:
-    #         local_endpoints_by_model_by_endpoint_list = [ x for x in local_endpoints_by_model if "openvino:" in json.dumps(x) ]
-    #     if len(local_endpoints_by_model_by_endpoint_list) > 0:
-    #         for endpoint in local_endpoints_by_model_by_endpoint_list:
-    #             endpoint_handler = endpoint_handlers_by_model[endpoint]
-    #             try:
-    #                 test = await endpoint_handler("hello world")
-    #                 test_results[endpoint] = test
-    #             except Exception as e:
-    #                 try:
-    #                     test = endpoint_handler("hello world")
-    #                     test_results[endpoint] = test
-    #                 except Exception as e:
-    #                     test_results[endpoint] = e
-    #                 pass
-    #     else:
-    #         return ValueError("No endpoint_handlers found")
-    #     return test_results
-                    
-    # async def make_post_request_openvino(self, endpoint, data):
-    #     import aiohttp
-    #     from aiohttp import ClientSession, ClientTimeout
-    #     if type(data) is dict:
-    #         raise ValueError("Data must be a string")
-    #     if type(data) is list:
-    #         if len(data) > 1:
-    #             raise ValueError("batch size must be 1")
-    #         data = data[0]
-    #     headers = {'Content-Type': 'application/json'}
-    #     timeout = ClientTimeout(total=300) 
-    #     async with ClientSession(timeout=timeout) as session:
-    #         try:
-    #             async with session.post(endpoint, headers=headers, json=data) as response:
-    #                 if response.status != 200:
-    #                     return ValueError(response)
-    #                 return await response.json()
-    #         except Exception as e:
-    #             print(str(e))
-    #             if "Can not write request body" in str(e):
-    #                 print( "endpoint " + endpoint + " is not accepting requests")
-    #                 return ValueError(e)
-    #             if "Timeout" in str(e):
-    #                 print("Timeout error")
-    #                 return ValueError(e)
-    #             if "Payload is not completed" in str(e):
-    #                 print("Payload is not completed")
-    #                 return ValueError(e)
-    #             if "Can not write request body" in str(e):
-    #                 return ValueError(e)
-    #             pass
-    #         except aiohttp.ClientPayloadError as e:
-    #             print(f"ClientPayloadError: {str(e)}")
-    #             return ValueError(f"ClientPayloadError: {str(e)}")
-    #         except asyncio.TimeoutError as e:
-    #             print(f"Timeout error: {str(e)}")
-    #             return ValueError(f"Timeout error: {str(e)}")
-    #         except Exception as e:
-    #             print(f"Unexpected error: {str(e)}")
-    #             return ValueError(f"Unexpected error: {str(e)}")
- 
     async def choose_endpoint(self, model, endpoint_type=None):
         if type(model) is list:
             model = model[0]
@@ -1420,8 +994,6 @@ class ipfs_accelerate_py:
             libp2p_endpoints = await self.get_endpoints_new(model, endpoint_type="libp2p")
             openvino_endpoints = await self.get_endpoints_new(model, endpoint_type="openvino")
             local_endpoints = await self.get_endpoints_new(model, endpoint_type="local")
-            
-            
             filtered_libp2p_endpoints = [x for x in libp2p_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
             filtered_tei_endpoints = [x for x in tei_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
             filtered_openvino_endpoints = [x for x in openvino_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
@@ -1462,11 +1034,11 @@ class ipfs_accelerate_py:
             if "cuda" in endpoint or "cpu" in endpoint:
                 return await self.make_local_request(model, endpoint, endpoint_type, data)
             elif "openvino" in endpoint:
-                return await self.make_post_request_openvino(endpoint, data)
+                return await self.apis.make_post_request_openvino(endpoint, data)
             elif "libp2p" in endpoint:
-                return await self.make_post_request_libp2p(endpoint, data)
+                return await self.apis.make_post_request_libp2p(endpoint, data)
             elif "http" in endpoint:
-                return await self.make_post_request_tei(endpoint, data)
+                return await self.apis.make_post_request_tei(endpoint, data)
             else:
                 return self.endpoint_handler[model][endpoint](data)
         elif endpoint_type == "tei":
@@ -1517,7 +1089,6 @@ class ipfs_accelerate_py:
             all_endpoints_dict = self.tei_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.openvino_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
         return filtered_endpoints
-    
     
     async def get_endpoints_new(self, model, endpoint_type=None):
         filtered_endpoints = []

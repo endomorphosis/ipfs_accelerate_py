@@ -18,7 +18,11 @@ class apis:
         self.metadata = metadata
         self.init()
         self.make_post_request_openvino = self.ovms.make_post_request_openvino
-        self.test_openvino_endpoint = self.ovms.test_openvino_endpoint
+        self.make_post_request_tei = self.hf_tei.make_post_request_tei
+        self.test_ovms_endpoint = self.ovms.test_ovms_endpoint
+        self.test_tei_endpoint = self.hf_tei.test_tei_endpoint
+        self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
+        self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
         self.add_groq_endpoint = self.groq.add_groq_endpoint
         self.add_llvm_endpoint = self.llvm.add_llvm_endpoint
         self.add_tei_endpoint = self.hf_tei.add_tei_endpoint
