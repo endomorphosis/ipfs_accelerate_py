@@ -2,13 +2,7 @@ import time
 import re
 import os
 import openai
-import sys
-import json
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','skillset')))
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
-from .chat_format import chat_format
-# import worker 
+# from cloudkit_worker import dispatch_result
 import tiktoken
 import tempfile
 import base64
@@ -95,7 +89,7 @@ chat_templates = [
     ]
 
 class openai_api:
-    def __init__(self, resources, meta):
+    def __init__(self, resources=None, metadata=None):
         self.prompt = None
         self.messages = None
         self.instruct = None
@@ -103,12 +97,10 @@ class openai_api:
         self.method = None
         self.temperature = None
         self.api_key = None
-        # self.worker = worker
-        self.dispatch_result = self.worker.dispatch_result
-        if meta is not None:
-            if "openai_api_key" in meta:
-                if meta['openai_api_key'] is not None:
-                    self.api_key = meta['openai_api_key']
+        if metadata is not None:
+            if "openai_api_key" in metadata:
+                if metadata['openai_api_key'] is not None:
+                    self.api_key = metadata['openai_api_key']
         dir_self = list(dir(self))
         properties = list(self.__dict__.keys())
         if("api_key" in dir_self):
@@ -121,9 +113,11 @@ class openai_api:
         #    raise Exception('bad api_key: %s' % self.api_key)
             
         self.resources = resources
-        self.meta = meta
+        self.metadata = metadata
+
+    def init(self, resources=None, metadata=None):
         if resources is not None:
-            self.model = resources['checkpoint'].split("@")[0].split("/")[-1]
+            self.model = resources['models'].split("@")[0].split("/")[-1]
         else:
             self.model = None
 
@@ -133,15 +127,15 @@ class openai_api:
         self.input = None
         if "openai_api_key" in kwargs:
             if kwargs['openai_api_key'] is not None:
-                self.meta["openai_api_key"] = kwargs['openai_api_key']
-        print(self.meta)
-        if ("openai_api_key" in list(self.meta.keys())):
-            if self.meta["openai_api_key"] is not None:
-                openai.api_key = self.meta["openai_api_key"]
+                self.metadata["openai_api_key"] = kwargs['openai_api_key']
+        print(self.metadata)
+        if ("openai_api_key" in list(self.metadata.keys())):
+            if self.metadata["openai_api_key"] is not None:
+                openai.api_key = self.metadata["openai_api_key"]
             else:
-                raise Exception('bad api_key: %s' % self.meta["openai_api_key"])
+                raise Exception('bad api_key: %s' % self.metadata["openai_api_key"])
         else:
-            raise Exception('no key found in meta: %s' % self.meta)
+            raise Exception('no key found in metadata: %s' % self.metadata)
         if self.model is not None:    
             kwargs['model'] = self.model
         if method == 'chat':
