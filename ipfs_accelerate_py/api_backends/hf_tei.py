@@ -2,6 +2,7 @@ class hf_tei:
     def __init__(self, resources, metadata):
         self.request_tei_endpoint = self.request_tei_endpoint
         self.make_post_request_tei = self.make_post_request_tei
+        self.create_tei_endpoint_handler = self.create_tei_endpoint_handler
         return None
     
     async def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):

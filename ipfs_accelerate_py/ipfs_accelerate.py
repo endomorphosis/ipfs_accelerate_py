@@ -141,12 +141,13 @@ class ipfs_accelerate_py:
         self.get_https_endpoint = self.get_https_endpoint
         self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
+        self.hwtest = self.test_hardware()
         return None
- 
-    async def test_hardware(self):
+
+    def test_hardware(self):
         install_file_hash = None
         test_results_file = None
-        install_depends_filename = os.path.join(os.path.dirname(os.path.abspath(__file__)), "install_depends.py")
+        install_depends_filename = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "install_depends", "install_depends.py")
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
@@ -155,14 +156,17 @@ class ipfs_accelerate_py:
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
+            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = await self.install_depends.test_hardware()
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        # test_results = await self.install_depends.test_hardware()
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
                         return test_results
@@ -171,7 +175,8 @@ class ipfs_accelerate_py:
                         return e
             else:
                 try:
-                    test_results = await self.install_depends.test_hardware()
+                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                    # test_results = await self.install_depends.test_hardware()
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
                     return test_results

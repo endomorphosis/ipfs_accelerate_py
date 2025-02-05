@@ -395,6 +395,7 @@ class worker_py:
         self.local_endpoint_types = local_endpoint_types
         self.local_endpoint_models = local_endpoint_models
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
+        
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
                 hwtest = await self.test_hardware()
@@ -404,6 +405,7 @@ class worker_py:
                 hwtest = await self.test_hardware()
         self.hwtest = hwtest
         self.resources["hwtest"] = hwtest
+        
         if "cuda" in list(self.hwtest.keys()) and self.hwtest["cuda"] is True:
             try:
                 self.init_cuda()
