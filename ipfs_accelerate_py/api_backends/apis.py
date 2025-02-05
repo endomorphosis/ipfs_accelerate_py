@@ -18,6 +18,15 @@ class apis:
         self.init()
         self.make_post_request_openvino = self.ovms.make_post_request_openvino
         self.test_openvino_endpoint = self.ovms.test_openvino_endpoint
+        self.add_groq_endpoint = self.groq.add_groq_endpoint
+        self.add_llvm_endpoint = self.llvm.add_llvm_endpoint
+        self.add_tei_endpoint = self.hf_tei.add_tei_endpoint
+        self.add_tgi_endpoint = self.hf_tgi.add_tgi_endpoint
+        self.add_ollama_endpoint = self.ollama.add_ollama_endpoint
+        self.add_ovms_endpoint = self.ovms.add_ovms_endpoint
+        self.add_libp2p_endpoint = self.ovms.add_libp2p_endpoint
+        self.add_openai_endpoint = self.openai_api.add_openai_endpoint
+        self.add_s3_endpoint = self.s3_kit.add_s3_endpoint
         return None
     
     def init(self):
@@ -84,6 +93,37 @@ class apis:
                 self.openai_api = self.resources["openai_api"]
             else:
                 self.openai_api = self.resources["openai_api"]
+        return None
+    
+    
+    async def add_ovms_endpoint(self, model, endpoint):
+        return None
+
+    async def add_llvm_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_tei_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_groq_endpoint(self, model, endpoint):
+        return None
+
+    async def add_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_tgi_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_openvino_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_libp2p_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_openai_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_s3_endpoint(self, model, endpoint):
         return None
     
     def __test__(self):

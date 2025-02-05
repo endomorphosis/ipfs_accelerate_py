@@ -595,28 +595,11 @@ class ipfs_accelerate_py:
     #     torch.cuda.empty_cache()  # Free up GPU memory again
     #     return results
         
-    async def add_ovms_endpoint(self, model, endpoint):
-        return None
-
-    async def add_llvm_endpoint(self, model, endpoint):
-        return None
-    
-    async def add_tei_endpoint(self, model, endpoint):
-        return None
-    
-    async def add_ollama_endpoint(self, model, endpoint):
-        return None
-    
-    async def add_tgi_endpoint(self, model, endpoint):
-        return None
-    
-    async def add_openvino_endpoint(self, model, endpoint):
-        return None
-    
-    async def add_libp2p_endpoint(self, model, endpoint):
-        return None
     
     async def add_local_endpoint(self, model, endpoint_type, endpoint):
+        return None
+    
+    async def add_api_endpoint(self, model, endpoint_type, endpoint):
         return None
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
@@ -642,19 +625,19 @@ class ipfs_accelerate_py:
                         print("Hardware type " + this_endpoint_type + " not available")
                     else:
                         if hardware_type == "cuda":
-                            self.add_local_endpoint(model, "cuda", endpoint)
+                            self.add_local_endpoint(model, "cuda", endpoint, context_length)
                             pass
                         elif hardware_type == "openvino":
-                            self.add_local_endpoint(model, "openvino", endpoint)
+                            self.add_local_endpoint(model, "openvino", endpoint, context_length)
                             pass
                         elif hardware_type == "webnn":
-                            self.add_local_endpoint(model, "webnn", endpoint)
+                            self.add_local_endpoint(model, "webnn", endpoint, context_length)
                             pass
                         elif hardware_type == "qualcomm":
-                            self.add_local_endpoint(model, "qualcomm", endpoint)
+                            self.add_local_endpoint(model, "qualcomm", endpoint, context_length)
                             pass
                         elif hardware_type == "cpu":
-                            self.add_local_endpoint(model, "cpu", endpoint)
+                            self.add_local_endpoint(model, "cpu", endpoint, context_length)
                             pass
                 elif this_endpoint_type in list(self.apitest.keys()):
                     api_type = this_endpoint_type
@@ -663,22 +646,30 @@ class ipfs_accelerate_py:
                         print("API type " + this_endpoint_type + " not available")
                     else:
                         if api_type == "tei":
+                            self.add_api_endpoint(model, "tei", endpoint, context_length) 
                             pass
                         if api_type == "tgi":
+                            self.add_api_endpoint(model, "tgi", endpoint, context_length) 
                             pass
                         if api_type == "groq":
+                            self.add_api_endpoint(model, "groq", endpoint, context_length) 
                             pass
                         if api_type == "ollama":
+                            self.add_api_endpoint(model, "ollama", endpoint, context_length) 
                             pass
                         elif api_type == "libp2p":
+                            self.add_api_endpoint(model, "libp2p", endpoint, context_length) 
                             pass
-                        elif api_type == "openvino":
+                        elif api_type == "ovms":
+                            self.add_api_endpoint(model, "ovms", endpoint, context_length)                             
                             pass
+                        elif api_type == "openai_api":
+                            self.add_api_endpoint(model, "openai_api", endpoint, context_length) 
+                        elif api_type == "s3_kit":
+                            self.add_api_endpoint(model, "s3_kit", endpoint, context_length) 
                         elif api_type == "webnn":
+                            self.add_api_endpoint(model, "webnn", endpoint, context_length) 
                             pass
-                        elif api_type == "qualcomm":
-                            pass
-
             except Exception as e:
                 print(e)
                 pass
