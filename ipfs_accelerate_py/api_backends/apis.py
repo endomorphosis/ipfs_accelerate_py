@@ -16,25 +16,7 @@ class apis:
             metadata = {}     
         self.resources = resources
         self.metadata = metadata
-        self.init()
-        
-        self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
-        self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
-        self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
-        self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
-        self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
-        self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
-        
-        self.make_post_request_ovms = self.ovms.make_post_request_ovms
-        self.make_post_request_libp2p = self.ovms.make_post_request_libp2p
-        self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
-        self.make_post_request_tei = self.hf_tei.make_post_request_tei
-        self.make_post_request_groq = self.groq.make_post_request_groq
-        self.make_post_request_llvm = self.llvm.make_post_request_llvm
-        self.make_post_request_ollama = self.ollama.make_post_request_ollama
-        self.make_post_request_openai = self.openai_api.make_post_request_openai
-        self.make_post_request_s3 = self.s3_kit.make_post_request_s3
-        
+        self.endpoints = self.metadata["endpoints"]
         self.request_tgi_endpoint = self.hf_tgi.request_tgi_endpoint
         self.request_tei_endpoint = self.hf_tei.request_tei_endpoint
         self.request_groq_endpoint = self.groq.request_groq_endpoint
@@ -71,7 +53,7 @@ class apis:
         self.rm_ovms_endpoint = self.ovms.rm_ovms_endpoint
         self.rm_openai_endpoint = self.openai_api.rm_openai_endpoint
         self.rm_s3_endpoint = self.s3_kit.rm_s3_endpoint
-        
+        self.init()
         return None
     
     def init(self, models=None):
@@ -138,9 +120,27 @@ class apis:
                 self.openai_api = self.resources["openai_api"]
             else:
                 self.openai_api = self.resources["openai_api"]
-                
+        
+        
+        self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
+        self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
+        self.create_tgi_endpoint_handler = self.hf_tgi.create_tgi_endpoint_handler
+        self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
+        self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
+        self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
+        self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
+        
+        self.make_post_request_ovms = self.ovms.make_post_request_ovms
+        self.make_post_request_libp2p = self.ovms.make_post_request_libp2p
+        self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
+        self.make_post_request_tei = self.hf_tei.make_post_request_tei
+        self.make_post_request_groq = self.groq.make_post_request_groq
+        self.make_post_request_llvm = self.llvm.make_post_request_llvm
+        self.make_post_request_ollama = self.ollama.make_post_request_ollama
+        self.make_post_request_openai = self.openai_api.make_post_request_openai
+        self.make_post_request_s3 = self.s3_kit.make_post_request_s3
+        
         for model in models:
-
             if "ovms_endpoints" in list(self.endpoints.keys()):
                 if len(self.endpoints["ovms_endpoints"]) > 0 :
                     for endpoint in self.endpoints["ovms_endpoints"][model]:
@@ -172,20 +172,90 @@ class apis:
                                     self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
                                     self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
                                     # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "libp2p_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["libp2p_endpoints"]) > 0:
-                    for endpoint in self.endpoints["libp2p_endpoints"]:
-                        if len(endpoint) == 3:
-                            this_model = endpoint[0]
-                            this_endpoint = endpoint[1]
-                            context_length = endpoint[2]
-                            if model == this_model:
-                                if endpoint not in list(self.batch_sizes[model].keys()):
-                                    # self.batch_sizes[model][this_endpoint] =  0
-                                    self.resources["batch_sizes"][model][this_endpoint] = 0
-                                self.resources["queues"][model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                                self.resources["endpoint_handler"][model][endpoint] = self.create_libp2p_endpoint_handler(model, this_endpoint, context_length)
-                                # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))    
+            if "tgi_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["tgi_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["tgi_endpoints"].keys()):
+                        for endpoint in self.endpoints["tgi_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_tgi_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            if "groq_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["groq_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["groq_endpoints"].keys()):
+                        for endpoint in self.endpoints["groq_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_groq_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            if "llvm_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["llvm_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["llvm_endpoints"].keys()):
+                        for endpoint in self.endpoints["llvm_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_llvm_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            if "ollama_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["ollama_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["ollama_endpoints"].keys()):
+                        for endpoint in self.endpoints["ollama_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_ollama_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            if "openai_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["openai_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["openai_endpoints"].keys()):
+                        for endpoint in self.endpoints["openai_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_openai_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            if "s3_endpoints" in list(self.endpoints.keys()):
+                if len(self.endpoints["s3_endpoints"]) > 0:
+                    for endpoint_model in list(self.endpoints["s3_endpoints"].keys()):
+                        for endpoint in self.endpoints["s3_endpoints"][endpoint_model]:                            
+                            if len(endpoint) == 3:
+                                this_model = endpoint[0]
+                                this_endpoint = endpoint[1]
+                                context_length = endpoint[2]
+                                if model == this_model:
+                                    if endpoint not in list(self.batch_sizes[model].keys()):
+                                        self.resources["batch_sizes"][model][this_endpoint] = 0
+                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_s3_endpoint_handler(model, this_endpoint, context_length)
+                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         return None
     
     
