@@ -17,6 +17,7 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.init()
+        
         self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
         self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
         self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
@@ -217,6 +218,68 @@ class apis:
     
     async def add_s3_endpoint(self, model, endpoint):
         return None
+    
+    async def rm_ovms_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_llvm_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_tei_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_groq_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_tgi_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_openvino_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_libp2p_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_openai_endpoint(self, model, endpoint):
+        return None
+    
+    async def rm_s3_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_ovms_endpoint(self, model, endpoint):
+        return None
+
+    async def test_llvm_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_tei_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_groq_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_tgi_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_openvino_endpoint(self, model, endpoint):
+        return None
+
+    async def test_libp2p_endpoint(self, model, endpoint):
+        return None
+
+    async def test_openai_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_s3_endpoint(self, model, endpoint):
+        return None
+    
+    
     
     async def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         batch_size = len(batch)
