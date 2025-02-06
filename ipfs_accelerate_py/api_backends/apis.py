@@ -17,6 +17,7 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.endpoints = self.metadata["endpoints"]
+        
         self.tgi_endpoints = {}
         self.ollama_endpoints = {}
         self.tei_endpoints = {}
@@ -25,6 +26,7 @@ class apis:
         self.openai_endpoints = {}
         self.s3_endpoints = {}
         self.ovms_endpoints = {}
+        
         self.request_tgi_endpoint = self.hf_tgi.request_tgi_endpoint
         self.request_tei_endpoint = self.hf_tei.request_tei_endpoint
         self.request_groq_endpoint = self.groq.request_groq_endpoint
@@ -61,6 +63,7 @@ class apis:
         self.rm_ovms_endpoint = self.ovms.rm_ovms_endpoint
         self.rm_openai_endpoint = self.openai_api.rm_openai_endpoint
         self.rm_s3_endpoint = self.s3_kit.rm_s3_endpoint
+        
         self.init()
         return None
     
@@ -137,9 +140,9 @@ class apis:
         self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
         self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
         self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
+        self.create_s3_endpoint_handler = self.s3_kit.create_s3_endpoint_handler
         
         self.make_post_request_ovms = self.ovms.make_post_request_ovms
-        self.make_post_request_libp2p = self.ovms.make_post_request_libp2p
         self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
         self.make_post_request_tei = self.hf_tei.make_post_request_tei
         self.make_post_request_groq = self.groq.make_post_request_groq
