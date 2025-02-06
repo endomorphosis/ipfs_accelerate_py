@@ -6,6 +6,7 @@ from .llvm import llvm
 from .s3_kit import s3_kit
 from .openai_api import openai_api
 from .ollama import ollama
+from api_models_registry import api_models
 import asyncio
 
 class apis:
@@ -16,6 +17,7 @@ class apis:
             metadata = {}     
         self.resources = resources
         self.metadata = metadata
+        self.api_models = api_models(self.resources, self.metadata)
         self.endpoints = self.metadata["endpoints"]
         
         self.tgi_endpoints = {}
@@ -68,88 +70,89 @@ class apis:
         return None
     
     def init(self, models=None):
-        if "groq" not in dir(self):
-            if "groq" not in list(self.resources.keys()):
-                from .groq import groq
-                self.resources["groq"] = groq(self.resources, self.metadata)
-                self.groq = self.resources["groq"]
-            else:
-                self.groq = self.resources["groq"]
+        test_models = [ self.api_models.test_model(model) for model in models ]
+        models_dict = { model: test_models[i] for i, model in enumerate(models) }
         
-        if "hf_tei" not in dir(self):
-            if "hf_tei" not in list(self.resources.keys()):
-                from .hf_tei import hf_tei
-                self.resources["hf_tei"] = hf_tei(self.resources, self.metadata)
-                self.hf_tei = self.resources["hf_tei"]
-            else:
-                self.hf_tei = self.resources["hf_tei"]
-                
-        if "hf_tgi" not in dir(self):
-            if "hf_tgi" not in list(self.resources.keys()):
-                from .hf_tgi import hf_tgi
-                self.resources["hf_tgi"] = hf_tgi(self.resources, self.metadata)
-                self.hf_tgi = self.resources["hf_tgi"]
-            else:
-                self.hf_tgi = self.resources["hf_tgi"]
-                
-        if "llvm" not in dir(self):
-            if "llvm" not in list(self.resources.keys()):
-                from .llvm import llvm
-                self.resources["llvm"] = llvm(self.resources, self.metadata)
-                self.llvm = self.resources["llvm"]
-            else:
-                self.llvm = self.resources["llvm"]
-                
-        if "ollama" not in dir(self):
-            if "ollama" not in list(self.resources.keys()):
-                from .ollama import ollama
-                self.resources["ollama"] = ollama(self.resources, self.metadata)
-                self.ollama = self.resources["ollama"]
-            else:
-                self.ollama = self.resources["ollama"]
-                
-        if "ovms" not in dir(self):
-            if "ovms" not in list(self.resources.keys()):
-                from .ovms import ovms
-                self.resources["ovms"] = ovms(self.resources, self.metadata)
-                self.ovms = self.resources["ovms"]
-            else:
-                self.ovms = self.resources["ovms"]
-                
-        if "s3_kit" not in dir(self):
-            if "s3_kit" not in list(self.resources.keys()):
-                from .s3_kit import s3_kit
-                self.resources["s3_kit"] = s3_kit(self.resources, self.metadata)
-                self.s3_kit = self.resources["s3_kit"]
-            else:
-                self.s3_kit = self.resources["s3_kit"]
-        
-        if "openai_api" not in dir(self):
-            if "openai_api" not in list(self.resources.keys()):
-                from .openai_api import openai_api
-                self.resources["openai_api"] = openai_api(self.resources, self.metadata)
-                self.openai_api = self.resources["openai_api"]
-            else:
-                self.openai_api = self.resources["openai_api"]
-        
-        
-        self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
-        self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
-        self.create_tgi_endpoint_handler = self.hf_tgi.create_tgi_endpoint_handler
-        self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
-        self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
-        self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
-        self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
-        self.create_s3_endpoint_handler = self.s3_kit.create_s3_endpoint_handler
-        
-        self.make_post_request_ovms = self.ovms.make_post_request_ovms
-        self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
-        self.make_post_request_tei = self.hf_tei.make_post_request_tei
-        self.make_post_request_groq = self.groq.make_post_request_groq
-        self.make_post_request_llvm = self.llvm.make_post_request_llvm
-        self.make_post_request_ollama = self.ollama.make_post_request_ollama
-        self.make_post_request_openai = self.openai_api.make_post_request_openai
-        self.make_post_request_s3 = self.s3_kit.make_post_request_s3
+        for model in list(models.keys()):
+            if "groq" not in dir(self) and models_dict[model]["groq"] == True:
+                if "groq" not in list(self.resources.keys()):
+                    from .groq import groq
+                    self.resources["groq"] = groq(self.resources, self.metadata)
+                    self.groq = self.resources["groq"]
+                else:
+                    self.groq = self.resources["groq"]
+                self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
+                self.make_post_request_groq = self.groq.make_post_request_groq
+            
+            if "hf_tei" not in dir(self) and models_dict[model]["hf_tei"] == True:
+                if "hf_tei" not in list(self.resources.keys()):
+                    from .hf_tei import hf_tei
+                    self.resources["hf_tei"] = hf_tei(self.resources, self.metadata)
+                    self.hf_tei = self.resources["hf_tei"]
+                else:
+                    self.hf_tei = self.resources["hf_tei"]
+                self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
+                self.make_post_request_tei = self.hf_tei.make_post_request_tei
+                    
+            if "hf_tgi" not in dir(self) and models_dict[model]["hf_tgi"] == True:
+                if "hf_tgi" not in list(self.resources.keys()):
+                    from .hf_tgi import hf_tgi
+                    self.resources["hf_tgi"] = hf_tgi(self.resources, self.metadata)
+                    self.hf_tgi = self.resources["hf_tgi"]
+                else:
+                    self.hf_tgi = self.resources["hf_tgi"]
+                self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
+                self.create_tgi_endpoint_handler = self.hf_tgi.create_tgi_endpoint_handler
+                    
+            if "llvm" not in dir(self) and models_dict[model]["llvm"] == True:
+                if "llvm" not in list(self.resources.keys()):
+                    from .llvm import llvm
+                    self.resources["llvm"] = llvm(self.resources, self.metadata)
+                    self.llvm = self.resources["llvm"]
+                else:
+                    self.llvm = self.resources["llvm"]
+                self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
+                self.make_post_request_llvm = self.llvm.make_post_request_llvm
+                    
+            if "ollama" not in dir(self) and models_dict[model]["ollama"] == True:
+                if "ollama" not in list(self.resources.keys()):
+                    from .ollama import ollama
+                    self.resources["ollama"] = ollama(self.resources, self.metadata)
+                    self.ollama = self.resources["ollama"]
+                else:
+                    self.ollama = self.resources["ollama"]
+                self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
+                self.make_post_request_ollama = self.ollama.make_post_request_ollama
+                    
+            if "ovms" not in dir(self) and models_dict[model]["ovms"] == True:
+                if "ovms" not in list(self.resources.keys()):
+                    from .ovms import ovms
+                    self.resources["ovms"] = ovms(self.resources, self.metadata)
+                    self.ovms = self.resources["ovms"]
+                else:
+                    self.ovms = self.resources["ovms"]
+                self.make_post_request_ovms = self.ovms.make_post_request_ovms
+                self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
+                    
+            if "s3_kit" not in dir(self) and models_dict[model]["s3_kit"] == True:
+                if "s3_kit" not in list(self.resources.keys()):
+                    from .s3_kit import s3_kit
+                    self.resources["s3_kit"] = s3_kit(self.resources, self.metadata)
+                    self.s3_kit = self.resources["s3_kit"]
+                else:
+                    self.s3_kit = self.resources["s3_kit"]
+                self.create_s3_endpoint_handler = self.s3_kit.create_s3_endpoint_handler
+                self.make_post_request_s3 = self.s3_kit.make_post_request_s3
+            
+            if "openai_api" not in dir(self) and models_dict[model]["openai"] == True:
+                if "openai_api" not in list(self.resources.keys()):
+                    from .openai_api import openai_api
+                    self.resources["openai_api"] = openai_api(self.resources, self.metadata)
+                    self.openai_api = self.resources["openai_api"]
+                else:
+                    self.openai_api = self.resources["openai_api"]
+                self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
+                self.make_post_request_openai = self.openai_api.make_post_request_openai
         
         for model in models:
             if "ovms_endpoints" in list(self.endpoints.keys()):
@@ -169,6 +172,7 @@ class apis:
                                 # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
                                 self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
                                 # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+            
             if "tei_endpoints" in list(self.endpoints.keys()):
                 if len(self.endpoints["tei_endpoints"]) > 0:
                     for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
@@ -271,6 +275,28 @@ class apis:
     
     def init_groq(self, models=None):
         return None
+    
+    def init_llvm(self, models=None):
+        return None
+    
+    def init_tei(self, models=None):
+        return None
+    
+    def init_tgi(self, models=None):
+        return None
+    
+    def init_ollama(self, models=None):
+        return None
+    
+    def init_openai(self, models=None):
+        return None
+    
+    def init_s3(self, models=None):
+        return None
+    
+    def init_ovms(self, models=None):
+        return None
+    
     
     async def add_ovms_endpoint(self, model, endpoint):
         return None
