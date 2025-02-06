@@ -17,12 +17,41 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.init()
-        self.make_post_request_openvino = self.ovms.make_post_request_openvino
-        self.make_post_request_tei = self.hf_tei.make_post_request_tei
-        self.test_ovms_endpoint = self.ovms.test_ovms_endpoint
-        self.test_tei_endpoint = self.hf_tei.test_tei_endpoint
         self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
         self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
+        self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
+        self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
+        self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
+        self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
+        
+        self.make_post_request_ovms = self.ovms.make_post_request_ovms
+        self.make_post_request_libp2p = self.ovms.make_post_request_libp2p
+        self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
+        self.make_post_request_tei = self.hf_tei.make_post_request_tei
+        self.make_post_request_groq = self.groq.make_post_request_groq
+        self.make_post_request_llvm = self.llvm.make_post_request_llvm
+        self.make_post_request_ollama = self.ollama.make_post_request_ollama
+        self.make_post_request_openai = self.openai_api.make_post_request_openai
+        self.make_post_request_s3 = self.s3_kit.make_post_request_s3
+        
+        self.request_tgi_endpoint = self.hf_tgi.request_tgi_endpoint
+        self.request_tei_endpoint = self.hf_tei.request_tei_endpoint
+        self.request_groq_endpoint = self.groq.request_groq_endpoint
+        self.request_llvm_endpoint = self.llvm.request_llvm_endpoint
+        self.request_ollama_endpoint = self.ollama.request_ollama_endpoint
+        self.request_openai_endpoint = self.openai_api.request_openai_endpoint
+        self.request_s3_endpoint = self.s3_kit.request_s3_endpoint
+        self.request_ovms_endpoint = self.ovms.request_ovms_endpoint
+        
+        self.test_groq_endpoint = self.groq.test_groq_endpoint
+        self.test_llvm_endpoint = self.llvm.test_llvm_endpoint
+        self.test_ollama_endpoint = self.ollama.test_ollama_endpoint
+        self.test_ovms_endpoint = self.ovms.test_ovms_endpoint
+        self.test_tei_endpoint = self.hf_tei.test_tei_endpoint
+        self.test_tgi_endpoint = self.hf_tgi.test_tgi_endpoint
+        self.test_openai_endpoint = self.openai_api.test_openai_endpoint
+        self.test_s3_endpoint = self.s3_kit.test_s3_endpoint
+
         self.add_groq_endpoint = self.groq.add_groq_endpoint
         self.add_llvm_endpoint = self.llvm.add_llvm_endpoint
         self.add_tei_endpoint = self.hf_tei.add_tei_endpoint
@@ -32,6 +61,16 @@ class apis:
         self.add_libp2p_endpoint = self.ovms.add_libp2p_endpoint
         self.add_openai_endpoint = self.openai_api.add_openai_endpoint
         self.add_s3_endpoint = self.s3_kit.add_s3_endpoint
+        
+        self.rm_groq_endpoint = self.groq.rm_groq_endpoint
+        self.rm_llvm_endpoint = self.llvm.rm_llvm_endpoint
+        self.rm_tei_endpoint = self.hf_tei.rm_tei_endpoint
+        self.rm_tgi_endpoint = self.hf_tgi.rm_tgi_endpoint
+        self.rm_ollama_endpoint = self.ollama.rm_ollama_endpoint
+        self.rm_ovms_endpoint = self.ovms.rm_ovms_endpoint
+        self.rm_openai_endpoint = self.openai_api.rm_openai_endpoint
+        self.rm_s3_endpoint = self.s3_kit.rm_s3_endpoint
+        
         return None
     
     def init(self, models=None):
