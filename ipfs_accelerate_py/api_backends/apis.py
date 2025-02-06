@@ -400,6 +400,41 @@ class apis:
                     return endpoint
         return None
     
+    async def request_tei_endpoint(self, model, batch_size):
+        if model in self.tei_endpoints:
+            for endpoint in self.tei_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+
+    async def request_groq_endpoint(self, model, batch_size):
+        if model in self.groq_endpoints:
+            for endpoint in self.groq_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
+    async def request_llvm_endpoint(self, model, batch_size):
+        if model in self.llvm_endpoints:
+            for endpoint in self.llvm_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
+    async def request_openai_endpoint(self, model, batch_size):
+        if model in self.openai_endpoints:
+            for endpoint in self.openai_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
+    async def request_s3_endpoint(self, model, batch_size):
+        if model in self.s3_endpoints:
+            for endpoint in self.s3_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+    
     async def request_ollama_endpoint(self, model, batch_size):
         if model in self.local_endpoints:
             for endpoint in self.local_endpoints[model]:
@@ -407,12 +442,5 @@ class apis:
                     return endpoint
         return None
     
-    async def request_libp2p_endpoint(self, model, batch_size):
-        if model in self.libp2p_endpoints:
-            for endpoint in self.libp2p_endpoints[model]:
-                if self.endpoint_status[endpoint] >= batch_size:
-                    return endpoint
-        return None          
-              
     def __test__(self):
         return None
