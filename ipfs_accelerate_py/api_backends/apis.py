@@ -17,6 +17,14 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.endpoints = self.metadata["endpoints"]
+        self.tgi_endpoints = {}
+        self.ollama_endpoints = {}
+        self.tei_endpoints = {}
+        self.groq_endpoints = {}
+        self.llvm_endpoints = {}
+        self.openai_endpoints = {}
+        self.s3_endpoints = {}
+        self.ovms_endpoints = {}
         self.request_tgi_endpoint = self.hf_tgi.request_tgi_endpoint
         self.request_tei_endpoint = self.hf_tei.request_tei_endpoint
         self.request_groq_endpoint = self.groq.request_groq_endpoint
