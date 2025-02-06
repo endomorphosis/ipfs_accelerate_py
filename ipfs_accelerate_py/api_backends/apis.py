@@ -258,6 +258,8 @@ class apis:
                                     # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         return None
     
+    def init_groq(self, models=None):
+        return None
     
     async def add_ovms_endpoint(self, model, endpoint):
         return None
