@@ -76,232 +76,48 @@ class apis:
         models_dict = { model: test_models[i] for i, model in enumerate(models) }
         api_types = ["groq", "hf_tei", "hf_tgi", "llvm", "ollama", "openai", "s3_kit", "ovms"]
         
+        for api_type in api_types:
+            if api_type not in dir(self):
+                init_method = getattr(self,"init_" + api_type)
+                init_method(models)
+            if api_type not in globals():
+                absolute_path = os.path.abspath(os.path.join(os.path.dirname(__file__), api_type + ".py"))
+                try:
+                    with open(absolute_path, encoding='utf-8') as f:
+                        exec(f.read())
+                except Exception as e:
+                    print(e)
+                    pass
+                with open(absolute_path, encoding='utf-8') as f:
+                    globals()[api_type] = exec(f.read())
+            else:
+                pass
+            if api_type not in list(self.resources.keys()):
+                # from .api_types[api_type] import api_type
+                ## import the api_type class from the api_types module
+                self.resources[api_type] = api_type(self.resources, self.metadata)
+                setattr(self, api_type, self.resources[api_type])
+            else:
+                setattr(self, api_type, self.resources[api_type])
+            setattr(self, "create_" + api_type + "_endpoint_handler", getattr(self, api_type).create_endpoint_handler)
+            setattr(self, "make_post_request_" + api_type, getattr(self, api_type).make_post_request)   
+                    
         for model in list(models_dict.keys()):
             for api_type in api_types:
-                if api_type not in dir(self):
-                    init_method = getattr(self,"init_" + api_type)
-                    init_method(models)
-                if api_type not in globals():
-                    absolute_path = os.path.abspath(os.path.join(os.path.dirname(__file__), api_type + ".py"))
-                    try:
-                        with open(absolute_path, encoding='utf-8') as f:
-                            exec(f.read())
-                    except Exception as e:
-                        print(e)
-                        pass
-                    with open(absolute_path, encoding='utf-8') as f:
-                        globals()[api_type] = exec(f.read())
-                else:
-                    pass
-                if api_type not in list(self.resources.keys()):
-                    # from .api_types[api_type] import api_type
-                    ## import the api_type class from the api_types module
-                    self.resources[api_type] = api_type(self.resources, self.metadata)
-                    setattr(self, api_type, self.resources[api_type])
-                else:
-                    setattr(self, api_type, self.resources[api_type])
-                setattr(self, "create_" + api_type + "_endpoint_handler", getattr(self, api_type).create_endpoint_handler)
-                setattr(self, "make_post_request_" + api_type, getattr(self, api_type).make_post_request)   
-            
-        # for model in list(models.keys()):
-        #     if "groq" not in dir(self) and models_dict[model]["groq"] == True:
-        #         if "groq" not in list(self.resources.keys()):
-        #             from .groq import groq
-        #             self.resources["groq"] = groq(self.resources, self.metadata)
-        #             self.groq = self.resources["groq"]
-        #         else:
-        #             self.groq = self.resources["groq"]
-        #         self.create_groq_endpoint_handler = self.groq.create_groq_endpoint_handler
-        #         self.make_post_request_groq = self.groq.make_post_request_groq
-            
-        #     if "hf_tei" not in dir(self) and models_dict[model]["hf_tei"] == True:
-        #         if "hf_tei" not in list(self.resources.keys()):
-        #             from .hf_tei import hf_tei
-        #             self.resources["hf_tei"] = hf_tei(self.resources, self.metadata)
-        #             self.hf_tei = self.resources["hf_tei"]
-        #         else:
-        #             self.hf_tei = self.resources["hf_tei"]
-        #         self.create_tei_endpoint_handler = self.hf_tei.create_tei_endpoint_handler
-        #         self.make_post_request_tei = self.hf_tei.make_post_request_tei
-                    
-        #     if "hf_tgi" not in dir(self) and models_dict[model]["hf_tgi"] == True:
-        #         self.init_tgi(models)
-        #         if "hf_tgi" not in list(self.resources.keys()):
-        #             from .hf_tgi import hf_tgi
-        #             self.resources["hf_tgi"] = hf_tgi(self.resources, self.metadata)
-        #             self.hf_tgi = self.resources["hf_tgi"]
-        #         else:
-        #             self.hf_tgi = self.resources["hf_tgi"]
-        #         self.make_post_request_tgi = self.hf_tgi.make_post_request_tgi
-        #         self.create_tgi_endpoint_handler = self.hf_tgi.create_tgi_endpoint_handler
-                    
-        #     if "llvm" not in dir(self) and models_dict[model]["llvm"] == True:
-        #         if "llvm" not in list(self.resources.keys()):
-        #             from .llvm import llvm
-        #             self.resources["llvm"] = llvm(self.resources, self.metadata)
-        #             self.llvm = self.resources["llvm"]
-        #         else:
-        #             self.llvm = self.resources["llvm"]
-        #         self.create_llvm_endpoint_handler = self.llvm.create_llvm_endpoint_handler
-        #         self.make_post_request_llvm = self.llvm.make_post_request_llvm
-                    
-        #     if "ollama" not in dir(self) and models_dict[model]["ollama"] == True:
-        #         if "ollama" not in list(self.resources.keys()):
-        #             from .ollama import ollama
-        #             self.resources["ollama"] = ollama(self.resources, self.metadata)
-        #             self.ollama = self.resources["ollama"]
-        #         else:
-        #             self.ollama = self.resources["ollama"]
-        #         self.create_ollama_endpoint_handler = self.ollama.create_ollama_endpoint_handler
-        #         self.make_post_request_ollama = self.ollama.make_post_request_ollama
-                    
-        #     if "ovms" not in dir(self) and models_dict[model]["ovms"] == True:
-        #         if "ovms" not in list(self.resources.keys()):
-        #             from .ovms import ovms
-        #             self.resources["ovms"] = ovms(self.resources, self.metadata)
-        #             self.ovms = self.resources["ovms"]
-        #         else:
-        #             self.ovms = self.resources["ovms"]
-        #         self.make_post_request_ovms = self.ovms.make_post_request_ovms
-        #         self.create_ovms_endpoint_handler = self.ovms.create_ovms_endpoint_handler
-                    
-        #     if "s3_kit" not in dir(self) and models_dict[model]["s3_kit"] == True:
-        #         if "s3_kit" not in list(self.resources.keys()):
-        #             from .s3_kit import s3_kit
-        #             self.resources["s3_kit"] = s3_kit(self.resources, self.metadata)
-        #             self.s3_kit = self.resources["s3_kit"]
-        #         else:
-        #             self.s3_kit = self.resources["s3_kit"]
-        #         self.create_s3_endpoint_handler = self.s3_kit.create_s3_endpoint_handler
-        #         self.make_post_request_s3 = self.s3_kit.make_post_request_s3
-            
-        #     if "openai_api" not in dir(self) and models_dict[model]["openai"] == True:
-        #         if "openai_api" not in list(self.resources.keys()):
-        #             from .openai_api import openai_api
-        #             self.resources["openai_api"] = openai_api(self.resources, self.metadata)
-        #             self.openai_api = self.resources["openai_api"]
-        #         else:
-        #             self.openai_api = self.resources["openai_api"]
-        #         self.create_openai_endpoint_handler = self.openai_api.create_openai_endpoint_handler
-        #         self.make_post_request_openai = self.openai_api.make_post_request_openai
-        
-        for model in models:
-            if "ovms_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["ovms_endpoints"]) > 0 :
-                    for endpoint in self.endpoints["ovms_endpoints"][model]:
-                        if len(endpoint) == 3:
-                            this_model = endpoint[0]
-                            this_endpoint = endpoint[1]
-                            context_length = endpoint[2]
-                            if model == this_model:
-                                if endpoint not in list(self.batch_sizes[model].keys()):
-                                    # self.batch_sizes[model][this_endpoint] = 0
-                                    self.resources["batch_sizes"][model][this_endpoint] = 0
-                                # self.queues[model][endpoint] = asyncio.Queue(64)  # Unbounded queue
-                                self.resources["queues"][model][this_endpoint] = None
-                                self.resources["queues"][model][this_endpoint] = asyncio.Queue(1)  # Unbounded queue
-                                # self.endpoint_handler[(model, endpoint)] = self.make_post_request(self.request_openvino_endpoint(model))
-                                self.resources["endpoint_handler"][model][this_endpoint] = self.create_openvino_endpoint_handler(model, this_endpoint, context_length)
-                                # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            
-            if "tei_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["tei_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["tei_endpoints"].keys()):
-                        for endpoint in self.endpoints["tei_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)  # Unbounded queue
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_tei_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "tgi_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["tgi_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["tgi_endpoints"].keys()):
-                        for endpoint in self.endpoints["tgi_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_tgi_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "groq_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["groq_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["groq_endpoints"].keys()):
-                        for endpoint in self.endpoints["groq_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_groq_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "llvm_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["llvm_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["llvm_endpoints"].keys()):
-                        for endpoint in self.endpoints["llvm_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_llvm_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "ollama_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["ollama_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["ollama_endpoints"].keys()):
-                        for endpoint in self.endpoints["ollama_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_ollama_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "openai_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["openai_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["openai_endpoints"].keys()):
-                        for endpoint in self.endpoints["openai_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_openai_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
-            if "s3_endpoints" in list(self.endpoints.keys()):
-                if len(self.endpoints["s3_endpoints"]) > 0:
-                    for endpoint_model in list(self.endpoints["s3_endpoints"].keys()):
-                        for endpoint in self.endpoints["s3_endpoints"][endpoint_model]:                            
-                            if len(endpoint) == 3:
-                                this_model = endpoint[0]
-                                this_endpoint = endpoint[1]
-                                context_length = endpoint[2]
-                                if model == this_model:
-                                    if endpoint not in list(self.batch_sizes[model].keys()):
-                                        self.resources["batch_sizes"][model][this_endpoint] = 0
-                                    self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
-                                    self.resources["endpoint_handler"][model][this_endpoint] = self.create_s3_endpoint_handler(model, this_endpoint, context_length)
-                                    # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
+                if api_type + "_endpoints"in list(self.endpoints.keys()):
+                    if len(self.endpoints[api_type + "_endpoints"]) > 0:
+                        for endpoint_model in list(self.endpoints[api_type + "_endpoints"].keys()):
+                            for endpoint in self.endpoints[api_type + "_endpoints"][endpoint_model]:
+                                if len(endpoint) == 3:
+                                    this_model = endpoint[0]
+                                    this_endpoint = endpoint[1]
+                                    context_length = endpoint[2]
+                                    if model == this_model:
+                                        if endpoint not in list(self.batch_sizes[model].keys()):
+                                            self.resources["batch_sizes"][model][this_endpoint] = 0
+                                        self.resources["queues"][model][this_endpoint] = asyncio.Queue(64)
+                                        self.resources["endpoint_handler"][model][this_endpoint] = self.create_endpoint_handler(model, this_endpoint, context_length)
+                                        # self.resources["consumer_tasks"][model][this_endpoint] = asyncio.create_task(self.endpoint_consumer(self.resources["queues"][model][this_endpoint], 64, model, this_endpoint))
         return None
     
     def init_groq(self, models=None):
