@@ -3,8 +3,7 @@ import os
 import sys
 import json 
 
-
-class test_ipfs_accelerate_py:
+class test_ipfs_accelerate:
     def __init__(self, resources=None, metadata=None):
         
         if resources is None:
@@ -27,7 +26,7 @@ class test_ipfs_accelerate_py:
         
         if "test_backend" not in dir(self):
             if "test_backend" not in list(self.resources.keys()):
-                from test_backend import test_backend_py
+                from ipfs_accelerate_py.test.test_hardware_backend import test_backend_py
                 self.resources["test_backend"] = test_backend_py(resources, metadata)
                 self.test_backend = self.resources["test_backend"]
             else:
@@ -374,6 +373,6 @@ if __name__ == "__main__":
         for endpoint in endpoint_types:
             resources["local_endpoints"].append([model, endpoint, 32768])
 
-    ipfs_accelerate_py = test_ipfs_accelerate_py(resources, metadata)
+    ipfs_accelerate_py = test_ipfs_accelerate(resources, metadata)
     asyncio.run(ipfs_accelerate_py.__test__(resources, metadata))
     print("test complete")

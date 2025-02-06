@@ -1,2 +1,4 @@
-from test_ipfs_accelerate import test_ipfs_accelerate_py
-from test_backend import test_backend_py
+from test_ipfs_accelerate import test_ipfs_accelerate
+from test_hardware_backend import test_hardware_backend
+from test_api_backend import test_api_backend
+from random_models import random_models

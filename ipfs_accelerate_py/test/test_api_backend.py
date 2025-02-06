@@ -1,7 +1,8 @@
-class test_backend_py:
+class test_api_backend:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
+        
 
     def test_webnn(self):
         return None

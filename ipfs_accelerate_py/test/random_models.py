@@ -329,3 +329,11 @@ with open(os.path.join(this_dir, "mapped_models.json"), "w") as f:
 
 # with open(os.path.join(this_dir, "model_mapping.json"), "w") as f:
 #     json.dump(model_mappping, f)
+class random_models:
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources
+        self.metadata = metadata
+        return None
+
+    def __call__(self, *args, **kwds):
+        pass    
