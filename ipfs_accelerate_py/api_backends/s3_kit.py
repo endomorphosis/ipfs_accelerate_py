@@ -31,6 +31,13 @@ class s3_kit:
 					self.config = metadata['s3cfg']
 					self.get_session(metadata['s3cfg'])
 
+		self.create_s3_endpoint_handler = self.create_s3_endpoint_handler
+
+	def create_s3_endpoint_handler(self):
+		def handler(request):
+			return None
+		return handler
+
 	def __call__(self, method, **kwargs):
 		if method == 'ls_dir':
 			self.method = 'ls_dir'

@@ -1,8 +1,14 @@
 class hf_tgi:
-    def __init__(self, resources, metadata):
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources
+        self.metadata = metadata
+        self.create_hf_tgi_endpoint_handler = self.create_hf_tgi_endpoint_handler 
         return None
     
-    
+    def create_hf_tgi_endpoint_handler(self):
+        def handler(request):
+            return None
+        return handler
     
     # def request_tgi_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
     #     incoming_batch_size = len(batch)

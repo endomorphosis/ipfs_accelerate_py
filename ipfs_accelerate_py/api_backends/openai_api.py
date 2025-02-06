@@ -75,7 +75,6 @@ translation_models = [
     "whisper-1"
 ]
 
-
 chat_templates = [
         {
             'models': ['gpt-3.5-turbo','gpt-4','gpt-3.5-turbo-16k'],
@@ -114,6 +113,14 @@ class openai_api:
             
         self.resources = resources
         self.metadata = metadata
+        self.create_openai_endpoint_handler = self.create_openai_endpoint_handler
+        self.init()
+        return None
+
+    def create_openai_endpoint_handler(self):
+        def handler(request):
+            return None
+        return handler    
 
     def init(self, resources=None, metadata=None):
         if resources is not None:
