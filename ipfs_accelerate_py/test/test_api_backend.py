@@ -10,12 +10,22 @@ class test_api_backend:
         self.test_llvm = self.test_llvm
         self.test_ovms = self.test_ovms
         self.test_ollama = self.test_ollama
+        
+        if "apis" not in self.resources:
+            from ..api_backends.apis import apis
+            self.resources["apis"] = apis(resources=self.resources, metadata=self.metadata)
+            self.apis = self.resources["apis"]
+        else:
+            self.apis = self.resources["apis"]
+            
         return None
 
     def test_ovms(self):
+        self.apis.ovms.__test__()
         return None
     
     def test_ollama(self):
+        self.apis.ollama.__test__()
         return None
 
     def test_hf_tgi(self):

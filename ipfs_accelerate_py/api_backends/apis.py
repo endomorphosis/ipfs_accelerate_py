@@ -22,6 +22,48 @@ class apis:
         self.api_models = api_models(self.resources, self.metadata)
         self.endpoints = self.metadata["endpoints"]
         
+        if "hf_tei" not in self.resources:
+            self.resources["hf_tei"] = hf_tei(self.resources, self.metadata)
+            self.hf_tei = self.resources["hf_tei"]
+        else:
+            self.hf_tei = self.resources["hf_tei"]
+            
+        if "hf_tgi" not in self.resources:
+            self.resources["hf_tgi"] = hf_tgi(self.resources, self.metadata)
+            self.hf_tgi = self.resources["hf_tgi"]
+        else:
+            self.hf_tgi = self.resources["hf_tgi"]
+            
+        if "groq" not in self.resources:
+            self.resources["groq"] = groq(self.resources, self.metadata)
+            self.groq = self.resources["groq"]
+        else:
+            self.groq = self.resources["groq"]
+            
+        if "llvm" not in self.resources:
+            self.resources["llvm"] = llvm(self.resources, self.metadata)
+            self.llvm = self.resources["llvm"]
+        else:
+            self.llvm = self.resources["llvm"]
+            
+        if "ollama" not in self.resources:
+            self.resources["ollama"] = ollama(self.resources, self.metadata)
+            self.ollama = self.resources["ollama"]
+        else:
+            self.ollama = self.resources["ollama"]
+            
+        if "openai_api" not in self.resources:
+            self.resources["openai_api"] = openai_api(self.resources, self.metadata)
+            self.openai_api = self.resources["openai_api"]
+        else:
+            self.openai_api = self.resources["openai_api"]
+        
+        if "s3_kit" not in self.resources:
+            self.resources["s3_kit"] = s3_kit(self.resources, self.metadata)
+            self.s3_kit = self.resources["s3_kit"]
+        else:
+            self.s3_kit = self.resources["s3_kit"]
+        
         self.tgi_endpoints = {}
         self.ollama_endpoints = {}
         self.tei_endpoints = {}
