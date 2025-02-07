@@ -398,10 +398,10 @@ class ipfs_accelerate_py:
     #     return results
         
     
-    async def add_local_endpoint(self, model, endpoint_type, endpoint, context_length):
+    def add_local_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
     
-    async def add_api_endpoint(self, model, endpoint_type, endpoint, context_length):
+    def add_api_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
