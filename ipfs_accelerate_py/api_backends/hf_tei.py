@@ -1,13 +1,17 @@
 import asyncio
 class hf_tei:
     def __init__(self, resources, metadata):
-        self.request_tei_endpoint = self.request_tei_endpoint
-        self.make_post_request_tei = self.make_post_request_tei
-        self.create_tei_endpoint_handler = self.create_tei_endpoint_handler
-        self.test_tei_endpoint = self.test_tei_endpoint
+        self.request_hf_tei_endpoint = self.request_hf_tei_endpoint
+        self.make_post_request_hf_tei = self.make_post_request_hf_tei
+        self.create_hf_tei_endpoint_handler = self.create_hf_tei_endpoint_handler
+        self.test_hf_tei_endpoint = self.test_hf_tei_endpoint
         return None
     
-    async def test_tei_endpoint(self, model, endpoint_list=None):
+    def request_hf_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+
+        return None
+    
+    async def test_hf_tei_endpoint(self, model, endpoint_list=None):
         this_endpoint = None
         filtered_list = {}
         test_results = {}
@@ -34,7 +38,7 @@ class hf_tei:
             return ValueError("No endpoint_handlers found")
         return test_results
     
-    async def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+    async def create_hf_tei_endpoint_handler(self, model, endpoint=None, endpoint_type=None, batch=None):
         if batch == None:
             incoming_batch_size = 0
         else:
@@ -80,7 +84,7 @@ class hf_tei:
                         return endpoint
             return None
     
-    async def make_post_request_tei(self, endpoint, data=None):
+    async def make_post_request_hf_tei(self, endpoint, data=None):
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
         if data is None:
@@ -124,7 +128,7 @@ class hf_tei:
                 print(f"Unexpected error: {str(e)}")
                 return ValueError(f"Unexpected error: {str(e)}")
 
-    def create_tei_endpoint_handler(self, model, endpoint, context_length):
+    def create_hf_tei_endpoint_handler(self, model, endpoint, context_length):
         async def handler(x):
             remote_endpoint = await self.make_post_request_tei(endpoint, x)
             return remote_endpoint

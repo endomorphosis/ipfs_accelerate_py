@@ -31,9 +31,24 @@ class s3_kit:
 					self.config = metadata['s3cfg']
 					self.get_session(metadata['s3cfg'])
 
-		self.create_s3_endpoint_handler = self.create_s3_endpoint_handler
+		self.create_s3_kit_endpoint_handler = self.create_s3_kit_endpoint_handler
+		self.request_s3_kit_endpoint = self.request_s3_kit_endpoint
+		self.test_s3_kit_endpoint = self.test_s3_kit_endpoint
+		return None
 
-	def create_s3_endpoint_handler(self):
+	def make_post_request_s3_kit(self, model, endpoint, endpoint_type, batch):
+     
+		return None
+
+	def test_s3_kit_endpoint(self):
+     
+		return None
+
+	def request_s3_kit_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+
+		return None
+
+	def create_s3_kit_endpoint_handler(self):
 		def handler(request):
 			return None
 		return handler

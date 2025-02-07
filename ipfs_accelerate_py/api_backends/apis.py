@@ -1,12 +1,12 @@
-from .ovms import ovms
-from .groq import groq
-from .hf_tei import hf_tei
-from .hf_tgi import hf_tgi
-from .llvm import llvm
-from .s3_kit import s3_kit
-from .openai_api import openai_api
-from .ollama import ollama
-from api_models_registry import api_models
+from . import ovms
+from . import groq
+from . import hf_tei
+from . import hf_tgi
+from . import llvm
+from . import s3_kit
+from . import openai_api
+from . import ollama
+from .api_models_registry import api_models
 import asyncio
 import os
 import json
@@ -20,7 +20,8 @@ class apis:
         self.resources = resources
         self.metadata = metadata
         self.api_models = api_models(self.resources, self.metadata)
-        self.endpoints = self.metadata["endpoints"]
+        if "endpoints" in list(self.metadata.keys()):
+            self.endpoints = self.metadata["endpoints"]
         
         if "hf_tei" not in self.resources:
             self.resources["hf_tei"] = hf_tei(self.resources, self.metadata)
@@ -52,6 +53,12 @@ class apis:
         else:
             self.ollama = self.resources["ollama"]
             
+        if "ovms" not in self.resources:
+            self.resources["ovms"] = ovms(self.resources, self.metadata)
+            self.ovms = self.resources["ovms"]
+        else:
+            self.ovms = self.resources["ovms"]
+            
         if "openai_api" not in self.resources:
             self.resources["openai_api"] = openai_api(self.resources, self.metadata)
             self.openai_api = self.resources["openai_api"]
@@ -74,80 +81,94 @@ class apis:
         self.ovms_endpoints = {}
         
         self.request_tgi_endpoint = self.hf_tgi.request_tgi_endpoint
-        self.request_tei_endpoint = self.hf_tei.request_tei_endpoint
+        self.request_hf_tei_endpoint = self.hf_tei.request_hf_tei_endpoint
         self.request_groq_endpoint = self.groq.request_groq_endpoint
         self.request_llvm_endpoint = self.llvm.request_llvm_endpoint
         self.request_ollama_endpoint = self.ollama.request_ollama_endpoint
-        self.request_openai_endpoint = self.openai_api.request_openai_endpoint
-        self.request_s3_endpoint = self.s3_kit.request_s3_endpoint
+        self.request_openai_api_endpoint = self.openai_api.request_openai_api_endpoint
+        self.request_s3_kit_endpoint = self.s3_kit.request_s3_kit_endpoint
         self.request_ovms_endpoint = self.ovms.request_ovms_endpoint
         
         self.test_groq_endpoint = self.groq.test_groq_endpoint
         self.test_llvm_endpoint = self.llvm.test_llvm_endpoint
         self.test_ollama_endpoint = self.ollama.test_ollama_endpoint
         self.test_ovms_endpoint = self.ovms.test_ovms_endpoint
-        self.test_tei_endpoint = self.hf_tei.test_tei_endpoint
-        self.test_tgi_endpoint = self.hf_tgi.test_tgi_endpoint
-        self.test_openai_endpoint = self.openai_api.test_openai_endpoint
-        self.test_s3_endpoint = self.s3_kit.test_s3_endpoint
+        self.test_hf_tei_endpoint = self.hf_tei.test_hf_tei_endpoint
+        self.test_hf_tgi_endpoint = self.hf_tgi.test_tgi_endpoint
+        self.test_openai_api_endpoint = self.openai_api.test_openai_api_endpoint
+        self.test_s3_kit_endpoint = self.s3_kit.test_s3_kit_endpoint
 
-        self.add_groq_endpoint = self.groq.add_groq_endpoint
-        self.add_llvm_endpoint = self.llvm.add_llvm_endpoint
-        self.add_tei_endpoint = self.hf_tei.add_tei_endpoint
-        self.add_tgi_endpoint = self.hf_tgi.add_tgi_endpoint
-        self.add_ollama_endpoint = self.ollama.add_ollama_endpoint
-        self.add_ovms_endpoint = self.ovms.add_ovms_endpoint
-        self.add_libp2p_endpoint = self.ovms.add_libp2p_endpoint
-        self.add_openai_endpoint = self.openai_api.add_openai_endpoint
-        self.add_s3_endpoint = self.s3_kit.add_s3_endpoint
+        self.add_groq_endpoint = self.add_groq_endpoint
+        self.add_llvm_endpoint = self.add_llvm_endpoint
+        self.add_hf_tei_endpoint = self.add_hf_tei_endpoint
+        self.add_hf_tgi_endpoint = self.add_hf_tgi_endpoint
+        self.add_ollama_endpoint = self.add_ollama_endpoint
+        self.add_ovms_endpoint = self.add_ovms_endpoint
+        self.add_openai_api_endpoint = self.add_openai_api_endpoint
+        self.add_s3_endpoint = self.add_s3_endpoint
         
-        self.rm_groq_endpoint = self.groq.rm_groq_endpoint
-        self.rm_llvm_endpoint = self.llvm.rm_llvm_endpoint
-        self.rm_tei_endpoint = self.hf_tei.rm_tei_endpoint
-        self.rm_tgi_endpoint = self.hf_tgi.rm_tgi_endpoint
-        self.rm_ollama_endpoint = self.ollama.rm_ollama_endpoint
-        self.rm_ovms_endpoint = self.ovms.rm_ovms_endpoint
-        self.rm_openai_endpoint = self.openai_api.rm_openai_endpoint
-        self.rm_s3_endpoint = self.s3_kit.rm_s3_endpoint
+        self.rm_groq_endpoint = self.rm_groq_endpoint
+        self.rm_llvm_endpoint = self.rm_llvm_endpoint
+        self.rm_hf_tei_endpoint = self.rm_hf_tei_endpoint
+        self.rm_hf_tgi_endpoint = self.rm_hf_tgi_endpoint
+        self.rm_ollama_endpoint = self.rm_ollama_endpoint
+        self.rm_ovms_endpoint = self.rm_ovms_endpoint
+        self.rm_openai_api_endpoint = self.rm_openai_api_endpoint
+        self.rm_s3_endpoint = self.rm_s3_endpoint
         
         self.init()
         return None
     
     def init(self, models=None):
-        test_models = [ self.api_models.test_model(model) for model in models ]
-        models_dict = { model: test_models[i] for i, model in enumerate(models) }
-        api_types = ["groq", "hf_tei", "hf_tgi", "llvm", "ollama", "openai", "s3_kit", "ovms"]
+        if type(models) == type(list()):
+            test_models = [ self.api_models.test_model(model) for model in models ]
+            models_dict = { model: test_models[i] for i, model in enumerate(models) }
+        else:
+            test_models = []
+            models_dict = {}
+            
+        api_types = ["groq", "hf_tei", "hf_tgi", "llvm", "ollama", "openai_api", "s3_kit", "ovms"]
         
         for api_type in api_types:
             if api_type not in dir(self):
                 init_method = getattr(self,"init_" + api_type)
                 init_method(models)
             if api_type not in globals():
-                absolute_path = os.path.abspath(os.path.join(os.path.dirname(__file__), api_type + ".py"))
+                this_file_path = os.path.relpath(__file__)
+                this_folder_path = os.path.dirname(this_file_path)
+                skill_path  = os.path.join(this_folder_path, api_type + ".py")
+                # absolute_path = os.path.normpath(absolute_path)
                 try:
-                    with open(absolute_path, encoding='utf-8') as f:
+                    with open(skill_path, encoding='utf-8') as f:
                         exec(f.read())
                 except Exception as e:
                     print(e)
+                    print(os.listdir("."))
+                    print(os.listdir(this_folder_path))
                     pass
-                with open(absolute_path, encoding='utf-8') as f:
+                with open(skill_path, encoding='utf-8') as f:
                     globals()[api_type] = exec(f.read())
             else:
                 pass
             if api_type not in list(self.resources.keys()):
                 # from .api_types[api_type] import api_type
                 ## import the api_type class from the api_types module
-                self.resources[api_type] = api_type(self.resources, self.metadata)
+                
+                self.resources[api_type] =  globals()[api_type](self.resources, self.metadata)
                 setattr(self, api_type, self.resources[api_type])
             else:
                 setattr(self, api_type, self.resources[api_type])
-            setattr(self, "create_" + api_type + "_endpoint_handler", getattr(self, api_type).create_endpoint_handler)
-            setattr(self, "make_post_request_" + api_type, getattr(self, api_type).make_post_request)   
+            get_remote_endpoint_handler = getattr(self.resources[api_type], "create_" + api_type + "_endpoint_handler")
+            setattr(self, "create_" + api_type + "_endpoint_handler", get_remote_endpoint_handler)
+            get_remote_post_request = getattr(self.resources[api_type], "make_post_request_" + api_type)
+            setattr(self, "make_post_request_" + api_type, get_remote_post_request)             
+            # setattr(self, "create_" + api_type + "_endpoint_handler", getattr(self, api_type).create_endpoint_handler)
+            # setattr(self, "make_post_request_" + api_type, getattr(self, api_type).make_post_request)   
                     
         for model in list(models_dict.keys()):
             for api_type in api_types:
                 if api_type + "_endpoints"in list(self.endpoints.keys()):
-                    if len(self.endpoints[api_type + "_endpoints"]) > 0:
+                    if len(self.endpoints[api_type + "_endp"]) > 0:
                         for endpoint_model in list(self.endpoints[api_type + "_endpoints"].keys()):
                             for endpoint in self.endpoints[api_type + "_endpoints"][endpoint_model]:
                                 if len(endpoint) == 3:
@@ -168,10 +189,10 @@ class apis:
     def init_llvm(self, models=None):
         return None
     
-    def init_tei(self, models=None):
+    def init_hf_tei(self, models=None):
         return None
     
-    def init_tgi(self, models=None):
+    def init_hf_tgi(self, models=None):
         return None
     
     def init_ollama(self, models=None):
@@ -193,7 +214,7 @@ class apis:
     async def add_llvm_endpoint(self, model, endpoint):
         return None
     
-    async def add_tei_endpoint(self, model, endpoint):
+    async def add_hf_tei_endpoint(self, model, endpoint):
         return None
     
     async def add_groq_endpoint(self, model, endpoint):
@@ -202,7 +223,7 @@ class apis:
     async def add_ollama_endpoint(self, model, endpoint):
         return None
     
-    async def add_tgi_endpoint(self, model, endpoint):
+    async def add_hf_tgi_endpoint(self, model, endpoiointsnt):
         return None
     
     async def add_openvino_endpoint(self, model, endpoint):
@@ -211,7 +232,7 @@ class apis:
     async def add_libp2p_endpoint(self, model, endpoint):
         return None
     
-    async def add_openai_endpoint(self, model, endpoint):
+    async def add_openai_api_endpoint(self, model, endpoint):
         return None
     
     async def add_s3_endpoint(self, model, endpoint):
@@ -223,7 +244,7 @@ class apis:
     async def rm_llvm_endpoint(self, model, endpoint):
         return None
     
-    async def rm_tei_endpoint(self, model, endpoint):
+    async def rm_hf_tei_endpoint(self, model, endpoint):
         return None
     
     async def rm_groq_endpoint(self, model, endpoint):
@@ -232,7 +253,7 @@ class apis:
     async def rm_ollama_endpoint(self, model, endpoint):
         return None
     
-    async def rm_tgi_endpoint(self, model, endpoint):
+    async def rm_hf_tgi_endpoint(self, model, endpoint):
         return None
     
     async def rm_openvino_endpoint(self, model, endpoint):
@@ -241,7 +262,7 @@ class apis:
     async def rm_libp2p_endpoint(self, model, endpoint):
         return None
     
-    async def rm_openai_endpoint(self, model, endpoint):
+    async def rm_openai_api_endpoint(self, model, endpoint):
         return None
     
     async def rm_s3_endpoint(self, model, endpoint):
@@ -253,7 +274,7 @@ class apis:
     async def test_llvm_endpoint(self, model, endpoint):
         return None
     
-    async def test_tei_endpoint(self, model, endpoint):
+    async def test_hf_tei_endpoint(self, model, endpoint):
         return None
     
     async def test_groq_endpoint(self, model, endpoint):
@@ -262,7 +283,7 @@ class apis:
     async def test_ollama_endpoint(self, model, endpoint):
         return None
     
-    async def test_tgi_endpoint(self, model, endpoint):
+    async def test_hf_tgi_endpoint(self, model, endpoint):
         return None
     
     async def test_openvino_endpoint(self, model, endpoint):
@@ -271,13 +292,15 @@ class apis:
     async def test_libp2p_endpoint(self, model, endpoint):
         return None
 
-    async def test_openai_endpoint(self, model, endpoint):
+    async def test_openai_api_endpoint(self, model, endpoint):
         return None
     
     async def test_s3_endpoint(self, model, endpoint):
         return None
     
-    
+    def request_hf_tei_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+        
+        return None
     
     async def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         batch_size = len(batch)
@@ -419,7 +442,7 @@ class apis:
                     return endpoint
         return None
     
-    async def request_openai_endpoint(self, model, batch_size):
+    async def request_openai_api_endpoint(self, model, batch_size):
         if model in self.openai_endpoints:
             for endpoint in self.openai_endpoints[model]:
                 if self.endpoint_status[endpoint] >= batch_size:

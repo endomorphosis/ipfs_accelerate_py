@@ -1,3 +1,6 @@
+import os 
+import sys
+
 class test_api_backend:
     def __init__(self, resources, metadata):
         self.resources = resources
@@ -12,7 +15,8 @@ class test_api_backend:
         self.test_ollama = self.test_ollama
         
         if "apis" not in self.resources:
-            from ..api_backends.apis import apis
+            sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
+            from api_backends import apis
             self.resources["apis"] = apis(resources=self.resources, metadata=self.metadata)
             self.apis = self.resources["apis"]
         else:

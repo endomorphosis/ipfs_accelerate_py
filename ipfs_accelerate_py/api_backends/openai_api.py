@@ -113,11 +113,26 @@ class openai_api:
             
         self.resources = resources
         self.metadata = metadata
-        self.create_openai_endpoint_handler = self.create_openai_endpoint_handler
+        self.create_openai_api_endpoint_handler = self.create_openai_api_endpoint_handler
+        self.request_openai_api_endpoint = self.request_openai_api_endpoint
+        self.test_openai_api_endpoint = self.test_openai_api_endpoint
+        self.make_post_request_openai_api = self.make_post_request_openai_api
         self.init()
         return None
+    
+    def make_post_request_openai_api(self, model, endpoint, endpoint_type, batch):
+        
+        return None
+    
+    def test_openai_api_endpoint(self):
+        ## test dependencies
+        return None
+    
+    def request_openai_api_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+        
+        return None
 
-    def create_openai_endpoint_handler(self):
+    def create_openai_api_endpoint_handler(self):
         def handler(request):
             return None
         return handler    

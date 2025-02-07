@@ -8,6 +8,11 @@ class ovms:
         self.create_ovms_endpoint_handler = self.create_ovms_endpoint_handler
         self.test_ovms_endpoint = self.test_ovms_endpoint
         self.make_post_request_ovms = self.make_post_request_ovms
+        self.request_ovms_endpoint = self.request_ovms_endpoint
+        return None
+    
+    def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+        
         return None
 
     def create_ovms_endpoint_handler(self, model, endpoint, context_length):
