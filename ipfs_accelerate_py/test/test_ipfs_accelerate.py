@@ -24,13 +24,21 @@ class test_ipfs_accelerate:
             else:
                 self.ipfs_accelerate_py = self.resources["ipfs_accelerate_py"]
         
-        if "test_backend" not in dir(self):
-            if "test_backend" not in list(self.resources.keys()):
-                from ipfs_accelerate_py.test.test_hardware_backend import test_backend_py
-                self.resources["test_backend"] = test_backend_py(resources, metadata)
+        if "test_hardware_backend" not in dir(self):
+            if "test_hardware_backend" not in list(self.resources.keys()):
+                from ipfs_accelerate_py.test.test_hardware_backend import test_hardware_backend
+                self.resources["test_backend"] = test_hardware_backend(resources, metadata)
                 self.test_backend = self.resources["test_backend"]
             else:
                 self.test_backend = self.resources["test_backend"]
+                
+        if "test_api_backend" not in dir(self):
+            if "test_api_backend" not in list(self.resources.keys()):
+                from ipfs_accelerate_py.test.test_api_backend import test_api_backend
+                self.resources["test_api_backend"] = test_api_backend(resources, metadata)
+                self.test_api_backend = self.resources["test_api_backend"]
+            else:
+                self.test_api_backend = self.resources["test_api_backend"]
                 
         if "torch" not in dir(self):
             if "torch" not in list(self.resources.keys()):

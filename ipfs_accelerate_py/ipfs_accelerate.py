@@ -104,29 +104,34 @@ class ipfs_accelerate_py:
         self.queues = {}
         self.request = {}
         self.local_endpoints = {}
-        self.tei_endpoints = {}
+        self.api_endpoints = {}
         self.openvino_endpoints = {}
         self.libp2p_endpoints = {}
         self.caches = {}
-        self.endpoint_types = ["tei_endpoints", "openvino_endpoints", "libp2p_endpoints", "local_endpoints"]
+        self.endpoint_types = ["api_endpoints", "libp2p_endpoints", "local_endpoints"]
         self.add_endpoint = self.add_endpoint
         self.rm_endpoint = self.rm_endpoint
         self.get_endpoints = self.get_endpoints
         self.init_endpoints = self.init_endpoints
-        self.get_https_endpoint = self.get_https_endpoint
-        self.get_libp2p_endpoint = self.get_libp2p_endpoint
-        self.request_tei_endpoint = self.request_tei_endpoint
-        self.request_libp2p_endpoint = self.request_libp2p_endpoint
-        self.request_openvino_endpoint = self.request_openvino_endpoint
+        # self.get_https_endpoint = self.get_https_endpoint
+        # self.get_libp2p_endpoint = self.get_libp2p_endpoint
+        # self.request_libp2p_endpoint = self.request_libp2p_endpoint
         self.request_local_endpoint = self.request_local_endpoint
-        self.request_llama_cpp_endpoint = self.request_llama_cpp_endpoint
+        self.request_hf_tei_endpoint = self.request_hf_tei_endpoint
+        self.request_hf_tgi_endpoint = self.request_hf_tgi_endpoint
+        self.request_groq_endpoint = self.request_groq_endpoint
+        self.request_ovms_endpoint = self.request_ovms_endpoint
+        self.request_openai_api_endpoint = self.request_openai_api_endpoint
+        self.request_s3_kit_endpoint = self.request_s3_kit_endpoint
+        self.request_llvm_endpoint = self.request_llvm_endpoint
+        self.request_ollama_endpoint = self.request_ollama_endpoint
         self.request_local_endpoint = self.request_local_endpoint
-        self.make_local_request = self.make_local_request
+        # self.make_local_request = self.make_local_request
         self.add_endpoint = self.add_endpoint
         self.rm_endpoint = self.rm_endpoint
         self.get_endpoints = self.get_endpoints
         self.get_https_endpoint = self.get_https_endpoint
-        self.get_libp2p_endpoint = self.get_libp2p_endpoint
+        # self.get_libp2p_endpoint = self.get_libp2p_endpoint
         self.init_endpoints = self.init_endpoints
         self.hwtest = self.test_hardware()
         return None
@@ -177,8 +182,7 @@ class ipfs_accelerate_py:
     async def query_endpoints(self, model):
         endpoints = None
         local = None
-        openvino = None
-        tei = None
+        api = None
         libp2p = None
         try:
             endpoints = await self.get_endpoints(model)
@@ -189,21 +193,17 @@ class ipfs_accelerate_py:
         except Exception as e:
             local = e
         try:
-            openvino = await self.get_endpoints(model, "openvino")
-        except Exception as e:
-            openvino = e
-        try:
             libp2p = await self.get_endpoints(model, "libp2p")
         except Exception as e:
             libp2p = e
         try:
-            tei = await self.get_endpoints(model, "tei")
+            api = await self.get_endpoints(model, "api")
         except Exception as e:
-            tei = e
-        if type(tei) == list:
-            tei_set = set(endpoints["tei"])
+            api = e
+        if type(api) == list:
+            api_set = set(endpoints["api"])
         else:
-            tei_set = set()
+            api_set = set()
         if type(local) == list:
             local_set = set(endpoints["local"])
         else:
@@ -212,13 +212,10 @@ class ipfs_accelerate_py:
             libp2p_set = set(endpoints["libp2p"])
         else:
             libp2p_set = set()
-        if type(openvino) == list:
-            openvino_set = set(endpoints["openvino"])
-        else:
-            openvino_set = set()
 
-        endpoints_set = set.union(tei_set, local_set, openvino_set, libp2p_set)
-        endpoints =  { "tei" : tei , "local" : local , "openvino": openvino , "libp2p": libp2p }
+
+        endpoints_set = set.union(api_set, local_set, libp2p_set)
+        endpoints =  { "api" : api , "local" : local , "libp2p": libp2p }
 
         # endpoints_set = set(set(endpoints["tei"]),set(endpoints["local"]),set(endpoints["openvino"]),set(endpoints["libp2p"]))
         # self.endpoints = endpoints
@@ -303,15 +300,11 @@ class ipfs_accelerate_py:
         else:
             local = [ endpoint for endpoint in self.endpoints["local_endpoints"] if "local" in endpoint or "cpu" in endpoint or "cuda" in endpoint or "openvino" in endpoint or "llama_cpp" in endpoint or "ipex" in endpoint]
             libp2p = []
-            if "openvino_endpoints" in list(self.endpoints.keys()):
-                openvino = [endpoint for endpoint in self.endpoints["openvino_endpoints"]]
-            else:
-                openvino = []
             
-            if "tei_endpoints" in list(self.endpoints.keys()):
-                tei = [endpoint for endpoint in self.endpoints["tei_endpoints"]]
+            if "api_endpoints" in list(self.endpoints.keys()):
+                api = [endpoint for endpoint in self.endpoints["api_endpoints"]]
             else:
-                tei = []
+                api = []
                  
         for model in models:
             if model not in self.tokenizer:
@@ -372,8 +365,6 @@ class ipfs_accelerate_py:
             new_resources["endpoints"] = self.endpoints
         return new_resources
 
-        
-    
     # async def request_libp2p_endpoint(self, model, endpoint, endpoint_type, batch):
     #     batch_size = len(batch)
     #     if model in self.libp2p_endpoints:
@@ -407,10 +398,10 @@ class ipfs_accelerate_py:
     #     return results
         
     
-    async def add_local_endpoint(self, model, endpoint_type, endpoint):
+    async def add_local_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
     
-    async def add_api_endpoint(self, model, endpoint_type, endpoint):
+    async def add_api_endpoint(self, model, endpoint_type, endpoint, context_length):
         return None
 
     async def add_endpoint(self, model, endpoint_type, endpoint):
@@ -450,8 +441,9 @@ class ipfs_accelerate_py:
                         elif hardware_type == "cpu":
                             self.add_local_endpoint(model, "cpu", endpoint, context_length)
                             pass
-                elif this_endpoint_type in list(self.apitest.keys()):
-                    api_type = this_endpoint_type
+                elif this_endpoint_type in list(self.apis.endpoints.keys()):
+                    api_label = this_endpoint_type
+                    api_type = api_label.split(":")[0]
                     if self.apitest[this_endpoint_type] == False:
                         # raise ValueError("API type " + api_type + " not available")
                         print("API type " + this_endpoint_type + " not available")
@@ -818,6 +810,30 @@ class ipfs_accelerate_py:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
+    
+    async def request_hf_tei_endpoint(self, model, batch_size):
+        return await self.apis.request_hf_tei_endpoint(model, batch_size)
+    
+    async def request_hf_tgi_endpoint(self, model, batch_size):
+        return await self.apis.request_hf_tgi_endpoint(model, batch_size)
+
+    async def request_llvm_endpoint(self, model, batch_size):
+        return await self.apis.request_llvm_endpoint(model, batch_size)
+    
+    async def request_groq_endpoint(self, model, batch_size):
+        return await self.apis.request_groq_endpoint(model, batch_size)
+    
+    async def request_ollama_endpoint(self, model, batch_size):
+        return await self.apis.request_ollama_endpoint(model, batch_size)
+    
+    async def request_ovms_endpoint(self, model, batch_size):
+        return await self.apis.request_ovms_endpoint(model, batch_size)
+    
+    async def request_openai_api_endpoint(self, model, batch_size):
+        return await self.apis.request_openai_api_endpoint(model, batch_size)
+    
+    async def request_s3_kit_endpoint(self, model, batch_size):
+        return await self.apis.request_s3_kit_endpoint(model, batch_size)
 
     async def test_batch_sizes(self, model, endpoint_handler_object=None):
         test_results = {}
@@ -911,8 +927,8 @@ class ipfs_accelerate_py:
         return test_results
 
     async def get_https_endpoint(self, model):
-        if model in self.tei_endpoints:
-            return self.tei_endpoints[model]
+        if model in self.api_endpoints:
+            return self.api_endpoints[model]
         return None
 
     async def get_libp2p_endpoint(self, model):
@@ -961,24 +977,20 @@ class ipfs_accelerate_py:
         if endpoint_type != None:
             this_endpoints = await self.get_endpoints(model, endpoint_type)
         else:
-            tei_endpoints = await self.get_endpoints(model, endpoint_type="tei")
+            api_endpoints = await self.get_endpoints(model, endpoint_type="api")
             libp2p_endpoints = await self.get_endpoints(model, endpoint_type="libp2p")
-            openvino_endpoints = await self.get_endpoints(model, endpoint_type="openvino")
             local_endpoints = await self.get_endpoints(model, endpoint_type="local")
             filtered_libp2p_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and libp2p_endpoints is not None and k in list(libp2p_endpoints.keys())}
-            filtered_tei_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and tei_endpoints is not None and k in list(tei_endpoints.keys())}
-            filtered_openvino_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and openvino_endpoints is not None and k in list(openvino_endpoints.keys())}
+            filtered_api_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and api_endpoints is not None and k in list(api_endpoints.keys())}
             filtered_local_endpoints = {k: v for k, v in self.endpoint_status.items() if v >= 1 and local_endpoints is not None and k in list(local_endpoints.keys())}
-            if not filtered_tei_endpoints and not filtered_libp2p_endpoints and not filtered_openvino_endpoints and not filtered_local_endpoints:
+            if not filtered_api_endpoints and not filtered_libp2p_endpoints and not filtered_local_endpoints:
                 return None
             else:
                 this_endpoint = None
                 if len(list(filtered_local_endpoints.keys())) > 0:
                     this_endpoint = random.choice(list(filtered_local_endpoints.keys()))
-                if len(list(filtered_tei_endpoints.keys())) > 0:
-                    this_endpoint = random.choice(list(filtered_tei_endpoints.keys()))
-                if len(list(filtered_openvino_endpoints.keys())) > 0:
-                    this_endpoint = random.choice(list(filtered_openvino_endpoints.keys()))
+                if len(list(filtered_api_endpoints.keys())) > 0:
+                    this_endpoint = random.choice(list(filtered_api_endpoints.keys()))
                 elif len(list(filtered_libp2p_endpoints.keys())) > 0:
                     this_endpoint = random.choice(list(filtered_libp2p_endpoints.keys()))
                 print("chosen endpoint for " + model + " is " + this_endpoint)
@@ -990,19 +1002,17 @@ class ipfs_accelerate_py:
         if endpoint_type != None:
             this_endpoints = await self.get_endpoints_new(model, endpoint_type)
         else:
-            tei_endpoints = await self.get_endpoints_new(model, endpoint_type="tei")
+            api_endpoints = await self.get_endpoints_new(model, endpoint_type="api")
             libp2p_endpoints = await self.get_endpoints_new(model, endpoint_type="libp2p")
-            openvino_endpoints = await self.get_endpoints_new(model, endpoint_type="openvino")
             local_endpoints = await self.get_endpoints_new(model, endpoint_type="local")
             filtered_libp2p_endpoints = [x for x in libp2p_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            filtered_tei_endpoints = [x for x in tei_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            filtered_openvino_endpoints = [x for x in openvino_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
+            filtered_api_endpoints = [x for x in api_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
             filtered_local_endpoints = [x for x in local_endpoints if x[1] in list(self.resources["endpoint_handler"][model].keys())]
-            if not filtered_tei_endpoints and not filtered_libp2p_endpoints and not filtered_openvino_endpoints and not filtered_local_endpoints:
+            if not filtered_api_endpoints and not filtered_libp2p_endpoints  and not filtered_local_endpoints:
                 return None
             else:
                 this_endpoint = None
-                combined_endpoints = filtered_tei_endpoints + filtered_libp2p_endpoints + filtered_openvino_endpoints + filtered_local_endpoints
+                combined_endpoints = filtered_api_endpoints + filtered_libp2p_endpoints + filtered_local_endpoints
                 random_endpoint = random.choice(combined_endpoints)
                 random_endpoint_model = random_endpoint[0]
                 random_endpoint_type = random_endpoint[1]
@@ -1034,21 +1044,17 @@ class ipfs_accelerate_py:
             if "cuda" in endpoint or "cpu" in endpoint:
                 return await self.make_local_request(model, endpoint, endpoint_type, data)
             elif "openvino" in endpoint:
-                return await self.apis.make_post_request_openvino(endpoint, data)
+                return await self.apis.make_post_request_ovms(endpoint, data)
             elif "libp2p" in endpoint:
                 return await self.apis.make_post_request_libp2p(endpoint, data)
-            elif "http" in endpoint:
-                return await self.apis.make_post_request_tei(endpoint, data)
+            # elif "http" in endpoint:
+            #     return await self.apis.make_post_request_hf_tei(endpoint, data)
             else:
                 return self.endpoint_handler[model][endpoint](data)
-        elif endpoint_type == "tei":
+        elif endpoint_type == "api":
             if endpoint is None:
                 endpoint = await self.choose_endpoint(model, endpoint_type)
-            return await self.make_post_request_tei(endpoint, data)
-        elif endpoint_type == "openvino":
-            if endpoint is None:
-                endpoint = await self.choose_endpoint(model, endpoint_type)
-            return await self.apis.make_post_request_openvino(endpoint, data)
+            return await self.apis.make_post_request_api(endpoint, data)
         elif endpoint_type == "libp2p":
             if endpoint is None:
                 endpoint = await self.choose_endpoint(model, endpoint_type)
@@ -1086,18 +1092,15 @@ class ipfs_accelerate_py:
             endpoint_dict = self.local_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
         else:
-            all_endpoints_dict = self.tei_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.openvino_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
+            all_endpoints_dict = self.api_endpoints.get(model, {}) + self.libp2p_endpoints.get(model, {}) + self.local_endpoints.get(model, {})
             filtered_endpoints = [endpoint for endpoint in all_endpoints_dict if self.endpoint_status.get(endpoint, 0) >= 1]
         return filtered_endpoints
     
     async def get_endpoints_new(self, model, endpoint_type=None):
         filtered_endpoints = []
         endpoints_keys = list(self.endpoints.keys())
-        if endpoint_type == "tei" and "tei_endpoints" in endpoints_keys:
-            endpoints_dict = self.endpoints["tei_endpoints"].get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "openvino" and "openvino_endpoints" in list(self.endpoints.keys()):
-            endpoints_dict = self.endpoints["openvino_endpoints"].get(model, {})
+        if endpoint_type == "api" and "apiendpoints" in endpoints_keys:
+            endpoints_dict = self.endpoints["api_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
         elif endpoint_type == "libp2p" and "libp2p_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.libp2p_endpoints.get(model, {})
@@ -1105,17 +1108,11 @@ class ipfs_accelerate_py:
         elif endpoint_type == "local" and "local_endpoints" in list(self.endpoints.keys()):
             endpoints_dict = self.endpoints["local_endpoints"].get(model, {})
             filtered_endpoints = [endpoint for endpoint in endpoints_dict ]
-        elif endpoint_type == "cuda" and "local_endpoints" in list(self.endpoints.keys()):
-            endpoint_dict = self.endpoints["local_endpoints"].get(model, {})
-            filtered_endpoints = [endpoint for endpoint in endpoint_dict if "cuda" in endpoint and self.endpoint_status.get(endpoint, 0) >= 1]
         elif endpoint_type == "all" or endpoint_type == None:
             all_endpoints = []
-            if "tei_endpoints" in list(self.endpoints.keys()):
-                tei_endpoints = self.endpoints["tei_endpoints"].get(model, {})
-                all_endpoints = all_endpoints + tei_endpoints
-            if "openvino_endpoints" in list(self.endpoints.keys()):
-                openvino_endpoints = self.endpoints["openvino_endpoints"].get(model, {})
-                all_endpoints = all_endpoints + openvino_endpoints 
+            if "api_endpoints" in list(self.endpoints.keys()):
+                api_endpoints = self.endpoints["api_endpoints"].get(model, {})
+                all_endpoints = all_endpoints + api_endpoints
             if "libp2p_endpoints" in list(self.endpoints.keys()):
                 libp2p_endpoints = self.libp2p_endpoints.get(model, {})
                 all_endpoints = all_endpoints + libp2p_endpoints

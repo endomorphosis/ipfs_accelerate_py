@@ -84,7 +84,7 @@ class worker_py:
         self.dispatch_result = self.dispatch_result
         self.get_model_type = self.get_model_type
 
-        self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor"]
+        self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor", "webnn"]
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)

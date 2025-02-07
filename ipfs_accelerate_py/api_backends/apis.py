@@ -15,10 +15,23 @@ class apis:
     def __init__(self, resources, metadata):
         if resources is None:
             resources = {}
+        else:
+            self.resources = resources
         if metadata is None:
-            metadata = {}     
-        self.resources = resources
-        self.metadata = metadata
+            metadata = {}
+        else: 
+            self.metadata = metadata
+        self.inbox = {}
+        self.outbox = {}
+        self.tokenizer = {}
+        self.queues = {}
+        self.batch_sizes = {}
+        self.endpoint_handler = {}
+        self.endpoints = {}
+        self.endpoint_types = ["api_endpoints"]
+        self.api_endpoints = {}
+        # self.dispatch_result = self.dispatch_result
+        # self.get_model_type = self.get_model_type
         self.api_models = api_models(self.resources, self.metadata)
         if "endpoints" in list(self.metadata.keys()):
             self.endpoints = self.metadata["endpoints"]
@@ -295,11 +308,7 @@ class apis:
     async def test_openai_api_endpoint(self, model, endpoint):
         return None
     
-    async def test_s3_endpoint(self, model, endpoint):
-        return None
-    
-    def request_hf_tei_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
-        
+    async def test_s3_kit_endpoint(self, model, endpoint):
         return None
     
     async def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
@@ -327,7 +336,7 @@ class apis:
         return None
     
     
-    def request_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+    def request_hf_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
         endpoint_batch_size = 0
         if endpoint in self.endpoint_status:
@@ -370,7 +379,7 @@ class apis:
                         return endpoint
             return None
     
-    def request_tgi_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+    def request_hf_tgi_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         incoming_batch_size = len(batch)
         endpoint_batch_size = 0
         if endpoint in self.endpoint_status:
@@ -421,7 +430,7 @@ class apis:
                     return endpoint
         return None
     
-    async def request_tei_endpoint(self, model, batch_size):
+    async def request_hf_tei_endpoint(self, model, batch_size):
         if model in self.tei_endpoints:
             for endpoint in self.tei_endpoints[model]:
                 if self.endpoint_status[endpoint] >= batch_size:
@@ -449,7 +458,7 @@ class apis:
                     return endpoint
         return None
     
-    async def request_s3_endpoint(self, model, batch_size):
+    async def request_s3_kit_endpoint(self, model, batch_size):
         if model in self.s3_endpoints:
             for endpoint in self.s3_endpoints[model]:
                 if self.endpoint_status[endpoint] >= batch_size:
