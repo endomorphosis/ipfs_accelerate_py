@@ -1,4 +1,5 @@
 from . import ovms
+from . import opea
 from . import groq
 from . import hf_tei
 from . import hf_tgi
@@ -66,6 +67,12 @@ class apis:
         else:
             self.ollama = self.resources["ollama"]
             
+        if "opea" not in self.resources:
+            self.resources["opea"] = opea(self.resources, self.metadata)
+            self.opea = self.resources["opea"]
+        else:
+            self.opea = self.resources["opea"]
+            
         if "ovms" not in self.resources:
             self.resources["ovms"] = ovms(self.resources, self.metadata)
             self.ovms = self.resources["ovms"]
@@ -89,6 +96,7 @@ class apis:
         self.tei_endpoints = {}
         self.groq_endpoints = {}
         self.llvm_endpoints = {}
+        self.opea_endpoints = {}
         self.openai_endpoints = {}
         self.s3_endpoints = {}
         self.ovms_endpoints = {}
@@ -101,6 +109,7 @@ class apis:
         self.request_openai_api_endpoint = self.openai_api.request_openai_api_endpoint
         self.request_s3_kit_endpoint = self.s3_kit.request_s3_kit_endpoint
         self.request_ovms_endpoint = self.ovms.request_ovms_endpoint
+        self.request_opea_endpoint = self.opea.request_opea_endpoint
         
         self.test_groq_endpoint = self.groq.test_groq_endpoint
         self.test_llvm_endpoint = self.llvm.test_llvm_endpoint
@@ -110,6 +119,7 @@ class apis:
         self.test_hf_tgi_endpoint = self.hf_tgi.test_tgi_endpoint
         self.test_openai_api_endpoint = self.openai_api.test_openai_api_endpoint
         self.test_s3_kit_endpoint = self.s3_kit.test_s3_kit_endpoint
+        self.test_opea_endpoint = self.opea.test_opea_endpoint
 
         self.add_groq_endpoint = self.add_groq_endpoint
         self.add_llvm_endpoint = self.add_llvm_endpoint
@@ -119,6 +129,7 @@ class apis:
         self.add_ovms_endpoint = self.add_ovms_endpoint
         self.add_openai_api_endpoint = self.add_openai_api_endpoint
         self.add_s3_endpoint = self.add_s3_endpoint
+        self.add_opea_endpoint = self.add_opea_endpoint
         
         self.rm_groq_endpoint = self.rm_groq_endpoint
         self.rm_llvm_endpoint = self.rm_llvm_endpoint
@@ -128,6 +139,7 @@ class apis:
         self.rm_ovms_endpoint = self.rm_ovms_endpoint
         self.rm_openai_api_endpoint = self.rm_openai_api_endpoint
         self.rm_s3_endpoint = self.rm_s3_endpoint
+        self.rm_opea_endpoint = self.rm_opea_endpoint
         
         self.init()
         return None
@@ -211,6 +223,9 @@ class apis:
     def init_ollama(self, models=None):
         return None
     
+    def init_opea(self, models=None):
+        return None
+    
     def init_openai(self, models=None):
         return None
     
@@ -234,6 +249,9 @@ class apis:
         return None
 
     async def add_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def add_opea_endpoint(self, model, endpoint):
         return None
     
     async def add_hf_tgi_endpoint(self, model, endpoiointsnt):
@@ -266,6 +284,9 @@ class apis:
     async def rm_ollama_endpoint(self, model, endpoint):
         return None
     
+    async def rm_opea_endpoint(self, model, endpoint):
+        return None
+    
     async def rm_hf_tgi_endpoint(self, model, endpoint):
         return None
     
@@ -294,6 +315,9 @@ class apis:
         return None
     
     async def test_ollama_endpoint(self, model, endpoint):
+        return None
+    
+    async def test_opea_endpoint(self, model, endpoint):
         return None
     
     async def test_hf_tgi_endpoint(self, model, endpoint):
@@ -471,6 +495,14 @@ class apis:
                 if self.endpoint_status[endpoint] >= batch_size:
                     return endpoint
         return None
+
+    async def request_opea_endpoint(self, model, batch_size):
+        if model in self.local_endpoints:
+            for endpoint in self.local_endpoints[model]:
+                if self.endpoint_status[endpoint] >= batch_size:
+                    return endpoint
+        return None
+
     
     def __test__(self):
         return None

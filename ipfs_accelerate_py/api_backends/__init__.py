@@ -7,5 +7,6 @@ from .groq import groq
 from .ovms import ovms
 from .llvm import llvm
 from .ollama import ollama
+from .opea import opea
 from .apis import apis
 # from .api_models_registry import api_models
