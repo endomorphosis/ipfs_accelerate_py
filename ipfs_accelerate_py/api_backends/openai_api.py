@@ -12,67 +12,102 @@ import json
 import subprocess
 from datetime import datetime
 
-assistants_models = [
-    "gpt-4",
-    "gpt-4-32k",
-    "gpt-4-1106-preview",
-    "gpt-4-vision-preview",
-    "gpt-3.5-turbo",
-    "gpt-3.5-turbo-16k",
-    "gpt-3.5-turbo",
-    "gpt-3.5-turbo-1106"
-]
+# Deprecations page
+# https://platform.openai.com/docs/deprecations
 
+assistants_models = [ # /v1/assistants
+    "o1", # 100,000
+    "o1-mini", # 65,536
+    "o1-preview", # 32,768
+    "o3-mini", # 100,000
+    "gpt-4o", # 16,384
+    "gpt-4o-audio-preview", # 16,384 
+    "gpt-4o-realtime-preview", # 4,096
+    "gpt-4o-mini", # 16,384
+    "gpt-4o-mini-audio-preview", # 16,384 
+    "gpt-4o-mini-realtime-preview", # 4,096
+    "gpt-4", # 8192
+    "gpt-4-0613", # 8,192 
+    "gpt-4-0125-preview", # 4,096 
+    "gpt-4-1106-preview", # 128000
+    "gpt-3.5-turbo", # 4096
+    "gpt-3.5-turbo-0125", # 4,096
+    "gpt-3.5-turbo-1106", # 16385
+    "gpt-3.5-turbo-16k", # 16385
+    "gpt-3.5-turbo-instruct", # 4096
+    "gpt-3.5-turbo-instruct-0914" # 4096
+    "gpt-4-turbo-preview" # 4,096 
+]
 
 tools_models = [
+    "gpt-4-turbo-preview",
     "gpt-4-1106-preview",
     "gpt-3.5-turbo-1106"
 ]
 
-embedding_models = [
+embedding_models = [ # /v1/embeddings
+    "text-embedding-3-large",
+    "text-embedding-3-small",
     "text-embedding-ada-002"
 ]
 
-vision_models = [
-    "gpt-4-vision-preview"
+chat_completion_models = [ # /v1/chat/completions
+    "o1", # 100,000
+    "o1-mini", # 100,000
+    "o1-preview", # 32,768
+    "o3-mini",
+    "gpt-4o",
+    "gpt-4o-audio-preview",
+    "gpt-4o-mini", # 16,384
+    "gpt-4o-mini-audio-preview",
+    "gpt-4o-mini-realtime-preview",
+    "gpt-4",
+    "gpt-4-0613",
+    "gpt-4-0125-preview",
+    "gpt-4-1106-preview",
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-0125",
+    "gpt-3.5-turbo-1106",
+    "gpt-3.5-turbo-16k",
+    "gpt-3.5-turbo-instruct",
+    "chatgpt-4o-latest"
 ]
 
-text_to_speech = [
-    "tts-1",
-    "tts-1-hd",
-]
-
-completions = [
+completions = [ # /v1/completions 
     "gpt-3.5-turbo-instruct",
 ]
 
-chat_completion_models =[
-    "gpt-4",
-    "gpt-4-32k",
-    "gpt-4-1106-preview",
-    "gpt-4-vision-preview",
-    "gpt-3.5-turbo",
-    "gpt-3.5-turbo-16k",
-    "gpt-3.5-turbo",
-    "gpt-3.5-turbo-1106"
-]
-
-speech_to_text = [
-    "whisper-1"
-]
-
-image_models = [
+image_models = [ # /v1/images/generations
     "dall-e-3",
     "dall-e-2"
 ]
 
-moderation_models = [
+moderation_models = [ # /v1/moderations
+    "omni-moderation-latest",
     "text-moderation-latest",
     "text-moderation-stable"
 ]
 
-translation_models = [
+speech_to_text = [ # /v1/audio/transcriptions
     "whisper-1"
+]
+
+text_to_speech = [ #/v1/audio/speech
+    "tts-1",
+    "tts-1-1106"
+    "tts-1-hd",
+    "tts-1-hd-1106"
+]
+
+translation_models = [ # /v1/audio/translations
+    "whisper-1"
+]
+
+vision_models = [ # https://platform.openai.com/docs/guides/vision
+    "o1",
+    "gpt-4-turbo"
+    "gpt-4o",
+    "gpt-4o-mini",
 ]
 
 chat_templates = [
@@ -80,9 +115,9 @@ chat_templates = [
             'models': ['gpt-3.5-turbo','gpt-4','gpt-3.5-turbo-16k'],
             'system_msg': 'A chat between a curious user and an artificial intelligence assistant. ' + \
             'The assistant gives helpful, detailed, and polite answers to the user\'s questions. <</SYS>> [/INST]',
-		    'user_msg': 'USER: {text}',
+            'user_msg': 'USER: {text}',
             'user_sep': '\n',
-		    'assistant_msg': 'ASSISTANT: {text}',
+            'assistant_msg': 'ASSISTANT: {text}',
             'assistant_sep': '\n',
         }
     ]
@@ -623,14 +658,28 @@ class openai_api:
 
         chosen_model = None
         max_tokens = {
-            "gpt-4": 8192,
-            "gpt-4-32k":32768,
-            "gpt-4-1106-preview": 128000,
-            "gpt-4-vision-preview": 128000,
-            "gpt-3.5-turbo": 4096,
-            "gpt-3.5-turbo-instruct": 4096,
-            "gpt-3.5-turbo-16k": 16385,
-            "gpt-3.5-turbo-1106": 16385,
+            'o1': 100000,
+            'o1-mini': 65536,
+            'o1-preview': 32768,
+            'o3-mini': 100000,
+            'gpt-4o': 16384,
+            'gpt-4o-audio-preview': 16384,
+            'gpt-4o-realtime-preview': 4096,
+            'gpt-4o-mini': 16384,
+            'gpt-4o-mini-audio-preview': 16384,
+            'gpt-4o-mini-realtime-preview': 4096,
+            'gpt-4': 8192,
+            'gpt-4-0613': 8192,
+            'gpt-4-0125-preview': 4096,
+            'gpt-4-1106-preview': 128000,
+            'gpt-3.5-turbo': 4096,
+            'gpt-3.5-turbo-0125': 4096,
+            'gpt-3.5-turbo-1106': 16385,
+            'gpt-3.5-turbo-16k': 16385,
+            'gpt-3.5-turbo-instruct': 4096,
+            'gpt-3.5-turbo-instruct-0914': 4096,
+            'gpt-4-turbo-preview': 4096
+            'chatgpt-4o-latest': 16384
         }
         stringifed_messages = ""
         stringified_messages = json.dumps(messages)

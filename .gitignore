@@ -4,3 +4,6 @@ dist
 *.pyc
 test/*.json
 build/
+.lizard_person_install.sh
+venv/
+.test.json

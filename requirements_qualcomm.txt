@@ -1,20 +1,20 @@
+boto3
+einops
+huggingface-hub
+InstructorEmbedding
 ipfs_kit_py==0.0.18
 ipfs_model_manager_py==0.0.23
-libp2p_kit_py==0.0.19
 ipfs_transformers_py
-urllib3
-requests
-boto3
-InstructorEmbedding
-toml
-pydantic
-einops
-Pillow
+libp2p_kit_py==0.0.19
 multiformats
+Pillow
+pydantic
 pydub
 pysbd
+requests
+toml
+urllib3
 websocket-client
-huggingface-hub
 # transformers-js-py
 # datasets
 # opencv-python-aarch64
