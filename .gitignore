@@ -5,5 +5,6 @@ dist
 test/*.json
 build/
 .lizard_person_install.sh
+.lizard_person_test.sh
 venv/
 .test.json
