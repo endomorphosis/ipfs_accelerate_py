@@ -24,18 +24,12 @@ setup(
 		'llama-cpp-python',
 		'gguf',
 		'optimum',
-		# "git+https://github.com/huggingface/optimum-intel.git --extra-index-url https://download.pytorch.org/whl/cpu",
-		'optimum[openvino]',
 		'toml',
 		'pydantic',
 		'einops',
 		'timm',
 		'flash-attn',
-		'openvino>=2024.5',
-		'openvino-tokenizers>=2024.5',
-		'openvino-genai>=2024.5',
 		'Pillow',
-		'nncf>=2.14.0',
 		'optimum[exporters]'
 	]
 )
