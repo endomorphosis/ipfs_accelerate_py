@@ -15,7 +15,6 @@ pydub
 pysbd
 websocket-client
 huggingface-hub
-# transformers-js-py
 # datasets
 # opencv-python-aarch64
 # ffmpeg-python
