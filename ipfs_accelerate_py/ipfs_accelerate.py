@@ -144,21 +144,19 @@ class ipfs_accelerate_py:
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
             with open(install_depends_filename, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096),b""):
+                for byte_block in iter(lambda: f.read(4096), b""):
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
-            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+            test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False, "qualcomm": self.detect_qualcomm()}
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
-                        # test_results = await self.install_depends.test_hardware()
+                        test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False, "qualcomm": self.detect_qualcomm()}
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
                         return test_results
@@ -167,17 +165,37 @@ class ipfs_accelerate_py:
                         return e
             else:
                 try:
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
-                    # test_results = await self.install_depends.test_hardware()
+                    test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False, "qualcomm": self.detect_qualcomm()}
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
                     return test_results
                 except Exception as e:
                     print(e)
                     return e
-        else: 
+        else:
             raise ValueError("install_depends.py not found")
         return test_results
+
+    def detect_qualcomm(self):
+        import platform
+        try:
+            if platform.system() == "Linux":
+                with open("/proc/cpuinfo", "r") as f:
+                    cpuinfo = f.read().lower()
+                    if "qualcomm" in cpuinfo or "snapdragon" in cpuinfo:
+                        return True
+            elif platform.system() == "Darwin":
+                return False
+            elif platform.system() == "Windows":
+                import wmi
+                c = wmi.WMI()
+                for processor in c.Win32_Processor():
+                    if "qualcomm" in processor.Name.lower() or "snapdragon" in processor.Name.lower():
+                        return True
+                return False
+        except Exception as e:
+            print(e)
+        return False
 
     async def query_endpoints(self, model):
         endpoints = None
