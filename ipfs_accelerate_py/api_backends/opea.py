@@ -3,12 +3,12 @@ class opea:
         self.resources = resources
         self.metadata = metadata
         self.create_opea_endpoint_handler = self.create_opea_endpoint_handler
-        self.request_ollama_endpoint = self.request_ollama_endpoint
-        self.test_ollama_endpoint = self.test_ollama_endpoint
-        self.make_post_request_ollama = self.make_post_request_ollama
+        self.request_opea_endpoint = self.request_opea_endpoint
+        self.test__endpoint = self.test_opea_endpoint
+        self.make_post_request_opea = self.make_post_request_opea
         return None
     
-    def make_post_request_ollama (self, model, endpoint, endpoint_type, batch):
+    def make_post_request_opea (self, model, endpoint, endpoint_type, batch):
         
         return None
     
