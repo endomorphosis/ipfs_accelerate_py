@@ -8,6 +8,9 @@ https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/14.2.rel1/bi
 
 https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
 
+
+set CFLAGS=-std=c99 ; pip install --no-cache-dir -r requirements.txt
+
 https://www.python.org/ftp/python/3.13.2/python-3.13.2-arm64.exe
 
 https://objects.githubusercontent.com/github-production-release-asset-2e65be/23216272/e7039c5b-b2bd-4077-ad4c-cdcc7d4fd290?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=releaseassetproduction%2F20250223%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250223T233906Z&X-Amz-Expires=300&X-Amz-Signature=5df39edc0ea12a7362e20247fdfd71cc0485ecf03ce4cc021ad5d14145016738&X-Amz-SignedHeaders=host&response-content-disposition=attachment%3B%20filename%3DGit-2.48.1-64-bit.exe&response-content-type=application%2Foctet-stream
