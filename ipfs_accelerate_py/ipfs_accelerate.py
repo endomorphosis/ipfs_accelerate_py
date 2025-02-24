@@ -187,11 +187,13 @@ class ipfs_accelerate_py:
             elif platform.system() == "Darwin":
                 return False
             elif platform.system() == "Windows":
-                import wmi
-                c = wmi.WMI()
-                for processor in c.Win32_Processor():
-                    if "qualcomm" in processor.Name.lower() or "snapdragon" in processor.Name.lower():
+                try:
+                    import subprocess
+                    result = subprocess.check_output("wmic cpu get name", shell=True).decode()
+                    if "qualcomm" in result.lower() or "snapdragon" in result.lower():
                         return True
+                except Exception as e:
+                    print(e)
                 return False
         except Exception as e:
             print(e)
