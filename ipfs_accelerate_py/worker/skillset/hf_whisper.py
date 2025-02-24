@@ -3,8 +3,8 @@ import os
 # import subprocess
 # from faster_whisper import WhisperModel
 import pysbd
-from pydub import AudioSegment
-from pydub.silence import split_on_silence, detect_nonsilent
+#from pydub import AudioSegment
+#from pydub.silence import split_on_silence, detect_nonsilent
 import tempfile
 import io 
 from io import BytesIO

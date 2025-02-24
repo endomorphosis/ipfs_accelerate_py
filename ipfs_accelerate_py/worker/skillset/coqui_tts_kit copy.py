@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from typing import List
 from pydantic import BaseModel
-from pydub import AudioSegment
+#from pydub import AudioSegment
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
 from TTS.utils.generic_utils import get_user_data_dir

@@ -6,7 +6,7 @@ import time
 import asyncio
 import requests
 import gc
-from pydub import AudioSegment
+#from pydub import AudioSegment
 # from datasets import Dataset, Audio
 
 def load_audio(audio_file):

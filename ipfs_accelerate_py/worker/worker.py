@@ -3,14 +3,14 @@ import sys
 # import subprocess
 import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from PIL import Image
+#from PIL import Image
 import tempfile
 from install_depends import install_depends_py
 import asyncio
 import platform
 from io import BytesIO
 import os
-from PIL import Image
+#from PIL import Image
 import requests
 from pathlib import Path
 import json

@@ -1,5 +1,5 @@
 import requests
-from PIL import Image
+#from PIL import Image
 from io import BytesIO
 from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
 from ipfs_transformers_py import AutoModel

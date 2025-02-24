@@ -2,10 +2,10 @@
 import time
 import re
 import os
-import openai
+# import openai
 # from cloudkit_worker import dispatch_result
-import openai.resources
-import tiktoken
+# import openai.resources
+# import tiktoken
 import tempfile
 import base64
 import requests

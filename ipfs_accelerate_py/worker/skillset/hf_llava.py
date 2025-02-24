@@ -1,5 +1,5 @@
 import requests
-from PIL import Image
+#from PIL import Image
 from io import BytesIO
 import asyncio
 from pathlib import Path

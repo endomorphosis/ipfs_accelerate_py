@@ -1,7 +1,7 @@
 import time
 import asyncio
 import os
-from PIL import Image
+#from PIL import Image
 import requests
 from io import BytesIO
 import os
