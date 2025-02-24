@@ -365,7 +365,7 @@ class ipfs_accelerate_py:
             traceback.print_exc()
             self.worker_resources = e
         
-        if type(self.worker_resources) is not ValueError and type(self.worker_resources) is not Exception and type(self.worker_resources) is not TypeError:
+        if type(self.worker_resources) is not ValueError and type(self.worker_resources) is not Exception and type(self.worker_resources) is not TypeError and type(self.worker_resources) is dict:
             resource_list = list(self.worker_resources.keys())
             for resource in resource_list:
                 if resource not in list(self.resources.keys()):
