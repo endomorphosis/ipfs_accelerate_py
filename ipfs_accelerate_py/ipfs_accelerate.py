@@ -152,13 +152,13 @@ class ipfs_accelerate_py:
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
-                        test_results = json.load(f)
+                        f.write(json.dumps(test_results))
                         return test_results
                 except Exception as e:
                     try:
                         test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False, "qualcomm": self.detect_qualcomm()}
                         with open(test_results_file, "w") as f:
-                            json.dump(test_results, f)
+                            f.write(json.dumps(test_results))
                         return test_results
                     except Exception as e:
                         print(e)
@@ -167,7 +167,7 @@ class ipfs_accelerate_py:
                 try:
                     test_results = {"cuda": True, "openvino": True, "llama_cpp": False, "ipex": False, "qualcomm": self.detect_qualcomm()}
                     with open(test_results_file, "w") as f:
-                        json.dump(test_results, f)
+                        f.write(json.dumps(test_results))
                     return test_results
                 except Exception as e:
                     print(e)
