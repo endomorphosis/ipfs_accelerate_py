@@ -541,8 +541,6 @@ class openai_api:
         self.files = files
         self.method = 'chat'
         return self.request_complete( **kwargs)
-    
-
 
     def audio_chat(self, model, messages, voice, system, temperature, max_tokens, **kwargs):
         self.max_tokens = max_tokens

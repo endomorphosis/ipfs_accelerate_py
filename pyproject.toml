@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ipfs_accelerate_py"
-version = "0.0.42"
+version = "0.0.43"
 authors = [
   { name="Benjamin Barber", email="starworks5@gmail.com" },
 ]
-description = "a python wrapper around nodejs orbitdb"
+description = "a python model server and api endpoint demultiplexer."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

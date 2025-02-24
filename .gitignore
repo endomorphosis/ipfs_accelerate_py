@@ -4,3 +4,4 @@ dist
 *.pyc
 test/*.json
 build/
+.venv/

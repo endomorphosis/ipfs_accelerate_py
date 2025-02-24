@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Topology Simulation</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    h1, h2 {
+      color: #1a365d;
+      text-align: center;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .game-board {
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      display: block;
+      margin: 0 auto;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+    button {
+      background-color: #4338ca;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #3730a3;
+    }
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      background-color: #f0f4f8;
+      padding: 5px 15px;
+      border-radius: 30px;
+      margin: 0 10px;
+    }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 30px;
+      margin: 0 10px;
+    }
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 30px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px;
+      width: 22px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #10b981;
+    }
+    input:checked + .slider:before {
+      transform: translateX(30px);
+    }
+    .stats {
+      margin-top: 10px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+    }
+    .stat-box {
+      background-color: #f0f9ff;
+      padding: 8px 15px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin: 5px;
+      min-width: 150px;
+    }
+    .legend {
+      margin-top: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+    }
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
+    }
+    .explanation {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .queue-panel {
+      background-color: #f8fafc;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .queue-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      text-align: center;
+    }
+    
+    .queue-container {
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    
+    .node-queue {
+      background-color: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 8px;
+      width: 150px;
+      min-height: 100px;
+    }
+    
+    .queue-header {
+      background-color: #3b82f6;
+      color: white;
+      padding: 3px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-bottom: 5px;
+      text-align: center;
+    }
+    
+    .queue-item {
+      background-color: #8b5cf6;
+      color: white;
+      margin: 3px 0;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .queue-item.in-progress {
+      background-color: #f59e0b;
+    }
+    
+    .queue-status {
+      font-size: 11px;
+      text-align: center;
+      margin-top: 5px;
+      color: #6b7280;
+    }
+
+    .network-stats {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      pointer-events: none;
+    }
+    
+    .connection-label {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      padding: 2px 4px;
+      border-radius: 2px;
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    .network-traffic {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    .node-status {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #e2e8f0;
+      padding: 4px;
+      border-radius: 4px;
+      font-size: 10px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Network Topology Simulation</h1>
+    <h2>Hub-and-Spoke vs Peer-to-Peer</h2>
+    
+    <div class="controls">
+      <button id="startButton">Start Simulation</button>
+      <button id="pauseButton">Pause</button>
+      <button id="resetButton">Reset</button>
+      
+      <div class="toggle-container">
+        <span>P2P Mode:</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="p2pToggle">
+          <span class="slider"></span>
+        </label>
+        <span id="modeLabel">Off</span>
+      </div>
+      
+      <div id="timer" style="margin-left: 10px; line-height: 40px;">Time: 0s</div>
+    </div>
+    
+    <div class="game-board">
+      <canvas id="networkCanvas" width="700" height="400"></canvas>
+      
+      <div class="stats">
+        <div class="stat-box">
+          <strong>Progress:</strong>
+          <div id="progress">0% Complete</div>
+        </div>
+        <div class="stat-box">
+          <strong>Speed:</strong>
+          <div id="speed">0 MB/s</div>
+        </div>
+        <div class="stat-box">
+          <strong>Est. Completion:</strong>
+          <div id="timeEstimate">N/A</div>
+        </div>
+        <div class="stat-box">
+          <strong>Mode:</strong>
+          <div id="networkMode">Hub-and-Spoke</div>
+        </div>
+      </div>
+      
+      <div class="queue-panel">
+        <div class="queue-title">Download Queues</div>
+        <div class="queue-container" id="queueContainer">
+          <!-- Queue items will be dynamically inserted here -->
+        </div>
+      </div>
+    </div>
+    
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #3b82f6;"></div>
+        <span>Data Center</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #f59e0b;"></div>
+        <span>HuggingFace Hub</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #ef4444;"></div>
+        <span>Network Congestion</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #8b5cf6;"></div>
+        <span>Data Block (100MB)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #10b981;"></div>
+        <span>P2P Connection</span>
+      </div>
+    </div>
+    
+    <div class="explanation">
+      <h3>Simulation Explanation</h3>
+      <p>This simulation demonstrates downloading a large 1TB dataset (10,000 blocks of 100MB each) with two different network strategies:</p>
+      
+      <p><strong>Hub-and-Spoke Mode (P2P Off):</strong> All nine machines across three data centers download from a central HuggingFace Hub. Each connection to the hub is limited to 1 Gbps (125 MB/s). When multiple connections try to download simultaneously, congestion occurs and slows everyone down.</p>
+      
+      <p><strong>Peer-to-Peer Mode (P2P On):</strong> Machines still initially download from a central source at 1 Gbps, but once they have blocks, they share them with each other at 100 Gbps (12,500 MB/s). The Merkle DAG structure allows nodes to validate and share blocks, creating a resilient network where downloading gets faster as more nodes join.</p>
+      
+      <p>Toggle the P2P switch to see the difference between the two approaches. Notice how in P2P mode, the network becomes more efficient as more nodes get data blocks.</p>
+    </div>
+  </div>
+  
+  <script>
+    // Configuration
+    const TOTAL_BLOCKS = 10000; // 1TB = 10,000 blocks of 100MB
+    const HUB_DOWNLOAD_SPEED = 125; // 1 Gbps = 125 MB/s
+    const P2P_LINK_SPEED = 12500; // 100 Gbps = 12,500 MB/s
+    const BLOCK_SIZE = 100; // 100MB
+
+    // Network configuration
+    const GBIT_SPEED = 125; // 1 Gbit = 125 MB/s
+    const HUNDRED_GBIT_SPEED = 12500; // 100 Gbit = 12,500 MB/s
+    const ROLLING_WINDOW = 5; // 5 second rolling average
+    const PACKET_SIZE = 100; // 100MB packets
+
+    // Canvas setup
+    const canvas = document.getElementById('networkCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI elements
+    const startButton = document.getElementById('startButton');
+    const pauseButton = document.getElementById('pauseButton');
+    const resetButton = document.getElementById('resetButton');
+    const p2pToggle = document.getElementById('p2pToggle');
+    const modeLabel = document.getElementById('modeLabel');
+    const timerElement = document.getElementById('timer');
+    const networkMode = document.getElementById('networkMode');
+
+    // Stats elements
+    const progress = document.getElementById('progress');
+    const speed = document.getElementById('speed');
+    const timeEstimate = document.getElementById('timeEstimate');
+
+    // Game state
+    let isRunning = false;
+    let isPeerToPeer = false;
+    let gameTime = 0;
+    let animationFrameId;
+    let lastTimestamp = 0;
+
+    // Define data centers - 3x3 grid layout
+    const dataCenters = [
+      // Row 1
+      { id: 'DC1-1', x: 175, y: 100, color: '#3b82f6' },
+      { id: 'DC1-2', x: 350, y: 100, color: '#3b82f6' },
+      { id: 'DC1-3', x: 525, y: 100, color: '#3b82f6' },
+      
+      // Row 2
+      { id: 'DC2-1', x: 175, y: 200, color: '#3b82f6' },
+      { id: 'DC2-2', x: 350, y: 200, color: '#3b82f6' },
+      { id: 'DC2-3', x: 525, y: 200, color: '#3b82f6' },
+      
+      // Row 3
+      { id: 'DC3-1', x: 175, y: 300, color: '#3b82f6' },
+      { id: 'DC3-2', x: 350, y: 300, color: '#3b82f6' },
+      { id: 'DC3-3', x: 525, y: 300, color: '#3b82f6' },
+    ];
+
+    // Hub - centered above the grid
+    const huggingFaceHub = { id: 'Hub', x: 350, y: 30, color: '#f59e0b' };
+
+    // Create p2p connections - fully connected mesh within grid
+    const p2pConnections = [];
+    for (let i = 0; i < dataCenters.length; i++) {
+      for (let j = i + 1; j < dataCenters.length; j++) {
+        p2pConnections.push({
+          from: i,
+          to: j,
+          active: false
+        });
+      }
+    }
+
+    // Download state
+    const downloadState = {
+      blocksDownloaded: 0,
+      totalUniqueBlocks: 0,
+      nodesState: dataCenters.map(() => ({
+        blocksDownloaded: 0,
+        blockIds: new Set(),
+        pendingTransfers: [],
+        downloadingBlock: false,
+        blockProgress: 0,
+        blockStartTime: 0,
+        queue: [],  // Queue of blocks to download
+        queueCapacity: 5  // Maximum queue size
+      })),
+      totalBlocks: TOTAL_BLOCKS,
+      currentSpeed: 0,
+      activeDownloads: 0,
+      blockAvailability: new Array(TOTAL_BLOCKS).fill(false)
+    };
+
+    // Add network monitoring state
+    const networkState = {
+      hub: {
+        trafficHistory: [],
+        currentSpeed: 0,
+        lastUpdate: 0,
+        activeConnections: 0,
+        maxSpeed: GBIT_SPEED
+      },
+      nodes: dataCenters.map(() => ({
+        trafficHistory: [],
+        currentSpeed: 0,
+        lastUpdate: 0,
+        activeConnections: 0,
+        maxSpeed: HUNDRED_GBIT_SPEED
+      }))
+    };
+
+    // Reset simulation
+    function resetSimulation() {
+      gameTime = 0;
+      lastTimestamp = 0;
+      timerElement.textContent = 'Time: 0s';
+
+      // Reset state
+      downloadState.blocksDownloaded = 0;
+      downloadState.totalUniqueBlocks = 0;
+      downloadState.activeDownloads = 0;
+      downloadState.currentSpeed = 0;
+      downloadState.blockAvailability = new Array(TOTAL_BLOCKS).fill(false);
+      
+      downloadState.nodesState = dataCenters.map(() => ({
+        blocksDownloaded: 0,
+        blockIds: new Set(),
+        pendingTransfers: [],
+        downloadingBlock: false,
+        blockProgress: 0,
+        blockStartTime: 0,
+        queue: [],
+        queueCapacity: 5
+      }));
+
+      // Reset P2P connections
+      p2pConnections.forEach(conn => {
+        conn.active = false;
+      });
+
+      // Update stats
+      updateStatistics();
+      
+      // Create queue HTML
+      renderQueues();
+
+      // Draw initial state
+      drawNetwork();
+      initializePeerConnections();
+    }
+    
+    // Render queue display
+    function renderQueues() {
+      const queueContainer = document.getElementById('queueContainer');
+      queueContainer.innerHTML = '';
+      
+      downloadState.nodesState.forEach((nodeState, index) => {
+        const nodeQueue = document.createElement('div');
+        nodeQueue.className = 'node-queue';
+        nodeQueue.id = `queue-${index}`;
+        
+        const nodeHeader = document.createElement('div');
+        nodeHeader.className = 'queue-header';
+        nodeHeader.textContent = `Node ${index + 1}`;
+        
+        const queueStatus = document.createElement('div');
+        queueStatus.className = 'queue-status';
+        queueStatus.id = `queue-status-${index}`;
+        
+        if (nodeState.downloadingBlock) {
+          queueStatus.textContent = 'Downloading block...';
+        } else if (nodeState.queue.length === 0) {
+          queueStatus.textContent = 'Queue empty';
+        } else {
+          queueStatus.textContent = `${nodeState.queue.length} blocks in queue`;
+        }
+        
+        nodeQueue.appendChild(nodeHeader);
+        
+        // Add queue items
+        nodeState.queue.forEach((blockId, queueIndex) => {
+          const queueItem = document.createElement('div');
+          queueItem.className = 'queue-item';
+          if (queueIndex === 0 && nodeState.downloadingBlock) {
+            queueItem.classList.add('in-progress');
+          }
+          
+          queueItem.innerHTML = `
+            <span>Block ${blockId}</span>
+            <span>${queueIndex === 0 && nodeState.downloadingBlock ? Math.floor(nodeState.blockProgress * 100) + '%' : 'pending'}</span>
+          `;
+          
+          nodeQueue.appendChild(queueItem);
+        });
+        
+        nodeQueue.appendChild(queueStatus);
+        queueContainer.appendChild(nodeQueue);
+      });
+    }
+
+    // Draw network
+    function drawNetwork() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw P2P mesh connections first
+      if (isPeerToPeer) {
+        p2pConnections.forEach(conn => {
+          const fromNode = dataCenters[conn.from];
+          const toNode = dataCenters[conn.to];
+          
+          // Calculate active transfers on this connection
+          const transfers = downloadState.nodesState[conn.from].pendingTransfers
+            .filter(t => t.toNode === conn.to).length;
+          
+          const speed = transfers > 0 ? HUNDRED_GBIT_SPEED * transfers : 0;
+          const color = speed > 0 ? '#10b981' : 'rgba(16, 185, 129, 0.2)';
+          const width = speed > 0 ? 2 : 1;
+          
+          drawConnection(fromNode, toNode, speed, color, width);
+        });
+      }
+
+      // Draw connections to hub
+      dataCenters.forEach((dc, index) => {
+        const nodeState = downloadState.nodesState[index];
+        const speed = nodeState.downloadingBlock ? 
+          HUB_DOWNLOAD_SPEED / Math.max(1, downloadState.activeDownloads) : 0;
+        
+        const color = nodeState.downloadingBlock ? 
+          (downloadState.activeDownloads > 3 ? '#ef4444' : '#4338ca') : 
+          '#cbd5e1';
+        
+        drawConnection(dc, huggingFaceHub, speed, color, nodeState.downloadingBlock ? 2 : 1);
+      });
+
+      // Draw hub
+      ctx.beginPath();
+      ctx.arc(huggingFaceHub.x, huggingFaceHub.y, 20, 0, Math.PI * 2);
+      ctx.fillStyle = huggingFaceHub.color;
+      ctx.fill();
+      ctx.fillStyle = 'white';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Hub', huggingFaceHub.x, huggingFaceHub.y + 5);
+
+      // Enhanced node visualization
+      dataCenters.forEach((dc, index) => {
+        const nodeState = downloadState.nodesState[index];
+        const netState = networkState.nodes[index];
+        
+        // Draw node with larger radius
+        ctx.beginPath();
+        ctx.arc(dc.x, dc.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = dc.color;
+        ctx.fill();
+        
+        // Draw rim indicating activity
+        if (nodeState.downloadingBlock || nodeState.pendingTransfers.length > 0) {
+          ctx.beginPath();
+          ctx.arc(dc.x, dc.y, 22, 0, Math.PI * 2);
+          ctx.strokeStyle = nodeState.downloadingBlock ? '#4338ca' : '#10b981';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        
+        // Node label
+        ctx.fillStyle = 'white';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Node ${index + 1}`, dc.x, dc.y);
+
+        // Draw detailed status
+        const statusX = dc.x + 25;
+        const statusY = dc.y - 15;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.fillRect(statusX, statusY, 80, 30);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.strokeRect(statusX, statusY, 80, 30);
+        
+        ctx.fillStyle = 'black';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Blocks: ${nodeState.blockIds.size}`, statusX + 5, statusY + 12);
+        ctx.fillText(`Speed: ${Math.round(netState.currentSpeed)}MB/s`, statusX + 5, statusY + 24);
+
+        // Progress ring
+        if (nodeState.blockIds.size > 0) {
+          const progress = nodeState.blockIds.size / TOTAL_BLOCKS;
+          ctx.beginPath();
+          ctx.arc(dc.x, dc.y, 25, -0.5 * Math.PI, (-0.5 + 2 * progress) * Math.PI);
+          ctx.strokeStyle = '#10b981';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      });
+
+      // Draw overall progress bar at top
+      const overallProgress = isPeerToPeer 
+        ? downloadState.totalUniqueBlocks / TOTAL_BLOCKS 
+        : downloadState.blocksDownloaded / TOTAL_BLOCKS;
+      
+      const barWidth = canvas.width - 100;
+      const barHeight = 10;
+      const barX = 50;
+      const barY = 10; // Adjusted to create more vertical room
+      
+      // Background
+      ctx.fillStyle = '#e5e7eb';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      
+      // Progress
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(barX, barY, barWidth * overallProgress, barHeight);
+      
+      // Label
+      ctx.fillStyle = '#1a365d';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.min(100, Math.floor(overallProgress * 100))}% Complete`, canvas.width / 2, barY - 5);
+
+      // Draw network statistics
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(10, canvas.height - 60, 200, 50);
+      ctx.fillStyle = 'white';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Total Network Traffic: ${Math.round(networkState.nodes.reduce((sum, node) => sum + node.currentSpeed, 0))} MB/s`, 20, canvas.height - 40);
+      ctx.fillText(`Active Transfers: ${downloadState.activeDownloads + dataCenters.reduce((sum, _, i) => sum + downloadState.nodesState[i].pendingTransfers.length, 0)}`, 20, canvas.height - 20);
+    }
+
+    // Function to update traffic history
+    function updateTrafficStats(stats, bytesTransferred, timestamp) {
+      // Remove old entries
+      stats.trafficHistory = stats.trafficHistory.filter(
+        entry => timestamp - entry.time <= ROLLING_WINDOW
+      );
+      
+      // Add new entry
+      stats.trafficHistory.push({
+        bytes: bytesTransferred,
+        time: timestamp
+      });
+      
+      // Calculate rolling average
+      const totalBytes = stats.trafficHistory.reduce((sum, entry) => sum + entry.bytes, 0);
+      const timeSpan = Math.max(ROLLING_WINDOW, 
+        Math.max(...stats.trafficHistory.map(e => e.time)) - 
+        Math.min(...stats.trafficHistory.map(e => e.time))
+      );
+      
+      stats.currentSpeed = totalBytes / timeSpan;
+    }
+
+    // Update simulation to use enhanced peer transfers
+    function updateSimulation(deltaTime) {
+      let blocksDownloadedThisFrame = 0;
+      let blocksTransferredThisFrame = 0;
+      downloadState.activeDownloads = 0;
+
+      // Calculate blocks per node
+      const blocksPerNode = Math.ceil(TOTAL_BLOCKS / dataCenters.length);
+      
+      // Fill queues for nodes that need blocks
+      dataCenters.forEach((dc, index) => {
+        const nodeState = downloadState.nodesState[index];
+        
+        // If this node hasn't completed its share and queue isn't full
+        if (nodeState.blocksDownloaded < blocksPerNode && 
+           nodeState.queue.length < nodeState.queueCapacity &&
+           (isPeerToPeer ? downloadState.totalUniqueBlocks < TOTAL_BLOCKS : true)) {
+          
+          // Calculate how many blocks to add to the queue
+          const blocksNeeded = blocksPerNode - nodeState.blocksDownloaded - nodeState.queue.length;
+          const blocksToAdd = Math.min(blocksNeeded, nodeState.queueCapacity - nodeState.queue.length);
+          
+          // Add blocks to the queue
+          for (let i = 0; i < blocksToAdd; i++) {
+            let newBlockId;
+            
+            if (isPeerToPeer) {
+              // Generate next available block ID
+              newBlockId = downloadState.totalUniqueBlocks + i;
+              // Make sure we don't exceed total blocks
+              if (newBlockId >= TOTAL_BLOCKS) break;
+            } else {
+              // In hub-and-spoke, just use sequential block IDs
+              newBlockId = downloadState.blocksDownloaded + nodeState.queue.length + i;
+              // Make sure we don't exceed total blocks
+              if (newBlockId >= TOTAL_BLOCKS) break;
+            }
+            
+            nodeState.queue.push(newBlockId);
+          }
+        }
+      });
+
+      // Update each node's download from hub
+      dataCenters.forEach((dc, index) => {
+        const nodeState = downloadState.nodesState[index];
+        
+        // If there are items in the queue and not currently downloading
+        if (nodeState.queue.length > 0 && !nodeState.downloadingBlock) {
+          nodeState.downloadingBlock = true;
+          nodeState.blockProgress = 0;
+          nodeState.blockStartTime = gameTime;
+          downloadState.activeDownloads++;
+        } 
+        // Continue downloading current block
+        else if (nodeState.downloadingBlock) {
+          downloadState.activeDownloads++;
+
+          // Calculate effective speed based on congestion
+          let effectiveSpeed = HUB_DOWNLOAD_SPEED;
+          if (downloadState.activeDownloads > 1) {
+            effectiveSpeed = HUB_DOWNLOAD_SPEED / downloadState.activeDownloads;
+          }
+
+          // Calculate how much progress to make on this block
+          const timeRequired = BLOCK_SIZE / effectiveSpeed;
+          const progressDelta = deltaTime / timeRequired;
+          nodeState.blockProgress += progressDelta;
+
+          // Check if block download is complete
+          if (nodeState.blockProgress >= 1) {
+            // Get the block ID from the queue
+            const blockId = nodeState.queue.shift();
+            
+            nodeState.blocksDownloaded += 1;
+            blocksDownloadedThisFrame += 1;
+            nodeState.downloadingBlock = false;
+
+            // Update global count
+            downloadState.blocksDownloaded += 1;
+            
+            // For P2P mode, track unique blocks and assign to node
+            if (isPeerToPeer) {
+              // Add the block to this node
+              nodeState.blockIds.add(blockId);
+              downloadState.blockAvailability[blockId] = true;
+              downloadState.totalUniqueBlocks += 1;
+            }
+            
+            // If we still have blocks in queue, start downloading next one
+            if (nodeState.queue.length > 0) {
+              nodeState.downloadingBlock = true;
+              nodeState.blockProgress = 0;
+              nodeState.blockStartTime = gameTime;
+            }
+          }
+
+          // Update hub traffic when downloading
+          const bytesTransferred = PACKET_SIZE * progressDelta;
+          updateTrafficStats(networkState.hub, bytesTransferred, gameTime);
+          updateTrafficStats(networkState.nodes[index], bytesTransferred, gameTime);
+        }
+      });
+
+      // Enhanced P2P transfer handling
+      if (isPeerToPeer) {
+        dataCenters.forEach((dc, nodeIndex) => {
+          const nodeState = downloadState.nodesState[nodeIndex];
+          
+          // Update existing transfers first
+          nodeState.pendingTransfers.forEach((transfer, idx) => {
+            const timeRequired = BLOCK_SIZE / HUNDRED_GBIT_SPEED;
+            const progressDelta = deltaTime / timeRequired;
+            transfer.progress += progressDelta;
+
+            if (transfer.progress >= 1) {
+              const targetState = downloadState.nodesState[transfer.toNode];
+              targetState.blockIds.add(transfer.blockId);
+              targetState.blocksDownloaded++;
+              blocksTransferredThisFrame++;
+              
+              // Mark connection as active
+              const connIndex = p2pConnections.findIndex(
+                conn => (conn.from === nodeIndex && conn.to === transfer.toNode) ||
+                       (conn.to === nodeIndex && conn.from === transfer.toNode)
+              );
+              if (connIndex >= 0) {
+                p2pConnections[connIndex].active = true;
+                setTimeout(() => { p2pConnections[connIndex].active = false; }, 500);
+              }
+            }
+
+            // Update traffic stats
+            const bytesTransferred = PACKET_SIZE * progressDelta;
+            updateTrafficStats(networkState.nodes[nodeIndex], bytesTransferred, gameTime);
+            updateTrafficStats(networkState.nodes[transfer.toNode], bytesTransferred, gameTime);
+          });
+
+          // Remove completed transfers
+          nodeState.pendingTransfers = nodeState.pendingTransfers.filter(t => t.progress < 1);
+
+          // Try to start new transfers
+          if (nodeState.blockIds.size > 0) {
+            updatePeerTransfers(nodeIndex, nodeState);
+          }
+        });
+      }
+
+      // Update speed calculations
+      if (isPeerToPeer) {
+        const totalBlocksThisFrame = blocksDownloadedThisFrame + blocksTransferredThisFrame;
+        downloadState.currentSpeed = (totalBlocksThisFrame * BLOCK_SIZE) / deltaTime;
+      } else {
+        downloadState.currentSpeed = (blocksDownloadedThisFrame * BLOCK_SIZE) / deltaTime;
+      }
+    }
+
+    // Update statistics display
+    function updateStatistics() {
+      // Progress percentage
+      const progressPct = isPeerToPeer
+        ? Math.floor((downloadState.totalUniqueBlocks / TOTAL_BLOCKS) * 100)
+        : Math.floor((downloadState.blocksDownloaded / TOTAL_BLOCKS) * 100);
+      
+      progress.textContent = `${progressPct}% Complete`;
+
+      // Speed
+      speed.textContent = `${Math.floor(downloadState.currentSpeed)} MB/s`;
+
+      // Estimated time
+      const remainingBlocks = isPeerToPeer
+        ? TOTAL_BLOCKS - downloadState.totalUniqueBlocks
+        : TOTAL_BLOCKS - downloadState.blocksDownloaded;
+      
+      const remainingTime = downloadState.currentSpeed > 0
+        ? (remainingBlocks * BLOCK_SIZE) / downloadState.currentSpeed
+        : Infinity;
+
+      timeEstimate.textContent = remainingTime === Infinity
+        ? 'N/A'
+        : `${Math.floor(remainingTime / 60)}m ${Math.floor(remainingTime % 60)}s`;
+
+      // Network mode
+      networkMode.textContent = isPeerToPeer ? 'Peer-to-Peer' : 'Hub-and-Spoke';
+
+      // Update timer
+      timerElement.textContent = `Time: ${Math.floor(gameTime)}s`;
+    }
+
+    // Main game loop
+    function gameLoop(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      // Convert deltaTime from milliseconds to seconds
+      const deltaTime = (timestamp - lastTimestamp) / 1000;
+      gameTime += deltaTime;
+
+      updateSimulation(deltaTime);
+      updateStatistics();
+      drawNetwork();
+      renderQueues();
+
+      lastTimestamp = timestamp;
+      if (isRunning) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+      }
+    }
+
+    // Event listeners for simulation controls
+    startButton.addEventListener('click', () => {
+      if (!isRunning) {
+        isRunning = true;
+        lastTimestamp = 0; // Reset timestamp for a new run
+        animationFrameId = requestAnimationFrame(gameLoop);
+      }
+    });
+
+    pauseButton.addEventListener('click', () => {
+      isRunning = false;
+      cancelAnimationFrame(animationFrameId);
+    });
+
+    resetButton.addEventListener('click', () => {
+      isRunning = false;
+      cancelAnimationFrame(animationFrameId);
+      resetSimulation();
+    });
+    
+    p2pToggle.addEventListener('change', () => {
+      isPeerToPeer = p2pToggle.checked;
+      modeLabel.textContent = isPeerToPeer ? 'On' : 'Off';
+      networkMode.textContent = isPeerToPeer ? 'Peer-to-Peer' : 'Hub-and-Spoke';
+      
+      // Reset if changing mode
+      resetSimulation();
+    });
+
+    // Initialize simulation on page load
+    resetSimulation();
+
+    // Enhanced P2P transfer initialization
+    function initializePeerConnections() {
+      p2pConnections.length = 0;
+      // Create a fully connected mesh between all nodes
+      for (let i = 0; i < dataCenters.length; i++) {
+        for (let j = i + 1; j < dataCenters.length; j++) {
+          p2pConnections.push({
+            from: i,
+            to: j,
+            active: false,
+            maxSpeed: HUNDRED_GBIT_SPEED
+          });
+        }
+      }
+    }
+
+    // Update P2P transfer logic to better utilize available bandwidth
+    function updatePeerTransfers(nodeIndex, nodeState) {
+      const maxConcurrentTransfers = 5; // Increase concurrent transfers
+      const availableSlots = maxConcurrentTransfers - nodeState.pendingTransfers.length;
+      
+      if (availableSlots <= 0) return;
+
+      // Get nodes sorted by need (fewer blocks = higher priority)
+      const needyPeers = dataCenters.map((_, idx) => idx)
+        .filter(idx => idx !== nodeIndex)
+        .sort((a, b) => {
+          const stateA = downloadState.nodesState[a];
+          const stateB = downloadState.nodesState[b];
+          return (stateA.blockIds.size + stateA.pendingTransfers.length) -
+                 (stateB.blockIds.size + stateB.pendingTransfers.length);
+        });
+
+      // Try to fill available transfer slots
+      for (const targetIndex of needyPeers) {
+        if (nodeState.pendingTransfers.length >= maxConcurrentTransfers) break;
+        
+        const targetState = downloadState.nodesState[targetIndex];
+        const availableBlocks = Array.from(nodeState.blockIds)
+          .filter(blockId => 
+            !targetState.blockIds.has(blockId) &&
+            !targetState.queue.includes(blockId) &&
+            !targetState.pendingTransfers.some(t => t.blockId === blockId)
+          );
+
+        if (availableBlocks.length > 0) {
+          // Start multiple transfers to the same peer if possible
+          const transferCount = Math.min(
+            availableBlocks.length,
+            maxConcurrentTransfers - nodeState.pendingTransfers.length
+          );
+
+          for (let i = 0; i < transferCount; i++) {
+            nodeState.pendingTransfers.push({
+              blockId: availableBlocks[i],
+              toNode: targetIndex,
+              progress: 0,
+              transferType: 'p2p',
+              speed: HUNDRED_GBIT_SPEED
+            });
+          }
+        }
+      }
+    }
+
+    // Add speed indicators for active connections
+    function drawConnection(fromNode, toNode, speed, color, width) {
+      ctx.beginPath();
+      ctx.moveTo(fromNode.x, fromNode.y);
+      ctx.lineTo(toNode.x, toNode.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+
+      // Draw speed indicator
+      if (speed > 0) {
+        const midX = (fromNode.x + toNode.x) / 2;
+        const midY = (fromNode.y + toNode.y) / 2;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(midX - 30, midY - 10, 60, 20);
+        ctx.fillStyle = 'white';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${Math.round(speed)} MB/s`, midX, midY + 4);
+      }
+    }
+  </script>
+</body>
+</html>
