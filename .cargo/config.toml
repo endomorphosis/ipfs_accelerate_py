@@ -1,0 +1,17 @@
+[build]
+target = "aarch64-pc-windows-msvc"
+
+[target.aarch64-pc-windows-msvc]
+linker = "lld-link"
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/NODEFAULTLIB:libcmt.lib"
+]
+
+[env]
+PYTHON_SYS_EXECUTABLE = { value = "python", relative = true }
+PYO3_PYTHON = { value = "python", relative = true }
+
+[build.env]
+VIRTUAL_ENV = { value = "${VIRTUAL_ENV}", relative = false }
+PATH = { value = "${VIRTUAL_ENV}/Scripts;${PATH}", relative = false, force = true }

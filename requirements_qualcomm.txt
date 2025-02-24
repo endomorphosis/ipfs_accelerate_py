@@ -15,31 +15,26 @@ pydub
 pysbd
 websocket-client
 huggingface-hub
-# datasets
-# opencv-python-aarch64
-# ffmpeg-python
-# decord
-# websocket
+nncf>=2.14.0
 # openai
 # tiktoken
+# websocket
+# datasets
 # open_clip_torch
 # librosa
-# transformers==4.46
-# torch>=2.1
-# torchvision
-# numpy
-# torchtext
+# FlagEmbedding
 # sentence_transformers
 # trio
 # optimum
-# optimum[openvino]
-# timm
-# openvino>=2024.6 
-# openvino-tokenizers>=2024.6
-# openvino-genai>=2024.6
-# nncf>=2.14.0
 # optimum[exporters]
-# optimum[intel]
+# transformers==4.46
+# timm
+# numpy
+# torch
+# torchvision
+# torchtext
+# opencv-python-aarch64
+# ffmpeg-python
+# decordam
 # onnxruntime==1.19.2
 # onnx==1.16.1
-# FlagEmbedding
