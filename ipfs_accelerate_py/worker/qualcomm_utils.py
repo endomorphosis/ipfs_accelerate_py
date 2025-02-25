@@ -56,6 +56,61 @@ class qualcomm_utils:
         cleanup_dryrun = 'rm -rf genie_bundle'
         cleanup_dryrun_results = subprocess.run(cleanup_dryrun, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
         return None
+    
+    def postprocess_genie_t2t_run_results(self, results=None):
+        inference_time = {}
+        generation_time = {}
+        prompt_processing_time = {}
+        init_time = {}
+        output = {}
+        kpis = {}
+        dryrun_resuts = '''
+        Using libGenie.so version 1.1.0
+
+        [WARN]  "Unable to initialize logging in backend extensions."
+        [INFO]  "Using create From Binary List Async"
+        [INFO]  "Allocated total size = 323453440 across 10 buffers"
+        [PROMPT]: <|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nWhat is France's capital?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+        [BEGIN]: \n\nFrance's capital is Paris.[END]
+
+        [KPIS]:
+        Init Time: 6549034 us
+        Prompt Processing Time: 196067 us, Prompt Processing Rate : 86.707710 toks/sec
+        Token Generation Time: 740568 us, Token Generation Rate: 12.152884 toks/sec
+        Inference Time: 0 us, Inference Rate: 0.000000 toks/sec'''
+        if results is None:
+            return None
+        results = results.stdout.decode("utf-8")
+        results = results.split("\n")
+        prompt = ""
+        response = ""
+        for line in results:
+            if "[KPIS]:" in line:
+                break
+            if "[INFO]" in line:
+                if "Init Time" in line:
+                    init_time = re.findall(r'\d+', line)
+                    init_time = int(init_time[0])
+                if "Prompt Processing Time" in line:
+                    prompt_processing_time = re.findall(r'\d+', line)
+                    prompt_processing_time = int(prompt_processing_time[0])
+                if "Token Generation Time" in line:
+                    generation_time = re.findall(r'\d+', line)
+                    generation_time = int(generation_time[0])
+                if "Inference Time" in line:
+                    inference_time = re.findall(r'\d+', line)
+                    inference_time = int(inference_time[0])
+        prompt = results[-4]
+        response = results[-3]
+        kpis["init_time"] = init_time
+        kpis["prompt_processing_time"] = prompt_processing_time
+        kpis["generation_time"] = generation_time
+        kpis["inference_time"] = inference_time
+        output["kpis"] = kpis
+        output["prompt"] = prompt
+        output["response"] = response
+        return results
 
     def remove_qnn_model(self, model=None):
         if model is None:
