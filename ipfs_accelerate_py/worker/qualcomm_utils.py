@@ -50,14 +50,12 @@ class qualcomm_utils:
             return None 
         if text is None:
             return None
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            config_path = os.path.join(tmpdirname, "config.json")
-            text_path = os.path.join(tmpdirname, "text.txt")
-            with open(config_path, "w") as f:
-                json.dump(config, f)
-            with open(text_path, "w") as f:
-                f.write(text)
-            genie_t2t_run_cmd = self.genie_t2t_run_path_linux + " --config " + config_path + " --text " + text_path 
+        with tempfile.TemporaryFile() as tmpfile:
+            tmpfile.write(config)
+            tmpfile.seek(0)
+            filepath = tmpfile.name
+            
+            genie_t2t_run_cmd = self.genie_t2t_run_path_linux + " --config " + filepath + " --text " + text 
             genie_t2t_run_cmd_results = subprocess.run(genie_t2t_run_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return genie_t2t_run_cmd_results
         return None
