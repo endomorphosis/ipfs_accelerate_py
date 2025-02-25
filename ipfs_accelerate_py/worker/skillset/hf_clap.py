@@ -3,6 +3,7 @@ import time
 import asyncio
 import requests
 import io
+from pathlib import Path
 
 def load_audio_16khz(audio_file):
     import librosa
@@ -56,16 +57,6 @@ def cleanup_torchscript_cache():
     torch.jit._recursive.concrete_type_store = torch.jit._recursive.ConcreteTypeStore()
     torch.jit._state._clear_class_state()
 
-
-# class ClapEncoderWrapper(torch.nn.Module):
-#     def __init__(self, encoder):
-#         super().__init__()
-#         encoder.eval()
-#         self.encoder = encoder
-
-#     def forward(self, input_ids, attention_mask):
-#         return self.encoder.get_text_features(input_ids, attention_mask)
-
 class hf_clap:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -83,7 +74,7 @@ class hf_clap:
         self.transformers = None
         self.init = self.init
         self.__test__ = self.__test__
-        # self.init()
+        self.snpe_utils = None
         return None
 
     def load_audio(self, audio_file):
@@ -155,7 +146,65 @@ class hf_clap:
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+        """
+        Initialize CLAP model for Qualcomm hardware
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of model components for Qualcomm execution
+        """
+        self.init()
+        
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
+            
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+        
+        try:
+            # Load processor directly from HuggingFace
+            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_clap.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "audio", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler(endpoint, processor, model, qualcomm_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm CLAP model: {e}")
+            return None, None, None, None, 0
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         self.init()
@@ -497,10 +546,11 @@ class hf_clap:
         return handler
         
     def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, qualcomm_label):
-        """Creates an endpoint handler for Qualcomm hardware.
+        """
+        Creates a Qualcomm-optimized endpoint handler for CLAP audio embedding models
         
         Args:
-            endpoint: The model endpoint
+            endpoint: The SNPE model endpoint
             processor: The audio processor
             endpoint_model: The model name or path
             qualcomm_label: Label to identify this endpoint
@@ -510,35 +560,93 @@ class hf_clap:
         """
         def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
             try:
-                # This is a placeholder for Qualcomm-specific implementation
-                # Actual implementation would use SNPE (Snapdragon Neural Processing Engine)
+                inputs = {}
                 
-                # Process inputs based on what's provided
+                # Handle text input
                 if x is not None:
-                    text_embedding = self.np.zeros(512)  # Placeholder
+                    if type(x) == str:
+                        text_inputs = processor(
+                            text=x,
+                            return_tensors='np',
+                            padding=True
+                        )
+                    elif type(x) == list:
+                        text_inputs = processor(text=[text for text in x], return_tensors='np', padding=True)
                     
-                if y is not None:
-                    audio_embedding = self.np.zeros(512)  # Placeholder
+                    for key, value in text_inputs.items():
+                        inputs[key] = value
                 
-                # Return results based on what inputs were provided
-                if x is not None and y is not None:
-                    return {
-                        'audio_embedding': audio_embedding,
-                        'text_embedding': text_embedding
-                    }
-                elif x is not None:
-                    return {'embedding': text_embedding}
-                elif y is not None:
-                    return {'embedding': audio_embedding}
+                # Handle audio input
+                if y is not None:
+                    if type(y) == str:
+                        audio, samplerate = load_audio(y)
+                        audio_inputs = processor(
+                            audios=[audio], 
+                            return_tensors='np', 
+                            padding=True,
+                            sampling_rate=samplerate
+                        )
+                    elif type(y) == list:
+                        audios_with_rates = [load_audio(audio_file) for audio_file in y]
+                        audios = [audio[0] for audio in audios_with_rates]
+                        # Use the sample rate from the first audio file
+                        audio_inputs = processor(
+                            audios=audios, 
+                            return_tensors='np',
+                            padding=True,
+                            sampling_rate=audios_with_rates[0][1]
+                        )
                     
-                return None
+                    # Ensure input_features key exists for SNPE
+                    if "input_features" in audio_inputs:
+                        inputs["input_features"] = audio_inputs["input_features"]
+                    
+                    # Some models use different key names
+                    if "input_values" in audio_inputs:
+                        inputs["input_values"] = audio_inputs["input_values"]
+                
+                # Run inference with SNPE
+                results = self.snpe_utils.run_inference(endpoint, inputs)
+                
+                # Process results
+                output = {}
+                
+                # Extract text embeddings
+                if x is not None and "text_embeds" in results:
+                    text_embeddings = self.torch.tensor(results["text_embeds"])
+                    output["text_embedding"] = text_embeddings
+                
+                # Extract audio embeddings
+                if y is not None and "audio_embeds" in results:
+                    audio_embeddings = self.torch.tensor(results["audio_embeds"])
+                    output["audio_embedding"] = audio_embeddings
+                
+                # If we have both text and audio, compute similarity
+                if x is not None and y is not None and "text_embeds" in results and "audio_embeds" in results:
+                    text_emb = self.torch.tensor(results["text_embeds"])
+                    audio_emb = self.torch.tensor(results["audio_embeds"])
+                    
+                    # Normalize embeddings
+                    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
+                    audio_emb = audio_emb / audio_emb.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_emb, audio_emb.T)
+                    output["similarity"] = similarity
+                
+                # Return single embedding if that's all we have
+                if len(output) == 1 and list(output.keys())[0] in ["text_embedding", "audio_embedding"]:
+                    return {"embedding": list(output.values())[0]}
+                    
+                return output if output else None
+                
             except Exception as e:
                 print(f"Error in Qualcomm audio embedding handler: {e}")
                 return None
                 
         return handler
 
-    def create_cuda_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
+    def create_cuda_audio_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None):
         def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
             if "eval" in dir(endpoint):
                 endpoint.eval()
@@ -547,7 +655,7 @@ class hf_clap:
             return None
         return handler
     
-    def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
+    def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model, tokenizer, openvino_label, endpoint=None):
         self.init()
         def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             # text = "Replace me by any text you'd like."

@@ -19,6 +19,7 @@ class hf_bert:
         self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
     
     def init(self):        
@@ -204,17 +205,51 @@ class hf_bert:
         """
         self.init()
         
-        # Qualcomm initialization would use SNPE (Snapdragon Neural Processing Engine)
-        # This is a placeholder implementation
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        
-        # SNPE would typically convert the PyTorch model to a Qualcomm-specific format
-        endpoint = None
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
             
-        endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler(endpoint, qualcomm_label, endpoint, tokenizer)
-        
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_bert.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "embedding", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler(endpoint, qualcomm_label, endpoint, tokenizer)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            return None, None, None, None, 0
 
     def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, cpu_label, endpoint=None, tokenizer=None):
         def handler(x, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint, tokenizer=tokenizer):
@@ -414,7 +449,7 @@ class hf_bert:
                 if type(x) == str:
                     tokens = tokenizer(
                         x, 
-                        return_tensors='pt', 
+                        return_tensors='np', 
                         padding=True, 
                         truncation=True,
                         max_length=512  # Default max length
@@ -422,21 +457,43 @@ class hf_bert:
                 elif type(x) == list:
                     tokens = tokenizer(
                         x, 
-                        return_tensors='pt', 
+                        return_tensors='np', 
                         padding=True, 
                         truncation=True,
                         max_length=512  # Default max length
                     )
                 else:
-                    tokens = x
+                    # If x is already tokenized, convert to numpy arrays if needed
+                    tokens = {}
+                    for key, value in x.items():
+                        if hasattr(value, 'numpy'):
+                            tokens[key] = value.numpy()
+                        else:
+                            tokens[key] = value
                 
-                # This is a placeholder for Qualcomm-specific implementation
-                # Actual implementation would use SNPE (Snapdragon Neural Processing Engine)
+                # Run inference via SNPE
+                results = self.snpe_utils.run_inference(endpoint, tokens)
                 
-                # Create dummy output for placeholder
-                result = self.np.zeros((tokens['input_ids'].shape[0], 768))  # Default embedding size
+                # Process results to get embeddings
+                output = None
                 
-                return result
+                if "last_hidden_state" in results:
+                    # Convert to torch tensor
+                    hidden_states = self.torch.tensor(results["last_hidden_state"])
+                    attention_mask = self.torch.tensor(tokens["attention_mask"])
+                    
+                    # Apply attention mask
+                    last_hidden = hidden_states.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)
+                    
+                    # Mean pooling
+                    output = last_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
+                    
+                elif "pooler_output" in results:
+                    # Some models provide a pooled output directly
+                    output = self.torch.tensor(results["pooler_output"])
+                
+                return output
+                
             except Exception as e:
                 print(f"Error in Qualcomm text embedding handler: {e}")
                 raise e

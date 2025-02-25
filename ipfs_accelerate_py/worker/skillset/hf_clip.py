@@ -42,6 +42,7 @@ class hf_clip:
         self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         # self.init()
         return None
 
@@ -113,12 +114,44 @@ class hf_clip:
     def init_qualcomm(self, model, device, qualcomm_label):
         self.init()
         try:
+            # Import SNPE utilities
+            try:
+                from .qualcomm_snpe_utils import get_snpe_utils
+                self.snpe_utils = get_snpe_utils()
+            except ImportError:
+                print("Failed to import Qualcomm SNPE utilities")
+                return None, None, None, None, 0
+                
+            if not self.snpe_utils.is_available():
+                print("Qualcomm SNPE is not available on this system")
+                return None, None, None, None, 0
+            
             config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
             tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
             processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
             
-            # This would be replaced with Qualcomm-specific initialization in a real implementation
-            endpoint = None
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_clip.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "vision_text_dual", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
             
             endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
             return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
@@ -270,19 +303,88 @@ class hf_clip:
     
     def create_qualcomm_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint=None):
         def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
-            # This is a placeholder for Qualcomm-specific implementation
             try:
-                if y is not None:
-                    # Process image
-                    return {"message": "Qualcomm image embedding not fully implemented"}
-                    
-                if x is not None:
-                    # Process text
-                    return {"message": "Qualcomm text embedding not fully implemented"}
+                inputs = {}
                 
-                return {"message": "No valid input provided for Qualcomm handler"}
+                # Process text input (if provided)
+                if x is not None:
+                    if isinstance(x, str):
+                        text_inputs = tokenizer(text=[x], return_tensors='np')
+                    elif isinstance(x, list):
+                        text_inputs = tokenizer(text=x, return_tensors='np')
+                    
+                    inputs["input_ids"] = text_inputs["input_ids"]
+                    inputs["attention_mask"] = text_inputs["attention_mask"]
+                
+                # Process image input (if provided)
+                if y is not None:
+                    if isinstance(y, str):
+                        image = load_image(y)
+                        # Convert to proper format for CLIP
+                        if hasattr(tokenizer, "image_processor"):
+                            image_inputs = tokenizer.image_processor(images=[image], return_tensors='np')
+                        else:
+                            # Fallback to basic processing
+                            image = image.resize((224, 224))  # Standard size for most vision models
+                            img_array = self.np.array(image)
+                            img_array = img_array.transpose(2, 0, 1)  # Convert to CHW format
+                            img_array = img_array / 255.0  # Normalize
+                            image_inputs = {"pixel_values": self.np.expand_dims(img_array, axis=0)}
+                            
+                        inputs["pixel_values"] = image_inputs["pixel_values"]
+                    elif isinstance(y, list):
+                        images = [load_image(img) for img in y]
+                        if hasattr(tokenizer, "image_processor"):
+                            image_inputs = tokenizer.image_processor(images=images, return_tensors='np')
+                        else:
+                            # Fallback processing for multiple images
+                            processed_images = []
+                            for img in images:
+                                img = img.resize((224, 224))
+                                img_array = self.np.array(img)
+                                img_array = img_array.transpose(2, 0, 1)
+                                img_array = img_array / 255.0
+                                processed_images.append(img_array)
+                            image_inputs = {"pixel_values": self.np.stack(processed_images)}
+                            
+                        inputs["pixel_values"] = image_inputs["pixel_values"]
+                
+                # Run inference with SNPE
+                outputs = self.snpe_utils.run_inference(endpoint, inputs)
+                
+                # Process results based on what inputs were provided
+                result = {}
+                
+                if x is not None and "text_embeds" in outputs:
+                    result["text_embedding"] = self.torch.tensor(outputs["text_embeds"])
+                    
+                if y is not None and "image_embeds" in outputs:
+                    result["image_embedding"] = self.torch.tensor(outputs["image_embeds"])
+                
+                # If we have both embeddings and both inputs, compute similarity
+                if x is not None and y is not None and "text_embeds" in outputs and "image_embeds" in outputs:
+                    # Convert to PyTorch tensors
+                    text_embeddings = self.torch.tensor(outputs["text_embeds"])
+                    image_embeddings = self.torch.tensor(outputs["image_embeds"])
+                    
+                    # Normalize embeddings
+                    text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+                    image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_embeddings, image_embeddings.T)
+                    result["similarity"] = similarity
+                
+                # Return single embedding if only one input type was provided
+                if len(result) == 0:
+                    return {"message": "No valid embeddings generated"}
+                elif len(result) == 1 and list(result.keys())[0] in ["text_embedding", "image_embedding"]:
+                    return {"embedding": list(result.values())[0]}
+                
+                return result
+                
             except Exception as e:
-                print(f"Error in Qualcomm endpoint handler: {e}")
+                print(f"Error in Qualcomm CLIP endpoint handler: {e}")
                 return {"error": str(e)}
         return handler
         
