@@ -4,6 +4,8 @@ import json
 import shutil
 import re
 import subprocess
+import platform
+import sys
 
 class qualcomm_utils:
     def __init__(self, resources=None, metadata=None):
@@ -61,7 +63,31 @@ class qualcomm_utils:
         pip_uninstall_cmd = "pip uninstall qai_hub_models[" + model + "]"
         pip_uninstall_cmd_results = subprocess.run(pip_uninstall_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return None
-
+    
+    def setup_env(self, env_var=None):
+        if platform.system() == "Windows":
+            shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'hexagon-v73', 'unsigned'), 'genie_bundle', dirs_exist_ok=True)
+            shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'aarch64-windows-msvc'), 'genie_bundle', dirs_exist_ok=True)
+            shutil.copy(os.path.join(os.environ['QNN_SDK_ROOT'], 'bin', 'aarch64-windows-msvc', 'genie-t2t-run.exe'), 'genie_bundle')
+        if platform.system() == "Linux":
+            pass
+        if platform.system() == "Android":
+            arch = platform.architecture()[0]
+            if "hexagon" in arch:
+                if "v73" in arch:
+                    shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'hexagon-v73', 'unsigned'), 'genie_bundle', dirs_exist_ok=True)
+                elif "v75" in arch:
+                    shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'hexagon-v75', 'unsigned'), 'genie_bundle', dirs_exist_ok=True)
+                elif "v79" in arch:
+                    shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'hexagon-v79', 'unsigned'), 'genie_bundle', dirs_exist_ok=True)
+                else:
+                    raise Exception("Unsupported Hexagon version")
+            else:
+                pass            
+            shutil.copytree(os.path.join(os.environ['QNN_SDK_ROOT'], 'lib', 'aarch64-android'), 'genie_bundle', dirs_exist_ok=True)
+            shutil.copy(os.path.join(os.environ['QNN_SDK_ROOT'], 'bin', 'aarch64-android', 'genie-t2t-run'), 'genie_bundle')
+            return None
+        return None
 
     def export_tokenizer(self, config, tokenizer, model, path):
         if tokenizer is None:
@@ -77,10 +103,10 @@ class qualcomm_utils:
             os.makedirs(os.path.dirname(path))
         if os.path.isfile(path):
             os.remove(path)
-            custom_tokenizer = self.transformers.AutoTokenizer(models.BPE(vocab=tokenizer.get_vocab(), merges=[]))
+            custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))
             custom_tokenizer.save(os.path.join(path, "tokenizer.json"))
         else:
-            custom_tokenizer = self.transformers.AutoTokenizer(models.BPE(vocab=tokenizer.get_vocab(), merges=[]))
+            custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))
             custom_tokenizer.save(os.path.join(os.path.dirname(path),"tokenizer.json"))
         return None
     
