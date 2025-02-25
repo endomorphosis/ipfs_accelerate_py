@@ -45,10 +45,12 @@ class hf_xclip:
         self.create_openvino_video_embedding_endpoint_handler = self.create_openvino_video_embedding_endpoint_handler
         self.create_cuda_video_embedding_endpoint_handler = self.create_cuda_video_embedding_endpoint_handler
         self.create_cpu_video_embedding_endpoint_handler = self.create_cpu_video_embedding_endpoint_handler
+        self.create_apple_video_embedding_endpoint_handler = self.create_apple_video_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_qualcomm = self.init_qualcomm
         self.init_openvino = self.init_openvino
+        self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
         return None
@@ -82,7 +84,50 @@ class hf_xclip:
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+        self.init()
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # Here we would initialize the model using Qualcomm's SDK
+            # This is a placeholder for actual Qualcomm implementation
+            endpoint = None
+            
+            endpoint_handler = self.create_qualcomm_video_embedding_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            batch_size = 0
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            return None, None, None, None, 0
+
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        try:
+            if "coremltools" not in list(self.resources.keys()):
+                import coremltools as ct
+                self.ct = ct
+            else:
+                self.ct = self.resources["coremltools"]
+                
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # Load the model - in a real implementation, we would convert to CoreML format
+            # This is a placeholder for the actual implementation
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+            
+            # Create the endpoint handler
+            endpoint_handler = self.create_apple_video_embedding_endpoint_handler(tokenizer, model, apple_label, endpoint)
+            batch_size = 0
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+        except ImportError:
+            print("coremltools not installed. Can't initialize Apple backend.")
+            return None, None, None, None, 0
+        except Exception as e:
+            print(f"Error initializing Apple model: {e}")
+            return None, None, None, None, 0
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"
@@ -113,12 +158,21 @@ class hf_xclip:
     
     def init_cpu(self, model, device, cpu_label):
         self.init()
-        return None
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+            
+            endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(tokenizer, model, cpu_label, endpoint)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing CPU model: {e}")
+            return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
-        # self.init()
-        # from transformers import CLIPProcessor, CLIPModel, AutoTokenizer, AutoConfig
-        
+        self.init()
         config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
         tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
         processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
@@ -211,75 +265,55 @@ class hf_xclip:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
-
-        from decord import VideoReader, cpu
-        if hfmodel is None:
-            hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
-    
-        if hfprocessor is None:
-            hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
-        
-        if hfprocessor is not None:
-            text = "Replace me by any text you'd like."
-            ##xclip processor
-            video_url = "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
-            self.np.random.seed(0)
-            with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
-                f.write(requests.get(video_url).content)
-                f.flush()
-                videoreader = self.decord.VideoReader(f.name, num_threads=1, ctx=self.decord.cpu(0))
-                videoreader.seek(0)
-                indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
-                video = videoreader.get_batch(indices).asnumpy()
-                processed_data = hfprocessor(
-                    text=text,
-                    videos=list(video),
-                    return_tensors="pt",
-                    padding=True,
-                )
-                results = hfmodel(**processed_data)
-                hfmodel.config.torchscript = True
-                ov_model = self.ov.convert_model(hfmodel,  example_input=dict(processed_data))
-                if not os.path.exists(model_dst_path):
-                    os.mkdir(model_dst_path)
-                self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-                ov_model = self.ov.compile_model(ov_model)
-                hfmodel = None
-                hfprocessor = None
-        return ov_model
-    
     def create_cpu_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
-
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint):
             if "eval" in dir(endpoint):
                 endpoint.eval()
             else:
                 pass
-            return None
+            
+            # Implement CPU-based video embedding logic here
+            # This is a placeholder implementation
+            return {"message": "CPU video embedding not fully implemented"}
         return handler
     
-    def create_qualcomm_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
-
+    def create_qualcomm_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, qualcomm_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
             if "eval" in dir(endpoint):
                 endpoint.eval()
             else:
                 pass
-            return None
+            
+            # Implement Qualcomm-specific video embedding logic here
+            # This is a placeholder implementation
+            return {"message": "Qualcomm video embedding not fully implemented"}
         return handler
     
-    def create_cuda_video_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
-        def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
+    def create_apple_video_embedding_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
             if "eval" in dir(endpoint):
                 endpoint.eval()
             else:
                 pass
-            return None
+            
+            # Implement Apple-specific video embedding logic here
+            # This is a placeholder implementation that would use CoreML
+            return {"message": "Apple CoreML video embedding not fully implemented"}
+        return handler
+    
+    def create_cuda_video_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            else:
+                pass
+            
+            # Implement full CUDA video embedding handler here
+            return {"message": "CUDA video embedding not fully implemented"}
         return handler
 
     def create_openvino_video_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
-        def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+        def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=endpoint):
             self.np.random.seed(0)                       
             videoreader = None
             if y is not None:            

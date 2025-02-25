@@ -16,10 +16,14 @@ class hf_qwen2:
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init_cpu = self.init_cpu
+        self.init_apple = self.init_apple
+        self.init_qualcomm = self.init_qualcomm
         self.__test__ = self.__test__
         self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
         self.create_cpu_llm_endpoint_handler = self.create_cpu_llm_endpoint_handler
         self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
+        self.create_apple_llm_endpoint_handler = self.create_apple_llm_endpoint_handler
+        self.create_qualcomm_llm_endpoint_handler = self.create_qualcomm_llm_endpoint_handler
         return None
     
     def init(self):
@@ -71,8 +75,56 @@ class hf_qwen2:
     
     def init_cpu (self, model, device, cpu_label):
         self.init()
-        return None
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
+            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(model, trust_remote_code=True)
+            endpoint_handler = self.create_cpu_llm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing CPU model: {e}")
+            return None, None, None, None, 0
     
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        try:
+            if "coremltools" not in list(self.resources.keys()):
+                import coremltools as ct
+                self.ct = ct
+            else:
+                self.ct = self.resources["coremltools"]
+                
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
+            
+            # In a real implementation, we would convert and load a CoreML model
+            # For now, we'll load the standard model as a placeholder
+            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(model, trust_remote_code=True)
+            
+            endpoint_handler = self.create_apple_llm_endpoint_handler(endpoint, tokenizer, model, apple_label)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except ImportError:
+            print("coremltools not installed. Can't initialize Apple backend.")
+            return None, None, None, None, 0
+        except Exception as e:
+            print(f"Error initializing Apple model: {e}")
+            return None, None, None, None, 0
+    
+    def init_qualcomm(self, model, model_type, device, qualcomm_label):
+        self.init()
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
+            
+            # Here we would initialize the model using Qualcomm's SDK
+            # This is a placeholder for actual Qualcomm initialization
+            endpoint = None
+            
+            endpoint_handler = self.create_qualcomm_llm_endpoint_handler(endpoint, tokenizer, model, qualcomm_label)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -84,7 +136,7 @@ class hf_qwen2:
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_llm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_llm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
@@ -102,7 +154,7 @@ class hf_qwen2:
         batch_size = 0                
         tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         endpoint = get_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint,tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_llm_endpoint_handler(endpoint, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
@@ -148,16 +200,96 @@ class hf_qwen2:
                         raise Exception("Invalid input to vlm endpoint handler")
                   
                     prompt = local_cuda_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_cuda_processor(prompt, return_tensors="pt").to(cuda_label, self.torch.float16)
+                    inputs = local_cuda_processor(prompt, return_tensors="pt")
                     output = local_cuda_endpoint.generate(**inputs, max_new_tokens=30)
                     result = local_cuda_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    # Run model inference
-                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
-                    # Cleanup GPU memory in case of error
-                    self.torch.cuda.empty_cache()
+                    print(f"Error in CPU endpoint handler: {e}")
                     raise e
+        return handler
+        
+    def create_apple_llm_endpoint_handler(self, local_endpoint, local_processor, endpoint_model, apple_label):
+        def handler(x, y=None, local_endpoint=local_endpoint, local_processor=local_processor, endpoint_model=endpoint_model, apple_label=apple_label):
+            if "eval" in dir(local_endpoint):
+                local_endpoint.eval()
+                
+            try:
+                if x is not None and type(x) == str:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {"type": "text", "text": x},
+                            ],
+                        },
+                    ]
+                elif type(x) == tuple:
+                    conversation = x
+                elif type(x) == dict:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                elif type(x) == list:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {"type": "text", "text": x},
+                            ],
+                        },
+                    ]
+                else:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                
+                # In a real implementation, this would use the CoreML model for inference
+                # This is a placeholder implementation
+                prompt = local_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                inputs = local_processor(prompt, return_tensors="pt")
+                output = local_endpoint.generate(**inputs, max_new_tokens=30)
+                result = local_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                return result
+            except Exception as e:
+                print(f"Error in Apple endpoint handler: {e}")
+                raise e
+        return handler
+        
+    def create_qualcomm_llm_endpoint_handler(self, local_endpoint, local_processor, endpoint_model, qualcomm_label):
+        def handler(x, y=None, local_endpoint=local_endpoint, local_processor=local_processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
+            # This is a placeholder for Qualcomm-specific implementation
+            try:
+                if x is not None and type(x) == str:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {"type": "text", "text": x},
+                            ],
+                        },
+                    ]
+                elif type(x) == tuple:
+                    conversation = x
+                elif type(x) == dict:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                elif type(x) == list:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {"type": "text", "text": x},
+                            ],
+                        },
+                    ]
+                else:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                
+                # Placeholder for Qualcomm-specific inference
+                return {"message": "Qualcomm inference not fully implemented for Qwen2"}
+            except Exception as e:
+                print(f"Error in Qualcomm endpoint handler: {e}")
+                raise e
         return handler
 
     def create_openvino_llm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):

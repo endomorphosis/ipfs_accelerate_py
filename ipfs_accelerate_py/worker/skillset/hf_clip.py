@@ -33,10 +33,13 @@ class hf_clip:
         self.create_openvino_image_embedding_endpoint_handler = self.create_openvino_image_embedding_endpoint_handler
         self.create_cuda_image_embedding_endpoint_handler = self.create_cuda_image_embedding_endpoint_handler
         self.create_cpu_image_embedding_endpoint_handler = self.create_cpu_image_embedding_endpoint_handler
+        self.create_apple_image_embedding_endpoint_handler = self.create_apple_image_embedding_endpoint_handler
+        self.create_qualcomm_image_embedding_endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_qualcomm = self.init_qualcomm
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
         # self.init()
@@ -93,10 +96,61 @@ class hf_clip:
     
     def init_cpu(self, model, device, cpu_label):
         self.init()
-        return None
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # Initialize model for CPU
+            endpoint = self.transformers.CLIPModel.from_pretrained(model, trust_remote_code=True)
+            
+            endpoint_handler = self.create_cpu_image_embedding_endpoint_handler(tokenizer, model, cpu_label, endpoint)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing CPU model: {e}")
+            return None, None, None, None, 0
     
     def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+        self.init()
+        try:
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # This would be replaced with Qualcomm-specific initialization in a real implementation
+            endpoint = None
+            
+            endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            return None, None, None, None, 0
+            
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        try:
+            if "coremltools" not in list(self.resources.keys()):
+                import coremltools as ct
+                self.ct = ct
+            else:
+                self.ct = self.resources["coremltools"]
+                
+            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # In a real implementation, we would convert to CoreML format here
+            # For now, we'll use the standard model as a placeholder
+            endpoint = self.transformers.CLIPModel.from_pretrained(model, trust_remote_code=True)
+            
+            endpoint_handler = self.create_apple_image_embedding_endpoint_handler(tokenizer, model, apple_label, endpoint)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except ImportError:
+            print("coremltools not installed. Can't initialize Apple backend.")
+            return None, None, None, None, 0
+        except Exception as e:
+            print(f"Error initializing Apple model: {e}")
+            return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -109,7 +163,7 @@ class hf_clip:
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_image_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_image_embedding_endpoint_handler(tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
@@ -152,13 +206,13 @@ class hf_clip:
             # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
         try:
-            tokenizer =  self.transformers.CLIPProcessor.from_pretrained(
+            tokenizer = self.transformers.CLIPProcessor.from_pretrained(
                 model
             )
         except Exception as e:
             print(e)
             try:
-                tokenizer =  self.transformers.CLIPProcessor.from_pretrained(
+                tokenizer = self.transformers.CLIPProcessor.from_pretrained(
                     model_src_path
                 )
             except Exception as e:
@@ -181,46 +235,143 @@ class hf_clip:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def create_cpu_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
-
-            # if method == 'clip_text':
-            #         inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             text_features = self.model.get_text_features(**inputs)
-
-            #         return {
-            #             'embedding': text_features[0].cpu().numpy().tolist()
-            #         }
-                
-            #     elif method == 'clip_image':
-            #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             image_features  = self.model.get_image_features(**inputs)
-
-            #         return {
-            #             'embedding': image_features[0].cpu().numpy().tolist()
-            #         }
+    def create_cpu_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint):
             if "eval" in dir(endpoint):
                 endpoint.eval()
-            else:
-                pass
-            return None
+            
+            try:
+                if y is not None:
+                    if isinstance(y, str):
+                        image = load_image(y)
+                        inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
+                    elif isinstance(y, list):
+                        inputs = tokenizer(images=[load_image(img) for img in y], return_tensors='pt')
+                        
+                    with self.torch.no_grad():
+                        image_features = endpoint.get_image_features(**inputs)
+                        return {"image_embedding": image_features}
+                        
+                if x is not None:
+                    if isinstance(x, str):
+                        inputs = tokenizer(text=[x], return_tensors='pt')
+                    elif isinstance(x, list):
+                        inputs = tokenizer(text=x, return_tensors='pt')
+                        
+                    with self.torch.no_grad():
+                        text_features = endpoint.get_text_features(**inputs)
+                        return {"text_embedding": text_features}
+                
+                return {"message": "No valid input provided"}
+            except Exception as e:
+                print(f"Error in CPU endpoint handler: {e}")
+                return {"error": str(e)}
         return handler
     
-    def create_cuda_image_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
-        def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
+    def create_qualcomm_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            # This is a placeholder for Qualcomm-specific implementation
+            try:
+                if y is not None:
+                    # Process image
+                    return {"message": "Qualcomm image embedding not fully implemented"}
+                    
+                if x is not None:
+                    # Process text
+                    return {"message": "Qualcomm text embedding not fully implemented"}
+                
+                return {"message": "No valid input provided for Qualcomm handler"}
+            except Exception as e:
+                print(f"Error in Qualcomm endpoint handler: {e}")
+                return {"error": str(e)}
+        return handler
+        
+    def create_apple_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
+            # This is a placeholder for Apple-specific implementation using CoreML
+            try:
+                if y is not None:
+                    if isinstance(y, str):
+                        image = load_image(y)
+                        inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
+                    elif isinstance(y, list):
+                        inputs = tokenizer(images=[load_image(img) for img in y], return_tensors='pt')
+                        
+                    # In a real implementation, this would use CoreML for inference
+                    with self.torch.no_grad():
+                        image_features = endpoint.get_image_features(**inputs)
+                        return {"image_embedding": image_features}
+                        
+                if x is not None:
+                    if isinstance(x, str):
+                        inputs = tokenizer(text=[x], return_tensors='pt')
+                    elif isinstance(x, list):
+                        inputs = tokenizer(text=x, return_tensors='pt')
+                        
+                    # In a real implementation, this would use CoreML for inference
+                    with self.torch.no_grad():
+                        text_features = endpoint.get_text_features(**inputs)
+                        return {"text_embedding": text_features}
+                
+                return {"message": "No valid input provided"}
+            except Exception as e:
+                print(f"Error in Apple endpoint handler: {e}")
+                return {"error": str(e)}
+        return handler
+    
+    def create_cuda_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint):
             if "eval" in dir(endpoint):
                 endpoint.eval()
-            else:
-                pass
-            return None
+                
+            with self.torch.no_grad():
+                try:
+                    self.torch.cuda.empty_cache()
+                    
+                    if y is not None:
+                        if isinstance(y, str):
+                            image = load_image(y)
+                            inputs = tokenizer(images=[image], return_tensors='pt', padding=True).to(cuda_label)
+                        elif isinstance(y, list):
+                            inputs = tokenizer(images=[load_image(img) for img in y], return_tensors='pt').to(cuda_label)
+                            
+                        image_features = endpoint.get_image_features(**inputs)
+                        image_embeddings = image_features.detach().cpu()
+                        
+                        if x is None:
+                            self.torch.cuda.empty_cache()
+                            return {"image_embedding": image_embeddings}
+                    
+                    if x is not None:
+                        if isinstance(x, str):
+                            inputs = tokenizer(text=[x], return_tensors='pt').to(cuda_label)
+                        elif isinstance(x, list):
+                            inputs = tokenizer(text=x, return_tensors='pt').to(cuda_label)
+                            
+                        text_features = endpoint.get_text_features(**inputs)
+                        text_embeddings = text_features.detach().cpu()
+                        
+                        if y is None:
+                            self.torch.cuda.empty_cache()
+                            return {"text_embedding": text_embeddings}
+                    
+                    if x is not None and y is not None:
+                        self.torch.cuda.empty_cache()
+                        return {
+                            "text_embedding": text_embeddings,
+                            "image_embedding": image_embeddings
+                        }
+                    
+                    self.torch.cuda.empty_cache()
+                    return {"message": "No valid input provided"}
+                except Exception as e:
+                    self.torch.cuda.empty_cache()
+                    print(f"Error in CUDA endpoint handler: {e}")
+                    return {"error": str(e)}
         return handler
 
-    def create_openvino_image_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
-        def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+    def create_openvino_image_embedding_endpoint_handler(self, endpoint_model, tokenizer, openvino_label, endpoint=None):
+        def handler(x, y, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=endpoint):
             if y is not None:            
                 if type(y) == str:
                     image = load_image(y)
