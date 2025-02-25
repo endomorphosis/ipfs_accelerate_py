@@ -148,16 +148,16 @@ class ipfs_accelerate_py:
                     sha256.update(byte_block)
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
-            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+            test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
                         # test_results = await self.install_depends.test_hardware()
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
@@ -167,7 +167,7 @@ class ipfs_accelerate_py:
                         return e
             else:
                 try:
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
                     # test_results = await self.install_depends.test_hardware()
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)

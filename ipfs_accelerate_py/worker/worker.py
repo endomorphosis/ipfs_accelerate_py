@@ -295,11 +295,11 @@ class worker_py:
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                         return test_results
                 except Exception as e:
                     try:
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                         # test_results = await self.install_depends.test_hardware()
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
@@ -309,7 +309,7 @@ class worker_py:
                         return e
             else:
                 try:
-                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
+                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                     # test_results = await self.install_depends.test_hardware()
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
@@ -439,7 +439,7 @@ class worker_py:
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
-        ipex_test = self.hwtest["ipex"]
+        qualcomm_test = self.hwtest["qualcomm"]
         cuda = cuda_test
         cpus = os.cpu_count()
         torch_gpus = 0
