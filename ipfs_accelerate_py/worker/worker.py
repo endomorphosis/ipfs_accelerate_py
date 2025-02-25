@@ -440,6 +440,8 @@ class worker_py:
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
         qualcomm_test = self.hwtest["qualcomm"]
+        apple_test = self.hwtest["apple"]
+        webnn_test = self.hwtest["webnn"]
         cuda = cuda_test
         cpus = os.cpu_count()
         torch_gpus = 0
@@ -482,6 +484,10 @@ class worker_py:
             optimum_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
             openvino_model_types = ["clip", "wav2vec", "wav2vec2", "bert", "t5", "xclip", "llava", "llava_next", "qwen2", "llama", "clap", "whisper" ]
             openvino_genai_model_types = ["llava", "llava_next"]
+            cuda_model_types = []
+            qualcomm_model_types = []
+            apple_model_types = []
+            webnn_model_types = []
             custom_types = []
             method_name = "hf_" + model_type
             this_method = None
@@ -543,7 +549,50 @@ class worker_py:
                                         self.openvino_utils.get_openvino_pipeline_type,
                                         self.openvino_utils.openvino_cli_convert,
                                     )
-                pass
+                    elif model_type in cuda_model_types:
+                        if cuda_test and type(cuda_test) != ValueError:
+                            for gpu in range(torch_gpus):
+                                device = 'cuda:' + str(gpu)
+                                cuda_label = device
+                                self.local_endpoints[model][cuda_label], self.tokenizer[model][cuda_label], self.endpoint_handler[model][cuda_label], self.queues[model][cuda_label], self.batch_sizes[model][cuda_label] = this_method.init_cuda(
+                                    model,
+                                    device,
+                                    cuda_label
+                                )
+                    elif model_type in qualcomm_model_types:
+                        if qualcomm_test and type(qualcomm_test) != ValueError:
+                            for gpu in range(torch_gpus):
+                                device = 'qualcomm:' + str(gpu)
+                                qualcomm_label = device
+                                self.local_endpoints[model][qualcomm_label], self.tokenizer[model][qualcomm_label], self.endpoint_handler[model][qualcomm_label], self.queues[model][qualcomm_label], self.batch_sizes[model][qualcomm_label] = this_method.init_qualcomm(
+                                    model,
+                                    device,
+                                    qualcomm_label
+                                )
+                    elif model_type in apple_model_types:
+                        if apple_test and type(apple_test) != ValueError:
+                            for gpu in range(torch_gpus):
+                                device = 'apple:' + str(gpu)
+                                apple_label = device
+                                self.local_endpoints[model][apple_label], self.tokenizer[model][apple_label], self.endpoint_handler[model][apple_label], self.queues[model][apple_label], self.batch_sizes[model][apple_label] = this_method.init_apple(
+                                    model,
+                                    device,
+                                    apple_label
+                                )
+                    elif model_type in webnn_model_types:
+                        if webnn_test and type(webnn_test) != ValueError:
+                            for gpu in range(torch_gpus):
+                                device = 'webnn:' + str(gpu)
+                                webnn_label = device
+                                self.local_endpoints[model][webnn_label], self.tokenizer[model][webnn_label], self.endpoint_handler[model][webnn_label], self.queues[model][webnn_label], self.batch_sizes[model][webnn_label] = this_method.init_webnn(
+                                    model,
+                                    device,
+                                    webnn_label
+                                )
+                    else:
+                        pass
+                else:
+                    pass
         worker_endpoint_types = []
         worker_model_types = []
         for endpoint in self.endpoint_handler:
