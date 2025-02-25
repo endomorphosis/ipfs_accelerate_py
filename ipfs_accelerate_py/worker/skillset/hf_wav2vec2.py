@@ -57,7 +57,11 @@ class hf_wav2vec2:
         self.metadata = metadata    
         self.create_openvino_audio_embedding_endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler
         self.create_cuda_audio_embedding_endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler
+        self.create_cpu_audio_embedding_endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler
+        self.create_apple_audio_embedding_endpoint_handler = self.create_apple_audio_embedding_endpoint_handler
+        self.create_qualcomm_audio_embedding_endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler
         self.init_qualcomm = self.init_qualcomm
+        self.init_apple = self.init_apple
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -100,7 +104,42 @@ class hf_wav2vec2:
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+        self.init()
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+        
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
+        except Exception as e:
+            print(e)
+            endpoint = None
+            pass
+        
+        endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler(endpoint, tokenizer, model, qualcomm_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
+        
+        try:
+            # Use CoreML optimization if available
+            if "coremltools" in list(self.resources.keys()):
+                import coremltools as ct
+                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+                # Apple Silicon optimization would be here
+            else:
+                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
+        except Exception as e:
+            print(e)
+            endpoint = None
+            pass
+        
+        endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, tokenizer, model, apple_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
@@ -129,22 +168,32 @@ class hf_wav2vec2:
         return None
     
     def init_cpu(self, model, device, cpu_label):
-        self.init()        
-        return None
+        self.init()
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
+        
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(e)
+            endpoint = None
+            pass
+        
+        endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cpu_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
         config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-        # processor = CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
         endpoint = None
         try:
-            # endpoint = CLIPModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
-            pass
+            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             print(e)
             pass
-        endpoint_handler = self.create_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
         self.torch.cuda.empty_cache()
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
@@ -217,41 +266,145 @@ class hf_wav2vec2:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def create_cpu_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
-
-            # if method == 'clip_text':
-            #         inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             text_features = self.model.get_text_features(**inputs)
-
-            #         return {
-            #             'embedding': text_features[0].cpu().numpy().tolist()
-            #         }
-                
-            #     elif method == 'clip_image':
-            #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             image_features  = self.model.get_audio_features(**inputs)
-
-            #         return {
-            #             'embedding': image_features[0].cpu().numpy().tolist()
-            #         }
-            if "eval" in dir(endpoint):
+    def create_cpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, cpu_label):
+        def handler(x, tokenizer=tokenizer, endpoint_model=model, cpu_label=cpu_label, endpoint=endpoint):
+            if "eval" in dir(endpoint) and endpoint is not None:
                 endpoint.eval()
-            else:
-                pass
+            
+            with self.torch.no_grad():
+                try:
+                    if type(x) == str:
+                        audio_data, audio_sampling_rate = load_audio_16khz(x)
+                        inputs = tokenizer(
+                            audio_data,
+                            return_tensors="pt",
+                            padding="longest",
+                            sampling_rate=audio_sampling_rate,
+                        )
+                        
+                        outputs = endpoint(**inputs)
+                        embeddings = outputs.last_hidden_state
+                        # Average pooling
+                        embeddings = self.torch.mean(embeddings, dim=1)
+                        
+                        return {
+                            'embedding': embeddings[0].detach().numpy().tolist()
+                        }
+                except Exception as e:
+                    print(f"CPU audio embedding error: {e}")
+                    return None
             return None
         return handler
     
-    def create_cuda_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
-        def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
+    def create_cuda_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, cuda_label):
+        def handler(x, tokenizer=tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint):
+            if "eval" in dir(endpoint) and endpoint is not None:
+                endpoint.eval()
+            
+            with self.torch.no_grad():
+                try:
+                    self.torch.cuda.empty_cache()
+                    if type(x) == str:
+                        audio_data, audio_sampling_rate = load_audio_16khz(x)
+                        inputs = tokenizer(
+                            audio_data,
+                            return_tensors="pt",
+                            padding="longest",
+                            sampling_rate=audio_sampling_rate,
+                        )
+                        
+                        # Move inputs to the GPU
+                        for key in inputs:
+                            if isinstance(inputs[key], self.torch.Tensor):
+                                inputs[key] = inputs[key].to(endpoint.device)
+                        
+                        outputs = endpoint(**inputs)
+                        embeddings = outputs.last_hidden_state
+                        # Average pooling
+                        embeddings = self.torch.mean(embeddings, dim=1)
+                        
+                        result = embeddings[0].cpu().detach().numpy().tolist()
+                        
+                        # Clean up GPU memory
+                        del inputs, outputs, embeddings
+                        self.torch.cuda.empty_cache()
+                        
+                        return {
+                            'embedding': result
+                        }
+                except Exception as e:
+                    if 'inputs' in locals(): del inputs
+                    if 'outputs' in locals(): del outputs
+                    if 'embeddings' in locals(): del embeddings
+                    self.torch.cuda.empty_cache()
+                    print(f"CUDA audio embedding error: {e}")
+                    return None
+            return None
+        return handler
+
+    def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, qualcomm_label):
+        def handler(x, tokenizer=tokenizer, endpoint_model=model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            if endpoint is None:
+                return None
+                
             if "eval" in dir(endpoint):
                 endpoint.eval()
-            else:
-                pass
+            
+            try:
+                if type(x) == str:
+                    audio_data, audio_sampling_rate = load_audio_16khz(x)
+                    inputs = tokenizer(
+                        audio_data,
+                        return_tensors="pt",
+                        padding="longest",
+                        sampling_rate=audio_sampling_rate,
+                    )
+                    
+                    # Qualcomm-specific optimizations would go here
+                    outputs = endpoint(**inputs)
+                    embeddings = outputs.last_hidden_state
+                    # Average pooling
+                    embeddings = self.torch.mean(embeddings, dim=1)
+                    
+                    return {
+                        'embedding': embeddings[0].detach().numpy().tolist()
+                    }
+            except Exception as e:
+                print(f"Qualcomm audio embedding error: {e}")
+                return None
+            return None
+        return handler
+
+    def create_apple_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, apple_label):
+        def handler(x, tokenizer=tokenizer, endpoint_model=model, apple_label=apple_label, endpoint=endpoint):
+            if endpoint is None:
+                return None
+                
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            
+            try:
+                if type(x) == str:
+                    audio_data, audio_sampling_rate = load_audio_16khz(x)
+                    inputs = tokenizer(
+                        audio_data,
+                        return_tensors="pt",
+                        padding="longest",
+                        sampling_rate=audio_sampling_rate,
+                    )
+                    
+                    # Apple Silicon-specific optimizations would go here
+                    outputs = endpoint(**inputs)
+                    embeddings = outputs.last_hidden_state
+                    # Average pooling
+                    embeddings = self.torch.mean(embeddings, dim=1)
+                    
+                    return {
+                        'embedding': embeddings[0].detach().numpy().tolist()
+                    }
+            except Exception as e:
+                print(f"Apple audio embedding error: {e}")
+                return None
             return None
         return handler
 
