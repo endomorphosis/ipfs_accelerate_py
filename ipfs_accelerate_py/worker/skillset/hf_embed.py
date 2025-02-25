@@ -10,23 +10,45 @@ class hf_embed:
         self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
         self.create_cpu_text_embedding_endpoint_handler = self.create_cpu_text_embedding_endpoint_handler
+        self.create_qualcomm_text_embedding_endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
     
     def init(self):
-        import torch
-        import torch.nn.functional as F
         from torch import inference_mode, float16, Tensor
         from transformers import AutoConfig, AutoTokenizer, AutoModel, AutoModelForCausalLM, StoppingCriteriaList, pipeline
         from transformers.generation.streamers import TextStreamer
         from ipfs_transformers_py import AutoModel
+        
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+            
+        if "numpy" not in list(self.resources.keys()):
+            import numpy as np
+            self.np = np
+        else:
+            self.np = self.resources["numpy"]
+            
         return None
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
+        import time
+        
         sentence_1 = "The quick brown fox jumps over the lazy dog"
         timestamp1 = time.time()
         test_batch = None
@@ -47,29 +69,93 @@ class hf_embed:
         print(f"tokens: {len_tokens}")
         print(f"tokens per second: {tokens_per_second}")
         # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
-        with torch.no_grad():
-            if "cuda" in dir(torch):
-                torch.cuda.empty_cache()
+        with self.torch.no_grad():
+            if "cuda" in dir(self.torch):
+                self.torch.cuda.empty_cache()
         return True
 
-    def init_cpu():
+    def init_qualcomm(self, model, device, qualcomm_label):
+        """
+        Initialize embedding model for Qualcomm hardware
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of model components for Qualcomm execution
+        """
+        self.init()
+        
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
+            
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+        
+        try:
+            import os
+            import asyncio
+            
+            # Load tokenizer directly from HuggingFace
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_embed.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "embedding", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler(endpoint_model, tokenizer, qualcomm_label, endpoint)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm embedding model: {e}")
+            return None, None, None, None, 0
+
+    def init_cpu(self):
         self.init()
         return None
 
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = AutoConfig.from_pretrained(model, trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, device=device, use_fast=True, trust_remote_code=True)
         try:
-            endpoint = AutoModel.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
         except Exception as e:
             try:
-                endpoint = AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
+                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True, device=device)
             except Exception as e:
                 print(e)
                 pass
         endpoint_handler = self.create_cuda_text_embedding_endpoint_handler(endpoint, cuda_label)
-        torch.cuda.empty_cache()
+        self.torch.cuda.empty_cache()
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
@@ -119,7 +205,7 @@ class hf_embed:
                 endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
                     tokens = tokenizer(x, return_tensors="pt")
                     results =  endpoint(**tokens)
@@ -168,9 +254,9 @@ class hf_embed:
                 endpoint.eval()
             else:
                 pass
-            with torch.no_grad():
+            with self.torch.no_grad():
                 try:
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     # Tokenize input with truncation and padding
                     tokens = tokenizer[endpoint_model][cuda_label](
                         x, 
@@ -206,7 +292,7 @@ class hf_embed:
                     del tokens, input_ids, attention_mask, outputs
                     if 'hidden_states' in locals(): del hidden_states
                     if 'attention_mask_np' in locals(): del attention_mask_np
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     return result
                 except Exception as e:
                     # Cleanup GPU memory in case of error
@@ -216,34 +302,73 @@ class hf_embed:
                     if 'outputs' in locals(): del outputs
                     if 'hidden_states' in locals(): del hidden_states
                     if 'attention_mask_np' in locals(): del attention_mask_np
-                    torch.cuda.empty_cache()
+                    self.torch.cuda.empty_cache()
                     raise e
         return handler
-
-    # def embed_bak(self, instruction, text , **kwargs):
-    # 	self.input = text
-    # 	self.method = 'embed'
-    # 	embeddings = None
-    # 	if "instructor" in self.modelName:
-    # 		embeddings = self.model.encode([[instruction,self.input]])
-    # 		print(embeddings)
-    # 	if "gte" in self.modelName:
-    # 		embeddings = self.model.encode([self.input])
-    # 		print(embeddings)
-    # 	if "bge" in self.modelName:
-    # 		if self.model == None:
-    # 			self.model = FlagModel(
-    # 				'BAAI/'+self.modelName, query_instruction_for_retrieval=instruction,
-    # 				use_fp16=True
-    # 			)
-    # 		embeddings = self.model.encode(str(self.input))
-    # 		print(embeddings)
-
-    # 	if type(embeddings) != str:
-    # 		embeddings = json.dumps(embeddings.tolist())
-
-    # 	return {
-    # 		'text': embeddings, 
-    # 		'done': True
-    # 	}
-       
+        
+    def create_qualcomm_text_embedding_endpoint_handler(self, endpoint_model, tokenizer, qualcomm_label, endpoint=None):
+        """
+        Create an endpoint handler for Qualcomm text embedding models
+        
+        Args:
+            endpoint_model: Model name or path
+            tokenizer: HuggingFace tokenizer
+            qualcomm_label: Label for the endpoint
+            endpoint: The SNPE model endpoint
+            
+        Returns:
+            Handler function for the endpoint
+        """
+        def handler(x, endpoint_model=endpoint_model, tokenizer=tokenizer, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            try:
+                # Process input
+                if isinstance(x, str):
+                    # Single text input
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True, 
+                        truncation=True,
+                        max_length=512  # Default max length
+                    )
+                elif isinstance(x, list):
+                    # List of text inputs
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True, 
+                        truncation=True,
+                        max_length=512  # Default max length
+                    )
+                else:
+                    # Assume it's already tokenized
+                    inputs = {k: v.numpy() if hasattr(v, 'numpy') else v for k, v in x.items()}
+                
+                # Run inference with SNPE
+                outputs = self.snpe_utils.run_inference(endpoint, inputs)
+                
+                # Process results to get embeddings
+                if "last_hidden_state" in outputs:
+                    # Convert to torch tensor
+                    hidden_states = self.torch.tensor(outputs["last_hidden_state"])
+                    attention_mask = self.torch.tensor(inputs["attention_mask"])
+                    
+                    # Apply attention mask and mean pooling
+                    last_hidden = hidden_states.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)
+                    average_pool_results = last_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
+                    
+                    return average_pool_results
+                    
+                elif "pooler_output" in outputs:
+                    # Some models provide a pooled output directly
+                    return self.torch.tensor(outputs["pooler_output"])
+                    
+                else:
+                    # Fallback - return first output tensor
+                    return self.torch.tensor(list(outputs.values())[0])
+                
+            except Exception as e:
+                print(f"Error in Qualcomm text embedding handler: {e}")
+                return None
+                
+        return handler
