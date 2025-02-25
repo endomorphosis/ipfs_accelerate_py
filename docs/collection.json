@@ -1,5 +1,5 @@
 {
-    "stablelm-zephyr-3b-GGUF-Q2_K": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q2_K": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -145,7 +145,7 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q2_K",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
@@ -155,7 +155,7 @@
         "ipfs": "Qmae5bBVwbt7TiaTDe7xVsdLWhgLwMsaALHi9rUprEro9V",
         "https": "https://huggingface.co/endomorphosis/cloudkit-collection/resolve/main/collection.json"
     },
-    "stablelm-zephyr-3b-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -301,11 +301,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q3_K_M",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -451,11 +451,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q3_K_S",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -601,11 +601,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q3_K_L",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q4_0": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q4_0": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -751,11 +751,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q4_0",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -901,11 +901,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q4_K_S",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1051,11 +1051,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q4_K_M",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q5_0": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q5_0": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1201,11 +1201,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q5_0",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1351,11 +1351,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q5_K_S",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1501,11 +1501,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q5_K_M",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q6_K": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q6_K": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1651,11 +1651,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q6_K",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "stablelm-zephyr-3b-GGUF-Q8_0": {
+    "TheBloke/TheBloke/stablelm-zephyr-3b-GGUF-Q8_0": {
         "metadata": {
             "modelName": "stablelm-zephyr-3b-GGUF",
             "metadata": {},
@@ -1801,11 +1801,11 @@
             }
         },
         "format": "gguf",
-        "id": "stablelm-zephyr-3b-GGUF-Q8_0",
+        "id": "TheBloke/stablelm-zephyr-3b-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -1952,11 +1952,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q2_K",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2103,11 +2103,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2254,11 +2254,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_S",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2405,11 +2405,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_L",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2556,11 +2556,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q4_0",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2707,11 +2707,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q4_K_S",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -2858,11 +2858,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q4_K_M",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -3009,11 +3009,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q5_0",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -3160,11 +3160,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q5_K_S",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -3311,11 +3311,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q5_K_M",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -3462,11 +3462,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q6_K",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-M-7B-3.1.2-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Airoboros-M-7B-3.1.2-GGUF",
             "metadata": {},
@@ -3613,11 +3613,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-M-7B-3.1.2-GGUF-Q8_0",
+        "id": "TheBloke/Airoboros-M-7B-3.1.2-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -3764,11 +3764,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q2_K",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -3915,11 +3915,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_M",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4066,11 +4066,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_S",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4217,11 +4217,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q3_K_L",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4368,11 +4368,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q4_0",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4519,11 +4519,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q4_K_S",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4670,11 +4670,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q4_K_M",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4821,11 +4821,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q5_0",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -4972,11 +4972,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q5_K_S",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -5123,11 +5123,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q5_K_M",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -5274,11 +5274,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q6_K",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-13B-3.1.1-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Airoboros-L2-13B-3.1.1-GGUF",
             "metadata": {},
@@ -5425,11 +5425,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-13B-3.1.1-GGUF-Q8_0",
+        "id": "TheBloke/Airoboros-L2-13B-3.1.1-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-13B-3.1.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -5576,11 +5576,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q2_K",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -5727,11 +5727,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q3_K_M",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -5878,11 +5878,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q3_K_S",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6029,11 +6029,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q3_K_L",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6180,11 +6180,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q4_0",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6331,11 +6331,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q4_K_S",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6482,11 +6482,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q4_K_M",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6633,11 +6633,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q5_0",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6784,11 +6784,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q5_K_S",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -6935,11 +6935,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q5_K_M",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -7086,11 +7086,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q6_K",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-c34B-3.1.2-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Airoboros-c34B-3.1.2-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Airoboros-c34B-3.1.2-GGUF",
             "metadata": {},
@@ -7237,11 +7237,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-c34B-3.1.2-GGUF-Q8_0",
+        "id": "TheBloke/Airoboros-c34B-3.1.2-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-c34B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -7388,11 +7388,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q2_K",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -7539,11 +7539,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_M",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -7690,11 +7690,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_S",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -7841,11 +7841,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q3_K_L",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -7992,11 +7992,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q4_0",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8143,11 +8143,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q4_K_S",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8294,11 +8294,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q4_K_M",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8445,11 +8445,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q5_0",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8596,11 +8596,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q5_K_S",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8747,11 +8747,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q5_K_M",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -8918,11 +8918,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q6_K",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Airoboros-L2-70B-3.1.2-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Airoboros-L2-70B-3.1.2-GGUF",
             "metadata": {},
@@ -9089,11 +9089,11 @@
             }
         },
         "format": "gguf",
-        "id": "Airoboros-L2-70B-3.1.2-GGUF-Q8_0",
+        "id": "TheBloke/Airoboros-L2-70B-3.1.2-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Airoboros-L2-70B-3.1.2-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q2_K": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q2_K": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9239,11 +9239,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q2_K",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9389,11 +9389,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q3_K_M",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9539,11 +9539,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q3_K_S",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9689,11 +9689,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q3_K_L",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q4_0": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_0": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9839,11 +9839,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q4_0",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -9989,11 +9989,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q4_K_S",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10139,11 +10139,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q4_K_M",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q5_0": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_0": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10289,11 +10289,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q5_0",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10439,11 +10439,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q5_K_S",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10589,11 +10589,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q5_K_M",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q6_K": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q6_K": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10739,11 +10739,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q6_K",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "samantha-mistral-instruct-7B-GGUF-Q8_0": {
+    "TheBloke/TheBloke/samantha-mistral-instruct-7B-GGUF-Q8_0": {
         "metadata": {
             "modelName": "samantha-mistral-instruct-7B-GGUF",
             "metadata": {},
@@ -10889,11 +10889,11 @@
             }
         },
         "format": "gguf",
-        "id": "samantha-mistral-instruct-7B-GGUF-Q8_0",
+        "id": "TheBloke/samantha-mistral-instruct-7B-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/samantha-mistral-instruct-7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11039,11 +11039,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q2_K",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11189,11 +11189,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q3_K_M",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11339,11 +11339,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q3_K_S",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11489,11 +11489,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q3_K_L",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11639,11 +11639,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q4_0",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11789,11 +11789,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q4_K_S",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -11939,11 +11939,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q4_K_M",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -12089,11 +12089,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q5_0",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -12239,11 +12239,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q5_K_S",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -12389,11 +12389,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q5_K_M",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -12539,11 +12539,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q6_K",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-v0.1-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mistral-7B-v0.1-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mistral-7B-v0.1-GGUF",
             "metadata": {},
@@ -12689,11 +12689,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-v0.1-GGUF-Q8_0",
+        "id": "TheBloke/Mistral-7B-v0.1-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -12839,11 +12839,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q2_K",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -12989,11 +12989,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_M",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13139,11 +13139,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_S",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13289,11 +13289,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q3_K_L",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13439,11 +13439,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q4_0",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13589,11 +13589,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q4_K_S",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13739,11 +13739,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q4_K_M",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -13889,11 +13889,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q5_0",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -14039,11 +14039,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q5_K_S",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -14189,11 +14189,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q5_K_M",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -14339,11 +14339,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q6_K",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mistral-7B-Instruct-v0.2-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mistral-7B-Instruct-v0.2-GGUF",
             "metadata": {},
@@ -14489,11 +14489,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mistral-7B-Instruct-v0.2-GGUF-Q8_0",
+        "id": "TheBloke/Mistral-7B-Instruct-v0.2-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -14639,11 +14639,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q2_K",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -14789,11 +14789,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q3_K_M",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -14919,11 +14919,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q3_K_S",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15049,11 +15049,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q3_K_L",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15199,11 +15199,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q4_0",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15329,11 +15329,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q4_K_S",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15479,11 +15479,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q4_K_M",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15629,11 +15629,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q5_0",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15759,11 +15759,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q5_K_S",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -15909,11 +15909,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q5_K_M",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -16059,11 +16059,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q6_K",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-v0.1-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-v0.1-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-v0.1-GGUF",
             "metadata": {},
@@ -16209,11 +16209,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-v0.1-GGUF-Q8_0",
+        "id": "TheBloke/Mixtral-8x7B-v0.1-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1",
             "contextSize": 4096,
@@ -16298,10 +16298,10 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-Q2_K",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -16447,11 +16447,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q2_K",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -16597,11 +16597,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_M",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -16727,11 +16727,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_S",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -16857,11 +16857,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_L",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17007,11 +17007,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_0",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17137,11 +17137,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_S",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17287,11 +17287,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_M",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17437,11 +17437,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_0",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17567,11 +17567,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_S",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17717,11 +17717,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_M",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -17867,11 +17867,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q6_K",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-Instruct-v0.1-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18017,11 +18017,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-Instruct-v0.1-GGUF-Q8_0",
+        "id": "TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18167,11 +18167,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q2_K",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18317,11 +18317,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_M",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18447,11 +18447,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_S",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18577,11 +18577,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_L",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18727,11 +18727,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_0",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -18857,11 +18857,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_S",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19007,11 +19007,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_M",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19157,11 +19157,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_0",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19287,11 +19287,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_S",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19437,11 +19437,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_M",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19587,11 +19587,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q6_K",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
             "metadata": {},
@@ -19737,11 +19737,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q8_0",
+        "id": "TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-Fusion-4x7B-Instruct-v0.1-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -19887,11 +19887,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q2_K",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20037,11 +20037,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q3_K_M",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20167,11 +20167,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q3_K_S",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20297,11 +20297,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q3_K_L",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20447,11 +20447,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q4_0",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20577,11 +20577,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q4_K_S",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20727,11 +20727,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q4_K_M",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -20877,11 +20877,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q5_0",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -21007,11 +21007,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q5_K_S",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -21157,11 +21157,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q5_K_M",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -21307,11 +21307,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q6_K",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Fennec-Mixtral-8x7B-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Fennec-Mixtral-8x7B-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Fennec-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -21457,11 +21457,11 @@
             }
         },
         "format": "gguf",
-        "id": "Fennec-Mixtral-8x7B-GGUF-Q8_0",
+        "id": "TheBloke/Fennec-Mixtral-8x7B-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Fennec-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -21607,11 +21607,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q2_K",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -21757,11 +21757,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_M",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -21887,11 +21887,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_S",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22017,11 +22017,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_L",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22167,11 +22167,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_0",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22297,11 +22297,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_S",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22447,11 +22447,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_M",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22597,11 +22597,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_0",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22727,11 +22727,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_S",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -22877,11 +22877,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_M",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -23027,11 +23027,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q6_K",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-8x7B-MoE-RP-Story-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mixtral-8x7B-MoE-RP-Story-GGUF",
             "metadata": {},
@@ -23177,7 +23177,7 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-8x7B-MoE-RP-Story-GGUF-Q8_0",
+        "id": "TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-8x7B-MoE-RP-Story-GGUF",
         "skill": "llama_cpp"
     },
@@ -24525,7 +24525,7 @@
         "id": "gpt-3.5-turbo-1106",
         "source": ""
     },
-    "faster-whisper-large-v3": {
+    "Systran/Systran/faster-whisper-large-v3": {
         "metadata": {
             "modelName": "faster-whisper-large-v3",
             "metadata": {
@@ -24732,11 +24732,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-large-v3",
+        "id": "Systran/faster-whisper-large-v3",
         "source": "https://huggingface.co/Systran/faster-whisper-large-v3",
         "location": "huggingface"
     },
-    "law-LLM-13B-GGUF-Q2_K": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q2_K": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -24883,11 +24883,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q2_K",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25034,11 +25034,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q3_K_M",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25185,11 +25185,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q3_K_S",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25336,11 +25336,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q3_K_L",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q4_0": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q4_0": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25487,11 +25487,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q4_0",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25638,11 +25638,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q4_K_S",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25789,11 +25789,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q4_K_M",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q5_0": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q5_0": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -25940,11 +25940,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q5_0",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -26091,11 +26091,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q5_K_S",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -26242,11 +26242,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q5_K_M",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q6_K": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q6_K": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -26393,11 +26393,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q6_K",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-13B-GGUF-Q8_0": {
+    "TheBloke/TheBloke/law-LLM-13B-GGUF-Q8_0": {
         "metadata": {
             "modelName": "law-LLM-13B-GGUF",
             "metadata": {},
@@ -26544,11 +26544,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-13B-GGUF-Q8_0",
+        "id": "TheBloke/law-LLM-13B-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-13B-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q2_K": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q2_K": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -26694,11 +26694,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q2_K",
+        "id": "TheBloke/law-LLM-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -26844,11 +26844,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q3_K_M",
+        "id": "TheBloke/law-LLM-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -26994,11 +26994,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q3_K_S",
+        "id": "TheBloke/law-LLM-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27144,11 +27144,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q3_K_L",
+        "id": "TheBloke/law-LLM-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q4_0": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q4_0": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27294,11 +27294,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q4_0",
+        "id": "TheBloke/law-LLM-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27444,11 +27444,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q4_K_S",
+        "id": "TheBloke/law-LLM-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27594,11 +27594,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q4_K_M",
+        "id": "TheBloke/law-LLM-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q5_0": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q5_0": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27744,11 +27744,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q5_0",
+        "id": "TheBloke/law-LLM-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -27894,11 +27894,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q5_K_S",
+        "id": "TheBloke/law-LLM-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -28044,11 +28044,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q5_K_M",
+        "id": "TheBloke/law-LLM-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q6_K": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q6_K": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -28194,11 +28194,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q6_K",
+        "id": "TheBloke/law-LLM-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "law-LLM-GGUF-Q8_0": {
+    "TheBloke/TheBloke/law-LLM-GGUF-Q8_0": {
         "metadata": {
             "modelName": "law-LLM-GGUF",
             "metadata": {},
@@ -28344,11 +28344,11 @@
             }
         },
         "format": "gguf",
-        "id": "law-LLM-GGUF-Q8_0",
+        "id": "TheBloke/law-LLM-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/law-LLM-GGUF",
         "skill": "llama_cpp"
     },
-    "flan-t5-small": {
+    "google/google/flan-t5-small": {
         "metadata": {
             "modelName": "flan-t5-small",
             "metadata": {}
@@ -28648,11 +28648,11 @@
             }
         },
         "format": "hf",
-        "id": "flan-t5-small",
+        "id": "google/flan-t5-small",
         "source": "https://huggingface.co/google/flan-t5-small",
         "location": "huggingface"
     },
-    "flan-t5-base": {
+    "google/google/flan-t5-base": {
         "metadata": {
             "modelName": "flan-t5-base",
             "metadata": {}
@@ -28952,11 +28952,11 @@
             }
         },
         "format": "hf",
-        "id": "flan-t5-base",
+        "id": "google/flan-t5-base",
         "source": "https://huggingface.co/google/flan-t5-base",
         "location": "huggingface"
     },
-    "flan-t5-large": {
+    "google/google/flan-t5-large": {
         "metadata": {
             "modelName": "flan-t5-large",
             "metadata": {}
@@ -29256,11 +29256,11 @@
             }
         },
         "format": "hf",
-        "id": "flan-t5-large",
+        "id": "google/flan-t5-large",
         "source": "https://huggingface.co/google/flan-t5-large",
         "location": "huggingface"
     },
-    "flan-t5-xxl": {
+    "google/google/flan-t5-xxl": {
         "metadata": {
             "modelName": "flan-t5-xxl",
             "metadata": {}
@@ -29960,11 +29960,11 @@
             }
         },
         "format": "hf",
-        "id": "flan-t5-xxl",
+        "id": "google/flan-t5-xxl",
         "source": "https://huggingface.co/google/flan-t5-xxl",
         "location": "huggingface"
     },
-    "flan-t5-xl": {
+    "google/google/flan-t5-xl": {
         "metadata": {
             "modelName": "flan-t5-xl",
             "metadata": {}
@@ -30424,11 +30424,11 @@
             }
         },
         "format": "hf",
-        "id": "flan-t5-xl",
+        "id": "google/flan-t5-xl",
         "source": "https://huggingface.co/google/flan-t5-xl",
         "location": "huggingface"
     },
-    "T0": {
+    "bigscience/bigscience/T0": {
         "metadata": {
             "modelName": "T0",
             "metadata": {}
@@ -30628,11 +30628,11 @@
             }
         },
         "format": "hf",
-        "id": "T0",
+        "id": "bigscience/T0",
         "source": "https://huggingface.co/bigscience/T0",
         "location": "huggingface"
     },
-    "T0_3B": {
+    "bigscience/bigscience/T0_3B": {
         "metadata": {
             "modelName": "T0_3B",
             "metadata": {}
@@ -30832,11 +30832,11 @@
             }
         },
         "format": "hf",
-        "id": "T0_3B",
+        "id": "bigscience/T0_3B",
         "source": "https://huggingface.co/bigscience/T0_3B",
         "location": "huggingface"
     },
-    "T0p": {
+    "bigscience/bigscience/T0p": {
         "metadata": {
             "modelName": "T0p",
             "metadata": {}
@@ -31036,11 +31036,11 @@
             }
         },
         "format": "hf",
-        "id": "T0p",
+        "id": "bigscience/T0p",
         "source": "https://huggingface.co/bigscience/T0p",
         "location": "huggingface"
     },
-    "T0pp": {
+    "bigscience/bigscience/T0pp": {
         "metadata": {
             "modelName": "T0pp",
             "metadata": {}
@@ -31240,11 +31240,11 @@
             }
         },
         "format": "hf",
-        "id": "T0pp",
+        "id": "bigscience/T0pp",
         "source": "https://huggingface.co/bigscience/T0pp",
         "location": "huggingface"
     },
-    "t5_11b_trueteacher_and_anli": {
+    "google/google/t5_11b_trueteacher_and_anli": {
         "metadata": {
             "modelName": "t5_11b_trueteacher_and_anli",
             "metadata": {}
@@ -31564,11 +31564,11 @@
             }
         },
         "format": "hf",
-        "id": "t5_11b_trueteacher_and_anli",
+        "id": "google/t5_11b_trueteacher_and_anli",
         "source": "https://huggingface.co/google/t5_11b_trueteacher_and_anli",
         "location": "huggingface"
     },
-    "UAE-Large-V1": {
+    "WhereIsAI/WhereIsAI/UAE-Large-V1": {
         "metadata": {
             "modelName": "UAE-Large-V1",
             "metadata": {
@@ -31793,11 +31793,11 @@
             }
         },
         "format": "hf",
-        "id": "UAE-Large-V1",
+        "id": "WhereIsAI/UAE-Large-V1",
         "source": "https://huggingface.co/WhereIsAI/UAE-Large-V1",
         "location": "huggingface"
     },
-    "bge-large-en-v1.5": {
+    "BAAI/BAAI/bge-large-en-v1.5": {
         "metadata": {
             "modelName": "bge-large-en-v1.5",
             "metadata": {
@@ -32102,11 +32102,11 @@
             }
         },
         "format": "hf",
-        "id": "bge-large-en-v1.5",
+        "id": "BAAI/bge-large-en-v1.5",
         "source": "https://huggingface.co/BAAI/bge-large-en-v1.5",
         "location": "huggingface"
     },
-    "bge-base-en-v1.5": {
+    "BAAI/BAAI/bge-base-en-v1.5": {
         "metadata": {
             "modelName": "bge-base-en-v1.5",
             "metadata": {
@@ -32411,11 +32411,11 @@
             }
         },
         "format": "hf",
-        "id": "bge-base-en-v1.5",
+        "id": "BAAI/bge-base-en-v1.5",
         "source": "https://huggingface.co/BAAI/bge-base-en-v1.5",
         "location": "huggingface"
     },
-    "bge-small-en-v1.5": {
+    "BAAI/BAAI/bge-small-en-v1.5": {
         "metadata": {
             "modelName": "bge-small-en-v1.5",
             "metadata": {
@@ -32720,11 +32720,11 @@
             }
         },
         "format": "hf",
-        "id": "bge-small-en-v1.5",
+        "id": "BAAI/bge-small-en-v1.5",
         "source": "https://huggingface.co/BAAI/bge-small-en-v1.5",
         "location": "huggingface"
     },
-    "gte-large": {
+    "thenlper/thenlper/gte-large": {
         "metadata": {
             "modelName": "gte-large",
             "metadata": {
@@ -33048,11 +33048,11 @@
             }
         },
         "format": "hf",
-        "id": "gte-large",
+        "id": "thenlper/gte-large",
         "source": "https://huggingface.co/thenlper/gte-large",
         "location": "huggingface"
     },
-    "gte-base": {
+    "thenlper/thenlper/gte-base": {
         "metadata": {
             "modelName": "gte-base",
             "metadata": {
@@ -33377,11 +33377,11 @@
             }
         },
         "format": "hf",
-        "id": "gte-base",
+        "id": "thenlper/gte-base",
         "source": "https://huggingface.co/thenlper/gte-base",
         "location": "huggingface"
     },
-    "gte-small": {
+    "thenlper/thenlper/gte-small": {
         "metadata": {
             "modelName": "gte-small",
             "metadata": {
@@ -33706,11 +33706,11 @@
             }
         },
         "format": "hf",
-        "id": "gte-small",
+        "id": "thenlper/gte-small",
         "source": "https://huggingface.co/thenlper/gte-small",
         "location": "huggingface"
     },
-    "gte-tiny": {
+    "TaylorAI/TaylorAI/gte-tiny": {
         "metadata": {
             "modelName": "gte-tiny",
             "metadata": {
@@ -34075,11 +34075,11 @@
             }
         },
         "format": "hf",
-        "id": "gte-tiny",
+        "id": "TaylorAI/gte-tiny",
         "source": "https://huggingface.co/TaylorAI/gte-tiny",
         "location": "huggingface"
     },
-    "instructor-xl": {
+    "hkunlp/hkunlp/instructor-xl": {
         "metadata": {
             "modelName": "instructor-xl",
             "metadata": {
@@ -34404,11 +34404,11 @@
             }
         },
         "format": "hf",
-        "id": "instructor-xl",
+        "id": "hkunlp/instructor-xl",
         "source": "https://huggingface.co/hkunlp/instructor-xl",
         "location": "huggingface"
     },
-    "instructor-large": {
+    "hkunlp/hkunlp/instructor-large": {
         "metadata": {
             "modelName": "instructor-large",
             "metadata": {
@@ -34733,11 +34733,11 @@
             }
         },
         "format": "hf",
-        "id": "instructor-large",
+        "id": "hkunlp/instructor-large",
         "source": "https://huggingface.co/hkunlp/instructor-large",
         "location": "huggingface"
     },
-    "instructor-base": {
+    "hkunlp/hkunlp/instructor-base": {
         "metadata": {
             "modelName": "instructor-base",
             "metadata": {
@@ -35062,11 +35062,11 @@
             }
         },
         "format": "hf",
-        "id": "instructor-base",
+        "id": "hkunlp/instructor-base",
         "source": "https://huggingface.co/hkunlp/instructor-base",
         "location": "huggingface"
     },
-    "faster-whisper-medium": {
+    "Systran/Systran/faster-whisper-medium": {
         "metadata": {
             "modelName": "faster-whisper-medium",
             "metadata": {
@@ -35253,11 +35253,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-medium",
+        "id": "Systran/faster-whisper-medium",
         "source": "https://huggingface.co/Systran/faster-whisper-medium",
         "location": "huggingface"
     },
-    "faster-whisper-base": {
+    "Systran/Systran/faster-whisper-base": {
         "metadata": {
             "modelName": "faster-whisper-base",
             "metadata": {
@@ -35460,11 +35460,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-base",
+        "id": "Systran/faster-whisper-base",
         "source": "https://huggingface.co/Systran/faster-whisper-base",
         "location": "huggingface"
     },
-    "faster-whisper-tiny": {
+    "Systran/Systran/faster-whisper-tiny": {
         "metadata": {
             "modelName": "faster-whisper-tiny",
             "metadata": {
@@ -35667,11 +35667,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-tiny",
+        "id": "Systran/faster-whisper-tiny",
         "source": "https://huggingface.co/Systran/faster-whisper-tiny",
         "location": "huggingface"
     },
-    "faster-whisper-small": {
+    "Systran/Systran/faster-whisper-small": {
         "metadata": {
             "modelName": "faster-whisper-small",
             "metadata": {
@@ -35874,11 +35874,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-small",
+        "id": "Systran/faster-whisper-small",
         "source": "https://huggingface.co/Systran/faster-whisper-small",
         "location": "huggingface"
     },
-    "faster-whisper-medium.en": {
+    "Systran/Systran/faster-whisper-medium.en": {
         "metadata": {
             "modelName": "faster-whisper-medium.en",
             "metadata": {
@@ -36065,11 +36065,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-medium.en",
+        "id": "Systran/faster-whisper-medium.en",
         "source": "https://huggingface.co/Systran/faster-whisper-medium.en",
         "location": "huggingface"
     },
-    "faster-whisper-base.en": {
+    "Systran/Systran/faster-whisper-base.en": {
         "metadata": {
             "modelName": "faster-whisper-base.en",
             "metadata": {
@@ -36272,11 +36272,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-base.en",
+        "id": "Systran/faster-whisper-base.en",
         "source": "https://huggingface.co/Systran/faster-whisper-base.en",
         "location": "huggingface"
     },
-    "faster-whisper-tiny.en": {
+    "Systran/Systran/faster-whisper-tiny.en": {
         "metadata": {
             "modelName": "faster-whisper-tiny.en",
             "metadata": {
@@ -36479,11 +36479,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-tiny.en",
+        "id": "Systran/faster-whisper-tiny.en",
         "source": "https://huggingface.co/Systran/faster-whisper-tiny.en",
         "location": "huggingface"
     },
-    "faster-whisper-small.en": {
+    "Systran/Systran/faster-whisper-small.en": {
         "metadata": {
             "modelName": "faster-whisper-small.en",
             "metadata": {
@@ -36686,11 +36686,11 @@
             }
         },
         "format": "hf",
-        "id": "faster-whisper-small.en",
+        "id": "Systran/faster-whisper-small.en",
         "source": "https://huggingface.co/Systran/faster-whisper-small.en",
         "location": "huggingface"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -36816,11 +36816,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q2_K",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -36946,11 +36946,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_M",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37076,11 +37076,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_S",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37206,11 +37206,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_L",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37336,11 +37336,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_0",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37466,11 +37466,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_S",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37596,11 +37596,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_M",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37726,11 +37726,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_0",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37856,11 +37856,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_S",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -37986,11 +37986,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_M",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -38116,11 +38116,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q6_K",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Mixtral-4x7B-DPO-RPChat-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Mixtral-4x7B-DPO-RPChat-GGUF",
             "metadata": {},
@@ -38246,11 +38246,11 @@
             }
         },
         "format": "gguf",
-        "id": "Mixtral-4x7B-DPO-RPChat-GGUF-Q8_0",
+        "id": "TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Mixtral-4x7B-DPO-RPChat-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q2_K": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q2_K": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -38376,11 +38376,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q2_K",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q2_K",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_M": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_M": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -38506,11 +38506,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_M",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_M",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_S": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_S": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -38636,11 +38636,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_S",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_S",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_L": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_L": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -38766,11 +38766,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_L",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q3_K_L",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_0": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_0": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -38896,11 +38896,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_0",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_0",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_S": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_S": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39026,11 +39026,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_S",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_S",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_M": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_M": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39156,11 +39156,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_M",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q4_K_M",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_0": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_0": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39286,11 +39286,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_0",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_0",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_S": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_S": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39416,11 +39416,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_S",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_S",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_M": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_M": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39546,11 +39546,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_M",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q5_K_M",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q6_K": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q6_K": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39676,11 +39676,11 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q6_K",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q6_K",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     },
-    "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q8_0": {
+    "TheBloke/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q8_0": {
         "metadata": {
             "modelName": "Synthia-MoE-v3-Mixtral-8x7B-GGUF",
             "metadata": {},
@@ -39806,7 +39806,7 @@
             }
         },
         "format": "gguf",
-        "id": "Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q8_0",
+        "id": "TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF-Q8_0",
         "source": "https://huggingface.co/TheBloke/Synthia-MoE-v3-Mixtral-8x7B-GGUF",
         "skill": "llama_cpp"
     }
