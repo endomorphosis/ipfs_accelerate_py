@@ -3,6 +3,7 @@ import os
 import json
 import shutil
 import re
+import subprocess
 
 class qualcomm_utils:
     def __init__(self, resources=None, metadata=None):
@@ -14,6 +15,13 @@ class qualcomm_utils:
         return None
     
     def init(self):
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.resources["transformers"] = transformers
+            self.transformers = self.resources["transformers"]
+        else:
+            self.transformers = self.resources["transformers"]
+            
         return None
     
     def export_tokenizer(self, config, tokenizer, model, path):
@@ -28,10 +36,16 @@ class qualcomm_utils:
         
         if not os.path.exists(os.path.dirname(path)):
             os.makedirs(os.path.dirname(path))
-        tokenizer.save_pretrained(path)
+        if os.path.isfile(path):
+            os.remove(path)
+            custom_tokenizer = self.transformers.AutoTokenizer(models.BPE(vocab=tokenizer.get_vocab(), merges=[]))
+            custom_tokenizer.save(os.path.join(path, "tokenizer.json"))
+        else:
+            custom_tokenizer = self.transformers.AutoTokenizer(models.BPE(vocab=tokenizer.get_vocab(), merges=[]))
+            custom_tokenizer.save(os.path.join(os.path.dirname(path),"tokenizer.json"))
         return None
     
-    def genie_t2t_run(self, config=None, text):
+    def genie_t2t_run(self, config=None, text=None):
         if config is None:
             return None 
         if text is None:
@@ -44,5 +58,6 @@ class qualcomm_utils:
             with open(text_path, "w") as f:
                 f.write(text)
             genie_t2t_run_cmd = self.genie_t2t_run_path_linux + " --config " + config_path + " --text " + text_path 
-            os.system(genie_t2t_run_cmd)
+            genie_t2t_run_cmd_results = subprocess.run(genie_t2t_run_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return genie_t2t_run_cmd_results
         return None
