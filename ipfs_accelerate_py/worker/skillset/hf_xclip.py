@@ -51,6 +51,7 @@ class hf_xclip:
         self.init = self.init
         self.__test__ = self.__test__
         self.snpe_utils = None
+        self.coreml_utils = None
         return None
 
     def init(self):
@@ -142,31 +143,52 @@ class hf_xclip:
             return None, None, None, None, 0
 
     def init_apple(self, model, device, apple_label):
+        """Initialize XClip model for Apple Silicon hardware."""
         self.init()
+        
         try:
-            if "coremltools" not in list(self.resources.keys()):
-                import coremltools as ct
-                self.ct = ct
-            else:
-                self.ct = self.resources["coremltools"]
-                
-            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
-            
-            # Load the model - in a real implementation, we would convert to CoreML format
-            # This is a placeholder for the actual implementation
-            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
-            
-            # Create the endpoint handler
-            endpoint_handler = self.create_apple_video_embedding_endpoint_handler(tokenizer, model, apple_label, endpoint)
-            batch_size = 0
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
         except ImportError:
-            print("coremltools not installed. Can't initialize Apple backend.")
+            print("Failed to import CoreML utilities")
             return None, None, None, None, 0
+            
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Load processor from HuggingFace
+            processor = self.transformers.XCLIPProcessor.from_pretrained(model, trust_remote_code=True)
+            
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_xclip.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "vision_text_dual", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_multimodal_endpoint_handler(endpoint, processor, model, apple_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
-            print(f"Error initializing Apple model: {e}")
+            print(f"Error initializing Apple Silicon XClip model: {e}")
             return None, None, None, None, 0
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
@@ -525,5 +547,82 @@ class hf_xclip:
             except Exception as e:
                 print(f"Error in Qualcomm XClip endpoint handler: {e}")
                 return {"error": str(e)}
+                
+        return handler
+
+    def create_apple_multimodal_endpoint_handler(self, endpoint, processor, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for XClip multimodal processing."""
+        def handler(x, y=None, endpoint=endpoint, processor=processor, model_name=model_name, apple_label=apple_label):
+            try:
+                # Process inputs
+                if isinstance(x, str) and y is not None:
+                    # Handle image + text input
+                    if isinstance(y, str):
+                        # Load image
+                        image = load_image(y)
+                        inputs = processor(
+                            text=x,
+                            images=image,
+                            return_tensors="np",
+                            padding=True
+                        )
+                    elif isinstance(y, list):
+                        # Handle multiple images
+                        images = [load_image(img_path) for img_path in y]
+                        inputs = processor(
+                            text=[x] * len(images),
+                            images=images,
+                            return_tensors="np",
+                            padding=True
+                        )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs
+                result = {}
+                
+                # Extract text embeddings
+                if 'text_embeds' in outputs:
+                    text_embeddings = self.torch.tensor(outputs['text_embeds'])
+                    result['text_embedding'] = text_embeddings
+                    
+                # Extract image embeddings
+                if 'image_embeds' in outputs:
+                    image_embeddings = self.torch.tensor(outputs['image_embeds'])
+                    result['image_embedding'] = image_embeddings
+                    
+                # If we have both embeddings, compute similarity
+                if 'text_embeds' in outputs and 'image_embeds' in outputs:
+                    text_emb = self.torch.tensor(outputs['text_embeds'])
+                    image_emb = self.torch.tensor(outputs['image_embeds'])
+                    
+                    # Normalize embeddings
+                    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
+                    image_emb = image_emb / image_emb.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_emb, image_emb.T)
+                    result['similarity'] = similarity
+                
+                # Return single embedding if that's all we have
+                if len(result) == 1 and list(result.keys())[0] in ['text_embedding', 'image_embedding']:
+                    return {'embedding': list(result.values())[0]}
+                    
+                return result if result else None
+                
+            except Exception as e:
+                print(f"Error in Apple Silicon XClip handler: {e}")
+                return None
                 
         return handler

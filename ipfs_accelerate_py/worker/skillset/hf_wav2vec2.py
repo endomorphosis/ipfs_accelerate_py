@@ -60,21 +60,9 @@ class hf_wav2vec2:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
-        self.init_cpu = self.init_cpu
-        self.init_cuda = self.init_cuda
-        self.init_openvino = self.init_openvino
-        self.init_qualcomm = self.init_qualcomm
-        self.init_apple = self.init_apple
-        self.create_cpu_wav2vec2_endpoint_handler = self.create_cpu_wav2vec2_endpoint_handler
-        self.create_cuda_wav2vec2_endpoint_handler = self.create_cuda_wav2vec2_endpoint_handler
-        self.create_openvino_wav2vec2_endpoint_handler = self.create_openvino_wav2vec2_endpoint_handler
-        self.create_qualcomm_wav2vec2_endpoint_handler = self.create_qualcomm_wav2vec2_endpoint_handler
-        self.create_apple_wav2vec2_endpoint_handler = self.create_apple_wav2vec2_endpoint_handler
         self.init = self.init
-        self.__test__ = self.__test__
-        self.snpe_utils = None
-        return None
-    
+        self.coreml_utils = None
+
     def init(self):
         if "torch" not in list(self.resources.keys()):
             import torch
@@ -87,36 +75,7 @@ class hf_wav2vec2:
             self.transformers = transformers
         else:
             self.transformers = self.resources["transformers"]
-            
-        if "numpy" not in list(self.resources.keys()):
-            import numpy as np
-            self.np = np
-        else:
-            self.np = self.resources["numpy"]
-        return None
-    
-    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, processor):
-        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-        timestamp1 = time.time()
-        try:
-            test_batch = endpoint_handler(audio_url)
-            print(test_batch)
-            print("hf_wav2vec2 test passed")
-        except Exception as e:
-            print(e)
-            print("hf_wav2vec2 test failed")
-            pass
-        timestamp2 = time.time()
-        elapsed_time = timestamp2 - timestamp1
-        tokens_per_second = 1 / elapsed_time
-        print(f"elapsed time: {elapsed_time}")
-        print(f"samples per second: {tokens_per_second}")
-        if "openvino" not in endpoint_label:
-            with self.torch.no_grad():
-                if "cuda" in dir(self.torch):
-                    self.torch.cuda.empty_cache()
-        return None
-    
+
     def init_cpu(self, model, device, cpu_label):
         self.init()
         try:
@@ -204,49 +163,97 @@ class hf_wav2vec2:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
 
     def init_apple(self, model, device, apple_label):
-        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
-        
-        Args:
-            model: HuggingFace model name or path
-            device: Device to run inference on (mps for Apple Silicon)
-            apple_label: Label to identify this endpoint
-            
-        Returns:
-            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
-        """
+        """Initialize Wav2Vec2 model for Apple Silicon hardware."""
         self.init()
+        
         try:
-            if "coremltools" not in list(self.resources.keys()):
-                import coremltools as ct
-                self.ct = ct
-            else:
-                self.ct = self.resources["coremltools"]
-                
-            # Check if MPS is available
-            if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
-                print("MPS not available. Cannot initialize model on Apple Silicon.")
-                return None, None, None, None, 0
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
+        except ImportError:
+            print("Failed to import CoreML utilities")
+            return None, None, None, None, 0
             
-            # Initialize processor directly from HuggingFace
-            processor = self.transformers.AutoProcessor.from_pretrained(model)
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
             
-            # For Apple Silicon, we'll use MPS as the device
-            try:
-                endpoint = self.transformers.AutoModelForSpeechSeq2Seq.from_pretrained(
-                    model, 
-                    torch_dtype=self.torch.float16, 
-                    trust_remote_code=True
-                ).to(device)
-            except Exception as e:
-                print(f"Error loading model on Apple Silicon: {e}")
-                endpoint = None
-                
-            endpoint_handler = self.create_apple_wav2vec2_endpoint_handler(processor, model, apple_label, endpoint)
+        try:
+            # Load processor from HuggingFace
+            processor = self.transformers.Wav2Vec2Processor.from_pretrained(model)
+            
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_wav2vec2.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "audio", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_audio_recognition_endpoint_handler(endpoint, processor, model, apple_label)
             
             return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
-            print(f"Error initializing Apple model: {e}")
+            print(f"Error initializing Apple Silicon Wav2Vec2 model: {e}")
             return None, None, None, None, 0
+            
+    def create_apple_audio_recognition_endpoint_handler(self, endpoint, processor, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for Wav2Vec2 audio recognition."""
+        def handler(x, endpoint=endpoint, processor=processor, model_name=model_name, apple_label=apple_label):
+            try:
+                # Load and process audio
+                if isinstance(x, str):
+                    # Load audio file
+                    audio_data, sample_rate = load_audio(x)
+                    # Process audio input
+                    inputs = processor(
+                        audio_data, 
+                        sampling_rate=sample_rate,
+                        return_tensors="np",
+                        padding=True
+                    )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs
+                if 'logits' in outputs:
+                    logits = self.torch.tensor(outputs['logits'])
+                    predictions = self.torch.argmax(logits, dim=-1)
+                    transcription = processor.batch_decode(predictions)
+                    return transcription[0] if transcription else None
+                
+                return None
+                
+            except Exception as e:
+                print(f"Error in Apple Silicon Wav2Vec2 handler: {e}")
+                return None
+                
+        return handler
 
     def init_qualcomm(self, model, device, qualcomm_label):
         """Initialize Wav2Vec2 model for Qualcomm hardware.

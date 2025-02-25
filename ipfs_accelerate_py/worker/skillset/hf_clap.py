@@ -353,45 +353,54 @@ class hf_clap:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
     def init_apple(self, model, device, apple_label):
-        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
-        
-        Args:
-            model: HuggingFace model name or path
-            device: Device to run inference on (mps for Apple Silicon)
-            apple_label: Label to identify this endpoint
-            
-        Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
-        """
+        """Initialize CLAP model for Apple Silicon (M1/M2/M3) hardware."""
         self.init()
+        
+        # Import CoreML utilities
         try:
-            import coremltools as ct
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
         except ImportError:
-            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            print("Failed to import CoreML utilities")
             return None, None, None, None, 0
             
-        # Check if MPS (Metal Performance Shaders) is available
-        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
-            print("MPS not available. Cannot initialize model on Apple Silicon.")
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
             return None, None, None, None, 0
             
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
-        
-        # For Apple Silicon, we'll use MPS as the device
         try:
-            endpoint = self.transformers.AutoModel.from_pretrained(
-                model, 
-                torch_dtype=self.torch.float16, 
-                trust_remote_code=True
-            ).to(device)
-        except Exception as e:
-            print(f"Error loading model on Apple Silicon: {e}")
-            endpoint = None
+            # Load processor directly from HuggingFace
+            processor = self.transformers.ClapProcessor.from_pretrained(model, trust_remote_code=True)
             
-        endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, processor, model, apple_label)
-        
-        return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_clap.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "audio", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, processor, model, apple_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Apple Silicon CLAP model: {e}")
+            return None, None, None, None, 0
 
     def create_cpu_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, cpu_label):
         """Creates an endpoint handler for CPU.
@@ -464,87 +473,95 @@ class hf_clap:
         return handler
     
     def create_apple_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, apple_label):
-        """Creates an endpoint handler for Apple Silicon.
-        
-        Args:
-            endpoint: The model endpoint
-            processor: The audio processor
-            endpoint_model: The model name or path
-            apple_label: Label to identify this endpoint
-            
-        Returns:
-            A handler function for the Apple endpoint
-        """
+        """Creates an Apple Silicon optimized handler for CLAP audio embedding models."""
         def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, apple_label=apple_label):
-            if "eval" in dir(endpoint):
-                endpoint.eval()
-                
             try:
-                with self.torch.no_grad():
-                    # Handle text input
-                    if x is not None:
-                        if type(x) == str:
-                            text_inputs = processor(
-                                text=x,
-                                return_tensors='pt',
-                                padding=True
-                            )
-                        elif type(x) == list:
-                            text_inputs = processor(text=[text for text in x], return_tensors='pt', padding=True)
-                        
-                        # Move to MPS device if available
-                        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
-                            for key in text_inputs:
-                                if isinstance(text_inputs[key], self.torch.Tensor):
-                                    text_inputs[key] = text_inputs[key].to("mps")
-                        
-                        processed_data = {**text_inputs}
-                        text_features = endpoint(**processed_data)
-                        text_embeddings = text_features.text_embeds.cpu()
-                    
-                    # Handle audio input
-                    if y is not None:
-                        if type(y) == str:
-                            audio = self.load_audio(y)
-                            audio_inputs = processor(
-                                audios=[audio[0]], 
-                                return_tensors='pt', 
-                                padding=True,
-                                sampling_rate=audio[1]
-                            )
-                        elif type(y) == list:
-                            audio_inputs = processor(audios=[self.load_audio(audio_file)[0] for audio_file in y], 
-                                                    return_tensors='pt',
-                                                    sampling_rate=self.load_audio(y[0])[1])
-                        
-                        # Move to MPS device if available
-                        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
-                            for key in audio_inputs:
-                                if isinstance(audio_inputs[key], self.torch.Tensor):
-                                    audio_inputs[key] = audio_inputs[key].to("mps")
-                        
-                        processed_data = {**audio_inputs}
-                        audio_features = endpoint(**processed_data)
-                        audio_embeddings = audio_features.audio_embeds.cpu()
+                inputs = {}
                 
-                # Return results based on what inputs were provided
-                if x is not None and y is not None:
-                    return {
-                        'audio_embedding': audio_embeddings,
-                        'text_embedding': text_embeddings
-                    }
-                elif x is not None:
-                    return {'embedding': text_embeddings}
-                elif y is not None:
-                    return {'embedding': audio_embeddings}
+                # Handle text input
+                if x is not None:
+                    if type(x) == str:
+                        text_inputs = processor(
+                            text=x,
+                            return_tensors='np',
+                            padding=True
+                        )
+                    elif type(x) == list:
+                        text_inputs = processor(text=[text for text in x], return_tensors='np', padding=True)
                     
-                return None
+                    for key, value in text_inputs.items():
+                        inputs[key] = value
+                
+                # Handle audio input
+                if y is not None:
+                    if type(y) == str:
+                        audio, samplerate = load_audio(y)
+                        audio_inputs = processor(
+                            audios=[audio], 
+                            return_tensors='np', 
+                            padding=True,
+                            sampling_rate=samplerate
+                        )
+                    elif type(y) == list:
+                        audios_with_rates = [load_audio(audio_file) for audio_file in y]
+                        audios = [audio[0] for audio in audios_with_rates]
+                        # Use the sample rate from the first audio file
+                        audio_inputs = processor(
+                            audios=audios, 
+                            return_tensors='np',
+                            padding=True,
+                            sampling_rate=audios_with_rates[0][1]
+                        )
+                    
+                    # Ensure input_features key exists for CoreML
+                    if "input_features" in audio_inputs:
+                        inputs["input_features"] = audio_inputs["input_features"]
+                    
+                    # Some models use different key names
+                    if "input_values" in audio_inputs:
+                        inputs["input_values"] = audio_inputs["input_values"]
+                
+                # Run inference with CoreML
+                results = self.coreml_utils.run_inference(endpoint, inputs)
+                
+                # Process results
+                output = {}
+                
+                # Extract text embeddings
+                if x is not None and "text_embeds" in results:
+                    text_embeddings = self.torch.tensor(results["text_embeds"])
+                    output["text_embedding"] = text_embeddings
+                
+                # Extract audio embeddings
+                if y is not None and "audio_embeds" in results:
+                    audio_embeddings = self.torch.tensor(results["audio_embeds"])
+                    output["audio_embedding"] = audio_embeddings
+                
+                # If we have both text and audio, compute similarity
+                if x is not None and y is not None and "text_embeds" in results and "audio_embeds" in results:
+                    text_emb = self.torch.tensor(results["text_embeds"])
+                    audio_emb = self.torch.tensor(results["audio_embeds"])
+                    
+                    # Normalize embeddings
+                    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
+                    audio_emb = audio_emb / audio_emb.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_emb, audio_emb.T)
+                    output["similarity"] = similarity
+                
+                # Return single embedding if that's all we have
+                if len(output) == 1 and list(output.keys())[0] in ["text_embedding", "audio_embedding"]:
+                    return {"embedding": list(output.values())[0]}
+                    
+                return output if output else None
+                
             except Exception as e:
-                print(f"Error in Apple audio embedding handler: {e}")
+                print(f"Error in Apple Silicon audio embedding handler: {e}")
                 return None
                 
         return handler
-        
+
     def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, qualcomm_label):
         """
         Creates a Qualcomm-optimized endpoint handler for CLAP audio embedding models

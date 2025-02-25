@@ -153,6 +153,7 @@ class hf_llava:
         self.init = self.init
         self.__test__ = self.__test__
         self.snpe_utils = None
+        self.coreml_utils = None
         return None
     
     
@@ -345,47 +346,111 @@ class hf_llava:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
     def init_apple(self, model, device, apple_label):
-        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
-        
-        Args:
-            model: HuggingFace model name or path
-            device: Device to run inference on (mps for Apple Silicon)
-            apple_label: Label to identify this endpoint
-            
-        Returns:
-            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
-        """
+        """Initialize LLaVA model for Apple Silicon hardware."""
         self.init()
+        
         try:
-            import coremltools as ct
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
         except ImportError:
-            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            print("Failed to import CoreML utilities")
             return None, None, None, None, 0
             
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
-        
-        # Check if MPS (Metal Performance Shaders) is available
-        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
-            print("MPS not available. Cannot initialize model on Apple Silicon.")
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
             return None, None, None, None, 0
             
-        # For Apple Silicon, we'll use MPS as the device
         try:
-            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(
-                model, 
-                torch_dtype=self.torch.float16, 
-                trust_remote_code=True
-            ).to(device)
-        except Exception as e:
-            print(f"Error loading model on Apple Silicon: {e}")
-            endpoint = None
+            # Load processor from HuggingFace
+            processor = self.transformers.LlavaProcessor.from_pretrained(model)
             
-        endpoint_handler = self.create_apple_vlm_endpoint_handler(endpoint, tokenizer, model, apple_label)
-        
-        # No CUDA to clear for Apple devices
-        
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_llava.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "vision_text_dual", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_multimodal_endpoint_handler(endpoint, processor, model, apple_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Apple Silicon LLaVA model: {e}")
+            return None, None, None, None, 0
+            
+    def create_apple_multimodal_endpoint_handler(self, endpoint, processor, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for LLaVA multimodal processing."""
+        def handler(x, y=None, endpoint=endpoint, processor=processor, model_name=model_name, apple_label=apple_label):
+            try:
+                # Process inputs
+                if isinstance(x, str) and y is not None:
+                    # Handle image + text input
+                    if isinstance(y, str):
+                        # Load image
+                        image = load_image(y)
+                        inputs = processor(
+                            text=x,
+                            images=image,
+                            return_tensors="np",
+                            padding=True
+                        )
+                    elif isinstance(y, list):
+                        # Handle multiple images
+                        images = [load_image(img_path) for img_path in y]
+                        inputs = processor(
+                            text=[x] * len(images),
+                            images=images,
+                            return_tensors="np",
+                            padding=True
+                        )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs - LLaVA typically outputs text responses
+                if 'logits' in outputs:
+                    logits = self.torch.tensor(outputs['logits'])
+                    generated_ids = self.torch.argmax(logits, dim=-1)
+                    responses = processor.batch_decode(
+                        generated_ids,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True
+                    )
+                    return responses[0] if len(responses) == 1 else responses
+                
+                return None
+                
+            except Exception as e:
+                print(f"Error in Apple Silicon LLaVA handler: {e}")
+                return None
+                
+        return handler
     
     def create_optimum_vlm_endpoint_handler(self, cuda_endpoint_handler, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y, cuda_endpoint_handler=cuda_endpoint_handler, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):

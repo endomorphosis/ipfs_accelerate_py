@@ -13,27 +13,126 @@ class hf_lm:
         self.resources = resources
         self.metadata = metadata
         self.init = self.init
-        self.init_cuda = self.init_cuda
-        self.init_openvino = self.init_openvino
-        self.init_cpu = self.init_cpu
-        self.__test__ = self.__test__
-        self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
-        self.create_cpu_llm_endpoint_handler = self.create_cpu_llm_endpoint_handler
-        self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
-        return None
-    
-    def init(self):
-        import torch 
-        import numpy as np
-        from transformers import AutoProcessor, AutoConfig, AutoTokenizer, AutoModelForImageTextToText, pipeline
-        from transformers.generation.streamers import TextStreamer
-        from ipfs_transformers_py import AutoModel
-        from torch import Tensor as T
-        from torchvision.transforms import InterpolationMode
-        from ipfs_transformers_py import AutoModel
- 
-        return None
+        self.coreml_utils = None
 
+    def init(self):
+        if "torch" not in list(self.resources.keys()):
+            import torch
+            self.torch = torch
+        else:
+            self.torch = self.resources["torch"]
+
+        if "transformers" not in list(self.resources.keys()):
+            import transformers
+            self.transformers = transformers
+        else:
+            self.transformers = self.resources["transformers"]
+
+    def init_apple(self, model, device, apple_label):
+        """Initialize language model for Apple Silicon hardware."""
+        self.init()
+        
+        try:
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
+        except ImportError:
+            print("Failed to import CoreML utilities")
+            return None, None, None, None, 0
+            
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Load tokenizer from HuggingFace
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+            
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_lm.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "text", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_text_generation_endpoint_handler(endpoint, tokenizer, model, apple_label)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Apple Silicon language model: {e}")
+            return None, None, None, None, 0
+            
+    def create_apple_text_generation_endpoint_handler(self, endpoint, tokenizer, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for language model text generation."""
+        def handler(x, endpoint=endpoint, tokenizer=tokenizer, model_name=model_name, apple_label=apple_label):
+            try:
+                # Process input
+                if isinstance(x, str):
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True,
+                        truncation=True
+                    )
+                elif isinstance(x, list):
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True,
+                        truncation=True
+                    )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs
+                if 'logits' in outputs:
+                    logits = self.torch.tensor(outputs['logits'])
+                    
+                    # Generate tokens using sampling or greedy decoding
+                    generated_ids = self.torch.argmax(logits, dim=-1)
+                    
+                    # Decode the generated tokens to text
+                    generated_text = tokenizer.batch_decode(
+                        generated_ids,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True
+                    )
+                    
+                    return generated_text[0] if len(generated_text) == 1 else generated_text
+                    
+                return None
+                
+            except Exception as e:
+                print(f"Error in Apple Silicon language model handler: {e}")
+                return None
+                
+        return handler
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         sentence_1 = "The quick brown fox jumps over the lazy dog"

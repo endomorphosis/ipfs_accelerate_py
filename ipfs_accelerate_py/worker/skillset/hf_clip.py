@@ -158,31 +158,55 @@ class hf_clip:
             return None, None, None, None, 0
             
     def init_apple(self, model, device, apple_label):
+        """Initialize CLIP model for Apple Silicon hardware."""
         self.init()
+        
+        # Import CoreML utilities
         try:
-            if "coremltools" not in list(self.resources.keys()):
-                import coremltools as ct
-                self.ct = ct
-            else:
-                self.ct = self.resources["coremltools"]
-                
-            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
+        except ImportError:
+            print("Failed to import CoreML utilities")
+            return None, None, None, None, 0
+            
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Load processor directly from HuggingFace
             processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
             
-            # In a real implementation, we would convert to CoreML format here
-            # For now, we'll use the standard model as a placeholder
-            endpoint = self.transformers.CLIPModel.from_pretrained(model, trust_remote_code=True)
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_clip.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
             
-            endpoint_handler = self.create_apple_image_embedding_endpoint_handler(tokenizer, model, apple_label, endpoint)
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
-        except ImportError:
-            print("coremltools not installed. Can't initialize Apple backend.")
-            return None, None, None, None, 0
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "vision", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_image_embedding_endpoint_handler(endpoint, processor, model, apple_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
-            print(f"Error initializing Apple model: {e}")
+            print(f"Error initializing Apple Silicon CLIP model: {e}")
             return None, None, None, None, 0
-    
+
     def init_cuda(self, model, device, cuda_label):
         self.init()
         config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
@@ -386,37 +410,87 @@ class hf_clip:
                 return {"error": str(e)}
         return handler
         
-    def create_apple_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint=None):
-        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
-            # This is a placeholder for Apple-specific implementation using CoreML
+    def create_apple_image_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, apple_label):
+        """Creates an Apple Silicon optimized handler for CLIP image/text embedding models."""
+        def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, apple_label=apple_label):
             try:
-                if y is not None:
-                    if isinstance(y, str):
-                        image = load_image(y)
-                        inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
-                    elif isinstance(y, list):
-                        inputs = tokenizer(images=[load_image(img) for img in y], return_tensors='pt')
-                        
-                    # In a real implementation, this would use CoreML for inference
-                    with self.torch.no_grad():
-                        image_features = endpoint.get_image_features(**inputs)
-                        return {"image_embedding": image_features}
-                        
-                if x is not None:
-                    if isinstance(x, str):
-                        inputs = tokenizer(text=[x], return_tensors='pt')
-                    elif isinstance(x, list):
-                        inputs = tokenizer(text=x, return_tensors='pt')
-                        
-                    # In a real implementation, this would use CoreML for inference
-                    with self.torch.no_grad():
-                        text_features = endpoint.get_text_features(**inputs)
-                        return {"text_embedding": text_features}
+                inputs = {}
                 
-                return {"message": "No valid input provided"}
+                # Handle text input
+                if x is not None:
+                    if type(x) == str:
+                        text_inputs = processor(
+                            text=x,
+                            return_tensors='np',
+                            padding=True
+                        )
+                    elif type(x) == list:
+                        text_inputs = processor(text=[text for text in x], return_tensors='np', padding=True)
+                    
+                    for key, value in text_inputs.items():
+                        inputs[key] = value
+                
+                # Handle image input
+                if y is not None:
+                    if type(y) == str:
+                        image = load_image(y)
+                        image_inputs = processor(
+                            images=[image], 
+                            return_tensors='np', 
+                            padding=True
+                        )
+                    elif type(y) == list:
+                        images = [load_image(image_file) for image_file in y]
+                        image_inputs = processor(
+                            images=images,
+                            return_tensors='np',
+                            padding=True
+                        )
+                    
+                    # Add image inputs
+                    for key, value in image_inputs.items():
+                        if key.startswith('pixel_values'):
+                            inputs[key] = value
+                
+                # Run inference with CoreML
+                results = self.coreml_utils.run_inference(endpoint, inputs)
+                
+                # Process results
+                output = {}
+                
+                # Extract text embeddings
+                if x is not None and "text_embeds" in results:
+                    text_embeddings = self.torch.tensor(results["text_embeds"])
+                    output["text_embedding"] = text_embeddings
+                
+                # Extract image embeddings
+                if y is not None and "image_embeds" in results:
+                    image_embeddings = self.torch.tensor(results["image_embeds"])
+                    output["image_embedding"] = image_embeddings
+                
+                # If we have both text and image, compute similarity
+                if x is not None and y is not None and "text_embeds" in results and "image_embeds" in results:
+                    text_emb = self.torch.tensor(results["text_embeds"])
+                    image_emb = self.torch.tensor(results["image_embeds"])
+                    
+                    # Normalize embeddings
+                    text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
+                    image_emb = image_emb / image_emb.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_emb, image_emb.T)
+                    output["similarity"] = similarity
+                
+                # Return single embedding if that's all we have
+                if len(output) == 1 and list(output.keys())[0] in ["text_embedding", "image_embedding"]:
+                    return {"embedding": list(output.values())[0]}
+                    
+                return output if output else None
+                
             except Exception as e:
-                print(f"Error in Apple endpoint handler: {e}")
-                return {"error": str(e)}
+                print(f"Error in Apple Silicon image embedding handler: {e}")
+                return None
+                
         return handler
     
     def create_cuda_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None):

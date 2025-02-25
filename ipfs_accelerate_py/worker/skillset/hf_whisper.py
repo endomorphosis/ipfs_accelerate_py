@@ -76,6 +76,7 @@ class hf_whisper:
         self.openvino_cli_convert = None
         self.__test__ = self.__test__
         self.snpe_utils = None
+        self.coreml_utils = None
         return None
 
     def init(self):
@@ -215,18 +216,53 @@ class hf_whisper:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
     def init_apple(self, model, device, apple_label):
+        """Initialize Whisper model for Apple Silicon hardware."""
         self.init()
+        
         try:
-            import coremltools
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
         except ImportError:
-            print("coremltools not installed. Can't initialize Apple backend.")
+            print("Failed to import CoreML utilities")
             return None, None, None, None, 0
             
-        processor = self.transformers.AutoProcessor.from_pretrained(model)
-        endpoint = None  # In real implementation, load the CoreML model here
-        endpoint_handler = self.create_apple_whisper_endpoint_handler(endpoint, processor, model, apple_label)
-        batch_size = 0
-        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Load processor from HuggingFace
+            processor = self.transformers.WhisperProcessor.from_pretrained(model)
+            
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_whisper.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "audio", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_audio_transcription_endpoint_handler(endpoint, processor, model, apple_label)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Apple Silicon Whisper model: {e}")
+            return None, None, None, None, 0
     
     def create_cuda_whisper_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
@@ -298,16 +334,49 @@ class hf_whisper:
             return results
         return handler
 
-    def create_apple_whisper_endpoint_handler(self, endpoint, processor, model, apple_label):
-        def handler(audio, endpoint=endpoint, processor=processor, model=model, apple_label=apple_label):
+    def create_apple_audio_transcription_endpoint_handler(self, endpoint, processor, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for Whisper audio transcription."""
+        def handler(x, endpoint=endpoint, processor=processor, model_name=model_name, apple_label=apple_label):
             try:
-                # Implementation for Apple silicon would go here
-                # This would use the CoreML model loaded in init_apple
-                result = "Apple Silicon implementation not available yet"
-                return {"text": result, "done": True}
+                # Load and process audio
+                if isinstance(x, str):
+                    # Load audio file
+                    audio_data, sample_rate = load_audio(x)
+                    # Process audio input
+                    inputs = processor(
+                        audio_data, 
+                        sampling_rate=sample_rate,
+                        return_tensors="np"
+                    )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs to text
+                if 'logits' in outputs:
+                    logits = self.torch.tensor(outputs['logits'])
+                    # Convert logits to predicted IDs
+                    predicted_ids = self.torch.argmax(logits, dim=-1)
+                    # Decode the predicted IDs to text
+                    transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+                    return transcription[0] if transcription else None
+                    
+                return None
+                
             except Exception as e:
-                print(f"Error in Apple Whisper handler: {e}")
-                raise e
+                print(f"Error in Apple Silicon Whisper handler: {e}")
+                return None
+                
         return handler
     
     def create_qualcomm_whisper_endpoint_handler(self, endpoint, processor, model, qualcomm_label):

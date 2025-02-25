@@ -78,33 +78,52 @@ class hf_llama:
             return None, None, None, None, 0
     
     def init_apple(self, model, device, apple_label):
+        """Initialize LLaMA model for Apple Silicon hardware."""
         self.init()
+        
         try:
-            if "coremltools" not in list(self.resources.keys()):
-                import coremltools as ct
-                self.ct = ct
-            else:
-                self.ct = self.resources["coremltools"]
-                
-            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            from .apple_coreml_utils import get_coreml_utils
+            self.coreml_utils = get_coreml_utils()
+        except ImportError:
+            print("Failed to import CoreML utilities")
+            return None, None, None, None, 0
             
-            # Check if MPS is available
-            if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
-                print("MPS not available. Cannot initialize model on Apple Silicon.")
-                return None, None, None, None, 0
+        if not self.coreml_utils.is_available():
+            print("CoreML is not available on this system")
+            return None, None, None, None, 0
             
-            # Initialize model for Apple Silicon
-            endpoint = self.transformers.AutoModelForCausalLM.from_pretrained(
-                model, 
-                torch_dtype=self.torch.float16 if self.torch.backends.mps.is_available() else None,
-                trust_remote_code=True
-            ).to(device)
+        try:
+            # Load tokenizer from HuggingFace
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, trust_remote_code=True)
             
-            endpoint_handler = self.create_apple_llama_endpoint_handler(tokenizer, model, apple_label, endpoint)
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+            # Convert model path to be compatible with CoreML
+            model_name = model.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{model_name}_llama.mlpackage"
+            mlmodel_path = os.path.expanduser(mlmodel_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(mlmodel_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(mlmodel_path):
+                print(f"Converting {model} to CoreML format...")
+                self.coreml_utils.convert_model(model, "text", str(mlmodel_path))
+            
+            # Load the CoreML model
+            endpoint = self.coreml_utils.load_model(str(mlmodel_path))
+            
+            # Optimize for Apple Silicon if possible
+            if ":" in apple_label:
+                compute_units = apple_label.split(":")[1]
+                optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
+                if optimized_path != mlmodel_path:
+                    endpoint = self.coreml_utils.load_model(optimized_path)
+            
+            endpoint_handler = self.create_apple_text_generation_endpoint_handler(endpoint, tokenizer, model, apple_label)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
-            print(f"Error initializing Apple model: {e}")
+            print(f"Error initializing Apple Silicon LLaMA model: {e}")
             return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
@@ -232,6 +251,63 @@ class hf_llama:
                 
         return handler
         
+    def create_apple_text_generation_endpoint_handler(self, endpoint, tokenizer, model_name, apple_label):
+        """Creates an Apple Silicon optimized handler for LLaMA text generation."""
+        def handler(x, endpoint=endpoint, tokenizer=tokenizer, model_name=model_name, apple_label=apple_label):
+            try:
+                # Process input
+                if isinstance(x, str):
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True,
+                        truncation=True
+                    )
+                elif isinstance(x, list):
+                    inputs = tokenizer(
+                        x, 
+                        return_tensors="np", 
+                        padding=True,
+                        truncation=True
+                    )
+                else:
+                    inputs = x
+                
+                # Convert inputs to CoreML format
+                input_dict = {}
+                for key, value in inputs.items():
+                    if hasattr(value, 'numpy'):
+                        input_dict[key] = value.numpy()
+                    else:
+                        input_dict[key] = value
+                
+                # Run inference
+                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
+                
+                # Process outputs
+                if 'logits' in outputs:
+                    logits = self.torch.tensor(outputs['logits'])
+                    
+                    # Generate tokens using sampling or greedy decoding
+                    generated_ids = self.torch.argmax(logits, dim=-1)
+                    
+                    # Decode the generated tokens to text
+                    generated_text = tokenizer.batch_decode(
+                        generated_ids,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True
+                    )
+                    
+                    return generated_text[0] if len(generated_text) == 1 else generated_text
+                    
+                return None
+                
+            except Exception as e:
+                print(f"Error in Apple Silicon LLaMA handler: {e}")
+                return None
+                
+        return handler
+    
     def create_apple_llama_endpoint_handler(self, tokenizer, model_name, apple_label, endpoint):
         """Create a handler for Apple Silicon-based LLaMA inference"""
         

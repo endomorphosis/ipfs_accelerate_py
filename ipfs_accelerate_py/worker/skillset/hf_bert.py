@@ -365,7 +365,7 @@ class hf_bert:
         return handler
         
     def create_apple_text_embedding_endpoint_handler(self, endpoint_model, apple_label, endpoint=None, tokenizer=None):
-        """Creates an endpoint handler for Apple Silicon.
+        """Creates a handler for Apple Silicon.
         
         Args:
             endpoint_model: The model name or path
@@ -386,7 +386,7 @@ class hf_bert:
                     if type(x) == str:
                         tokens = tokenizer(
                             x, 
-                            return_tensors='pt', 
+                            return_tensors='np', 
                             padding=True, 
                             truncation=True,
                             max_length=endpoint.config.max_position_embeddings
@@ -394,7 +394,7 @@ class hf_bert:
                     elif type(x) == list:
                         tokens = tokenizer(
                             x, 
-                            return_tensors='pt', 
+                            return_tensors='np', 
                             padding=True, 
                             truncation=True,
                             max_length=endpoint.config.max_position_embeddings
@@ -402,29 +402,34 @@ class hf_bert:
                     else:
                         tokens = x
                     
-                    # Move tokens to MPS device
-                    if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
-                        input_ids = tokens['input_ids'].to("mps")
-                        attention_mask = tokens['attention_mask'].to("mps")
-                    else:
-                        input_ids = tokens['input_ids']
-                        attention_mask = tokens['attention_mask']
+                    # Convert input tensors to numpy arrays for CoreML
+                    input_dict = {}
+                    for key, value in tokens.items():
+                        if hasattr(value, 'numpy'):
+                            input_dict[key] = value.numpy()
+                        else:
+                            input_dict[key] = value
                     
                     # Run model inference
-                    outputs = endpoint(
-                        input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        return_dict=True
-                    )
+                    outputs = endpoint.predict(input_dict)
                     
                     # Get embeddings using mean pooling
-                    last_hidden = outputs.last_hidden_state.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)
-                    average_pool_results = last_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
-                    
-                    # Move results back to CPU
-                    result = average_pool_results.cpu()
+                    if "last_hidden_state" in outputs:
+                        hidden_states = self.torch.tensor(outputs["last_hidden_state"])
+                        attention_mask = self.torch.tensor(tokens["attention_mask"])
+                        
+                        # Apply attention mask and pool
+                        last_hidden = hidden_states.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)
+                        average_pool_results = last_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
+                        
+                        # Move results back to CPU if needed
+                        result = average_pool_results.cpu()
+                    else:
+                        # Handle case where model outputs pooled embeddings directly
+                        result = self.torch.tensor(outputs.get("pooler_output", outputs.get("embeddings", None)))
                     
                     return result
+                    
             except Exception as e:
                 print(f"Error in Apple text embedding handler: {e}")
                 raise e
