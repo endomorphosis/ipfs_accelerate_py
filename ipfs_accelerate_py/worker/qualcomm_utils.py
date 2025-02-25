@@ -24,6 +24,45 @@ class qualcomm_utils:
             
         return None
     
+    def install_qnn_model(self, model=None, path=None):
+        if model is None:
+            return None
+        if path is None:
+            return None
+        if not os.path.exists(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
+        if os.path.isfile(path):
+            os.remove(path)
+        model = model.replace("_","-")
+        pip_install_cmd  = ' pip -U "qai_hub_models[' + model + ']"'
+        pip_install_cmd_results = subprocess.run(pip_install_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return None
+    
+    def quantize_export_qnn_model(self, model=None, path=None):
+        if model is None:
+            return None
+        dryrun = 'python -m qai_hub_models.models.llama_v3_8b_chat_quantized.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir genie_bundle'
+        if path is None:
+            return None
+        if not os.path.exists(os.path.dirname(path)):
+            os.makedirs(os.path.dirname(path))
+        if os.path.isfile(path):
+            os.remove(path)
+        quantize_export_cmd = 'python -m qai_hub_models.models.' + model + '.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir ' + path
+        quantize_export_cmd_results = subprocess.run(quantize_export_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        cleanup_dryrun = 'rm -rf genie_bundle'
+        cleanup_dryrun_results = subprocess.run(cleanup_dryrun, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
+        return None
+
+    def remove_qnn_model(self, model=None):
+        if model is None:
+            return None
+        pip_uninstall_cmd = "pip uninstall qai_hub_models[" + model + "]"
+        pip_uninstall_cmd_results = subprocess.run(pip_uninstall_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return None
+
+
     def export_tokenizer(self, config, tokenizer, model, path):
         if tokenizer is None:
             return None
