@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huggingface Model Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .copy-button {
+            padding: 2px 8px;
+            font-size: 0.8em;
+            margin-left: 8px;
+            cursor: pointer;
+        }
+        .model-row {
+            border-bottom: 1px solid #dee2e6;
+        }
+        .copy-success {
+            color: green;
+            transition: opacity 1s;
+        }
+        .hw-requirements {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+        }
+        .hw-item {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: white;
+        }
+        .hw-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .model-details {
+            margin-bottom: 1rem;
+        }
+        .model-id {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .metadata-item {
+            background-color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .search-filters {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="mb-4">Huggingface Model Manager</h1>
+        <div id="loadingMessage" class="alert alert-info d-none">Loading model data...</div>
+        <div id="errorMessage" class="alert alert-danger d-none"></div>
+        
+        <div class="search-filters">
+            <div class="row">
+                <div class="col-md-4">
+                    <input type="text" id="modelSearch" class="form-control" placeholder="Search models...">
+                </div>
+                <div class="col-md-3">
+                    <select id="formatFilter" class="form-select">
+                        <option value="">All Formats</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select id="skillFilter" class="form-select">
+                        <option value="">All Skills</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="modelList" class="accordion">
+            <!-- Models will be inserted here -->
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const loadingMessage = document.getElementById('loadingMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const modelList = document.getElementById('modelList');
+        const modelSearch = document.getElementById('modelSearch');
+        const formatFilter = document.getElementById('formatFilter');
+        const skillFilter = document.getElementById('skillFilter');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('d-none');
+            loadingMessage.classList.add('d-none');
+        }
+
+        function createModelCard(model, index) {
+            const hwRequirements = model.hwRequirements || {};
+            const metadata = model.metadata || {};
+            
+            return `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading${index}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#collapse${index}" aria-expanded="false" aria-controls="collapse${index}">
+                            <div class="metadata-grid w-100">
+                                <div class="metadata-item">
+                                    <span class="model-id">${model.id}</span>
+                                    <button class="btn btn-sm btn-outline-secondary copy-button" data-copy="${model.id}">Copy</button>
+                                </div>
+                                <div class="metadata-item">
+                                    <span>Format: ${model.format || '-'}</span>
+                                </div>
+                                <div class="metadata-item">
+                                    <span>Skill: ${metadata.skill || model.skill || '-'}</span>
+                                </div>
+                                ${model.cache?.ipfs ? `
+                                <div class="metadata-item">
+                                    <span class="text-truncate">IPFS: ${model.cache.ipfs}</span>
+                                    <button class="btn btn-sm btn-outline-secondary copy-button" data-copy="${model.cache.ipfs}">Copy</button>
+                                </div>` : ''}
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse${index}" class="accordion-collapse collapse" aria-labelledby="heading${index}">
+                        <div class="accordion-body">
+                            <h5>Hardware Requirements</h5>
+                            <div class="hw-requirements">
+                                ${Object.entries(hwRequirements).map(([key, value]) => `
+                                    <div class="hw-item">
+                                        <div class="hw-label">${key}</div>
+                                        <div class="hw-value">${value}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            ${model.source ? `
+                            <div class="mt-3">
+                                <h5>Source</h5>
+                                <a href="${model.source}" target="_blank" rel="noopener noreferrer">${model.source}</a>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // First, load the JSON data directly embedded in the page
+        const collectionData = {
+            "stablelm-zephyr-3b-GGUF-Q2_K": {
+                "metadata": {"skill": "llama_cpp"},
+                "hwRequirements": {"tokensPerSecond": 100},
+                "format": "gguf",
+                "id": "stablelm-zephyr-3b-GGUF-Q2_K",
+                "source": "https://huggingface.co/TheBloke/stablelm-zephyr-3b-GGUF",
+                "skill": "llama_cpp"
+            }
+            // The rest of your collection.json data will be injected here during development
+        };
+
+        try {
+            const models = Object.entries(collectionData)
+                .filter(([key, value]) => key !== 'cache' && typeof value === 'object')
+                .map(([key, value]) => ({
+                    ...value,
+                    id: key
+                }));
+
+            // Populate filters
+            const formats = new Set(models.map(m => m.format).filter(Boolean));
+            const skills = new Set(models.map(m => m.metadata?.skill || m.skill).filter(Boolean));
+
+            formats.forEach(format => {
+                formatFilter.add(new Option(format, format));
+            });
+
+            skills.forEach(skill => {
+                skillFilter.add(new Option(skill, skill));
+            });
+
+            // Render initial model list
+            modelList.innerHTML = models.map(createModelCard).join('');
+
+            // Filter functionality
+            function filterModels() {
+                const searchTerm = modelSearch.value.toLowerCase();
+                const formatValue = formatFilter.value;
+                const skillValue = skillFilter.value;
+
+                models.forEach((model, index) => {
+                    const card = document.querySelector(`#heading${index}`).parentElement;
+                    const matchesSearch = model.id.toLowerCase().includes(searchTerm);
+                    const matchesFormat = !formatValue || model.format === formatValue;
+                    const matchesSkill = !skillValue || model.metadata?.skill === skillValue || model.skill === skillValue;
+
+                    if (matchesSearch && matchesFormat && matchesSkill) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+
+            modelSearch.addEventListener('input', filterModels);
+            formatFilter.addEventListener('change', filterModels);
+            skillFilter.addEventListener('change', filterModels);
+
+            // Copy button functionality
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('copy-button')) {
+                    const textToCopy = e.target.dataset.copy;
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        const originalText = e.target.textContent;
+                        e.target.textContent = 'Copied!';
+                        e.target.classList.add('copy-success');
+                        setTimeout(() => {
+                            e.target.textContent = originalText;
+                            e.target.classList.remove('copy-success');
+                        }, 1000);
+                    });
+                }
+            });
+
+            loadingMessage.classList.add('d-none');
+        } catch (error) {
+            showError(`Error processing model data: ${error.message}`);
+            console.error('Error:', error);
+        }
+    </script>
+</body>
+</html>

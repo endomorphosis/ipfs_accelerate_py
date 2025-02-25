@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huggingface Model Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .copy-button {
+            padding: 2px 8px;
+            font-size: 0.8em;
+            cursor: pointer;
+        }
+        .copy-success {
+            color: green;
+            transition: opacity 1s;
+        }
+        .hw-requirements {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            margin-top: 0.5rem;
+        }
+        .hw-item {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: white;
+        }
+        .hw-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .model-id {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .search-filters {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .details-row {
+            background-color: #f8f9fa;
+        }
+        .model-table td {
+            vertical-align: middle;
+        }
+        .model-table th {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1;
+        }
+        .expand-button {
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            background: none;
+            border: none;
+        }
+        .expand-button:hover {
+            color: #0d6efd;
+        }
+        .details-cell {
+            padding: 0 !important;
+        }
+        .details-content {
+            padding: 1rem;
+        }
+        .cache-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .cache-link {
+            word-break: break-all;
+        }
+        .model-source {
+            word-break: break-all;
+        }
+        .cache-section {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .hw-requirements-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .requirement-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .requirement-key {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        .requirement-value {
+            word-break: break-all;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .cache-paths {
+            margin-top: 0.5rem;
+        }
+        .cache-path-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background: white;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        .model-details-table {
+            width: 100%;
+            margin-top: 1rem;
+        }
+        .model-details-table th {
+            background-color: #f8f9fa;
+            position: sticky;
+            top: 0;
+        }
+        .model-details-table td {
+            vertical-align: top;
+            padding: 0.5rem;
+            word-break: break-word;
+        }
+        .key-cell {
+            font-weight: bold;
+            color: #495057;
+            width: 20%;
+        }
+        .value-cell {
+            font-family: monospace;
+            width: 60%;
+        }
+        .copy-cell {
+            width: 20%;
+            text-align: right;
+        }
+        .nested-value {
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin: 0.25rem 0;
+        }
+        .model-details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .key-value-pair {
+            display: flex;
+            padding: 0.5rem;
+            border-bottom: 1px solid #dee2e6;
+            align-items: flex-start;
+        }
+        .key-value-pair:last-child {
+            border-bottom: none;
+        }
+        .pair-key {
+            font-weight: bold;
+            color: #495057;
+            margin-right: 0.5rem;
+            min-width: 150px;
+        }
+        .pair-value {
+            flex-grow: 1;
+            font-family: monospace;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+        .pair-actions {
+            margin-left: 0.5rem;
+        }
+        .details-column {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        .model-id-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .ipfs-cid {
+            font-size: 0.8em;
+            color: #666;
+            font-family: monospace;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="mb-4">Huggingface Model Manager</h1>
+        <div id="loadingMessage" class="alert alert-info d-none">Loading model data...</div>
+        <div id="errorMessage" class="alert alert-danger d-none"></div>
+        
+        <div class="search-filters">
+            <div class="row">
+                <div class="col-md-4">
+                    <input type="text" id="modelSearch" class="form-control" placeholder="Search models...">
+                </div>
+                <div class="col-md-3">
+                    <select id="formatFilter" class="form-select">
+                        <option value="">All Formats</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select id="skillFilter" class="form-select">
+                        <option value="">All Skills</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover model-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px"></th>
+                        <th>Model ID</th>
+                        <th>Format</th>
+                        <th>Skill</th>
+                        <th>Source</th>
+                        <th>CID</th>
+                    </tr>
+                </thead>
+                <tbody id="modelList">
+                    <!-- Models will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const loadingMessage = document.getElementById('loadingMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const modelList = document.getElementById('modelList');
+        const modelSearch = document.getElementById('modelSearch');
+        const formatFilter = document.getElementById('formatFilter');
+        const skillFilter = document.getElementById('skillFilter');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('d-none');
+            loadingMessage.classList.add('d-none');
+        }
+
+        function getParentUrl(url) {
+            if (!url) return '';
+            try {
+                const urlObj = new URL(url);
+                const pathParts = urlObj.pathname.split('/');
+                pathParts.pop(); // Remove the last part
+                if (pathParts[pathParts.length - 1].includes('.')) {
+                    pathParts.pop(); // Remove the filename if present
+                }
+                return `${urlObj.protocol}//${urlObj.host}${pathParts.join('/')}`;
+            } catch (e) {
+                return url;
+            }
+        }
+
+        function formatValue(value) {
+            if (value === null) return 'null';
+            if (value === undefined) return 'undefined';
+            if (typeof value === 'object') {
+                return JSON.stringify(value, null, 2);
+            }
+            return String(value);
+        }
+
+        function shouldShowCopyButton(value) {
+            return typeof value === 'string' && (
+                value.startsWith('http') || 
+                value.startsWith('ipfs://') || 
+                value.startsWith('Qm') ||
+                value.includes('huggingface.co')
+            );
+        }
+
+        function getIpfsCid(model) {
+            // Look for the root CID in the cache
+            if (model.cache?.ipfs) {
+                if (typeof model.cache.ipfs === 'object' && model.cache.ipfs['/']) {
+                    return model.cache.ipfs['/'].src || model.cache.ipfs['/'].path || '';
+                }
+                return model.cache.ipfs;
+            }
+            return '';
+        }
+
+        function createModelRow(model, index) {
+            const ipfsCid = getIpfsCid(model);
+            const hwRequirements = model.hwRequirements || {};
+            const tokensPerSecond = hwRequirements.tokensPerSecond || '-';
+
+            return `
+                <tr class="model-row" data-index="${index}">
+                    <td>
+                        <button class="expand-button" onclick="toggleDetails(${index})">
+                            <i class="bi bi-chevron-right"></i>▼
+                        </button>
+                    </td>
+                    <td>
+                        <div class="model-id-container">
+                            <span class="model-id">${model.id}</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-button ms-2" data-copy="${model.id}">Copy</button>
+                        </div>
+                    </td>
+                    <td>${model.format || '-'}</td>
+                    <td>${model.metadata?.skill || model.skill || '-'}</td>
+                    <td>
+                        ${model.source ? `
+                        <div class="d-flex align-items-center">
+                            <a href="${model.source}" target="_blank" rel="noopener noreferrer" class="model-source">${model.source}</a>
+                            <button class="btn btn-sm btn-outline-secondary copy-button ms-2" data-copy="${model.source}">Copy</button>
+                        </div>
+                        ` : '-'}
+                    </td>
+                    <td>
+                        ${ipfsCid ? `
+                        <div class="d-flex align-items-center">
+                            <span class="text-truncate">${ipfsCid}</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-button ms-2" data-copy="${ipfsCid}">Copy</button>
+                        </div>
+                        ` : '-'}
+                    </td>
+                </tr>
+                <tr class="details-row d-none" id="details-${index}">
+                    <td colspan="6" class="details-cell">
+                        <div class="details-content">
+                            <h5>Hardware Requirements</h5>
+                            <div class="model-details-grid">
+                                <div class="details-column">
+                                    <div class="key-value-pair">
+                                        <span class="pair-key">Tokens/Second:</span>
+                                        <span class="pair-value">${tokensPerSecond}</span>
+                                    </div>
+                                    ${Object.entries(hwRequirements)
+                                        .filter(([key]) => typeof hwRequirements[key] !== 'object' && key !== 'tokensPerSecond')
+                                        .map(([key, value]) => `
+                                            <div class="key-value-pair">
+                                                <span class="pair-key">${key}:</span>
+                                                <span class="pair-value">${value}</span>
+                                            </div>
+                                        `).join('')}
+                                </div>
+                                <div class="details-column">
+                                    ${Object.entries(hwRequirements)
+                                        .filter(([key]) => typeof hwRequirements[key] === 'object')
+                                        .map(([key, value]) => `
+                                            <div class="key-value-pair">
+                                                <span class="pair-key">${key}:</span>
+                                                <span class="pair-value">${JSON.stringify(value, null, 2)}</span>
+                                            </div>
+                                        `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Toggle details row
+        window.toggleDetails = function(index) {
+            const detailsRow = document.getElementById(`details-${index}`);
+            const button = document.querySelector(`[data-index="${index}"] .expand-button`);
+            detailsRow.classList.toggle('d-none');
+            button.innerHTML = detailsRow.classList.contains('d-none') ? '▼' : '▲';
+        }
+
+        // First, load the JSON data directly embedded in the page
+        const collectionData = {
+            "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M": {
+            "metadata": {
+                "modelName": "Airoboros-M-7B-3.1.2-GGUF",
+                "metadata": {},
+                "contextSize": 4096,
+                "parameters": 75161927680,
+                "quantization": "Q3_K_M",
+                "ropeScale": 1,
+                "units": "tokens",
+                "skill": "llama_cpp"
+            },
+            "hwRequirements": {
+                "minFlops": {
+                    "fp8": 0,
+                    "fp16": 75,
+                    "fp32": 0
+                },
+                "flopsPerUnit": 2.965,
+                "minSpeed": 2.1079258010118043,
+                "gpuCount": [
+                    2,
+                    4
+                ],
+                "cpuCount": [
+                    2,
+                    4
+                ],
+                "gpuMemory": 35525754880,
+                "cpuMemory": 35525754880,
+                "minBandwidth": 0,
+                "minDiskIO": 0,
+                "diskUsage": 39078330368,
+                "tokensPerSecond": 12
+            },
+            "folderData": {
+                "/README.md": {
+                    "md5": "4e5f0bb9a601a2b5abb3f7bf35681249",
+                    "size": 143102
+                },
+                "/airoboros-m-7b-3.1.2.Q3_K_M.gguf": {
+                    "md5": "9b884f04df7bc3acd21012466e629026",
+                    "size": 3518985856
+                },
+                "/config.json": {
+                    "md5": "bf0267c1021b6764afbc2c09e6ee90ff",
+                    "size": 52527
+                },
+                "/manifest.json": {
+                    "md5": "bf6f1efe3dcae1a8bc2a2a9d61aacbbf",
+                    "size": 2775
+                },
+                "/": {
+                    "md5": "",
+                    "size": 6
+                }
+            },
+            "cache": {
+                "ipfs": {
+                    "/README.md": {
+                        "path": "QmbJC7s56mqGPgFpeQGsvuSfDSe956nHgXEVapuSWGSBtm",
+                        "url": "https://ipfs.io/ipfs/QmbJC7s56mqGPgFpeQGsvuSfDSe956nHgXEVapuSWGSBtm"
+                    },
+                    "/airoboros-m-7b-3.1.2.Q3_K_M.gguf": {
+                        "path": "QmNw2ysP2k74W9R7e1eMK1MXeTDBpTq1s6qrhoJi2NFdnZ",
+                        "url": "https://ipfs.io/ipfs/QmNw2ysP2k74W9R7e1eMK1MXeTDBpTq1s6qrhoJi2NFdnZ"
+                    },
+                    "/config.json": {
+                        "path": "QmXPbNzNhUSKhVGHifGiQz9r6YcRXdVLxdKstn5s6E3JPv",
+                        "url": "https://ipfs.io/ipfs/QmXPbNzNhUSKhVGHifGiQz9r6YcRXdVLxdKstn5s6E3JPv"
+                    },
+                    "/manifest.json": {
+                        "path": "QmTiD7mcWQQofU5nLHXR4wYKfuPSyawmAWUQLuFEvgHoRf",
+                        "url": "https://ipfs.io/ipfs/QmTiD7mcWQQofU5nLHXR4wYKfuPSyawmAWUQLuFEvgHoRf"
+                    },
+                    "/": {
+                        "path": "QmNfoVaSUvp8rKsVnVUz3V6UJbnhHi3XQ7oQqpFo3ShVbH",
+                        "url": "https://ipfs.io/ipfs/QmNfoVaSUvp8rKsVnVUz3V6UJbnhHi3XQ7oQqpFo3ShVbH"
+                    }
+                },
+                "s3": {
+                    "/README.md": {
+                        "path": "/README.md",
+                        "url": "s3://huggingface-models/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/README.md"
+                    },
+                    "/airoboros-m-7b-3.1.2.Q3_K_M.gguf": {
+                        "path": "/airoboros-m-7b-3.1.2.Q3_K_M.gguf",
+                        "url": "s3://huggingface-models/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/airoboros-m-7b-3.1.2.Q3_K_M.gguf"
+                    },
+                    "/config.json": {
+                        "path": "/config.json",
+                        "url": "s3://huggingface-models/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/config.json"
+                    },
+                    "/manifest.json": {
+                        "path": "/manifest.json",
+                        "url": "s3://huggingface-models/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/manifest.json"
+                    },
+                    "/": {
+                        "path": "/",
+                        "url": "s3://huggingface-models/Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/"
+                    }
+                },
+                "local": {
+                    "/README.md": {
+                        "path": "/README.md",
+                        "url": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/README.md"
+                    },
+                    "/airoboros-m-7b-3.1.2.Q3_K_M.gguf": {
+                        "path": "/airoboros-m-7b-3.1.2.Q3_K_M.gguf",
+                        "url": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/airoboros-m-7b-3.1.2.Q3_K_M.gguf"
+                    },
+                    "/config.json": {
+                        "path": "/config.json",
+                        "url": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/config.json"
+                    },
+                    "/manifest.json": {
+                        "path": "/manifest.json",
+                        "url": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/manifest.json"
+                    },
+                    "/": {
+                        "path": "/",
+                        "url": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M/"
+                    }
+                },
+                "https": {
+                    "/README.md": {
+                        "path": "/README.md",
+                        "url": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF/resolve/main/README.md"
+                    },
+                    "/airoboros-m-7b-3.1.2.Q3_K_M.gguf": {
+                        "path": "/airoboros-m-7b-3.1.2.Q3_K_M.gguf",
+                        "url": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF/resolve/main/airoboros-m-7b-3.1.2.Q3_K_M.gguf"
+                    },
+                    "/config.json": {
+                        "path": "/config.json",
+                        "url": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF/resolve/main/config.json"
+                    },
+                    "/manifest.json": {
+                        "path": "/manifest.json",
+                        "url": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF/resolve/main/manifest.json"
+                    },
+                    "/": {
+                        "path": "/",
+                        "url": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF/resolve/main/"
+                    }
+                }
+            },
+            "format": "gguf",
+            "id": "Airoboros-M-7B-3.1.2-GGUF-Q3_K_M",
+            "source": "https://huggingface.co/TheBloke/Airoboros-M-7B-3.1.2-GGUF",
+            "skill": "llama_cpp"
+        },
+            // The rest of your collection.json data will be injected here during development
+        };
+
+        try {
+            const models = Object.entries(collectionData)
+                .filter(([key, value]) => key !== 'cache' && typeof value === 'object')
+                .map(([key, value]) => ({
+                    ...value,
+                    id: key
+                }));
+
+            // Populate filters
+            const formats = new Set(models.map(m => m.format).filter(Boolean));
+            const skills = new Set(models.map(m => m.metadata?.skill || m.skill).filter(Boolean));
+
+            formats.forEach(format => {
+                formatFilter.add(new Option(format, format));
+            });
+
+            skills.forEach(skill => {
+                skillFilter.add(new Option(skill, skill));
+            });
+
+            // Render initial model list
+            modelList.innerHTML = models.map(createModelRow).join('');
+
+            // Filter functionality
+            function filterModels() {
+                const searchTerm = modelSearch.value.toLowerCase();
+                const formatValue = formatFilter.value;
+                const skillValue = skillFilter.value;
+
+                models.forEach((model, index) => {
+                    const modelRow = document.querySelector(`[data-index="${index}"]`);
+                    const detailsRow = document.getElementById(`details-${index}`);
+                    const matchesSearch = model.id.toLowerCase().includes(searchTerm);
+                    const matchesFormat = !formatValue || model.format === formatValue;
+                    const matchesSkill = !skillValue || model.metadata?.skill === skillValue || model.skill === skillValue;
+
+                    if (matchesSearch && matchesFormat && matchesSkill) {
+                        modelRow.style.display = '';
+                        if (!detailsRow.classList.contains('d-none')) {
+                            detailsRow.style.display = '';
+                        }
+                    } else {
+                        modelRow.style.display = 'none';
+                        detailsRow.style.display = 'none';
+                    }
+                });
+            }
+
+            modelSearch.addEventListener('input', filterModels);
+            formatFilter.addEventListener('change', filterModels);
+            skillFilter.addEventListener('change', filterModels);
+
+            // Copy button functionality
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('copy-button')) {
+                    const textToCopy = e.target.dataset.copy;
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        const originalText = e.target.textContent;
+                        e.target.textContent = 'Copied!';
+                        e.target.classList.add('copy-success');
+                        setTimeout(() => {
+                            e.target.textContent = originalText;
+                            e.target.classList.remove('copy-success');
+                        }, 1000);
+                    });
+                }
+            });
+
+            loadingMessage.classList.add('d-none');
+        } catch (error) {
+            showError(`Error processing model data: ${error.message}`);
+            console.error('Error:', error);
+        }
+    </script>
+</body>
+</html>

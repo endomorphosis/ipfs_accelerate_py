@@ -21,6 +21,7 @@ class hf_llama:
         self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
         self.create_cpu_llm_endpoint_handler = self.create_cpu_llm_endpoint_handler
         self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
+        self.create_qualcomm_llm_endpoint_handler = self.create_qualcomm_llm_endpoint_handler
         return None
     
 
