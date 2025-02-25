@@ -155,6 +155,7 @@ class hf_llava_next:
         self.create_openvino_llava_endpoint_handler = self.create_openvino_llava_endpoint_handler
         self.create_apple_llava_endpoint_handler = self.create_apple_llava_endpoint_handler
         self.create_qualcomm_llava_endpoint_handler = self.create_qualcomm_llava_endpoint_handler
+        self.snpe_utils = None
         return None
     
 

@@ -4,10 +4,10 @@ from PIL import Image
 import requests
 from io import BytesIO
 import os
+import numpy as np
 
 def load_image(image_file):
-    import numpy as np
-    if image_file.startswith("http") or image_file.startswith("https"):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
@@ -16,8 +16,6 @@ def load_image(image_file):
     return image
 
 def load_image_tensor(image_file):
-    import numpy as np
-    import openvino as ov
     if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -153,7 +151,7 @@ class hf_clip:
                 if optimized_path != dlc_path:
                     endpoint = self.snpe_utils.load_model(optimized_path)
             
-            endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            endpoint_handler = self.create_qualcomm_image_embedding_endpoint_handler(tokenizer, processor, model, qualcomm_label, endpoint)
             return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
         except Exception as e:
             print(f"Error initializing Qualcomm model: {e}")
@@ -301,8 +299,8 @@ class hf_clip:
                 return {"error": str(e)}
         return handler
     
-    def create_qualcomm_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint=None):
-        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+    def create_qualcomm_image_embedding_endpoint_handler(self, tokenizer, processor, endpoint_model, qualcomm_label, endpoint=None):
+        def handler(x, y=None, tokenizer=tokenizer, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
             try:
                 inputs = {}
                 
@@ -321,8 +319,8 @@ class hf_clip:
                     if isinstance(y, str):
                         image = load_image(y)
                         # Convert to proper format for CLIP
-                        if hasattr(tokenizer, "image_processor"):
-                            image_inputs = tokenizer.image_processor(images=[image], return_tensors='np')
+                        if hasattr(processor, "image_processor"):
+                            image_inputs = processor.image_processor(images=[image], return_tensors='np')
                         else:
                             # Fallback to basic processing
                             image = image.resize((224, 224))  # Standard size for most vision models
@@ -334,8 +332,8 @@ class hf_clip:
                         inputs["pixel_values"] = image_inputs["pixel_values"]
                     elif isinstance(y, list):
                         images = [load_image(img) for img in y]
-                        if hasattr(tokenizer, "image_processor"):
-                            image_inputs = tokenizer.image_processor(images=images, return_tensors='np')
+                        if hasattr(processor, "image_processor"):
+                            image_inputs = processor.image_processor(images=images, return_tensors='np')
                         else:
                             # Fallback processing for multiple images
                             processed_images = []

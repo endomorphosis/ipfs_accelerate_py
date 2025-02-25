@@ -830,13 +830,13 @@ class hf_llava:
                             generated_ids.append(next_token_id)
                             
                             # Check for EOS token
-                            if next_token_id == processor.tokenizer.eos_token_id:
+                            if next_token_id == self.processor.tokenizer.eos_token_id:
                                 break
                         else:
                             break
                 
                 # Decode the generated text
-                generated_text = processor.batch_decode([generated_ids], skip_special_tokens=True)[0]
+                generated_text = self.processor.batch_decode([generated_ids], skip_special_tokens=True)[0]
                 
                 # Return result
                 return {

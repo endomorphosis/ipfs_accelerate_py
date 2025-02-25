@@ -121,7 +121,8 @@ class hf_whisper:
         batch_size = 0
         
         processor = self.transformers.AutoProcessor.from_pretrained(model)
-        
+        model_type = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True).model_type
+        model_type = model_type.lower()
         try:
             endpoint = get_qualcomm_model(model, model_type, qualcomm_label)
         except Exception as e:
