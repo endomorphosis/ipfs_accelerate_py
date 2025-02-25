@@ -26,8 +26,34 @@ class qualcomm_utils:
             
         return None
     
-    
+    def build_deployable_asset(self, model_path=None, output_path=None):
+        results = {}
+        if model_path is None:
+            return None
+        if output_path is None:
+            return None
+        if not os.path.exists(os.path.dirname(output_path)):
+            os.makedirs(os.path.dirname(output_path))
+        if os.path.isfile(output_path):
+            os.remove(output_path)
+        try:
+            export_quantized_onnx_cmd = 'python -m qai_hub_models.models.'+ model_path+'.export --target-runtime onnx'
+            export_quantized_onnx_cmd_results = subprocess.run(export_quantized_onnx_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            results["export_quantized_onnx_cmd_results"] = export_quantized_onnx_cmd_results
+        except subprocess.CalledProcessError as e:
+            print("Error: ", e)
+            return None
+        try:
+            convert_to_deployable_onnx_cmd = 'python build_deployable_asset.py -f ' + output_path
+            convert_to_deployable_onnx_cmd_results = subprocess.run(convert_to_deployable_onnx_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            results["convert_to_deployable_onnx_cmd_results"] = convert_to_deployable_onnx_cmd_results
+        except subprocess.CalledProcessError as e:
+            print("Error: ", e)
+            return None
+        return results
+
     def install_qnn_model(self, model=None, path=None):
+        results = {}
         if model is None:
             return None
         if path is None:
@@ -39,9 +65,11 @@ class qualcomm_utils:
         model = model.replace("_","-")
         pip_install_cmd  = ' pip -U "qai_hub_models[' + model + ']"'
         pip_install_cmd_results = subprocess.run(pip_install_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return None
+        results["pip_install_cmd_results"] = pip_install_cmd_results
+        return results
     
     def quantize_export_qnn_model(self, model=None, path=None):
+        results = {}
         if model is None:
             return None
         dryrun = 'python -m qai_hub_models.models.llama_v3_8b_chat_quantized.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir genie_bundle'
@@ -51,14 +79,23 @@ class qualcomm_utils:
             os.makedirs(os.path.dirname(path))
         if os.path.isfile(path):
             os.remove(path)
-        quantize_export_cmd = 'python -m qai_hub_models.models.' + model + '.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir ' + path
-        quantize_export_cmd_results = subprocess.run(quantize_export_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        cleanup_dryrun = 'rm -rf genie_bundle'
-        cleanup_dryrun_results = subprocess.run(cleanup_dryrun, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
-        return None
+        try:
+            quantize_export_cmd = 'python -m qai_hub_models.models.' + model + '.export --device "Snapdragon X Elite CRD" --skip-inferencing --skip-profiling --output-dir ' + path
+            quantize_export_cmd_results = subprocess.run(quantize_export_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            results["quantize_export_cmd_results"] = quantize_export_cmd_results
+        except subprocess.CalledProcessError as e:
+            print("Error: ", e)
+            return str(e)
+        try:
+            cleanup_dryrun = 'rm -rf genie_bundle'
+            cleanup_dryrun_results = subprocess.run(cleanup_dryrun, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) 
+            results["cleanup_dryrun_results"] = cleanup_dryrun_results
+        except subprocess.CalledProcessError as e:
+            print("Error: ", e)
+            return str(e)
+        return results
     
-    def postprocess_genie_t2t_run_results(self, results=None):
+    def postprocess_genie_t2t_run_results(self, t2t_results=None):
         inference_time = {}
         generation_time = {}
         prompt_processing_time = {}
@@ -80,13 +117,13 @@ class qualcomm_utils:
         Prompt Processing Time: 196067 us, Prompt Processing Rate : 86.707710 toks/sec
         Token Generation Time: 740568 us, Token Generation Rate: 12.152884 toks/sec
         Inference Time: 0 us, Inference Rate: 0.000000 toks/sec'''
-        if results is None:
+        if t2t_results is None:
             return None
-        results = results.stdout.decode("utf-8")
-        results = results.split("\n")
+        t2t_results = t2t_results.stdout.decode("utf-8")
+        t2t_results = t2t_results.split("\n")
         prompt = ""
         response = ""
-        for line in results:
+        for line in t2t_results:
             if "[KPIS]:" in line:
                 break
             if "[INFO]" in line:
@@ -102,8 +139,8 @@ class qualcomm_utils:
                 if "Inference Time" in line:
                     inference_time = re.findall(r'\d+', line)
                     inference_time = int(inference_time[0])
-        prompt = results[-4]
-        response = results[-3]
+        prompt = t2t_results[-4]
+        response = t2t_results[-3]
         kpis["init_time"] = init_time
         kpis["prompt_processing_time"] = prompt_processing_time
         kpis["generation_time"] = generation_time
@@ -111,14 +148,20 @@ class qualcomm_utils:
         output["kpis"] = kpis
         output["prompt"] = prompt
         output["response"] = response
-        return results
+        return output
 
     def remove_qnn_model(self, model=None):
+        results = {}
         if model is None:
             return None
-        pip_uninstall_cmd = "pip uninstall qai_hub_models[" + model + "]"
-        pip_uninstall_cmd_results = subprocess.run(pip_uninstall_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return None
+        try:
+            pip_uninstall_cmd = "pip uninstall qai_hub_models[" + model + "]"
+            pip_uninstall_cmd_results = subprocess.run(pip_uninstall_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            results["pip_uninstall_cmd_results"] = pip_uninstall_cmd_results
+        except subprocess.CalledProcessError as e:
+            print("Error: ", e)
+            return str(e)
+        return results
     
     def setup_env(self, env_var=None):
         if platform.system() == "Windows":

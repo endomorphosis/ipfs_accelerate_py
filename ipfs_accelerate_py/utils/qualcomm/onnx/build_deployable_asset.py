@@ -3,12 +3,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # ---------------------------------------------------------------------
 import argparse
-
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.tensor import Tensor
-
 
 def _natively_quantize_tensor(
     variable: Tensor,
