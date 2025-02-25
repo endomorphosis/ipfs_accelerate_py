@@ -173,7 +173,7 @@ class hf_clap:
         
         try:
             # Load processor directly from HuggingFace
-            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            processor = self.transformers.ClapProcessor.from_pretrained(model, trust_remote_code=True)
             
             # Convert model path to be compatible with SNPE
             model_name = model.replace("/", "--")
