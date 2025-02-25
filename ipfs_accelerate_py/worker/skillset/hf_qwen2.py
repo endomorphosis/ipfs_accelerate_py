@@ -24,6 +24,7 @@ class hf_qwen2:
         self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
         self.create_apple_llm_endpoint_handler = self.create_apple_llm_endpoint_handler
         self.create_qualcomm_llm_endpoint_handler = self.create_qualcomm_llm_endpoint_handler
+        self.snpe_utils = None
         return None
     
     def init(self):
@@ -376,4 +377,148 @@ class hf_qwen2:
                     # Cleanup GPU memory in case of error
                     self.torch.cuda.empty_cache()
                     raise e
+        return handler
+
+    def init_qualcomm(self, model, device, qualcomm_label):
+        """Initialize Qwen2 model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
+            
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Initialize tokenizer directly from HuggingFace
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_qwen2.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "llm", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_qwen2_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+        except Exception as e:
+            print(f"Error initializing Qualcomm Qwen2 model: {e}")
+            return None, None, None, None, 0
+
+    def create_qualcomm_qwen2_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint):
+        """Create a handler for Qualcomm-based Qwen2 inference
+        
+        Args:
+            tokenizer: HuggingFace tokenizer
+            endpoint_model: Name of the model
+            qualcomm_label: Label for Qualcomm hardware
+            endpoint: SNPE model endpoint
+            
+        Returns:
+            Handler function for inference
+        """
+        def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            try:
+                # Tokenize input
+                if isinstance(text_input, str):
+                    inputs = tokenizer(text_input, return_tensors="np", padding=True)
+                else:
+                    # Assume it's already tokenized, convert to numpy if needed
+                    inputs = {k: v.numpy() if hasattr(v, 'numpy') else v for k, v in text_input.items()}
+                
+                # Initial input for the model
+                model_inputs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"]
+                }
+                
+                # Prepare for token-by-token generation
+                generated_ids = inputs["input_ids"].tolist()[0]
+                past_key_values = None
+                max_new_tokens = 256
+                
+                # Generate tokens one by one
+                for _ in range(max_new_tokens):
+                    # Add KV cache to inputs if we have it
+                    if past_key_values is not None:
+                        for i, (k, v) in enumerate(past_key_values):
+                            model_inputs[f"past_key_values.{i}.key"] = k
+                            model_inputs[f"past_key_values.{i}.value"] = v
+                    
+                    # Get the next token logits from the model
+                    results = self.snpe_utils.run_inference(endpoint, model_inputs)
+                    
+                    # Get the logits
+                    if "logits" in results:
+                        logits = self.np.array(results["logits"])
+                        
+                        # Save KV cache if provided
+                        if "past_key_values" in results:
+                            past_key_values = results["past_key_values"]
+                        
+                        # Basic greedy decoding
+                        next_token_id = int(self.np.argmax(logits[0, -1, :]))
+                        
+                        # Add the generated token
+                        generated_ids.append(next_token_id)
+                        
+                        # Check for EOS token
+                        if next_token_id == tokenizer.eos_token_id:
+                            break
+                            
+                        # Update inputs for next iteration
+                        model_inputs = {
+                            "input_ids": self.np.array([[next_token_id]]),
+                            "attention_mask": self.np.array([[1]])
+                        }
+                    else:
+                        break
+                
+                # Decode the generated sequence
+                decoded_output = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                
+                # Return result
+                return {
+                    "generated_text": decoded_output,
+                    "model": endpoint_model
+                }
+                
+            except Exception as e:
+                print(f"Error in Qualcomm Qwen2 endpoint handler: {e}")
+                return {"error": str(e)}
+                
         return handler

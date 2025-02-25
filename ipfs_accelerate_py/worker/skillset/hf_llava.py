@@ -110,15 +110,12 @@ def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbna
 #     return pixel_values
 
 def load_image(image_file):
-    import openvino as ov
-    import numpy as np
-    if image_file.startswith("http") or image_file.startswith("https"):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
         image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)
+    return image
 
 def load_image_tensor(image_file):
     import openvino as ov
@@ -155,6 +152,7 @@ class hf_llava:
         self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
     
     
@@ -221,7 +219,64 @@ class hf_llava:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+        """Initialize LLaVA model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
+            
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Initialize processor directly from HuggingFace
+            processor = self.transformers.LlavaProcessor.from_pretrained(model)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_llava.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "llava", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_llava_endpoint_handler(processor, model, qualcomm_label, endpoint)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(16), 1
+        except Exception as e:
+            print(f"Error initializing Qualcomm LLaVA model: {e}")
+            return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -706,43 +761,91 @@ class hf_llava:
         """
         def handler(x, y, qualcomm_endpoint_handler=qualcomm_endpoint_handler, local_qualcomm_processor=local_qualcomm_processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
             try:
-                if y.startswith("http") or y.startswith("https"):
-                    response = requests.get(y)
-                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                # Process inputs
+                if isinstance(image_input, str):
+                    # Load image from URL or file
+                    image = load_image(image_input)
+                elif isinstance(image_input, Image.Image):
+                    # If it's already a PIL Image
+                    image = image_input
                 else:
-                    image = Image.open(y).convert("RGB")
-                    
-                if x is not None and type(x) == str:
-                    conversation = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": x},
-                                {"type": "image"}
-                            ]
-                        }
-                    ]
-                elif type(x) == tuple:
-                    conversation = x
-                elif type(x) == dict:
-                    raise Exception("Invalid input to vlm endpoint handler")
-                elif type(x) == list:
-                    conversation = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": x},
-                                {"type": "image"}
-                            ]
-                        }
-                    ]
+                    image = None
+                
+                # Create model inputs in numpy format
+                if image is not None:
+                    inputs = processor(text=text_input, images=image, return_tensors="np")
                 else:
-                    raise Exception("Invalid input to vlm endpoint handler")
+                    inputs = processor(text=text_input, return_tensors="np")
+                
+                # Run initial inference for image encoding and prompt processing
+                results = self.snpe_utils.run_inference(endpoint, inputs)
+                
+                # For LLaVA models, we might need to do generation token by token
+                generated_ids = []
+                
+                # Check if we have direct generation output
+                if "generated_ids" in results:
+                    generated_ids = results["generated_ids"][0]
+                else:
+                    # We need to do token-by-token generation
+                    # First, get the processed inputs if available
+                    if "input_ids" in results:
+                        generated_ids = results["input_ids"][0].tolist()
+                    else:
+                        generated_ids = inputs["input_ids"][0].tolist()
                     
-                # Qualcomm uses the SNPE SDK for neural processing
-                # Implementation would depend on specific Qualcomm hardware and SDK
-                # This is a placeholder for the actual implementation
-                return "Qualcomm implementation would process inputs here"
+                    # Prepare for token-by-token generation
+                    past_key_values = results.get("past_key_values", None)
+                    max_new_tokens = 256
+                    
+                    # Generate tokens one by one
+                    for _ in range(max_new_tokens):
+                        # Prepare inputs for next token prediction
+                        gen_inputs = {
+                            "input_ids": self.np.array([generated_ids[-1:]]),
+                            "attention_mask": self.np.array([[1]])
+                        }
+                        
+                        # Add past key values if available
+                        if past_key_values is not None:
+                            for i, (k, v) in enumerate(past_key_values):
+                                gen_inputs[f"past_key_values.{i}.key"] = k
+                                gen_inputs[f"past_key_values.{i}.value"] = v
+                        
+                        # Get next token
+                        token_results = self.snpe_utils.run_inference(endpoint, gen_inputs)
+                        
+                        # Get logits and past key values
+                        if "logits" in token_results:
+                            logits = self.np.array(token_results["logits"])
+                            
+                            # Update past key values
+                            if "past_key_values" in token_results:
+                                past_key_values = token_results["past_key_values"]
+                            
+                            # Basic greedy decoding
+                            next_token_id = int(self.np.argmax(logits[0, -1, :]))
+                            
+                            # Add token to generated sequence
+                            generated_ids.append(next_token_id)
+                            
+                            # Check for EOS token
+                            if next_token_id == processor.tokenizer.eos_token_id:
+                                break
+                        else:
+                            break
+                
+                # Decode the generated text
+                generated_text = processor.batch_decode([generated_ids], skip_special_tokens=True)[0]
+                
+                # Return result
+                return {
+                    "generated_text": generated_text,
+                    "model": endpoint_model
+                }
+                
             except Exception as e:
-                raise e
+                print(f"Error in Qualcomm LLaVA endpoint handler: {e}")
+                return {"error": str(e)}
+                
         return handler
