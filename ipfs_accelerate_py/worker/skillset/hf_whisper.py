@@ -40,6 +40,24 @@ def load_audio_16khz(audio_file):
         audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
     return audio_data, 16000
 
+def load_audio_tensor(audio_file):
+    import soundfile as sf
+    import numpy as np
+    import openvino as ov
+    
+    if isinstance(audio_file, str) and (audio_file.startswith("http") or audio_file.startswith("https")):
+        response = requests.get(audio_file)
+        audio_data, samplerate = sf.read(BytesIO(response.content))
+    else:
+        audio_data, samplerate = sf.read(audio_file)
+    
+    # Ensure audio is mono and convert to float32
+    if len(audio_data.shape) > 1:
+        audio_data = np.mean(audio_data, axis=1)
+    audio_data = audio_data.astype(np.float32)
+    
+    return ov.Tensor(audio_data.reshape(1, -1))
+
 class hf_whisper:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -47,10 +65,13 @@ class hf_whisper:
         self.create_openvino_whisper_endpoint_handler = self.create_openvino_whisper_endpoint_handler
         self.create_cuda_whisper_endpoint_handler = self.create_cuda_whisper_endpoint_handler
         self.create_cpu_whisper_endpoint_handler = self.create_cpu_whisper_endpoint_handler
+        self.create_apple_whisper_endpoint_handler = self.create_apple_whisper_endpoint_handler
+        self.create_qualcomm_whisper_endpoint_handler = self.create_qualcomm_whisper_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init_qualcomm = self.init_qualcomm
+        self.init_apple = self.init_apple
         self.init = self.init
         self.openvino_cli_convert = None
         self.__test__ = self.__test__
@@ -91,8 +112,24 @@ class hf_whisper:
         return None
     
     
-    def init_qualcomm(self, model, device, qualcomm_label):
-        return None
+    def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline=None, get_optimum_qualcomm_model=None, get_qualcomm_model=None, get_qualcomm_pipeline_type=None):
+        self.init()
+        endpoint = None
+        processor = None
+        endpoint_handler = None
+        batch_size = 0
+        
+        processor = self.transformers.AutoProcessor.from_pretrained(model)
+        
+        try:
+            endpoint = get_qualcomm_model(model, model_type, qualcomm_label)
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            pass
+            
+        endpoint_handler = self.create_qualcomm_whisper_endpoint_handler(endpoint, processor, model, qualcomm_label)
+        batch_size = 0
+        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
     
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
         audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
@@ -123,7 +160,19 @@ class hf_whisper:
 
     def init_cpu (self, model, device, cpu_label):
         self.init()
-        return None
+        processor = self.transformers.AutoProcessor.from_pretrained(model)
+        try:
+            endpoint = self.transformers.AutoModelForSpeechSeq2Seq.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(e)
+            try:
+                endpoint = self.transformers.WhisperForConditionalGeneration.from_pretrained(model, trust_remote_code=True)
+            except Exception as e:
+                print(e)
+                pass
+        endpoint_handler = self.create_cpu_whisper_endpoint_handler(endpoint, processor, model, cpu_label)
+        batch_size = 0
+        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
     
     
     def init_cuda(self, model, device, cuda_label):
@@ -162,6 +211,20 @@ class hf_whisper:
         endpoint_handler = self.create_openvino_whisper_endpoint_handler(endpoint,tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
+    
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        try:
+            import coremltools
+        except ImportError:
+            print("coremltools not installed. Can't initialize Apple backend.")
+            return None, None, None, None, 0
+            
+        processor = self.transformers.AutoProcessor.from_pretrained(model)
+        endpoint = None  # In real implementation, load the CoreML model here
+        endpoint_handler = self.create_apple_whisper_endpoint_handler(endpoint, processor, model, apple_label)
+        batch_size = 0
+        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
     
     def create_cuda_whisper_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
@@ -231,6 +294,37 @@ class hf_whisper:
             outputs = openvino_endpoint_handler.generate(audio_inputs)
             results = openvino_tokenizer.batch_decode(outputs, skip_special_tokens=True)
             return results
+        return handler
+
+    def create_apple_whisper_endpoint_handler(self, endpoint, processor, model, apple_label):
+        def handler(audio, endpoint=endpoint, processor=processor, model=model, apple_label=apple_label):
+            try:
+                # Implementation for Apple silicon would go here
+                # This would use the CoreML model loaded in init_apple
+                result = "Apple Silicon implementation not available yet"
+                return {"text": result, "done": True}
+            except Exception as e:
+                print(f"Error in Apple Whisper handler: {e}")
+                raise e
+        return handler
+    
+    def create_qualcomm_whisper_endpoint_handler(self, endpoint, processor, model, qualcomm_label):
+        def handler(audio, endpoint=endpoint, processor=processor, model=model, qualcomm_label=qualcomm_label):
+            try:
+                if isinstance(audio, str):
+                    audio_data, sampling_rate = load_audio(audio)
+                else:
+                    audio_data, sampling_rate = audio
+                    
+                # The exact API would depend on the Qualcomm SDK implementation
+                inputs = processor(audio_data, sampling_rate=sampling_rate, return_tensors="pt")
+                generated_ids = endpoint.generate(inputs["input_features"])
+                transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+                
+                return {"text": transcription, "done": True}
+            except Exception as e:
+                print(f"Error in Qualcomm Whisper handler: {e}")
+                raise e
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):

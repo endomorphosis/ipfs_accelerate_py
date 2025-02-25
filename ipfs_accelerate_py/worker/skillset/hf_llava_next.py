@@ -87,38 +87,13 @@ def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbna
         processed_images.append(thumbnail_img)
     return processed_images
 
-# def load_image_bak(image_file, input_size=448, max_num=12):
-#     if os.path.exists(image_file):
-#         image = Image.open(image_file).convert('RGB')
-#     transform = build_transform(input_size=input_size)
-#     if os.path.exists(image_file):
-#         image = Image.open(image_file).convert('RGB')
-#     elif "http" in image_file:
-#         try:
-#             with tempfile.NamedTemporaryFile(delete=True) as f:
-#                 f.write(requests.get(image_file).content)
-#                 image = Image.open(f).convert('RGB')
-#         except Exception as e:
-#             print(e)
-#             raise ValueError("Invalid image file")
-#     else:
-#         raise ValueError("Invalid image file")
-        
-#     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
-#     pixel_values = [transform(image) for image in images]
-#     pixel_values = torch.stack(pixel_values)
-#     return pixel_values
-
 def load_image(image_file):
-    import numpy as np
-    import openvino as ov
-    if image_file.startswith("http") or image_file.startswith("https"):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
         image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)
+    return image
 
 def load_image_tensor(image_file):
     import numpy as np
@@ -128,8 +103,8 @@ def load_image_tensor(image_file):
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
         image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
-    return image, ov.Tensor(image_data)
+    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.float32)
+    return ov.Tensor(image_data)
 
 class hf_llava_next:
     def __init__(self, resources=None, metadata=None):
@@ -144,12 +119,19 @@ class hf_llava_next:
         self.load_image = load_image
         self.load_image_tensor = load_image_tensor
         self.dynamic_preprocess = dynamic_preprocess
-        # self.load_image_bak = load_image_bak
         self.find_closest_aspect_ratio = find_closest_aspect_ratio
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
         self.init = self.init
         self.__test__ = self.__test__
+        self.init_cpu = self.init_cpu
+        self.init_apple = self.init_apple
+        self.init_qualcomm = self.init_qualcomm
+        self.create_cpu_llava_endpoint_handler = self.create_cpu_llava_endpoint_handler
+        self.create_cuda_llava_endpoint_handler = self.create_cuda_llava_endpoint_handler
+        self.create_openvino_llava_endpoint_handler = self.create_openvino_llava_endpoint_handler
+        self.create_apple_llava_endpoint_handler = self.create_apple_llava_endpoint_handler
+        self.create_qualcomm_llava_endpoint_handler = self.create_qualcomm_llava_endpoint_handler
         return None
     
 
@@ -559,4 +541,156 @@ class hf_llava_next:
                     return outputs
                 except Exception as e:
                     raise e
+        return handler
+    
+    def init_cpu(self, model, device, cpu_label):
+        self.init()
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        try:
+            endpoint = self.transformers.AutoModelForVision2Seq.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(e)
+            try:
+                endpoint = self.transformers.LlavaNextForConditionalGeneration.from_pretrained(model, trust_remote_code=True)
+            except Exception as e:
+                print(e)
+                pass
+        endpoint_handler = self.create_cpu_llava_endpoint_handler(endpoint, tokenizer, model, cpu_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+    
+    def init_apple(self, model, device, apple_label):
+        self.init()
+        try:
+            import coremltools
+        except ImportError:
+            print("coremltools not installed. Can't initialize Apple backend.")
+            return None, None, None, None, 0
+            
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        endpoint = None  # In real implementation, load the CoreML model here
+        endpoint_handler = self.create_apple_llava_endpoint_handler(endpoint, tokenizer, model, apple_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+    
+    def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline=None, get_optimum_qualcomm_model=None, get_qualcomm_model=None, get_qualcomm_pipeline_type=None):
+        self.init()
+        endpoint = None
+        tokenizer = None
+        endpoint_handler = None
+        batch_size = 0
+        
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        
+        try:
+            endpoint = get_qualcomm_model(model, model_type, qualcomm_label)
+        except Exception as e:
+            print(f"Error initializing Qualcomm model: {e}")
+            pass
+            
+        endpoint_handler = self.create_qualcomm_llava_endpoint_handler(endpoint, tokenizer, model, qualcomm_label)
+        batch_size = 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+    
+    def create_cpu_llava_endpoint_handler(self, endpoint, tokenizer, model, cpu_label):
+        def handler(text, image=None, endpoint=endpoint, tokenizer=tokenizer, model=model, cpu_label=cpu_label):
+            if image is not None:
+                if isinstance(image, str):
+                    image = load_image(image)
+                
+                inputs = tokenizer(text=text, images=image, return_tensors="pt")
+                with self.torch.no_grad():
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                return result
+            else:
+                inputs = tokenizer(text=text, return_tensors="pt")
+                with self.torch.no_grad():
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                return result
+        return handler
+    
+    def create_cuda_llava_endpoint_handler(self, endpoint, tokenizer, model, cuda_label):
+        def handler(text, image=None, endpoint=endpoint, tokenizer=tokenizer, model=model, cuda_label=cuda_label):
+            try:
+                if "eval" in dir(endpoint):
+                    endpoint.eval()
+                
+                with self.torch.no_grad():
+                    self.torch.cuda.empty_cache()
+                    
+                    if image is not None:
+                        if isinstance(image, str):
+                            image = load_image(image)
+                        
+                        inputs = tokenizer(text=text, images=image, return_tensors="pt").to(cuda_label)
+                        outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                        result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                    else:
+                        inputs = tokenizer(text=text, return_tensors="pt").to(cuda_label)
+                        outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                        result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                    
+                    self.torch.cuda.empty_cache()
+                    return result
+            except Exception as e:
+                self.torch.cuda.empty_cache()
+                raise e
+        return handler
+    
+    def create_openvino_llava_endpoint_handler(self, endpoint, tokenizer, model, openvino_label):
+        def handler(text, image=None, endpoint=endpoint, tokenizer=tokenizer, model=model, openvino_label=openvino_label):
+            try:
+                if image is not None:
+                    if isinstance(image, str):
+                        image = load_image(image)
+                    
+                    inputs = tokenizer(text=text, images=image, return_tensors="pt")
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                else:
+                    inputs = tokenizer(text=text, return_tensors="pt")
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                
+                return result
+            except Exception as e:
+                print(f"Error in OpenVINO LLaVA handler: {e}")
+                raise e
+        return handler
+    
+    def create_apple_llava_endpoint_handler(self, endpoint, tokenizer, model, apple_label):
+        def handler(text, image=None, endpoint=endpoint, tokenizer=tokenizer, model=model, apple_label=apple_label):
+            try:
+                # Implementation for Apple silicon would go here
+                # This would use the CoreML model loaded in init_apple
+                result = "Apple Silicon implementation not available yet"
+                return result
+            except Exception as e:
+                print(f"Error in Apple LLaVA handler: {e}")
+                raise e
+        return handler
+    
+    def create_qualcomm_llava_endpoint_handler(self, endpoint, tokenizer, model, qualcomm_label):
+        def handler(text, image=None, endpoint=endpoint, tokenizer=tokenizer, model=model, qualcomm_label=qualcomm_label):
+            try:
+                if image is not None:
+                    if isinstance(image, str):
+                        image = load_image(image)
+                    
+                    # The exact API would depend on the Qualcomm SDK implementation
+                    inputs = tokenizer(text=text, images=image, return_tensors="pt")
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                else:
+                    inputs = tokenizer(text=text, return_tensors="pt")
+                    outputs = endpoint.generate(**inputs, max_new_tokens=256)
+                    result = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+                
+                return result
+            except Exception as e:
+                print(f"Error in Qualcomm LLaVA handler: {e}")
+                raise e
         return handler
