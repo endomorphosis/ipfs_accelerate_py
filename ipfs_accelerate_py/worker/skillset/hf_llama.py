@@ -17,11 +17,13 @@ class hf_llama:
         self.init_openvino = self.init_openvino
         self.init_qualcomm = self.init_qualcomm
         self.init_cpu = self.init_cpu
+        self.init_apple = self.init_apple
         self.__test__ = self.__test__
         self.create_openvino_llm_endpoint_handler = self.create_openvino_llm_endpoint_handler
         self.create_cpu_llm_endpoint_handler = self.create_cpu_llm_endpoint_handler
         self.create_cuda_llm_endpoint_handler = self.create_cuda_llm_endpoint_handler
         self.create_qualcomm_llm_endpoint_handler = self.create_qualcomm_llm_endpoint_handler
+        self.create_apple_llm_endpoint_handler = self.create_apple_llm_endpoint_handler
         return None
     
 
@@ -88,7 +90,57 @@ class hf_llama:
     
     def init_cpu (self, model, device, cpu_label):
         self.init()
-        return None
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True)
+        try:
+            endpoint = self.transformers.AutoModelForCausalLM.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(f"Error loading CPU model: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_cpu_llm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+    
+    def init_apple(self, model, device, apple_label):
+        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        try:
+            import coremltools as ct
+        except ImportError:
+            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            return None, None, None, None, 0
+            
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True)
+        
+        # Check if MPS (Metal Performance Shaders) is available
+        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+            print("MPS not available. Cannot initialize model on Apple Silicon.")
+            return None, None, None, None, 0
+            
+        # For Apple Silicon, we'll use MPS as the device
+        try:
+            endpoint = self.transformers.AutoModelForCausalLM.from_pretrained(
+                model, 
+                torch_dtype=self.torch.float16, 
+                trust_remote_code=True
+            ).to(device)
+        except Exception as e:
+            print(f"Error loading model on Apple Silicon: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_apple_llm_endpoint_handler(endpoint, tokenizer, model, apple_label)
+        
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -260,4 +312,98 @@ class hf_llama:
                     # Cleanup GPU memory in case of error
                     self.torch.cuda.empty_cache()
                     raise e
+        return handler
+        
+    def create_apple_llm_endpoint_handler(self, local_apple_endpoint, local_apple_tokenizer, endpoint_model, apple_label):
+        """Creates an endpoint handler for Apple Silicon.
+        
+        Args:
+            local_apple_endpoint: The model endpoint
+            local_apple_tokenizer: The tokenizer
+            endpoint_model: The model name or path
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Apple endpoint
+        """
+        def handler(x, y=None, local_apple_endpoint=local_apple_endpoint, local_apple_tokenizer=local_apple_tokenizer, endpoint_model=endpoint_model, apple_label=apple_label):
+            if "eval" in dir(local_apple_endpoint):
+                local_apple_endpoint.eval()
+            
+            try:
+                # Check if we're handling text-only or text with optional image
+                if y is not None:
+                    # Handle multimodal input if needed
+                    pass
+                
+                if x is not None and type(x) == str:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": x
+                        }
+                    ]
+                elif type(x) == tuple:
+                    conversation = x
+                elif type(x) == dict:
+                    conversation = [x]
+                elif type(x) == list:
+                    conversation = x
+                else:
+                    raise Exception("Invalid input to llm endpoint handler")
+                
+                # Apply chat template and generate
+                prompt = local_apple_tokenizer.apply_chat_template(conversation, add_generation_prompt=True)
+                inputs = local_apple_tokenizer(prompt, return_tensors="pt")
+                
+                # Move to MPS device if available
+                if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                    for key in inputs:
+                        if isinstance(inputs[key], self.torch.Tensor):
+                            inputs[key] = inputs[key].to("mps")
+                
+                output = local_apple_endpoint.generate(**inputs, max_new_tokens=100)
+                result = local_apple_tokenizer.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+                
+                return result
+            except Exception as e:
+                raise e
+                
+        return handler
+        
+    def create_qualcomm_llm_endpoint_handler(self, qualcomm_endpoint, qualcomm_tokenizer, endpoint_model, qualcomm_label):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            qualcomm_endpoint: The model endpoint
+            qualcomm_tokenizer: The tokenizer
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(x, y=None, qualcomm_endpoint=qualcomm_endpoint, qualcomm_tokenizer=qualcomm_tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
+            try:
+                # Process input
+                if x is not None and type(x) == str:
+                    input_text = x
+                elif type(x) == list:
+                    input_text = x[0] if len(x) > 0 else ""
+                elif type(x) == dict:
+                    input_text = x.get("text", "")
+                else:
+                    input_text = str(x)
+                
+                # Qualcomm implementation would use QNN (Qualcomm Neural Network)
+                # or SNPE (Snapdragon Neural Processing Engine)
+                # This is a placeholder for the actual implementation
+                
+                pipeline_config = { "MAX_PROMPT_LEN": 1024, "MIN_RESPONSE_LEN": 512 }
+                
+                # Actual implementation would use the Qualcomm-specific model and APIs
+                return f"Qualcomm would process: {input_text[:20]}..."
+            except Exception as e:
+                raise e
+                
         return handler

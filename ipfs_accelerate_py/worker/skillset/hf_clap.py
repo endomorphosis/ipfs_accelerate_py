@@ -73,10 +73,13 @@ class hf_clap:
         self.create_openvino_audio_embedding_endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler
         self.create_cuda_audio_embedding_endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler
         self.create_cpu_audio_embedding_endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler
+        self.create_apple_audio_embedding_endpoint_handler = self.create_apple_audio_embedding_endpoint_handler
+        self.create_qualcomm_audio_embedding_endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_qualcomm = self.init_qualcomm
         self.init_openvino = self.init_openvino
+        self.init_apple = self.init_apple
         self.transformers = None
         self.init = self.init
         self.__test__ = self.__test__
@@ -181,8 +184,17 @@ class hf_clap:
     
     def init_cpu(self, model, device, cpu_label):
         self.init()
-        return None
-    
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(f"Error loading CPU model: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler(endpoint, processor, model, cpu_label)
+        return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+
     def init_cuda(self, model, device, cuda_label):
         self.init()
         config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
@@ -291,35 +303,241 @@ class hf_clap:
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
     
-    def create_cpu_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cpu_label, endpoint=None, ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=None):
+    def init_apple(self, model, device, apple_label):
+        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        try:
+            import coremltools as ct
+        except ImportError:
+            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            return None, None, None, None, 0
+            
+        # Check if MPS (Metal Performance Shaders) is available
+        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+            print("MPS not available. Cannot initialize model on Apple Silicon.")
+            return None, None, None, None, 0
+            
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+        
+        # For Apple Silicon, we'll use MPS as the device
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(
+                model, 
+                torch_dtype=self.torch.float16, 
+                trust_remote_code=True
+            ).to(device)
+        except Exception as e:
+            print(f"Error loading model on Apple Silicon: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, processor, model, apple_label)
+        
+        return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
 
-            # if method == 'clip_text':
-            #         inputs = self.tokenizer([text], return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             text_features = self.model.get_text_features(**inputs)
-
-            #         return {
-            #             'embedding': text_features[0].cpu().numpy().tolist()
-            #         }
-                
-            #     elif method == 'clip_image':
-            #         inputs = self.processor(images=image, return_tensors='pt').to('cuda')
-
-            #         with no_grad():
-            #             image_features  = self.model.get_audio_features(**inputs)
-
-            #         return {
-            #             'embedding': image_features[0].cpu().numpy().tolist()
-            #         }
+    def create_cpu_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, cpu_label):
+        """Creates an endpoint handler for CPU.
+        
+        Args:
+            endpoint: The model endpoint
+            processor: The audio processor
+            endpoint_model: The model name or path
+            cpu_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the CPU endpoint
+        """
+        def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, cpu_label=cpu_label):
             if "eval" in dir(endpoint):
                 endpoint.eval()
-            else:
-                pass
-            return None
+                
+            try:
+                with self.torch.no_grad():
+                    # Handle text input
+                    if x is not None:
+                        if type(x) == str:
+                            text_inputs = processor(
+                                text=x,
+                                return_tensors='pt',
+                                padding=True
+                            )
+                        elif type(x) == list:
+                            text_inputs = processor(text=[text for text in x], return_tensors='pt', padding=True)
+                        
+                        processed_data = {**text_inputs}
+                        text_features = endpoint(**processed_data)
+                        text_embeddings = text_features.text_embeds
+                    
+                    # Handle audio input
+                    if y is not None:
+                        if type(y) == str:
+                            audio = self.load_audio(y)
+                            audio_inputs = processor(
+                                audios=[audio[0]], 
+                                return_tensors='pt', 
+                                padding=True,
+                                sampling_rate=audio[1]
+                            )
+                        elif type(y) == list:
+                            audio_inputs = processor(audios=[self.load_audio(audio_file)[0] for audio_file in y], 
+                                                    return_tensors='pt',
+                                                    sampling_rate=self.load_audio(y[0])[1])
+                        
+                        processed_data = {**audio_inputs}
+                        audio_features = endpoint(**processed_data)
+                        audio_embeddings = audio_features.audio_embeds
+                
+                # Return results based on what inputs were provided
+                if x is not None and y is not None:
+                    return {
+                        'audio_embedding': audio_embeddings,
+                        'text_embedding': text_embeddings
+                    }
+                elif x is not None:
+                    return {'embedding': text_embeddings}
+                elif y is not None:
+                    return {'embedding': audio_embeddings}
+                    
+                return None
+            except Exception as e:
+                print(f"Error in CPU audio embedding handler: {e}")
+                return None
+                
         return handler
     
+    def create_apple_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, apple_label):
+        """Creates an endpoint handler for Apple Silicon.
+        
+        Args:
+            endpoint: The model endpoint
+            processor: The audio processor
+            endpoint_model: The model name or path
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Apple endpoint
+        """
+        def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, apple_label=apple_label):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+                
+            try:
+                with self.torch.no_grad():
+                    # Handle text input
+                    if x is not None:
+                        if type(x) == str:
+                            text_inputs = processor(
+                                text=x,
+                                return_tensors='pt',
+                                padding=True
+                            )
+                        elif type(x) == list:
+                            text_inputs = processor(text=[text for text in x], return_tensors='pt', padding=True)
+                        
+                        # Move to MPS device if available
+                        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                            for key in text_inputs:
+                                if isinstance(text_inputs[key], self.torch.Tensor):
+                                    text_inputs[key] = text_inputs[key].to("mps")
+                        
+                        processed_data = {**text_inputs}
+                        text_features = endpoint(**processed_data)
+                        text_embeddings = text_features.text_embeds.cpu()
+                    
+                    # Handle audio input
+                    if y is not None:
+                        if type(y) == str:
+                            audio = self.load_audio(y)
+                            audio_inputs = processor(
+                                audios=[audio[0]], 
+                                return_tensors='pt', 
+                                padding=True,
+                                sampling_rate=audio[1]
+                            )
+                        elif type(y) == list:
+                            audio_inputs = processor(audios=[self.load_audio(audio_file)[0] for audio_file in y], 
+                                                    return_tensors='pt',
+                                                    sampling_rate=self.load_audio(y[0])[1])
+                        
+                        # Move to MPS device if available
+                        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                            for key in audio_inputs:
+                                if isinstance(audio_inputs[key], self.torch.Tensor):
+                                    audio_inputs[key] = audio_inputs[key].to("mps")
+                        
+                        processed_data = {**audio_inputs}
+                        audio_features = endpoint(**processed_data)
+                        audio_embeddings = audio_features.audio_embeds.cpu()
+                
+                # Return results based on what inputs were provided
+                if x is not None and y is not None:
+                    return {
+                        'audio_embedding': audio_embeddings,
+                        'text_embedding': text_embeddings
+                    }
+                elif x is not None:
+                    return {'embedding': text_embeddings}
+                elif y is not None:
+                    return {'embedding': audio_embeddings}
+                    
+                return None
+            except Exception as e:
+                print(f"Error in Apple audio embedding handler: {e}")
+                return None
+                
+        return handler
+        
+    def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, processor, endpoint_model, qualcomm_label):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            endpoint: The model endpoint
+            processor: The audio processor
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(x, y=None, endpoint=endpoint, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
+            try:
+                # This is a placeholder for Qualcomm-specific implementation
+                # Actual implementation would use SNPE (Snapdragon Neural Processing Engine)
+                
+                # Process inputs based on what's provided
+                if x is not None:
+                    text_embedding = self.np.zeros(512)  # Placeholder
+                    
+                if y is not None:
+                    audio_embedding = self.np.zeros(512)  # Placeholder
+                
+                # Return results based on what inputs were provided
+                if x is not None and y is not None:
+                    return {
+                        'audio_embedding': audio_embedding,
+                        'text_embedding': text_embedding
+                    }
+                elif x is not None:
+                    return {'embedding': text_embedding}
+                elif y is not None:
+                    return {'embedding': audio_embedding}
+                    
+                return None
+            except Exception as e:
+                print(f"Error in Qualcomm audio embedding handler: {e}")
+                return None
+                
+        return handler
+
     def create_cuda_audio_embedding_endpoint_handler(self, tokenizer , endpoint_model, cuda_label, endpoint=None, ):
         def handler(x, tokenizer, endpoint_model, openvino_label, endpoint=None):
             if "eval" in dir(endpoint):

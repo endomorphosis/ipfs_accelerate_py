@@ -10,10 +10,13 @@ class hf_bert:
         self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
         self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
         self.create_cpu_text_embedding_endpoint_handler = self.create_cpu_text_embedding_endpoint_handler
+        self.create_apple_text_embedding_endpoint_handler = self.create_apple_text_embedding_endpoint_handler
+        self.create_qualcomm_text_embedding_endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
-        self.init_qualcomm = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
+        self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
         return None
@@ -66,9 +69,18 @@ class hf_bert:
                 self.torch.cuda.empty_cache()
         return True
 
-    def init_cpu(self):
+    def init_cpu(self, model, device, cpu_label):
         self.init()
-        return None
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+        except Exception as e:
+            print(f"Error loading CPU model: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_cpu_text_embedding_endpoint_handler(endpoint, cpu_label, endpoint, tokenizer)
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
 
     def init_cuda(self, model, device, cuda_label):
         self.init()
@@ -137,6 +149,72 @@ class hf_bert:
         endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(model_name, tokenizer, openvino_label, model)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
+
+    def init_apple(self, model, device, apple_label):
+        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        try:
+            import coremltools as ct
+        except ImportError:
+            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            return None, None, None, None, 0
+            
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        
+        # Check if MPS (Metal Performance Shaders) is available
+        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+            print("MPS not available. Cannot initialize model on Apple Silicon.")
+            return None, None, None, None, 0
+            
+        # For Apple Silicon, we'll use MPS as the device
+        try:
+            endpoint = self.transformers.AutoModel.from_pretrained(
+                model, 
+                torch_dtype=self.torch.float16, 
+                trust_remote_code=True
+            ).to(device)
+        except Exception as e:
+            print(f"Error loading model on Apple Silicon: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_apple_text_embedding_endpoint_handler(endpoint, apple_label, endpoint, tokenizer)
+        
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
+        
+    def init_qualcomm(self, model, device, qualcomm_label):
+        """Initialize model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        
+        # Qualcomm initialization would use SNPE (Snapdragon Neural Processing Engine)
+        # This is a placeholder implementation
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
+        
+        # SNPE would typically convert the PyTorch model to a Qualcomm-specific format
+        endpoint = None
+            
+        endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler(endpoint, qualcomm_label, endpoint, tokenizer)
+        
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
 
     def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, cpu_label, endpoint=None, tokenizer=None):
         def handler(x, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint, tokenizer=tokenizer):
@@ -250,35 +328,118 @@ class hf_bert:
                     self.torch.cuda.empty_cache()
                     raise e
         return handler
-
-    # def embed_bak(self, instruction, text , **kwargs):
-    # 	self.input = text
-    # 	self.method = 'embed'
-    # 	embeddings = None
-    # 	if "instructor" in self.modelName:
-    # 		embeddings = self.model.encode([[instruction,self.input]])
-    # 		print(embeddings)
-    # 	if "gte" in self.modelName:
-    # 		embeddings = self.model.encode([self.input])
-    # 		print(embeddings)
-    # 	if "bge" in self.modelName:
-    # 		if self.model == None:
-    # 			self.model = FlagModel(
-    # 				'BAAI/'+self.modelName, query_instruction_for_retrieval=instruction,
-    # 				use_fp16=True
-    # 			)
-    # 		embeddings = self.model.encode(str(self.input))
-    # 		print(embeddings)
-
-    # 	if type(embeddings) != str:
-    # 		embeddings = json.dumps(embeddings.tolist())
-
-    # 	return {
-    # 		'text': embeddings, 
-    # 		'done': True
-    # 	}
         
-    # def average_pool(self, last_hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
-    #     last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
-    #     return last_hidden.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
+    def create_apple_text_embedding_endpoint_handler(self, endpoint_model, apple_label, endpoint=None, tokenizer=None):
+        """Creates an endpoint handler for Apple Silicon.
+        
+        Args:
+            endpoint_model: The model name or path
+            apple_label: Label to identify this endpoint
+            endpoint: The model endpoint
+            tokenizer: The tokenizer
+            
+        Returns:
+            A handler function for the Apple endpoint
+        """
+        def handler(x, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint, tokenizer=tokenizer):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+                
+            try:
+                with self.torch.no_grad():
+                    # Prepare input
+                    if type(x) == str:
+                        tokens = tokenizer(
+                            x, 
+                            return_tensors='pt', 
+                            padding=True, 
+                            truncation=True,
+                            max_length=endpoint.config.max_position_embeddings
+                        )
+                    elif type(x) == list:
+                        tokens = tokenizer(
+                            x, 
+                            return_tensors='pt', 
+                            padding=True, 
+                            truncation=True,
+                            max_length=endpoint.config.max_position_embeddings
+                        )
+                    else:
+                        tokens = x
+                    
+                    # Move tokens to MPS device
+                    if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                        input_ids = tokens['input_ids'].to("mps")
+                        attention_mask = tokens['attention_mask'].to("mps")
+                    else:
+                        input_ids = tokens['input_ids']
+                        attention_mask = tokens['attention_mask']
+                    
+                    # Run model inference
+                    outputs = endpoint(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        return_dict=True
+                    )
+                    
+                    # Get embeddings using mean pooling
+                    last_hidden = outputs.last_hidden_state.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)
+                    average_pool_results = last_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
+                    
+                    # Move results back to CPU
+                    result = average_pool_results.cpu()
+                    
+                    return result
+            except Exception as e:
+                print(f"Error in Apple text embedding handler: {e}")
+                raise e
+                
+        return handler
+        
+    def create_qualcomm_text_embedding_endpoint_handler(self, endpoint_model, qualcomm_label, endpoint=None, tokenizer=None):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            endpoint: The model endpoint
+            tokenizer: The tokenizer
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(x, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint, tokenizer=tokenizer):
+            try:
+                # Prepare input
+                if type(x) == str:
+                    tokens = tokenizer(
+                        x, 
+                        return_tensors='pt', 
+                        padding=True, 
+                        truncation=True,
+                        max_length=512  # Default max length
+                    )
+                elif type(x) == list:
+                    tokens = tokenizer(
+                        x, 
+                        return_tensors='pt', 
+                        padding=True, 
+                        truncation=True,
+                        max_length=512  # Default max length
+                    )
+                else:
+                    tokens = x
+                
+                # This is a placeholder for Qualcomm-specific implementation
+                # Actual implementation would use SNPE (Snapdragon Neural Processing Engine)
+                
+                # Create dummy output for placeholder
+                result = self.np.zeros((tokens['input_ids'].shape[0], 768))  # Default embedding size
+                
+                return result
+            except Exception as e:
+                print(f"Error in Qualcomm text embedding handler: {e}")
+                raise e
+                
+        return handler
 

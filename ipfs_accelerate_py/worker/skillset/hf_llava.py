@@ -140,6 +140,8 @@ class hf_llava:
         self.create_optimum_vlm_endpoint_handler = self.create_optimum_vlm_endpoint_handler
         self.create_cuda_vlm_endpoint_handler = self.create_cuda_vlm_endpoint_handler
         self.create_cpu_vlm_endpoint_handler = self.create_cpu_vlm_endpoint_handler
+        self.create_apple_vlm_endpoint_handler = self.create_apple_vlm_endpoint_handler
+        self.create_qualcomm_vlm_endpoint_handler = self.create_qualcomm_vlm_endpoint_handler
         self.build_transform = build_transform
         self.load_image = load_image
         self.load_image_tensor = load_image_tensor
@@ -150,6 +152,7 @@ class hf_llava:
         self.init_qualcomm = self.init_qualcomm
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
         return None
@@ -285,6 +288,49 @@ class hf_llava:
         endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
+    
+    def init_apple(self, model, device, apple_label):
+        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        try:
+            import coremltools as ct
+        except ImportError:
+            print("coremltools not installed. Cannot initialize Apple Silicon model.")
+            return None, None, None, None, 0
+            
+        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+        tokenizer = self.transformers.AutoProcessor.from_pretrained(model)
+        
+        # Check if MPS (Metal Performance Shaders) is available
+        if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+            print("MPS not available. Cannot initialize model on Apple Silicon.")
+            return None, None, None, None, 0
+            
+        # For Apple Silicon, we'll use MPS as the device
+        try:
+            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(
+                model, 
+                torch_dtype=self.torch.float16, 
+                trust_remote_code=True
+            ).to(device)
+        except Exception as e:
+            print(f"Error loading model on Apple Silicon: {e}")
+            endpoint = None
+            
+        endpoint_handler = self.create_apple_vlm_endpoint_handler(endpoint, tokenizer, model, apple_label)
+        
+        # No CUDA to clear for Apple devices
+        
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(32), 0
     
     def create_optimum_vlm_endpoint_handler(self, cuda_endpoint_handler, local_cuda_processor, endpoint_model, cuda_label):
         def handler(x, y, cuda_endpoint_handler=cuda_endpoint_handler, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
@@ -571,4 +617,132 @@ class hf_llava:
                     return outputs
                 except Exception as e:
                     raise e
+        return handler
+        
+    def create_apple_vlm_endpoint_handler(self, apple_endpoint_handler, local_apple_processor, endpoint_model, apple_label):
+        """Creates an endpoint handler for Apple Silicon.
+        
+        Args:
+            apple_endpoint_handler: The model endpoint
+            local_apple_processor: The tokenizer or processor
+            endpoint_model: The model name or path
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Apple endpoint
+        """
+        def handler(x, y, apple_endpoint_handler=apple_endpoint_handler, local_apple_processor=local_apple_processor, endpoint_model=endpoint_model, apple_label=apple_label):
+            try:
+                if y.startswith("http") or y.startswith("https"):
+                    response = requests.get(y)
+                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                else:
+                    image = Image.open(y).convert("RGB")
+                    
+                if x is not None and type(x) == str:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": x},
+                                {"type": "image"}
+                            ]
+                        }
+                    ]
+                elif type(x) == tuple:
+                    conversation = x
+                elif type(x) == dict:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                elif type(x) == list:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": x},
+                                {"type": "image"}
+                            ]
+                        }
+                    ]
+                else:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                    
+                result = None
+                streamer = self.transformers.TextStreamer(local_apple_processor, skip_prompt=True, skip_special_tokens=True)
+                prompt = local_apple_processor.apply_chat_template(conversation, add_generation_prompt=True)
+                inputs = local_apple_processor(image, prompt, return_tensors="pt")
+                
+                if apple_endpoint_handler is not None:
+                    # Move inputs to MPS device if available
+                    if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                        for key in inputs:
+                            if isinstance(inputs[key], self.torch.Tensor):
+                                inputs[key] = inputs[key].to("mps")
+                
+                    output_ids = apple_endpoint_handler.generate(
+                        **inputs,
+                        do_sample=False,
+                        max_new_tokens=50,
+                        streamer=streamer,
+                    )
+                    outputs = local_apple_processor.decode(output_ids[0], skip_special_tokens=True)
+                    return outputs
+                    
+                return "Model not loaded properly on Apple Silicon"
+            except Exception as e:
+                raise e
+        return handler
+        
+    def create_qualcomm_vlm_endpoint_handler(self, qualcomm_endpoint_handler, local_qualcomm_processor, endpoint_model, qualcomm_label):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            qualcomm_endpoint_handler: The model endpoint
+            local_qualcomm_processor: The tokenizer or processor
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(x, y, qualcomm_endpoint_handler=qualcomm_endpoint_handler, local_qualcomm_processor=local_qualcomm_processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
+            try:
+                if y.startswith("http") or y.startswith("https"):
+                    response = requests.get(y)
+                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                else:
+                    image = Image.open(y).convert("RGB")
+                    
+                if x is not None and type(x) == str:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": x},
+                                {"type": "image"}
+                            ]
+                        }
+                    ]
+                elif type(x) == tuple:
+                    conversation = x
+                elif type(x) == dict:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                elif type(x) == list:
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": x},
+                                {"type": "image"}
+                            ]
+                        }
+                    ]
+                else:
+                    raise Exception("Invalid input to vlm endpoint handler")
+                    
+                # Qualcomm uses the SNPE SDK for neural processing
+                # Implementation would depend on specific Qualcomm hardware and SDK
+                # This is a placeholder for the actual implementation
+                return "Qualcomm implementation would process inputs here"
+            except Exception as e:
+                raise e
         return handler
