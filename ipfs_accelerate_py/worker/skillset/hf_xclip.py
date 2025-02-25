@@ -6,9 +6,9 @@ import requests
 from io import BytesIO
 import os
 import tempfile
+import numpy as np
 
 def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
-    import numpy as np
     converted_len = int(clip_len * frame_sample_rate)
     end_idx = np.random.randint(converted_len, seg_len)
     start_idx = end_idx - converted_len
@@ -17,17 +17,14 @@ def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
     return indices
 
 def load_image(image_file):
-    import numpy as np
-    if image_file.startswith("http") or image_file.startswith("https"):
+    if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
         image = Image.open(image_file).convert("RGB")
-    image_data = np.array(image.getdata()).reshape(1, image.size[1], image.size[0], 3).astype(np.byte)
     return image
 
 def load_image_tensor(image_file):
-    import numpy as np
     import openvino as ov
     if isinstance(image_file, str) and (image_file.startswith("http") or image_file.startswith("https")):
         response = requests.get(image_file)
@@ -53,6 +50,7 @@ class hf_xclip:
         self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
 
     def init(self):
@@ -84,21 +82,63 @@ class hf_xclip:
         return None
     
     def init_qualcomm(self, model, device, qualcomm_label):
+        """Initialize XClip model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
+        
+        # Import SNPE utilities
         try:
-            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
             
-            # Here we would initialize the model using Qualcomm's SDK
-            # This is a placeholder for actual Qualcomm implementation
-            endpoint = None
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
             
-            endpoint_handler = self.create_qualcomm_video_embedding_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
-            batch_size = 0
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+        try:
+            # Initialize processor directly from HuggingFace
+            processor = self.transformers.AutoProcessor.from_pretrained(model)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_xclip.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "vision_text_dual", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_xclip_endpoint_handler(processor, model, qualcomm_label, endpoint)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
-            print(f"Error initializing Qualcomm model: {e}")
+            print(f"Error initializing Qualcomm XClip model: {e}")
             return None, None, None, None, 0
 
     def init_apple(self, model, device, apple_label):
@@ -409,3 +449,81 @@ class hf_xclip:
                 ov_model = self.ov.compile_model(ov_model)
                 hfmodel = None
         return ov_model
+
+    def create_qualcomm_xclip_endpoint_handler(self, processor, endpoint_model, qualcomm_label, endpoint):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            processor: The processor for text and image inputs
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            endpoint: The SNPE model endpoint
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(text_input=None, image_input=None, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            try:
+                inputs = {}
+                
+                # Process text input if provided
+                if text_input is not None:
+                    if isinstance(text_input, str):
+                        text_inputs = processor(text=text_input, return_tensors="np")
+                    else:
+                        # Assume it's a batch of texts
+                        text_inputs = processor(text=text_input, return_tensors="np", padding=True)
+                        
+                    for key, value in text_inputs.items():
+                        inputs[key] = value
+                
+                # Process image input if provided
+                if image_input is not None:
+                    if isinstance(image_input, str):
+                        # Load image from URL or file
+                        image = load_image(image_input)
+                        image_inputs = processor(images=image, return_tensors="np")
+                    elif isinstance(image_input, list):
+                        # Process a batch of images
+                        images = [load_image(img) for img in image_input]
+                        image_inputs = processor(images=images, return_tensors="np", padding=True)
+                    else:
+                        # Assume it's already a PIL Image
+                        image_inputs = processor(images=image_input, return_tensors="np")
+                    
+                    for key, value in image_inputs.items():
+                        inputs[key] = value
+                
+                # Run inference with SNPE
+                results = self.snpe_utils.run_inference(endpoint, inputs)
+                
+                # Process results
+                output = {}
+                
+                # Convert numpy arrays to torch tensors
+                for key, value in results.items():
+                    if isinstance(value, np.ndarray):
+                        output[key] = self.torch.tensor(value)
+                    else:
+                        output[key] = value
+                
+                # Calculate similarity if both text and image embeddings are available
+                if "text_embeds" in results and "image_embeds" in results:
+                    text_embeds = self.torch.tensor(results["text_embeds"])
+                    image_embeds = self.torch.tensor(results["image_embeds"])
+                    
+                    # Normalize embeddings
+                    text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+                    image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+                    
+                    # Calculate similarity
+                    similarity = self.torch.matmul(text_embeds, image_embeds.T)
+                    output["similarity"] = similarity
+                
+                return output
+                
+            except Exception as e:
+                print(f"Error in Qualcomm XClip endpoint handler: {e}")
+                return {"error": str(e)}
+                
+        return handler

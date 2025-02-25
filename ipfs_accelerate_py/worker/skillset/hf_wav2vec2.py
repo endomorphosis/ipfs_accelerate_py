@@ -51,26 +51,31 @@ def load_audio_tensor(audio_file):
     
     return Tensor(audio_data.reshape(1, -1))
 
+import asyncio
+import time
+import os
+from pathlib import Path
+
 class hf_wav2vec2:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
-        self.metadata = metadata    
-        self.create_openvino_audio_embedding_endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler
-        self.create_cuda_audio_embedding_endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler
-        self.create_cpu_audio_embedding_endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler
-        self.create_apple_audio_embedding_endpoint_handler = self.create_apple_audio_embedding_endpoint_handler
-        self.create_qualcomm_audio_embedding_endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler
-        self.init_qualcomm = self.init_qualcomm
-        self.init_apple = self.init_apple
+        self.metadata = metadata
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
+        self.init_qualcomm = self.init_qualcomm
+        self.init_apple = self.init_apple
+        self.create_cpu_wav2vec2_endpoint_handler = self.create_cpu_wav2vec2_endpoint_handler
+        self.create_cuda_wav2vec2_endpoint_handler = self.create_cuda_wav2vec2_endpoint_handler
+        self.create_openvino_wav2vec2_endpoint_handler = self.create_openvino_wav2vec2_endpoint_handler
+        self.create_qualcomm_wav2vec2_endpoint_handler = self.create_qualcomm_wav2vec2_endpoint_handler
+        self.create_apple_wav2vec2_endpoint_handler = self.create_apple_wav2vec2_endpoint_handler
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
-
+    
     def init(self):
-        
         if "torch" not in list(self.resources.keys()):
             import torch
             self.torch = torch
@@ -88,64 +93,13 @@ class hf_wav2vec2:
             self.np = np
         else:
             self.np = self.resources["numpy"]
-            
-        if "librosa" not in list(self.resources.keys()):
-            import librosa
-            self.librosa = librosa
-        else:
-            self.librosa = self.resources["librosa"]
-            
-        if "sf" not in list(self.resources.keys()):
-            import soundfile as sf
-            self.sf = sf
-        else:
-            self.sf = self.resources["sf"]
-
         return None
     
-    def init_qualcomm(self, model, device, qualcomm_label):
-        self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-        
-        try:
-            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
-        except Exception as e:
-            print(e)
-            endpoint = None
-            pass
-        
-        endpoint_handler = self.create_qualcomm_audio_embedding_endpoint_handler(endpoint, tokenizer, model, qualcomm_label)
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
-
-    def init_apple(self, model, device, apple_label):
-        self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
-        
-        try:
-            # Use CoreML optimization if available
-            if "coremltools" in list(self.resources.keys()):
-                import coremltools as ct
-                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
-                # Apple Silicon optimization would be here
-            else:
-                endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True).to(device)
-        except Exception as e:
-            print(e)
-            endpoint = None
-            pass
-        
-        endpoint_handler = self.create_apple_audio_embedding_endpoint_handler(endpoint, tokenizer, model, apple_label)
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
-
-    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
-        audio_1 = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
+    def __test__(self, endpoint_model, endpoint_handler, endpoint_label, processor):
+        audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         timestamp1 = time.time()
         try:
-            test_batch = endpoint_handler(audio_1)
+            test_batch = endpoint_handler(audio_url)
             print(test_batch)
             print("hf_wav2vec2 test passed")
         except Exception as e:
@@ -154,51 +108,39 @@ class hf_wav2vec2:
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
-        len_tokens = 1
-        tokens_per_second = len_tokens / elapsed_time
+        tokens_per_second = 1 / elapsed_time
         print(f"elapsed time: {elapsed_time}")
-        print(f"samples: {len_tokens}")
         print(f"samples per second: {tokens_per_second}")
-        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
             with self.torch.no_grad():
                 if "cuda" in dir(self.torch):
                     self.torch.cuda.empty_cache()
-        print("hf_wav2vec test")
         return None
     
     def init_cpu(self, model, device, cpu_label):
         self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
-        
         try:
-            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
+            processor = self.transformers.AutoProcessor.from_pretrained(model)
+            endpoint = self.transformers.AutoModelForSpeechSeq2Seq.from_pretrained(model)
+            endpoint_handler = self.create_cpu_wav2vec2_endpoint_handler(processor, model, cpu_label, endpoint)
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
             print(e)
-            endpoint = None
-            pass
-        
-        endpoint_handler = self.create_cpu_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cpu_label)
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+            return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.Wav2Vec2Processor.from_pretrained(model)
-        endpoint = None
         try:
-            endpoint = self.transformers.AutoModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
+            processor = self.transformers.AutoProcessor.from_pretrained(model)
+            endpoint = self.transformers.AutoModelForSpeechSeq2Seq.from_pretrained(model, torch_dtype=self.torch.float16).to(device)
+            endpoint_handler = self.create_cuda_wav2vec2_endpoint_handler(processor, model, cuda_label, endpoint)
+            self.torch.cuda.empty_cache()
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
         except Exception as e:
             print(e)
-            pass
-        endpoint_handler = self.create_cuda_audio_embedding_endpoint_handler(endpoint, tokenizer, model, cuda_label)
-        self.torch.cuda.empty_cache()
-        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
-
-    def init_openvino(self, model=None , model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None ):
+            return None, None, None, None, 0
+    
+    def init_openvino(self, model_name=None, model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         self.init()
         if "openvino" not in list(self.resources.keys()):
             import openvino as ov
@@ -209,7 +151,7 @@ class hf_wav2vec2:
         tokenizer = None
         endpoint_handler = None
         homedir = os.path.expanduser("~")
-        model_name_convert = model.replace("/", "--")
+        model_name_convert = model_name.replace("/", "--")
         huggingface_cache = os.path.join(homedir, ".cache/huggingface")
         huggingface_cache_models = os.path.join(huggingface_cache, "hub")
         huggingface_cache_models_files = os.listdir(huggingface_cache_models)
@@ -218,8 +160,7 @@ class hf_wav2vec2:
         huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
         model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
         model_dst_path = os.path.join(model_src_path, "openvino")
-        # config = AutoConfig.from_pretrained(model)
-        task = get_openvino_pipeline_type(model, model_type)
+        task = get_openvino_pipeline_type(model_name, model_type)
         openvino_index = int(openvino_label.split(":")[1])
         weight_format = ""
         if openvino_index is not None:
@@ -231,14 +172,11 @@ class hf_wav2vec2:
                 weight_format = "int4" ## npu
         model_dst_path = model_dst_path+"_"+weight_format
         if not os.path.exists(model_dst_path):
-            # os.makedirs(model_dst_path)
-            ## convert model to openvino format
-            # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
             pass
 
         try:
             tokenizer =  self.transformers.Wav2Vec2Processor.from_pretrained(
-                model
+                model_name
             )
         except Exception as e:
             print(e)
@@ -250,24 +188,128 @@ class hf_wav2vec2:
                 print(e)
                 pass
         
-        # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
         try:
-            model = get_openvino_model(model, model_type, openvino_label)
+            model = get_openvino_model(model_name, model_type, openvino_label)
             print(model)
         except Exception as e:
             print(e)
             try:
-                model = get_optimum_openvino_model(model, model_type, openvino_label)
+                model = get_optimum_openvino_model(model_name, model_type, openvino_label)
             except Exception as e:
                 print(e)
                 pass
         endpoint = model
-        endpoint_handler = self.create_openvino_audio_embedding_endpoint_handler(model, tokenizer, openvino_label)
+        endpoint_handler = self.create_openvino_wav2vec2_endpoint_handler(model, tokenizer, openvino_label)
         batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size              
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+
+    def init_apple(self, model, device, apple_label):
+        """Initialize model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        try:
+            if "coremltools" not in list(self.resources.keys()):
+                import coremltools as ct
+                self.ct = ct
+            else:
+                self.ct = self.resources["coremltools"]
+                
+            # Check if MPS is available
+            if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+                print("MPS not available. Cannot initialize model on Apple Silicon.")
+                return None, None, None, None, 0
+            
+            # Initialize processor directly from HuggingFace
+            processor = self.transformers.AutoProcessor.from_pretrained(model)
+            
+            # For Apple Silicon, we'll use MPS as the device
+            try:
+                endpoint = self.transformers.AutoModelForSpeechSeq2Seq.from_pretrained(
+                    model, 
+                    torch_dtype=self.torch.float16, 
+                    trust_remote_code=True
+                ).to(device)
+            except Exception as e:
+                print(f"Error loading model on Apple Silicon: {e}")
+                endpoint = None
+                
+            endpoint_handler = self.create_apple_wav2vec2_endpoint_handler(processor, model, apple_label, endpoint)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Apple model: {e}")
+            return None, None, None, None, 0
+
+    def init_qualcomm(self, model, device, qualcomm_label):
+        """Initialize Wav2Vec2 model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        
+        # Import SNPE utilities
+        try:
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
+            
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
+            
+        try:
+            # Initialize processor directly from HuggingFace
+            processor = self.transformers.AutoProcessor.from_pretrained(model)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_wav2vec2.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "speech", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_wav2vec2_endpoint_handler(processor, model, qualcomm_label, endpoint)
+            
+            return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+        except Exception as e:
+            print(f"Error initializing Qualcomm Wav2Vec2 model: {e}")
+            return None, None, None, None, 0
     
-    def create_cpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, cpu_label):
-        def handler(x, tokenizer=tokenizer, endpoint_model=model, cpu_label=cpu_label, endpoint=endpoint):
+    def create_cpu_wav2vec2_endpoint_handler(self, processor, endpoint_model, cpu_label, endpoint):
+        def handler(x, processor=processor, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint):
             if "eval" in dir(endpoint) and endpoint is not None:
                 endpoint.eval()
             
@@ -275,7 +317,7 @@ class hf_wav2vec2:
                 try:
                     if type(x) == str:
                         audio_data, audio_sampling_rate = load_audio_16khz(x)
-                        inputs = tokenizer(
+                        inputs = processor(
                             audio_data,
                             return_tensors="pt",
                             padding="longest",
@@ -296,8 +338,8 @@ class hf_wav2vec2:
             return None
         return handler
     
-    def create_cuda_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, cuda_label):
-        def handler(x, tokenizer=tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint):
+    def create_cuda_wav2vec2_endpoint_handler(self, processor, endpoint_model, cuda_label, endpoint):
+        def handler(x, processor=processor, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint):
             if "eval" in dir(endpoint) and endpoint is not None:
                 endpoint.eval()
             
@@ -306,7 +348,7 @@ class hf_wav2vec2:
                     self.torch.cuda.empty_cache()
                     if type(x) == str:
                         audio_data, audio_sampling_rate = load_audio_16khz(x)
-                        inputs = tokenizer(
+                        inputs = processor(
                             audio_data,
                             return_tensors="pt",
                             padding="longest",
@@ -341,80 +383,14 @@ class hf_wav2vec2:
                     return None
             return None
         return handler
-
-    def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, qualcomm_label):
-        def handler(x, tokenizer=tokenizer, endpoint_model=model, qualcomm_label=qualcomm_label, endpoint=endpoint):
-            if endpoint is None:
-                return None
-                
-            if "eval" in dir(endpoint):
-                endpoint.eval()
-            
-            try:
-                if type(x) == str:
-                    audio_data, audio_sampling_rate = load_audio_16khz(x)
-                    inputs = tokenizer(
-                        audio_data,
-                        return_tensors="pt",
-                        padding="longest",
-                        sampling_rate=audio_sampling_rate,
-                    )
-                    
-                    # Qualcomm-specific optimizations would go here
-                    outputs = endpoint(**inputs)
-                    embeddings = outputs.last_hidden_state
-                    # Average pooling
-                    embeddings = self.torch.mean(embeddings, dim=1)
-                    
-                    return {
-                        'embedding': embeddings[0].detach().numpy().tolist()
-                    }
-            except Exception as e:
-                print(f"Qualcomm audio embedding error: {e}")
-                return None
-            return None
-        return handler
-
-    def create_apple_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model, apple_label):
-        def handler(x, tokenizer=tokenizer, endpoint_model=model, apple_label=apple_label, endpoint=endpoint):
-            if endpoint is None:
-                return None
-                
-            if "eval" in dir(endpoint):
-                endpoint.eval()
-            
-            try:
-                if type(x) == str:
-                    audio_data, audio_sampling_rate = load_audio_16khz(x)
-                    inputs = tokenizer(
-                        audio_data,
-                        return_tensors="pt",
-                        padding="longest",
-                        sampling_rate=audio_sampling_rate,
-                    )
-                    
-                    # Apple Silicon-specific optimizations would go here
-                    outputs = endpoint(**inputs)
-                    embeddings = outputs.last_hidden_state
-                    # Average pooling
-                    embeddings = self.torch.mean(embeddings, dim=1)
-                    
-                    return {
-                        'embedding': embeddings[0].detach().numpy().tolist()
-                    }
-            except Exception as e:
-                print(f"Apple audio embedding error: {e}")
-                return None
-            return None
-        return handler
-
-    def create_openvino_audio_embedding_endpoint_handler(self, endpoint_model , tokenizer , openvino_label, endpoint=None ):
-        def handler(x, tokenizer=tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
+    
+    def create_openvino_wav2vec2_endpoint_handler(self, endpoint, processor, openvino_label, endpoint_model=None):
+        def handler(x, processor=processor, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
             results = []
             if x is not None:            
                 if type(x) == str:
                     audio_data, audio_sampling_rate = load_audio_16khz(x)                    
-                    preprocessed_signal = tokenizer(
+                    preprocessed_signal = processor(
                         audio_data,
                         return_tensors="pt",
                         padding="longest",
@@ -430,7 +406,7 @@ class hf_wav2vec2:
                     image_embeddings = self.torch.mean(image_embeddings, dim=(1,))
                     results.append(image_embeddings)
                 elif type(x) == list:
-                    inputs = tokenizer(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
+                    inputs = processor(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
                     image_features = endpoint_model({'input_values': audio_inputs})
                     image_embeddings = list(image_features.values())[0]
                     image_embeddings = self.torch.tensor(image_embeddings)
@@ -444,112 +420,150 @@ class hf_wav2vec2:
                             'embedding': image_embeddings[0]
                         }            
             return None
-        return handler    
+        return handler
+
+    def create_apple_wav2vec2_endpoint_handler(self, processor, endpoint_model, apple_label, endpoint):
+        """Creates an endpoint handler for Apple Silicon.
+        
+        Args:
+            processor: The audio processor
+            endpoint_model: The model name or path
+            apple_label: Label to identify this endpoint
+            endpoint: The model endpoint
+            
+        Returns:
+            A handler function for the Apple endpoint
+        """
+        def handler(audio_input, processor=processor, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+                
+            try:
+                # Process audio input
+                if isinstance(audio_input, str):
+                    # Load audio file
+                    from .hf_clap import load_audio
+                    audio_data, sample_rate = load_audio(audio_input)
+                    
+                    # Get audio features
+                    with self.torch.no_grad():
+                        inputs = processor(
+                            audio=audio_data, 
+                            sampling_rate=sample_rate, 
+                            return_tensors="pt"
+                        )
+                        
+                        # Move inputs to MPS device if available
+                        if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                            inputs = {k: v.to("mps") if hasattr(v, 'to') else v for k, v in inputs.items()}
+                        
+                        # Generate transcription
+                        if hasattr(endpoint, "generate"):
+                            # For models like Whisper that have generate method
+                            generated_ids = endpoint.generate(
+                                inputs["input_features"] if "input_features" in inputs else inputs["input_values"]
+                            )
+                            
+                            # Move results back to CPU for processing
+                            if hasattr(generated_ids, "cpu"):
+                                generated_ids = generated_ids.cpu()
+                            
+                            # Decode transcription
+                            transcription = processor.batch_decode(
+                                generated_ids, 
+                                skip_special_tokens=True
+                            )[0]
+                        else:
+                            # For models that return logits directly
+                            outputs = endpoint(**inputs)
+                            logits = outputs.logits
+                            
+                            # Move results back to CPU for processing
+                            if hasattr(logits, "cpu"):
+                                logits = logits.cpu()
+                                
+                            # Get predicted ids
+                            predicted_ids = self.torch.argmax(logits, dim=-1)
+                            
+                            # Decode transcription
+                            transcription = processor.batch_decode(predicted_ids)[0]
+                        
+                        return {
+                            "text": transcription,
+                            "model": endpoint_model
+                        }
+                else:
+                    # Assume it's already processed
+                    return {"error": "Unsupported input format"}
+            
+            except Exception as e:
+                print(f"Error in Apple Wav2Vec2 endpoint handler: {e}")
+                return {"error": str(e)}
+                
+        return handler
     
-    def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
-        if hfmodel is None:
-            hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
-    
-        if hfprocessor is None:
-            hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
-
-        if hfprocessor is not None:
-            text = "Replace me by any text you'd like."
-            audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
-            audio_data, audio_sampling_rate = audio = load_audio_16khz(audio_url)
-            preprocessed_signal = None
-            preprocessed_signal = hfprocessor(
-                audio_data,
-                return_tensors="pt",
-                padding="longest",
-                sampling_rate=audio_sampling_rate,
-            )
-            audio_inputs = preprocessed_signal.input_values
-            MAX_SEQ_LENGTH = 30480
-            hfmodel.config.torchscript = True
-            ov_model = self.ov.convert_model(hfmodel, example_input=self.torch.zeros([1, MAX_SEQ_LENGTH], dtype=self.torch.float))
-            if not os.path.exists(model_dst_path):
-                os.mkdir(model_dst_path)
-            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = self.ov.compile_model(ov_model)
-            hfmodel = None
-        return ov_model
-    
-    
-        # def __init__(self, resources=None, metadata=None):
-        #         if os.path.exists(resources['checkpoint']) and os.path.isfile(resources['checkpoint'] + "/config.json"):
-        #                 self.model = AutoModelForAudioClassification.from_pretrained(
-        #         resources['checkpoint'],
-        #         local_files_only=True
-        #     ).eval()
-        #                 self.feature_extractor = AutoFeatureExtractor.from_pretrained(
-        #         resources['checkpoint'],
-        #         local_files_only=True
-        #     )
-        #         else:
-        #                 self.classifier = pipeline("audio-classification", model=resources['checkpoint'])
-        #         with open(os.path.join(resources['checkpoint'], "header.bin"), "rb") as f:
-        #                 self.header = f.read()
-
-        # def __call__(self, method, **kwargs):
-        #         if method == 'wav2vec_classify':
-        #                 return self.wav2vec_classify(**kwargs)
-        #         else:
-        #                 raise Exception('unknown method: %s' % method)
-
-        # def map_to_array(self, example):
-        #         speech, _ = librosa.load(example["file"], sr=16000, mono=True)
-        #         example["speech"] = speech
-        #         return example
-
-        # def wav2vec_classify(self, audio, **kwargs):
-        #         if os.path.exists(audio) and os.path.isfile(audio):
-        #                 audio_filename = audio
-        #                 audio_dataset = Dataset.from_dict({"audio": [audio_filename],"file":[audio_filename]}).cast_column("audio", Audio())
-        #                 audio_dataset = audio_dataset.map(self.map_to_array)
-        #                 speech = audio_dataset[:4]["speech"]
-        #         else:
-        #                 with tempfile.NamedTemporaryFile(suffix=".ogg") as temp_audio:
-        #                         if type(audio) == str:
-        #                                 audio = audio.encode()
-        #                         else:
-        #                                 pass
-        #                         AudioSegment.from_file(io.BytesIO(self.header + audio),format="webm").export(temp_audio.name, format="ogg")
-        #                         audio_filename = temp_audio.name
-        #                         audio_dataset = Dataset.from_dict({"audio": [audio_filename],"file":[audio_filename]}).cast_column("audio", Audio())
-        #                         audio_dataset = audio_dataset.map(self.map_to_array)
-        #                         speech = audio_dataset[:4]["speech"]
-
-        #         if "classifier" in self.__dict__.keys():
-        #                 ## audio file path
-        #                 results = self.classifier(audio, top_k=5)
-        #                 #results = json.dumps(results)
-
-        #         else:
-        #                 if "sampling_rate" in kwargs.keys():
-        #                         sampling_rate = kwargs["sampling_rate"]
-        #                 else:
-        #                         sampling_rate = 16000
-        #                 inputs = self.feature_extractor(speech, sampling_rate=16_000, return_tensors="pt", padding=True)
-        #     #convert audio from base64 to numpy array of doubles
-        #                 with torch.no_grad():
-        #                         logits = self.model(**inputs).logits
-
-        #                 predicted_class_ids = torch.argmax(logits).item()
-        #                 predicted_label = self.model.config.id2label[predicted_class_ids]
-        #                 results = predicted_label
-
-        #         return {
-        #     'text': results, 
-        #     'done': True
-        # }
-
-        # def test(self, **kwargs):
-        #         audio_filename = "/tmp/temp.ogg"
-        #         return self.wav2vec_classify(audio_filename)
-
-        # def test2(self, **kwargs):
-        #         audio_filename = "/tmp/base64ogg.txt"
-        #         with open(audio_filename, "rb") as audio_file:
-        #                 audio = audio_file.read()
-        #         return self.wav2vec_classify(audio)
+    def create_qualcomm_wav2vec2_endpoint_handler(self, processor, endpoint_model, qualcomm_label, endpoint):
+        """Creates an endpoint handler for Qualcomm hardware.
+        
+        Args:
+            processor: The audio processor
+            endpoint_model: The model name or path
+            qualcomm_label: Label to identify this endpoint
+            endpoint: The SNPE model endpoint
+            
+        Returns:
+            A handler function for the Qualcomm endpoint
+        """
+        def handler(audio_input, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            try:
+                # Process audio input
+                if isinstance(audio_input, str):
+                    # Load audio file
+                    from .hf_clap import load_audio
+                    audio_data, sample_rate = load_audio(audio_input)
+                    
+                    # Get audio features
+                    inputs = processor(
+                        audio=audio_data, 
+                        sampling_rate=sample_rate, 
+                        return_tensors="np"
+                    )
+                    
+                    # Run inference with SNPE
+                    results = self.snpe_utils.run_inference(endpoint, inputs)
+                    
+                    # Process results to get transcription
+                    if "logits" in results:
+                        # Convert logits to predicted ids
+                        logits = self.torch.tensor(results["logits"])
+                        predicted_ids = self.torch.argmax(logits, dim=-1)
+                        
+                        # Decode transcription
+                        if hasattr(processor, "batch_decode"):
+                            transcription = processor.batch_decode(predicted_ids)[0]
+                        elif hasattr(processor, "decode"):
+                            transcription = processor.decode(predicted_ids[0])
+                        else:
+                            # If no specific decode method exists, try with tokenizer
+                            if hasattr(processor, "tokenizer"):
+                                transcription = processor.tokenizer.decode(predicted_ids[0])
+                            else:
+                                transcription = "[Transcription unavailable - decode method not found]"
+                        
+                        return {
+                            "text": transcription,
+                            "model": endpoint_model
+                        }
+                    else:
+                        return {
+                            "error": "Unexpected output format from model"
+                        }
+                else:
+                    # Assume it's already processed
+                    return {"error": "Unsupported input format"}
+            
+            except Exception as e:
+                print(f"Error in Qualcomm Wav2Vec2 endpoint handler: {e}")
+                return {"error": str(e)}
+                
+        return handler

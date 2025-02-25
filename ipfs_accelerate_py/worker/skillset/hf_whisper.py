@@ -75,6 +75,7 @@ class hf_whisper:
         self.init = self.init
         self.openvino_cli_convert = None
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
 
     def init(self):
@@ -112,7 +113,7 @@ class hf_whisper:
         return None
     
     
-    def init_qualcomm(self, model, model_type, device, qualcomm_label, get_qualcomm_genai_pipeline=None, get_optimum_qualcomm_model=None, get_qualcomm_model=None, get_qualcomm_pipeline_type=None):
+    def init_qualcomm(self, model, device, qualcomm_label, get_qualcomm_genai_pipeline=None, get_optimum_qualcomm_model=None, get_qualcomm_model=None, get_qualcomm_pipeline_type=None):
         self.init()
         endpoint = None
         processor = None

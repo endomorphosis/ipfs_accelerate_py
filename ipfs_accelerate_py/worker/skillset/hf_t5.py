@@ -3,16 +3,17 @@ import sys
 import os
 import time
 import asyncio
+from pathlib import Path
 
 class hf_t5:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
-        self.create_openvino_mlm_endpoint_handler = self.create_openvino_mlm_endpoint_handler
-        self.create_cuda_mlm_endpoint_handler = self.create_cuda_mlm_endpoint_handler
-        self.create_cpu_mlm_endpoint_handler = self.create_cpu_mlm_endpoint_handler
-        self.create_apple_mlm_endpoint_handler = self.create_apple_mlm_endpoint_handler
-        self.create_qualcomm_mlm_endpoint_handler = self.create_qualcomm_mlm_endpoint_handler
+        self.create_openvino_t5_endpoint_handler = self.create_openvino_t5_endpoint_handler
+        self.create_cuda_t5_endpoint_handler = self.create_cuda_t5_endpoint_handler
+        self.create_cpu_t5_endpoint_handler = self.create_cpu_t5_endpoint_handler
+        self.create_apple_t5_endpoint_handler = self.create_apple_t5_endpoint_handler
+        self.create_qualcomm_t5_endpoint_handler = self.create_qualcomm_t5_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -20,6 +21,7 @@ class hf_t5:
         self.init_apple = self.init_apple
         self.init = self.init
         self.__test__ = self.__test__
+        self.snpe_utils = None
         return None
 
     def init(self):
@@ -50,33 +52,85 @@ class hf_t5:
     def init_cpu (self, model, device, cpu_label):
         self.init()
         try:
-            config = self.transformers.AutoConfig.from_pretrained(model)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, trust_remote_code=True)
-            endpoint_handler = self.create_cpu_mlm_endpoint_handler(endpoint, tokenizer, model, cpu_label)
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+            tokenizer = self.transformers.T5Tokenizer.from_pretrained(model)
+            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model)
+            endpoint_handler = self.create_cpu_t5_endpoint_handler(tokenizer, model, cpu_label, endpoint)
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
         except Exception as e:
             print(f"Error initializing CPU model: {e}")
             return None, None, None, None, 0
     
     def init_qualcomm(self, model, device, qualcomm_label):
+        """Initialize T5 model for Qualcomm hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on
+            qualcomm_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
+        
+        # Import SNPE utilities
         try:
-            config = self.transformers.AutoConfig.from_pretrained(model)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            from .qualcomm_snpe_utils import get_snpe_utils
+            self.snpe_utils = get_snpe_utils()
+        except ImportError:
+            print("Failed to import Qualcomm SNPE utilities")
+            return None, None, None, None, 0
             
-            # Here we would initialize the model using Qualcomm's SDK
-            # This is a placeholder for actual Qualcomm implementation
-            endpoint = None
+        if not self.snpe_utils.is_available():
+            print("Qualcomm SNPE is not available on this system")
+            return None, None, None, None, 0
             
-            endpoint_handler = self.create_qualcomm_mlm_endpoint_handler(endpoint, tokenizer, model, qualcomm_label)
-            batch_size = 0
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+        try:
+            # Initialize tokenizer directly from HuggingFace
+            tokenizer = self.transformers.T5Tokenizer.from_pretrained(model)
+            
+            # Convert model path to be compatible with SNPE
+            model_name = model.replace("/", "--")
+            dlc_path = f"~/snpe_models/{model_name}_t5.dlc"
+            dlc_path = os.path.expanduser(dlc_path)
+            
+            # Create directory if needed
+            os.makedirs(os.path.dirname(dlc_path), exist_ok=True)
+            
+            # Convert or load the model
+            if not os.path.exists(dlc_path):
+                print(f"Converting {model} to SNPE format...")
+                self.snpe_utils.convert_model(model, "t5", str(dlc_path))
+            
+            # Load the SNPE model
+            endpoint = self.snpe_utils.load_model(str(dlc_path))
+            
+            # Optimize for the specific Qualcomm device if possible
+            if ":" in qualcomm_label:
+                device_type = qualcomm_label.split(":")[1]
+                optimized_path = self.snpe_utils.optimize_for_device(dlc_path, device_type)
+                if optimized_path != dlc_path:
+                    endpoint = self.snpe_utils.load_model(optimized_path)
+            
+            # Create endpoint handler
+            endpoint_handler = self.create_qualcomm_t5_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
         except Exception as e:
-            print(f"Error initializing Qualcomm model: {e}")
+            print(f"Error initializing Qualcomm T5 model: {e}")
             return None, None, None, None, 0
             
     def init_apple(self, model, device, apple_label):
+        """Initialize T5 model for Apple Silicon (M1/M2/M3) hardware.
+        
+        Args:
+            model: HuggingFace model name or path
+            device: Device to run inference on (mps for Apple Silicon)
+            apple_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
         try:
             if "coremltools" not in list(self.resources.keys()):
@@ -85,65 +139,66 @@ class hf_t5:
             else:
                 self.ct = self.resources["coremltools"]
                 
-            config = self.transformers.AutoConfig.from_pretrained(model)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+            # Check if MPS is available
+            if not hasattr(self.torch.backends, 'mps') or not self.torch.backends.mps.is_available():
+                print("MPS not available. Cannot initialize model on Apple Silicon.")
+                return None, None, None, None, 0
             
-            # Load the model - in a real implementation, we would convert to CoreML format
-            # This is a placeholder for the actual implementation
-            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, trust_remote_code=True)
+            # Initialize tokenizer directly from HuggingFace
+            tokenizer = self.transformers.T5Tokenizer.from_pretrained(model)
             
-            # Create the endpoint handler
-            endpoint_handler = self.create_apple_mlm_endpoint_handler(endpoint, tokenizer, model, apple_label)
-            batch_size = 0
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
-        except ImportError:
-            print("coremltools not installed. Can't initialize Apple backend.")
-            return None, None, None, None, 0
+            # For Apple Silicon, we'll use MPS as the device
+            try:
+                endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(
+                    model, 
+                    torch_dtype=self.torch.float16, 
+                    trust_remote_code=True
+                ).to(device)
+            except Exception as e:
+                print(f"Error loading model on Apple Silicon: {e}")
+                endpoint = None
+                
+            endpoint_handler = self.create_apple_t5_endpoint_handler(tokenizer, model, apple_label, endpoint)
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
         except Exception as e:
             print(f"Error initializing Apple model: {e}")
             return None, None, None, None, 0
 
     def __test__(self, endpoint_model, endpoint_handler, endpoint_label, tokenizer):
-        text1  = "The quick brown fox jumps over the lazy dog"
+        sentence_1 = "translate English to French: The quick brown fox jumps over the lazy dog"
         timestamp1 = time.time()
         try:
-            test_batch = endpoint_handler(text1)
+            test_batch = endpoint_handler(sentence_1)
             print(test_batch)
-            print("hf_t5 test passed on endpoint " + endpoint_label)
+            print("hf_t5 test passed")
         except Exception as e:
             print(e)
-            print("hf_t5 test failed on endpoint " + endpoint_label)
+            print("hf_t5 test failed")
             pass
         timestamp2 = time.time()
         elapsed_time = timestamp2 - timestamp1
-        len_tokens = 1
-        tokens_per_second = len_tokens / elapsed_time
+        tokens_per_second = 1 / elapsed_time
         print(f"elapsed time: {elapsed_time}")
-        print(f"samples: {len_tokens}")
         print(f"samples per second: {tokens_per_second}")
-        # test_batch_sizes = await self.test_batch_sizes(metadata['models'], ipfs_accelerate_init)
         if "openvino" not in endpoint_label:
             with self.torch.no_grad():
                 if "cuda" in dir(self.torch):
                     self.torch.cuda.empty_cache()
-        # print("hf_t5 test")
         return None
     
     def init_cuda(self, model, device, cuda_label):
         self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model)    
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+        tokenizer = self.transformers.T5Tokenizer.from_pretrained(model)
         endpoint = None
         try:
-            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
+            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float16).to(device)
         except Exception as e:
             print(e)
             pass
-                                                                # cuda_endpoint_handler, cuda_processor, endpoint_model, cuda_label):
-        endpoint_handler = self.create_cuda_mlm_endpoint_handler(endpoint, tokenizer, model, cuda_label)
+        endpoint_handler = self.create_cuda_t5_endpoint_handler(tokenizer, model, cuda_label, endpoint)
         self.torch.cuda.empty_cache()
-        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         self.init()
@@ -158,12 +213,12 @@ class hf_t5:
         batch_size = 0                
         tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
         endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_mlm_endpoint_handler( endpoint, tokenizer, model, openvino_label)
+        endpoint_handler = self.create_openvino_t5_endpoint_handler( endpoint, tokenizer, model, openvino_label)
         batch_size = 0
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
-    def create_cuda_mlm_endpoint_handler(self, cuda_endpoint_handler, cuda_processor, endpoint_model, cuda_label):
-        def handler(x, cuda_endpoint_handler=cuda_endpoint_handler, cuda_processor=cuda_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+    def create_cuda_t5_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint):
+        def handler(x, cuda_endpoint_handler=endpoint, cuda_processor=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label):
             results = None
             chat = x if x is not None else ""
             with self.torch.no_grad():
@@ -181,8 +236,8 @@ class hf_t5:
                     raise e
         return handler
     
-    def create_cpu_mlm_endpoint_handler(self, local_cuda_endpoint, local_cuda_processor, endpoint_model, cpu_label):
-        def handler(x, y=None, local_cuda_endpoint=local_cuda_endpoint, local_cuda_processor=local_cuda_processor, endpoint_model=endpoint_model, cpu_label=cpu_label):
+    def create_cpu_t5_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint):
+        def handler(x, y=None, local_cuda_endpoint=endpoint, local_cuda_processor=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label):
             if "eval" in dir(local_cuda_endpoint):
                 local_cuda_endpoint.eval()
             
@@ -200,42 +255,149 @@ class hf_t5:
                 raise e
         return handler
         
-    def create_apple_mlm_endpoint_handler(self, endpoint, tokenizer, model, apple_label):
-        def handler(x, y=None, endpoint=endpoint, tokenizer=tokenizer, model=model, apple_label=apple_label):
+    def create_apple_t5_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint):
+        """Create a handler for Apple Silicon-based T5 inference"""
+        
+        def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
+            if "eval" in dir(endpoint):
+                endpoint.eval()
+            
             try:
-                if x is not None:
-                    chat = x if isinstance(x, str) else str(x)
-                    inputs = tokenizer(chat, return_tensors="pt")
-                    
-                    # In a real implementation, this would use the CoreML model
-                    output = endpoint.generate(**inputs, max_new_tokens=100)
-                    result = tokenizer.decode(output[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    return result
+                # Tokenize input
+                if isinstance(text_input, str):
+                    inputs = tokenizer(text_input, return_tensors="pt")
+                    # Move to MPS if available
+                    if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                        inputs = {k: v.to("mps") for k, v in inputs.items()}
                 else:
-                    return "No input provided"
+                    # Assume it's already tokenized
+                    inputs = {k: v.to("mps") if hasattr(v, 'to') else v for k, v in text_input.items()}
+                
+                # Run generation
+                with self.torch.no_grad():
+                    outputs = endpoint.generate(
+                        inputs["input_ids"],
+                        max_length=128,
+                        do_sample=False
+                    )
+                    
+                # Move back to CPU for decoding
+                if hasattr(outputs, 'cpu'):
+                    outputs = outputs.cpu()
+                    
+                # Decode output
+                decoded_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Return result
+                return {
+                    "text": decoded_output,
+                    "model": endpoint_model
+                }
+                
             except Exception as e:
-                print(f"Error in Apple endpoint handler: {e}")
-                raise e
+                print(f"Error in Apple T5 endpoint handler: {e}")
+                return {"error": str(e)}
+                
         return handler
         
-    def create_qualcomm_mlm_endpoint_handler(self, endpoint, tokenizer, model, qualcomm_label):
-        def handler(x, y=None, endpoint=endpoint, tokenizer=tokenizer, model=model, qualcomm_label=qualcomm_label):
+    def create_qualcomm_t5_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint):
+        """Create a handler for Qualcomm-based T5 inference
+        
+        Args:
+            tokenizer: HuggingFace tokenizer
+            endpoint_model: Name of the model
+            qualcomm_label: Label for Qualcomm hardware
+            endpoint: SNPE model endpoint
+            
+        Returns:
+            Handler function for inference
+        """
+        def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
             try:
-                if x is not None:
-                    chat = x if isinstance(x, str) else str(x)
-                    inputs = tokenizer(chat, return_tensors="pt")
-                    
-                    # In a real implementation, this would use the Qualcomm-specific inference
-                    # This is just a placeholder
-                    return "Qualcomm inference not fully implemented"
+                # Tokenize input
+                if isinstance(text_input, str):
+                    inputs = tokenizer(text_input, return_tensors="np", padding=True)
                 else:
-                    return "No input provided"
+                    # Assume it's already tokenized, convert to numpy if needed
+                    inputs = {k: v.numpy() if hasattr(v, 'numpy') else v for k, v in text_input.items()}
+                
+                # Initial input for the model
+                model_inputs = {
+                    "input_ids": inputs["input_ids"],
+                    "attention_mask": inputs["attention_mask"]
+                }
+                
+                # Encoder pass
+                encoder_results = self.snpe_utils.run_inference(endpoint, model_inputs)
+                
+                # Check for encoder outputs
+                if "encoder_outputs.last_hidden_state" in encoder_results:
+                    # We have encoder outputs, now set up for decoder
+                    decoder_inputs = {
+                        "encoder_outputs.last_hidden_state": encoder_results["encoder_outputs.last_hidden_state"],
+                        "decoder_input_ids": self.np.array([[tokenizer.pad_token_id]])  # Start token
+                    }
+                    
+                    # Prepare for token-by-token generation
+                    generated_ids = [tokenizer.pad_token_id]
+                    max_length = 128
+                    
+                    # Generate tokens one by one
+                    for _ in range(max_length):
+                        # Update decoder input ids
+                        decoder_inputs["decoder_input_ids"] = self.np.array([generated_ids])
+                        
+                        # Run decoder pass
+                        decoder_results = self.snpe_utils.run_inference(endpoint, decoder_inputs)
+                        
+                        # Get the logits
+                        if "logits" in decoder_results:
+                            logits = self.np.array(decoder_results["logits"])
+                            
+                            # Basic greedy decoding
+                            next_token_id = int(self.np.argmax(logits[0, -1, :]))
+                            
+                            # Add the generated token
+                            generated_ids.append(next_token_id)
+                            
+                            # Check for EOS token
+                            if next_token_id == tokenizer.eos_token_id:
+                                break
+                        else:
+                            break
+                            
+                    # Decode the generated sequence
+                    decoded_output = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                    
+                    # Return result
+                    return {
+                        "text": decoded_output,
+                        "model": endpoint_model
+                    }
+                else:
+                    # Direct generation mode
+                    results = self.snpe_utils.run_inference(endpoint, model_inputs)
+                    
+                    # Check if we have output_ids
+                    if "output_ids" in results:
+                        output_ids = results["output_ids"]
+                        decoded_output = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                        
+                        # Return result
+                        return {
+                            "text": decoded_output,
+                            "model": endpoint_model
+                        }
+                    else:
+                        return {"error": "Unexpected model output format"}
+                
             except Exception as e:
-                print(f"Error in Qualcomm endpoint handler: {e}")
-                raise e
+                print(f"Error in Qualcomm T5 endpoint handler: {e}")
+                return {"error": str(e)}
+                
         return handler
 
-    def create_openvino_mlm_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+    def create_openvino_t5_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
         def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
             results = None
             chat = None
