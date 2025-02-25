@@ -26,6 +26,7 @@ class qualcomm_utils:
             
         return None
     
+    
     def install_qnn_model(self, model=None, path=None):
         if model is None:
             return None
