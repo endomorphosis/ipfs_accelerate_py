@@ -1,5 +1,7 @@
 import os 
 import sys
+from ipfs_accelerate_py.api_backends import apis
+
 
 class test_api_backend:
     def __init__(self, resources, metadata):
@@ -25,79 +27,95 @@ class test_api_backend:
         return None
 
     def test_ovms(self):
-        self.apis.ovms.__test__()
-        return None
+        try:
+            return self.apis.ovms.__test__()
+        except Exception as e:
+            return e
     
     def test_ollama(self):
-        self.apis.ollama.__test__()
-        return None
+        try:
+            return self.apis.ollama.__test__()
+        except Exception as e:
+            return e
 
     def test_hf_tgi(self):
-        self.apis.hf_tgi.__test__()
-        return None
+        try:
+            return self.apis.hf_tgi.__test__()
+        except Exception as e:
+            return e
     
     def test_openai_api(self):
-        self.apis.openai_api.__test__()
-        return None
+        try:
+            return self.apis.openai_api.__test__()
+        except Exception as e:
+            return e
     
     def test_groq(self):
-        self.apis.groq.__test__()
-        return None
-    
+        try:
+            return self.apis.groq.__test__()
+        except Exception as e:
+            return e
+        
     def test_s3_kit(self):
-        self.apis.s3_kit.__test__()
-        return None
-    
+        try:
+            return self.apis.s3_kit.__test__()
+        except Exception as e:
+            return e
+        
     def test_hf_tei(self):
-        self.apis.hf_tei.__test__()
-        return None
+        try:
+            return self.apis.hf_tei.__test__()
+        except Exception as e:
+            return e
     
     def test_llvm(self):
-        self.apis.llvm.__test__()
-        return None
+        try:
+            return self.apis.llvm.__test__()
+        except Exception as e:
+            return e
     
     def __test__(self):
         results = {}
         
         try:
+            results["openai_api"] =  self.test_openai_api()
+        except Exception as e:
+            results["openai_api"] = str(e)
+
+        try:
+            results["groq"] =  self.test_groq()
+        except Exception as e:
+            results["groq"] = str(e)
+
+        try:
             results["ovms"] =  self.test_ovms()
         except Exception as e:
-            results["ovms"] = e
+            results["ovms"] = str(e)
         
         try:
             results["ollama"] =  self.test_ollama()
         except Exception as e:
-            results["ollama"] = e
+            results["ollama"] = str(e)
         
         try:
             results["hf_tgi"] =  self.test_hf_tgi()
         except Exception as e:
-            results["hf_tgi"] = e
-        
-        try:
-            results["openai_api"] =  self.test_openai_api()
-        except Exception as e:
-            results["openai_api"] = e
-        
-        try:
-            results["groq"] =  self.test_groq()
-        except Exception as e:
-            results["groq"] = e
+            results["hf_tgi"] = str(e)
         
         try:
             results["s3_kit"] =  self.test_s3_kit()
         except Exception as e:
-            results["s3_kit"] = e
+            results["s3_kit"] = str(e)
         
         try:
             results["hf_tei"] =  self.test_hf_tei()
         except Exception as e:
-            results["hf_tei"] = e
+            results["hf_tei"] = str(e)
         
         try:
             results["llvm"] =  self.test_llvm()
         except Exception as e:
-            results["llvm"] = e
+            results["llvm"] = str(e)
         
         return results
         

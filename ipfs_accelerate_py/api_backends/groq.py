@@ -76,9 +76,9 @@ class groq:
         self.test_groq_endpoint = self.test_groq_endpoint
         self.make_post_request_groq = self.make_post_request_groq
 
-        api_key = os.getenv("GROQ_API_KEY")
-        if api_key is None:
-            raise ValueError("GROQ_API_KEY environment variable not set")
+        # api_key = os.getenv("GROQ_API_KEY")
+        # if api_key is None:
+        #     raise ValueError("GROQ_API_KEY environment variable not set")
 
         return None
     
@@ -88,6 +88,10 @@ class groq:
     
     def request_groq_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
         
+        return None
+    
+    def test_groq_endpoint(self):
+        ## test dependencies
         return None
     
     def _test_groq_endpoint(self):
