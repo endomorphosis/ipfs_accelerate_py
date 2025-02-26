@@ -1,16 +1,8 @@
 [
-    "huggingface/all-mpnet-base-v2",
-    "huggingface/all-MiniLM-L6-v2",
-    "huggingface/bge-large-en-v1.5",
-    "huggingface/bge-base-en-v1.5",
-    "huggingface/e5-large-v2",
-    "huggingface/e5-base-v2",
-    "huggingface/instructor-xl",
-    "huggingface/instructor-large",
-    "huggingface/gte-large",
-    "huggingface/gte-base",
-    "huggingface/sentence-t5-xxl",
-    "huggingface/sentence-t5-xl",
-    "huggingface/multilingual-e5-large",
-    "huggingface/multilingual-e5-base"
+    "sentence-transformers/all-mpnet-base-v2",
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-base-en-v1.5",
+    "intfloat/e5-large-v2",
+    "intfloat/e5-base-v2"
 ]

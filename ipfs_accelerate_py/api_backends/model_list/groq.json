@@ -1,16 +1,14 @@
 [
-    "groq/llama-3.3-70b-versatile",
-    "groq/llama-3.1-8b-instant",
-    "groq/llama-guard-3-8b",
-    "groq/llama3-70b-8192",
-    "groq/llama3-8b-8192",
-    "groq/mixtral-8x7b-32768",
-    "groq/gemma2-9b-it",
-    "groq/qwen-2.5-32b",
-    "groq/deepseek-r1-distill-qwen-32b",
-    "groq/deepseek-r1-distill-llama-70b",
-    "groq/deepseek-r1-distill-llama-70b-specdec",
-    "groq/whisper-large-v3",
-    "groq/whisper-large-v3-turbo",
-    "groq/distil-whisper-large-v3-en"
+    "meta-llama/Llama-3.3-70B-Versatile",
+    "meta-llama/Llama-3.1-8B-Instant",
+    "meta-llama/LlamaGuard-3-8B",
+    "meta-llama/Llama-3-70B-8192",
+    "meta-llama/Llama-3-8B-8192",
+    "mistralai/Mixtral-8x7B-32768",
+    "google/gemma2-9b-it",
+    "Qwen/Qwen2-5-32B",
+    "deepseek-ai/deepseek-r1-distill-qwen-32b",
+    "deepseek-ai/deepseek-r1-distill-llama-70b",
+    "deepseek-ai/deepseek-r1-distill-llama-70b-specdec",
+    "openai/whisper-large-v3"
 ]

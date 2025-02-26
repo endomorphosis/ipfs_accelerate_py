@@ -3,6 +3,7 @@ import io
 import sys
 import json
 import unittest
+import tempfile
 from unittest.mock import MagicMock, patch
 
 # Append parent directory to sys.path for proper imports

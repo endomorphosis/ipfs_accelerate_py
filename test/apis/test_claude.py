@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 import requests
 import unittest
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from api_backends import apis, claude
+# Use absolute imports for proper module resolution
+from ipfs_accelerate_py.api_backends import apis, claude
 
 class test_claude:
     def __init__(self, resources=None, metadata=None):

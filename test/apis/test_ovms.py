@@ -2,10 +2,11 @@ import os
 import io
 import sys
 import json
+from unittest.mock import MagicMock, patch
+import requests
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
 from api_backends import apis, ovms
-import json
 
 class test_ovms:
     def __init__(self, resources=None, metadata=None):
@@ -31,7 +32,7 @@ class test_ovms:
             with patch.object(self.ovms, 'make_post_request_ovms', return_value={"predictions": ["test_result"]}):
                 test_result = self.ovms.test_ovms_endpoint(
                     endpoint_url=endpoint_url,
-                    model_name="test_model"
+                    model_name="intel/test-model"
                 )
                 results["test_endpoint"] = "Success" if test_result else "Failed endpoint test"
         except Exception as e:
@@ -84,6 +85,29 @@ class test_ovms:
         except Exception as e:
             results["request_formatting"] = f"Error: {str(e)}"
             
+        # Test model compatibility checker
+        try:
+            # Get API models registry from file path
+            model_list_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                'ipfs_accelerate_py', 'api_backends', 'model_list', 'ovms.json'
+            )
+            
+            if os.path.exists(model_list_path):
+                with open(model_list_path, 'r') as f:
+                    model_list = json.load(f)
+                    
+                # Check if at least one model can be found
+                if len(model_list) > 0:
+                    results["model_list"] = "Success - Found models"
+                    results["model_example"] = model_list[0]  # Example of first model in list
+                else:
+                    results["model_list"] = "Failed - No models in list"
+            else:
+                results["model_list"] = f"Failed - Model list file not found at {model_list_path}"
+        except Exception as e:
+            results["model_list"] = f"Error: {str(e)}"
+            
         # Test error handling
         try:
             with patch('requests.post') as mock_post:
@@ -126,8 +150,6 @@ class test_ovms:
         """Run tests and compare/save results"""
         test_results = {}
         try:
-            from unittest.mock import MagicMock, patch
-            import requests
             test_results = self.test()
         except Exception as e:
             test_results = {"test_error": str(e)}
@@ -146,11 +168,18 @@ class test_ovms:
         expected_file = os.path.join(expected_dir, 'ovms_test_results.json')
         if os.path.exists(expected_file):
             with open(expected_file, 'r') as f:
-                expected_results = json.load(f)
-                if expected_results != test_results:
-                    print("Test results differ from expected results!")
-                    print(f"Expected: {expected_results}")
-                    print(f"Got: {test_results}")
+                try:
+                    expected_results = json.load(f)
+                    if expected_results != test_results:
+                        print("Test results differ from expected results!")
+                        print(f"Expected: {json.dumps(expected_results, indent=2)}")
+                        print(f"Got: {json.dumps(test_results, indent=2)}")
+                except json.JSONDecodeError:
+                    print(f"Warning: Expected results file {expected_file} contains invalid JSON.")
+                    # Create a new expected results file with current results
+                    with open(expected_file, 'w') as f_write:
+                        json.dump(test_results, f_write, indent=2)
+                        print(f"Created new expected results file: {expected_file}")
         else:
             # Create expected results file if it doesn't exist
             with open(expected_file, 'w') as f:
@@ -163,11 +192,12 @@ if __name__ == "__main__":
     metadata = {}
     resources = {}
     try:
-        from unittest.mock import MagicMock, patch
-        import requests
         this_ovms = test_ovms(resources, metadata)
         results = this_ovms.__test__()
         print(f"OVMS API Test Results: {json.dumps(results, indent=2)}")
     except KeyboardInterrupt:
         print("Tests stopped by user.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Test failed with error: {str(e)}")
         sys.exit(1)

@@ -1,7 +1,7 @@
 import os 
 import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from .apis import test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm, test_openai_api, test_ovms, test_ollama, test_s3_kit
+from .apis import test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm, test_openai_api, test_ovms, test_ollama, test_s3_kit, test_gemini, test_opea
 
 class test_api_backend:
     def __init__(self, resources, metadata):
@@ -15,6 +15,8 @@ class test_api_backend:
         self.test_llvm = self.test_llvm
         self.test_ovms = self.test_ovms
         self.test_ollama = self.test_ollama
+        self.test_gemini = self.test_gemini
+        self.test_opea = self.test_opea
         
         if "apis" not in self.resources:
             from ..ipfs_accelerate_py.api_backends import apis
@@ -82,6 +84,20 @@ class test_api_backend:
         except Exception as e:
             return e
     
+    def test_gemini(self):
+        try:
+            gemini_test = test_gemini.test_gemini(resources=self.resources, metadata=self.metadata)
+            return gemini_test.__test__()
+        except Exception as e:
+            return e
+    
+    def test_opea(self):
+        try:
+            opea_test = test_opea.test_opea(resources=self.resources, metadata=self.metadata)
+            return opea_test.__test__()
+        except Exception as e:
+            return e
+    
     def __test__(self):
         results = {}
         
@@ -124,6 +140,16 @@ class test_api_backend:
             results["llvm"] =  self.test_llvm()
         except Exception as e:
             results["llvm"] = str(e)
+        
+        try:
+            results["gemini"] =  self.test_gemini()
+        except Exception as e:
+            results["gemini"] = str(e)
+        
+        try:
+            results["opea"] =  self.test_opea()
+        except Exception as e:
+            results["opea"] = str(e)
         
         return results
         
