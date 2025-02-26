@@ -5,5 +5,5 @@
   "chat_method": "Not implemented",
   "error_handling_connection": "Success",
   "error_handling_500": "Success",
-  "streaming": "Error: <ipfs_accelerate_py.api_backends.opea.opea object at 0x00000161CFDABCE0> does not have the attribute 'make_stream_request_opea'"
+  "streaming": "Error: <ipfs_accelerate_py.api_backends.opea.opea object at 0x751746768170> does not have the attribute 'make_stream_request_opea'"
 }
