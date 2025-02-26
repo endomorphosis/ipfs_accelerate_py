@@ -1,0 +1,9 @@
+{
+  "endpoint_handler": "Success",
+  "test_endpoint": "Error: opea.test_opea_endpoint() takes 1 positional argument but 2 were given",
+  "post_request": "Error: opea.make_post_request_opea() missing 2 required positional arguments: 'endpoint_type' and 'batch'",
+  "chat_method": "Not implemented",
+  "error_handling_connection": "Success",
+  "error_handling_500": "Success",
+  "streaming": "Error: <ipfs_accelerate_py.api_backends.opea.opea object at 0x0000028078B55D60> does not have the attribute 'make_stream_request_opea'"
+}

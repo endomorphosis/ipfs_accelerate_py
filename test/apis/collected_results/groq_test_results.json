@@ -1,0 +1,12 @@
+{
+  "endpoint_handler": "Success",
+  "test_endpoint": "Error: GROQ_API_KEY not provided and not found in environment variables",
+  "post_request": "Success",
+  "post_request_headers": "Success",
+  "chat_method": "Not implemented",
+  "streaming": "Not implemented",
+  "error_handling_auth": "Failed to raise exception on 401",
+  "error_handling_404": "Failed to raise exception on 404",
+  "error_handling_429": "Failed to raise exception on 429",
+  "model_compatibility": "Not implemented"
+}

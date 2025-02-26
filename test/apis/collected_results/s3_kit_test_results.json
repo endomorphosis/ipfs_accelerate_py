@@ -1,0 +1,7 @@
+{
+  "endpoint_handler": "Error: 's3_kit' object has no attribute 'create_s3_endpoint_handler'",
+  "upload_file": "Failed upload operation",
+  "download_file": "Failed download operation",
+  "error_handling_connection": "Success",
+  "error_handling_auth": "Success"
+}

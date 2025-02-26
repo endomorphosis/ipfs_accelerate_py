@@ -5,8 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 import requests
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from api_backends import apis, groq
+from ipfs_accelerate_py.api_backends import apis, groq
 
 class test_groq:
     def __init__(self, resources=None, metadata=None):
@@ -235,7 +234,7 @@ class test_groq:
             
         # Compare with expected results if they exist
         expected_file = os.path.join(expected_dir, 'groq_test_results.json')
-        if os.path.exists(expected_file):
+        if (os.path.exists(expected_file)):
             with open(expected_file, 'r') as f:
                 expected_results = json.load(f)
                 if expected_results != test_results:

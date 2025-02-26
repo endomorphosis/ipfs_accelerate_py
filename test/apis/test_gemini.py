@@ -5,14 +5,13 @@ import json
 from unittest.mock import MagicMock, patch
 import requests
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from api_backends import apis, gemini
+from ipfs_accelerate_py.api_backends import apis, gemini
 
 class test_gemini:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {
-            "gemini_api_key": os.environ.get("GOOGLE_API_KEY", "")
+            "gemini_api_key": os.environ.get("GEMINI_API_KEY", "")
         }
         self.gemini = gemini(resources=self.resources, metadata=self.metadata)
         return None

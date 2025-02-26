@@ -5,8 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 import requests
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from api_backends import apis, hf_tgi
+from ipfs_accelerate_py.api_backends import apis, hf_tgi
 
 class test_hf_tgi:
     def __init__(self, resources=None, metadata=None):

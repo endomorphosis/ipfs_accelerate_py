@@ -1,7 +1,11 @@
 import os 
 import sys
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from .apis import test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm, test_openai_api, test_ovms, test_ollama, test_s3_kit, test_gemini, test_opea
+
+from .apis import (
+    test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm,
+    test_openai_api, test_ovms, test_ollama, test_s3_kit,
+    test_gemini, test_opea
+)
 
 class test_api_backend:
     def __init__(self, resources, metadata):
@@ -19,8 +23,7 @@ class test_api_backend:
         self.test_opea = self.test_opea
         
         if "apis" not in self.resources:
-            from ..ipfs_accelerate_py.api_backends import apis
-            sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
+            from ipfs_accelerate_py.api_backends import apis
             self.resources["apis"] = apis(resources=self.resources, metadata=self.metadata)
             self.apis = self.resources["apis"]
         else:

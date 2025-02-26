@@ -1,0 +1,14 @@
+{
+  "endpoint_handler": "Success",
+  "test_endpoint": "Success",
+  "test_endpoint_params": "Success",
+  "post_request": "Success",
+  "post_request_headers": "Success",
+  "chat_method": "Not implemented",
+  "streaming": "Error: <ipfs_accelerate_py.api_backends.ollama.ollama object at 0x00000161CF342D50> does not have the attribute 'make_stream_request_ollama'",
+  "error_handling_connection": "Failed to catch connection error",
+  "error_handling_500": "Failed to raise exception on 500",
+  "error_handling_404": "Failed to raise exception on 404",
+  "model_list": "Not implemented",
+  "model_pull": "Not implemented"
+}

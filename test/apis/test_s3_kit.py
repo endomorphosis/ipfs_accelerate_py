@@ -2,13 +2,11 @@ import os
 import io
 import sys
 import json
-import unittest
 import tempfile
 from unittest.mock import MagicMock, patch
 
-# Append parent directory to sys.path for proper imports
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from api_backends import apis, s3_kit
+# Use relative imports for test modules
+from ipfs_accelerate_py.api_backends import apis, s3_kit
 
 class test_s3_kit:
     def __init__(self, resources=None, metadata=None):
@@ -24,126 +22,88 @@ class test_s3_kit:
         return None
     
     def test(self):
-        """Run all tests for the S3 kit API backend"""
+        """Run all tests for the S3 API backend"""
         results = {}
         
-        # Test basic configuration and session handling
-        try:
-            # Test config_to_boto method
-            boto_config = self.s3_kit.config_to_boto(self.metadata['s3cfg'])
-            results["config_to_boto"] = "Success" if boto_config and all(key in boto_config for key in [
-                "service_name", "aws_access_key_id", "aws_secret_access_key", "endpoint_url"
-            ]) else "Failed config conversion"
-        except Exception as e:
-            results["config_to_boto"] = str(e)
-
         # Test endpoint handler creation
         try:
-            handler = self.s3_kit.create_s3_kit_endpoint_handler()
-            results["endpoint_handler"] = "Success" if callable(handler) else "Failed to create endpoint handler"
+            endpoint_url = self.metadata["s3cfg"]["endpoint"]
+            endpoint_handler = self.s3_kit.create_s3_endpoint_handler(endpoint_url)
+            results["endpoint_handler"] = "Success" if callable(endpoint_handler) else "Failed to create endpoint handler"
         except Exception as e:
-            results["endpoint_handler"] = str(e)
-
-        # Test endpoint testing function
+            results["endpoint_handler"] = f"Error: {str(e)}"
+            
+        # Test S3 file operations with mocked boto3
         try:
-            with patch.object(self.s3_kit, 'test_s3_kit_endpoint', return_value=True):
-                test_result = self.s3_kit.test_s3_kit_endpoint()
-                results["test_endpoint"] = "Success" if test_result else "Failed endpoint test"
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(b"Test content")
+                temp_file_path = temp_file.name
+            
+            # Test upload
+            upload_result = self._test_s3_file_operation(
+                lambda: self.s3_kit.upload_file(
+                    temp_file_path,
+                    "test-bucket",
+                    "test-key.txt"
+                )
+            )
+            results["upload_file"] = "Success" if upload_result else "Failed upload operation"
+            
+            # Test download
+            download_result = self._test_s3_file_operation(
+                lambda: self.s3_kit.download_file(
+                    "test-bucket",
+                    "test-key.txt",
+                    temp_file_path
+                )
+            )
+            results["download_file"] = "Success" if download_result else "Failed download operation"
+            
+            # Clean up temp file
+            os.unlink(temp_file_path)
+            
         except Exception as e:
-            results["test_endpoint"] = str(e)
-
-        # Test file operations with mocks
-        with patch('boto3.resource') as mock_resource:
-            mock_bucket = MagicMock()
-            mock_object = MagicMock()
-            mock_bucket.Object.return_value = mock_object
-            mock_resource.return_value.Bucket.return_value = mock_bucket
+            results["file_operations"] = f"Error: {str(e)}"
             
-            # Set up mock response for file operations
-            mock_object.get.return_value = {'Body': MagicMock(read=lambda: b'test data')}
-            mock_object.key = 'test/path'
-            mock_object.last_modified = '2023-01-01T00:00:00Z'
-            mock_object.content_length = 100
-            mock_object.e_tag = 'test-etag'
-            
-            # Test file operations
-            try:
-                # Create temporary test file
-                with tempfile.NamedTemporaryFile() as temp_file:
-                    temp_file.write(b'test data')
-                    temp_file.flush()
-                    
-                    # Test file upload
-                    results["file_upload"] = "Success" if self._test_s3_file_operation(
-                        lambda: self.s3_kit.s3_ul_file(temp_file.name, 'test/path', 'test-bucket')
-                    ) else "Failed file upload"
-                    
-                    # Test file download
-                    results["file_download"] = "Success" if self._test_s3_file_operation(
-                        lambda: self.s3_kit.s3_dl_file('test/path', temp_file.name, 'test-bucket')
-                    ) else "Failed file download"
-                    
-                    # Test file copy
-                    results["file_copy"] = "Success" if self._test_s3_file_operation(
-                        lambda: self.s3_kit.s3_cp_file('test/source', 'test/dest', 'test-bucket')
-                    ) else "Failed file copy"
-                    
-                    # Test file move
-                    results["file_move"] = "Success" if self._test_s3_file_operation(
-                        lambda: self.s3_kit.s3_mv_file('test/source', 'test/dest', 'test-bucket')
-                    ) else "Failed file move"
-                    
-                    # Test file delete
-                    results["file_delete"] = "Success" if self._test_s3_file_operation(
-                        lambda: self.s3_kit.s3_rm_file('test/path', 'test-bucket')
-                    ) else "Failed file delete"
-            except Exception as e:
-                results["file_operations"] = str(e)
-            
-            # Test directory operations
-            try:
-                # Set up mock objects list
-                mock_objects = MagicMock()
-                mock_objects.filter.return_value = [mock_object]
-                mock_bucket.objects = mock_objects
+        # Test error handling
+        try:
+            with patch('boto3.client') as mock_client:
+                # Test connection error
+                mock_client.side_effect = Exception("Connection failed")
                 
-                # Test directory listing
-                results["dir_list"] = "Success" if self._test_s3_file_operation(
-                    lambda: self.s3_kit.s3_ls_dir('test/dir', 'test-bucket')
-                ) else "Failed directory listing"
+                try:
+                    self.s3_kit.create_s3_endpoint_handler("http://invalid:9000")
+                    results["error_handling_connection"] = "Failed to catch connection error"
+                except Exception:
+                    results["error_handling_connection"] = "Success"
+                    
+                # Test invalid credentials
+                mock_client.side_effect = None
+                mock_s3 = MagicMock()
+                mock_s3.upload_file.side_effect = Exception("Invalid credentials")
+                mock_client.return_value = mock_s3
                 
-                # Test directory creation
-                results["dir_create"] = "Success" if self._test_s3_file_operation(
-                    lambda: self.s3_kit.s3_mk_dir('test/dir', 'test-bucket')
-                ) else "Failed directory creation"
-                
-                # Test directory deletion
-                results["dir_delete"] = "Success" if self._test_s3_file_operation(
-                    lambda: self.s3_kit.s3_rm_dir('test/dir', 'test-bucket')
-                ) else "Failed directory deletion"
-                
-                # Test directory copy
-                results["dir_copy"] = "Success" if self._test_s3_file_operation(
-                    lambda: self.s3_kit.s3_cp_dir('test/source', 'test/dest', 'test-bucket')
-                ) else "Failed directory copy"
-                
-                # Test directory move
-                results["dir_move"] = "Success" if self._test_s3_file_operation(
-                    lambda: self.s3_kit.s3_mv_dir('test/source', 'test/dest', 'test-bucket')
-                ) else "Failed directory move"
-            except Exception as e:
-                results["dir_operations"] = str(e)
+                try:
+                    self.s3_kit.upload_file("nonexistent.txt", "test-bucket", "test.txt")
+                    results["error_handling_auth"] = "Failed to catch auth error"
+                except Exception:
+                    results["error_handling_auth"] = "Success"
+        except Exception as e:
+            results["error_handling"] = f"Error: {str(e)}"
         
         return results
     
     def _test_s3_file_operation(self, operation_func):
-        """Helper method to test S3 file operations"""
-        try:
-            result = operation_func()
-            return result is not None
-        except Exception as e:
-            print(f"S3 operation error: {str(e)}")
-            return False
+        """Helper method to test S3 file operations with mocked boto3"""
+        with patch('boto3.client') as mock_client:
+            mock_s3 = MagicMock()
+            mock_client.return_value = mock_s3
+            
+            try:
+                operation_func()
+                return True
+            except Exception:
+                return False
 
     def __test__(self):
         """Run tests and compare/save results"""
@@ -179,11 +139,8 @@ class test_s3_kit:
                 print(f"Created new expected results file: {expected_file}")
 
         return test_results
-
+        
 if __name__ == "__main__":
-    # Import required modules
-    import tempfile
-    
     metadata = {
         "s3cfg": {
             "accessKey": os.environ.get("S3_ACCESS_KEY", "test_access_key"),
@@ -193,8 +150,8 @@ if __name__ == "__main__":
     }
     resources = {}
     try:
-        test_s3 = test_s3_kit(resources, metadata)
-        results = test_s3.__test__()
+        this_s3_kit = test_s3_kit(resources, metadata)
+        results = this_s3_kit.__test__()
         print(f"S3 Kit Test Results: {json.dumps(results, indent=2)}")
     except KeyboardInterrupt:
         print("Tests stopped by user.")

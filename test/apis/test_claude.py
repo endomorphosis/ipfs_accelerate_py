@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import requests
 import unittest
 
-# Use absolute imports for proper module resolution
+# Use relative imports for test modules
 from ipfs_accelerate_py.api_backends import apis, claude
 
 class test_claude:

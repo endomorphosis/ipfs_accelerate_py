@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from typing import Dict, Optional, List
 
 class api_models:
@@ -10,26 +11,30 @@ class api_models:
     determine which backend should handle a given model.
     """
     
-    def __init__(self):
-        self.model_lists = {}
-        self._load_model_lists()
+    def __init__(self, resources: Optional[Dict] = None, metadata: Optional[Dict] = None):
+        """Initialize the api_models registry
         
-    def _load_model_lists(self):
-        """Load all model lists from the model_list directory"""
+        Args:
+            resources: Optional dictionary containing shared resources
+            metadata: Optional dictionary containing configuration metadata
+        """
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
+        
+        # Load model lists from json files
+        self.model_lists = {}
         model_list_dir = os.path.join(os.path.dirname(__file__), 'model_list')
-        if not os.path.exists(model_list_dir):
-            os.makedirs(model_list_dir)
-            
+        
         for filename in os.listdir(model_list_dir):
             if filename.endswith('.json'):
-                backend_name = filename[:-5]  # Remove .json
-                file_path = os.path.join(model_list_dir, filename)
-                try:
-                    with open(file_path, 'r') as f:
-                        self.model_lists[backend_name] = json.load(f)
-                except Exception as e:
-                    print(f"Error loading {filename}: {e}")
-    
+                api_name = os.path.splitext(filename)[0]
+                with open(os.path.join(model_list_dir, filename), 'r') as f:
+                    try:
+                        self.model_lists[api_name] = json.load(f)
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Error loading {filename}: {e}")
+                        self.model_lists[api_name] = []
+
     def get_backend_for_model(self, model_name: str) -> Optional[str]:
         """Determine which backend should handle a given model
         
@@ -76,3 +81,26 @@ class api_models:
             list: List of model names supported by this backend
         """
         return self.model_lists.get(backend_name, [])
+
+    def get_models(self, api_name: str) -> List[str]:
+        """Get list of models supported by a specific API
+        
+        Args:
+            api_name: Name of the API to get models for
+            
+        Returns:
+            List of model names supported by that API
+        """
+        return self.model_lists.get(api_name, [])
+
+    def is_compatible_model(self, api_name: str, model_name: str) -> bool:
+        """Check if a model is compatible with a specific API
+        
+        Args:
+            api_name: Name of the API to check
+            model_name: Name of the model to check
+            
+        Returns:
+            True if the model is compatible with the API, False otherwise
+        """
+        return model_name in self.model_lists.get(api_name, [])

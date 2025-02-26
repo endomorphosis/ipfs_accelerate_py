@@ -13,15 +13,10 @@ import os
 import json
 
 class apis:
-    def __init__(self, resources, metadata):
-        if resources is None:
-            resources = {}
-        else:
-            self.resources = resources
-        if metadata is None:
-            metadata = {}
-        else: 
-            self.metadata = metadata
+    def __init__(self, resources=None, metadata=None):
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
+        
         self.inbox = {}
         self.outbox = {}
         self.tokenizer = {}
@@ -31,8 +26,7 @@ class apis:
         self.endpoints = {}
         self.endpoint_types = ["api_endpoints"]
         self.api_endpoints = {}
-        # self.dispatch_result = self.dispatch_result
-        # self.get_model_type = self.get_model_type
+        
         self.api_models = api_models(self.resources, self.metadata)
         if "endpoints" in list(self.metadata.keys()):
             self.endpoints = self.metadata["endpoints"]

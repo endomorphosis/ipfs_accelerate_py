@@ -1,0 +1,12 @@
+{
+  "endpoint_handler_creation": "Success",
+  "test_endpoint": "Success",
+  "test_endpoint_params": "Success",
+  "post_request": "Success",
+  "post_request_headers": "Failed to set authorization header",
+  "request_formatting": "Error: 'hf_tgi' object has no attribute 'format_request'",
+  "streaming": "Error: <ipfs_accelerate_py.api_backends.hf_tgi.hf_tgi object at 0x00000161CF342D20> does not have the attribute 'make_stream_request_hf_tgi'",
+  "error_handling_auth": "Failed to raise exception on 401",
+  "error_handling_404": "Failed to raise exception on 404",
+  "internal_test": "Success"
+}
