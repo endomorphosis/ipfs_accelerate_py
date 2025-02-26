@@ -16,9 +16,9 @@ class test_hf_bert:
         self.metadata = metadata if metadata else {}
         self.bert = hf_bert(resources=self.resources, metadata=self.metadata)
         self.model_name = "bert-base-uncased"
-        self.test_input = "The quick brown fox jumps over the lazy dog"
+        self.test_text = "The quick brown fox jumps over the lazy dog"
         return None
-
+        
     def test(self):
         """Run all tests for the BERT text embedding model"""
         results = {}
@@ -40,7 +40,7 @@ class test_hf_bert:
                 mock_model.return_value = MagicMock()
                 
                 endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cpu(
-                    self.model_name, 
+                    self.model_name,
                     "cpu",
                     "cpu"
                 )
@@ -48,21 +48,16 @@ class test_hf_bert:
                 valid_init = endpoint is not None and tokenizer is not None and handler is not None
                 results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
                 
-                # Test handler functionality
-                mock_output = MagicMock()
-                mock_output.last_hidden_state = torch.randn(1, 10, 768)
-                mock_endpoint = MagicMock()
-                mock_endpoint.return_value = mock_output
-                
                 test_handler = self.bert.create_cpu_text_embedding_endpoint_handler(
-                    mock_endpoint,
+                    endpoint,
+                    self.model_name,
                     "cpu",
-                    mock_endpoint,
-                    mock_tokenizer
+                    tokenizer
                 )
                 
-                output = test_handler(self.test_input)
+                output = test_handler(self.test_text)
                 results["cpu_handler"] = "Success" if output is not None else "Failed CPU handler"
+                
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
 
@@ -87,11 +82,13 @@ class test_hf_bert:
                     results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
                     
                     test_handler = self.bert.create_cuda_text_embedding_endpoint_handler(
-                        endpoint,
-                        "cuda:0"
+                        endpoint_model=self.model_name,
+                        cuda_label="cuda:0",
+                        endpoint=endpoint,
+                        tokenizer=tokenizer
                     )
                     
-                    output = test_handler(self.test_input)
+                    output = test_handler(self.test_text)
                     results["cuda_handler"] = "Success" if output is not None else "Failed CUDA handler"
             except Exception as e:
                 results["cuda_tests"] = f"Error: {str(e)}"
@@ -100,7 +97,12 @@ class test_hf_bert:
 
         # Test OpenVINO if installed
         try:
-            import openvino
+            try:
+                import openvino
+            except ImportError:
+                results["openvino_tests"] = "OpenVINO not installed"
+                return results
+                
             with patch('openvino.Runtime') as mock_runtime:
                 mock_runtime.return_value = MagicMock()
                 mock_get_openvino_model = MagicMock()
@@ -109,27 +111,27 @@ class test_hf_bert:
                 mock_openvino_cli_convert = MagicMock()
                 
                 endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
-                    self.model_name,
-                    "text-embedding",
-                    "CPU",
-                    "openvino:0",
-                    mock_get_optimum_openvino_model,
-                    mock_get_openvino_model,
-                    mock_get_openvino_pipeline_type,
-                    mock_openvino_cli_convert
+                    model_name=self.model_name,
+                    model_type="feature-extraction",
+                    device="CPU",
+                    openvino_label="openvino:0",
+                    get_optimum_openvino_model=mock_get_optimum_openvino_model,
+                    get_openvino_model=mock_get_openvino_model,
+                    get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
+                    openvino_cli_convert=mock_openvino_cli_convert
                 )
                 
                 valid_init = handler is not None
                 results["openvino_init"] = "Success" if valid_init else "Failed OpenVINO initialization"
                 
                 test_handler = self.bert.create_openvino_text_embedding_endpoint_handler(
-                    endpoint,
-                    tokenizer,
-                    "openvino:0",
-                    mock_get_openvino_model
+                    endpoint_model=self.model_name,
+                    tokenizer=tokenizer,
+                    openvino_label="openvino:0",
+                    endpoint=endpoint
                 )
                 
-                output = test_handler(self.test_input)
+                output = test_handler(self.test_text)
                 results["openvino_handler"] = "Success" if output is not None else "Failed OpenVINO handler"
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
@@ -139,7 +141,12 @@ class test_hf_bert:
         # Test Apple Silicon if available
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             try:
-                import coremltools
+                try:
+                    import coremltools  # Only try import if MPS is available
+                except ImportError:
+                    results["apple_tests"] = "CoreML Tools not installed"
+                    return results
+
                 with patch('coremltools.convert') as mock_convert:
                     mock_convert.return_value = MagicMock()
                     
@@ -153,13 +160,13 @@ class test_hf_bert:
                     results["apple_init"] = "Success" if valid_init else "Failed Apple initialization"
                     
                     test_handler = self.bert.create_apple_text_embedding_endpoint_handler(
-                        endpoint,
-                        "apple:0",
-                        tokenizer,
-                        mock_convert
+                        endpoint_model=self.model_name,
+                        apple_label="apple:0",
+                        endpoint=endpoint,
+                        tokenizer=tokenizer
                     )
                     
-                    output = test_handler(self.test_input)
+                    output = test_handler(self.test_text)
                     results["apple_handler"] = "Success" if output is not None else "Failed Apple handler"
             except ImportError:
                 results["apple_tests"] = "CoreML Tools not installed"
@@ -170,6 +177,12 @@ class test_hf_bert:
 
         # Test Qualcomm if available
         try:
+            try:
+                from ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils import get_snpe_utils
+            except ImportError:
+                results["qualcomm_tests"] = "SNPE SDK not installed"
+                return results
+                
             with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
                 mock_snpe.return_value = MagicMock()
                 
@@ -183,13 +196,13 @@ class test_hf_bert:
                 results["qualcomm_init"] = "Success" if valid_init else "Failed Qualcomm initialization"
                 
                 test_handler = self.bert.create_qualcomm_text_embedding_endpoint_handler(
-                    endpoint,
-                    "qualcomm:0",
-                    tokenizer,
-                    mock_snpe
+                    endpoint_model=self.model_name,
+                    qualcomm_label="qualcomm:0",
+                    endpoint=endpoint,
+                    tokenizer=tokenizer
                 )
                 
-                output = test_handler(self.test_input)
+                output = test_handler(self.test_text)
                 results["qualcomm_handler"] = "Success" if output is not None else "Failed Qualcomm handler"
         except ImportError:
             results["qualcomm_tests"] = "SNPE SDK not installed"

@@ -1,27 +1,27 @@
 import os
 import sys
 import json
-import torch 
+import torch
 import numpy as np
 from unittest.mock import MagicMock, patch
 from PIL import Image
-from ...worker.skillset.hf_xclip import hf_xclip
+from ...worker.skillset.hf_xclip import hf_xclip, load_image, load_video_frames
 
 class test_hf_xclip:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {
             "torch": torch,
-            "numpy": np,
+            "numpy": np, 
             "transformers": MagicMock(),
             "decord": MagicMock()
         }
         self.metadata = metadata if metadata else {}
         self.xclip = hf_xclip(resources=self.resources, metadata=self.metadata)
         self.model_name = "microsoft/xclip-base-patch32"
-        
-        # Create test data
-        self.frames = [Image.new('RGB', (100, 100), color='red') for _ in range(8)]  # 8 frames
-        self.test_text = "a red square video"
+        self.test_text = "A person dancing"
+        # Create a dummy video as a sequence of frames
+        self.frames = [Image.new('RGB', (224, 224), color='red') for _ in range(8)]
+        self.test_video_url = "http://example.com/test.mp4"
         return None
 
     def test(self):
@@ -34,45 +34,55 @@ class test_hf_xclip:
         except Exception as e:
             results["init"] = f"Error: {str(e)}"
 
+        # Test video loading utilities
+        try:
+            with patch('decord.VideoReader') as mock_video_reader, \
+                 patch('requests.get') as mock_get:
+                mock_response = MagicMock()
+                mock_response.content = b"fake_video_data"
+                mock_get.return_value = mock_response
+                mock_video_reader.return_value = MagicMock()
+                mock_video_reader.return_value.__len__.return_value = 30
+                mock_video_reader.return_value.__getitem__.return_value = np.random.randn(224, 224, 3)
+                
+                frames = load_video_frames(self.test_video_url)
+                results["load_video"] = "Success" if len(frames) > 0 else "Failed video loading"
+        except Exception as e:
+            results["video_utils"] = f"Error: {str(e)}"
+
         # Test CPU initialization and handler
         try:
             with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                 patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
                  patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
-                 patch('transformers.AutoModel.from_pretrained') as mock_model:
+                 patch('transformers.AutoModelForVideoTextRetrieval.from_pretrained') as mock_model:
                 
                 mock_config.return_value = MagicMock()
-                mock_tokenizer.return_value = MagicMock()
                 mock_processor.return_value = MagicMock()
                 mock_model.return_value = MagicMock()
                 
-                endpoint, tokenizer, handler, queue, batch_size = self.xclip.init_cpu(
+                endpoint, processor, handler, queue, batch_size = self.xclip.init_cpu(
                     self.model_name,
                     "cpu",
                     "cpu"
                 )
                 
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                valid_init = endpoint is not None and processor is not None and handler is not None
                 results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
                 
                 test_handler = self.xclip.create_cpu_video_embedding_endpoint_handler(
-                    tokenizer,
+                    endpoint,
+                    processor,
                     self.model_name,
-                    "cpu",
-                    endpoint
+                    "cpu"
                 )
-                
-                # Test video-text similarity
-                output = test_handler(self.frames, text=self.test_text)
-                results["cpu_similarity"] = "Success" if output is not None else "Failed similarity computation"
-                
-                # Test video embedding
-                video_embedding = test_handler(self.frames)
-                results["cpu_video_embedding"] = "Success" if video_embedding is not None else "Failed video embedding"
                 
                 # Test text embedding
                 text_embedding = test_handler(text=self.test_text)
                 results["cpu_text_embedding"] = "Success" if text_embedding is not None else "Failed text embedding"
+                
+                # Test video embedding
+                video_embedding = test_handler(frames=self.frames)
+                results["cpu_video_embedding"] = "Success" if video_embedding is not None else "Failed video embedding"
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
@@ -81,33 +91,38 @@ class test_hf_xclip:
         if torch.cuda.is_available():
             try:
                 with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                     patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
                      patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
-                     patch('transformers.AutoModel.from_pretrained') as mock_model:
+                     patch('transformers.AutoModelForVideoTextRetrieval.from_pretrained') as mock_model:
                     
                     mock_config.return_value = MagicMock()
-                    mock_tokenizer.return_value = MagicMock()
                     mock_processor.return_value = MagicMock()
                     mock_model.return_value = MagicMock()
                     
-                    endpoint, tokenizer, handler, queue, batch_size = self.xclip.init_cuda(
+                    endpoint, processor, handler, queue, batch_size = self.xclip.init_cuda(
                         self.model_name,
                         "cuda",
                         "cuda:0"
                     )
                     
-                    valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                    valid_init = endpoint is not None and processor is not None and handler is not None
                     results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
                     
                     test_handler = self.xclip.create_cuda_video_embedding_endpoint_handler(
-                        tokenizer,
-                        endpoint_model=self.model_name,
-                        cuda_label="cuda:0",
-                        endpoint=endpoint
+                        endpoint,
+                        processor,
+                        self.model_name,
+                        "cuda:0"
                     )
                     
-                    output = test_handler(self.frames, text=self.test_text)
-                    results["cuda_handler"] = "Success" if output is not None else "Failed CUDA handler"
+                    # Test different input formats
+                    text_output = test_handler(text=self.test_text)
+                    results["cuda_text"] = "Success" if text_output is not None else "Failed text input"
+                    
+                    video_output = test_handler(frames=self.frames)
+                    results["cuda_video"] = "Success" if video_output is not None else "Failed video input"
+                    
+                    similarity = test_handler(self.frames, self.test_text)
+                    results["cuda_similarity"] = "Success" if similarity is not None else "Failed similarity computation"
             except Exception as e:
                 results["cuda_tests"] = f"Error: {str(e)}"
         else:
@@ -128,9 +143,9 @@ class test_hf_xclip:
                 mock_get_openvino_pipeline_type = MagicMock()
                 mock_openvino_cli_convert = MagicMock()
                 
-                endpoint, tokenizer, handler, queue, batch_size = self.xclip.init_openvino(
+                endpoint, processor, handler, queue, batch_size = self.xclip.init_openvino(
                     self.model_name,
-                    "feature-extraction",
+                    "video-classification",
                     "CPU",
                     "openvino:0",
                     mock_get_optimum_openvino_model,
@@ -144,12 +159,12 @@ class test_hf_xclip:
                 
                 test_handler = self.xclip.create_openvino_video_embedding_endpoint_handler(
                     endpoint,
-                    tokenizer,
+                    processor,
                     self.model_name,
                     "openvino:0"
                 )
                 
-                output = test_handler(self.frames, text=self.test_text)
+                output = test_handler(self.frames, self.test_text)
                 results["openvino_handler"] = "Success" if output is not None else "Failed OpenVINO handler"
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
@@ -168,7 +183,7 @@ class test_hf_xclip:
                 with patch('coremltools.convert') as mock_convert:
                     mock_convert.return_value = MagicMock()
                     
-                    endpoint, tokenizer, handler, queue, batch_size = self.xclip.init_apple(
+                    endpoint, processor, handler, queue, batch_size = self.xclip.init_apple(
                         self.model_name,
                         "mps",
                         "apple:0"
@@ -179,15 +194,12 @@ class test_hf_xclip:
                     
                     test_handler = self.xclip.create_apple_video_embedding_endpoint_handler(
                         endpoint,
-                        tokenizer,
+                        processor,
                         self.model_name,
                         "apple:0"
                     )
                     
                     # Test different input formats
-                    video_output = test_handler(self.frames)
-                    results["apple_video"] = "Success" if video_output is not None else "Failed video input"
-                    
                     text_output = test_handler(text=self.test_text)
                     results["apple_text"] = "Success" if text_output is not None else "Failed text input"
                     
@@ -211,7 +223,7 @@ class test_hf_xclip:
             with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
                 mock_snpe.return_value = MagicMock()
                 
-                endpoint, tokenizer, handler, queue, batch_size = self.xclip.init_qualcomm(
+                endpoint, processor, handler, queue, batch_size = self.xclip.init_qualcomm(
                     self.model_name,
                     "qualcomm",
                     "qualcomm:0"
@@ -222,12 +234,12 @@ class test_hf_xclip:
                 
                 test_handler = self.xclip.create_qualcomm_video_embedding_endpoint_handler(
                     endpoint,
-                    tokenizer,
+                    processor,
                     self.model_name,
                     "qualcomm:0"
                 )
                 
-                output = test_handler(self.frames, text=self.test_text)
+                output = test_handler(self.frames, self.test_text)
                 results["qualcomm_handler"] = "Success" if output is not None else "Failed Qualcomm handler"
         except ImportError:
             results["qualcomm_tests"] = "SNPE SDK not installed"

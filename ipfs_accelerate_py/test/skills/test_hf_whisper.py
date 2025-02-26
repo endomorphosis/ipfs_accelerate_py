@@ -12,17 +12,16 @@ class test_hf_whisper:
             "torch": torch,
             "numpy": np,
             "transformers": MagicMock(),
-            "librosa": MagicMock(),
             "soundfile": MagicMock()
         }
         self.metadata = metadata if metadata else {}
         self.whisper = hf_whisper(resources=self.resources, metadata=self.metadata)
-        self.model_name = "openai/whisper-base"
+        self.model_name = "openai/whisper-tiny"
         self.test_audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         return None
 
     def test(self):
-        """Run all tests for the Whisper ASR model"""
+        """Run all tests for the Whisper speech recognition model"""
         results = {}
         
         # Test basic initialization
@@ -43,8 +42,8 @@ class test_hf_whisper:
                 audio_data, sr = load_audio(self.test_audio_url)
                 results["load_audio"] = "Success" if audio_data is not None and sr == 16000 else "Failed audio loading"
                 
-                audio_16k, sr_16k = load_audio_16khz(self.test_audio_url)
-                results["load_audio_16khz"] = "Success" if audio_16k is not None and sr_16k == 16000 else "Failed 16kHz conversion"
+                audio_16khz = load_audio_16khz(self.test_audio_url)
+                results["load_audio_16khz"] = "Success" if audio_16khz[1] == 16000 else "Failed 16khz conversion"
         except Exception as e:
             results["audio_utils"] = f"Error: {str(e)}"
 
@@ -57,6 +56,8 @@ class test_hf_whisper:
                 mock_config.return_value = MagicMock()
                 mock_processor.return_value = MagicMock()
                 mock_model.return_value = MagicMock()
+                mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
+                mock_processor.batch_decode.return_value = ["Test transcription"]
                 
                 endpoint, processor, handler, queue, batch_size = self.whisper.init_cpu(
                     self.model_name,
@@ -67,18 +68,18 @@ class test_hf_whisper:
                 valid_init = endpoint is not None and processor is not None and handler is not None
                 results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
                 
-                test_handler = self.whisper.create_cpu_whisper_endpoint_handler(
+                test_handler = self.whisper.create_cpu_transcription_endpoint_handler(
                     endpoint,
                     processor,
                     self.model_name,
                     "cpu"
                 )
                 
-                # Test with audio input
                 with patch('soundfile.read') as mock_sf_read:
                     mock_sf_read.return_value = (np.random.randn(16000), 16000)
                     output = test_handler(self.test_audio_url)
                     results["cpu_handler"] = "Success" if output is not None else "Failed CPU handler"
+                
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
 
@@ -92,6 +93,8 @@ class test_hf_whisper:
                     mock_config.return_value = MagicMock()
                     mock_processor.return_value = MagicMock()
                     mock_model.return_value = MagicMock()
+                    mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
+                    mock_processor.batch_decode.return_value = ["Test transcription"]
                     
                     endpoint, processor, handler, queue, batch_size = self.whisper.init_cuda(
                         self.model_name,
@@ -102,7 +105,7 @@ class test_hf_whisper:
                     valid_init = endpoint is not None and processor is not None and handler is not None
                     results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
                     
-                    test_handler = self.whisper.create_cuda_whisper_endpoint_handler(
+                    test_handler = self.whisper.create_cuda_transcription_endpoint_handler(
                         endpoint,
                         processor,
                         self.model_name,
@@ -120,27 +123,34 @@ class test_hf_whisper:
 
         # Test OpenVINO if installed
         try:
-            import openvino
+            try:
+                import openvino
+            except ImportError:
+                results["openvino_tests"] = "OpenVINO not installed"
+                return results
+                
             with patch('openvino.Runtime') as mock_runtime:
                 mock_runtime.return_value = MagicMock()
                 mock_get_openvino_model = MagicMock()
                 mock_get_optimum_openvino_model = MagicMock()
                 mock_get_openvino_pipeline_type = MagicMock()
+                mock_openvino_cli_convert = MagicMock()
                 
                 endpoint, processor, handler, queue, batch_size = self.whisper.init_openvino(
                     self.model_name,
-                    "automatic-speech-recognition",
+                    "audio-to-text",
                     "CPU",
                     "openvino:0",
                     mock_get_optimum_openvino_model,
                     mock_get_openvino_model,
-                    mock_get_openvino_pipeline_type
+                    mock_get_openvino_pipeline_type,
+                    mock_openvino_cli_convert
                 )
                 
                 valid_init = handler is not None
                 results["openvino_init"] = "Success" if valid_init else "Failed OpenVINO initialization"
                 
-                test_handler = self.whisper.create_openvino_whisper_endpoint_handler(
+                test_handler = self.whisper.create_openvino_transcription_endpoint_handler(
                     endpoint,
                     processor,
                     self.model_name,
@@ -159,7 +169,12 @@ class test_hf_whisper:
         # Test Apple Silicon if available
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             try:
-                import coremltools
+                try:
+                    import coremltools  # Only try import if MPS is available
+                except ImportError:
+                    results["apple_tests"] = "CoreML Tools not installed"
+                    return results
+
                 with patch('coremltools.convert') as mock_convert:
                     mock_convert.return_value = MagicMock()
                     
@@ -172,7 +187,7 @@ class test_hf_whisper:
                     valid_init = handler is not None
                     results["apple_init"] = "Success" if valid_init else "Failed Apple initialization"
                     
-                    test_handler = self.whisper.create_apple_whisper_endpoint_handler(
+                    test_handler = self.whisper.create_apple_transcription_endpoint_handler(
                         endpoint,
                         processor,
                         self.model_name,
@@ -192,6 +207,12 @@ class test_hf_whisper:
 
         # Test Qualcomm if available
         try:
+            try:
+                from ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils import get_snpe_utils
+            except ImportError:
+                results["qualcomm_tests"] = "SNPE SDK not installed"
+                return results
+                
             with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
                 mock_snpe.return_value = MagicMock()
                 
@@ -204,7 +225,7 @@ class test_hf_whisper:
                 valid_init = handler is not None
                 results["qualcomm_init"] = "Success" if valid_init else "Failed Qualcomm initialization"
                 
-                test_handler = self.whisper.create_qualcomm_whisper_endpoint_handler(
+                test_handler = self.whisper.create_qualcomm_transcription_endpoint_handler(
                     endpoint,
                     processor,
                     self.model_name,
