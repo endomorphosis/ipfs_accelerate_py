@@ -1,6 +1,0 @@
-{
-    "test_ipfs_accelerate": {
-        "test_backend": "Error initializing worker:\nException type: TypeError\nException message: test_backend_py.__test__() takes 1 positional argument but 3 were given\nTraceback:\nTraceback (most recent call last):\n  File \"C:\\Users\\barberb\\ipfs_accelerate_py\\ipfs_accelerate_py\\test\\test_ipfs_accelerate.py\", line 73, in test\n    test_results[\"test_backend\"] = self.test_backend.__test__(resources, metadata)\n                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: test_backend_py.__test__() takes 1 positional argument but 3 were given\n",
-        "test_ipfs_accelerate": "Error initializing worker:\nException type: TypeError\nException message: 'int' object is not subscriptable\nTraceback:\nTraceback (most recent call last):\n  File \"C:\\Users\\barberb\\ipfs_accelerate_py\\ipfs_accelerate_py\\test\\test_ipfs_accelerate.py\", line 87, in test\n    add_endpoint = await self.ipfs_accelerate_py.add_endpoint(model, \"cuda:0\", 32768)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\barberb\\ipfs_accelerate_py\\ipfs_accelerate_py\\ipfs_accelerate.py\", line 594, in add_endpoint\n    this_model = endpoint[0]\n                 ~~~~~~~~^^^\nTypeError: 'int' object is not subscriptable\n"
-    }
-}

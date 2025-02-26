@@ -210,7 +210,7 @@ class test_ollama:
         expected_dir = os.path.join(os.path.dirname(__file__), 'expected_results')
         collected_dir = os.path.join(os.path.dirname(__file__), 'collected_results')
         os.makedirs(expected_dir, exist_ok=True)
-        os.makedirs(collected_dir, exist=True)
+        os.makedirs(collected_dir, exist_ok=True)
         
         # Save collected results
         with open(os.path.join(collected_dir, 'ollama_test_results.json'), 'w') as f:

@@ -1,7 +1,7 @@
 import os 
 import sys
-from ipfs_accelerate_py.api_backends import apis
-
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
+from .apis import test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm, test_openai_api, test_ovms, test_ollama, test_s3_kit
 
 class test_api_backend:
     def __init__(self, resources, metadata):
@@ -17,8 +17,8 @@ class test_api_backend:
         self.test_ollama = self.test_ollama
         
         if "apis" not in self.resources:
+            from ..ipfs_accelerate_py.api_backends import apis
             sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-            from api_backends import apis
             self.resources["apis"] = apis(resources=self.resources, metadata=self.metadata)
             self.apis = self.resources["apis"]
         else:
@@ -28,49 +28,57 @@ class test_api_backend:
 
     def test_ovms(self):
         try:
-            return self.apis.ovms.__test__()
+            ovms_test = test_ovms.test_ovms(resources=self.resources, metadata=self.metadata)
+            return ovms_test.__test__()
         except Exception as e:
             return e
     
     def test_ollama(self):
         try:
-            return self.apis.ollama.__test__()
+            ollama_test = test_ollama.test_ollama(resources=self.resources, metadata=self.metadata)
+            return ollama_test.__test__()
         except Exception as e:
             return e
 
     def test_hf_tgi(self):
         try:
-            return self.apis.hf_tgi.__test__()
+            hf_tgi_test = test_hf_tgi.test_hf_tgi(resources=self.resources, metadata=self.metadata)
+            return hf_tgi_test.__test__()
         except Exception as e:
             return e
     
     def test_openai_api(self):
         try:
-            return self.apis.openai_api.__test__()
+            openai_test = test_openai_api.test_openai_api(resources=self.resources, metadata=self.metadata)
+            return openai_test.__test__()
         except Exception as e:
             return e
     
     def test_groq(self):
         try:
-            return self.apis.groq.__test__()
+            groq_test = test_groq.test_groq(resources=self.resources, metadata=self.metadata)
+            return groq_test.__test__()
         except Exception as e:
             return e
         
     def test_s3_kit(self):
         try:
-            return self.apis.s3_kit.__test__()
+            s3_kit_test = test_s3_kit.test_s3_kit(resources=self.resources, metadata=self.metadata)
+            return s3_kit_test.__test__()
         except Exception as e:
             return e
         
     def test_hf_tei(self):
         try:
-            return self.apis.hf_tei.__test__()
+            hf_tei_test = test_hf_tei.test_hf_tei(resources=self.resources, metadata=self.metadata)
+            return hf_tei_test.__test__()
         except Exception as e:
             return e
     
     def test_llvm(self):
         try:
-            return self.apis.llvm.__test__()
+            llvm_test = test_llvm.test_llvm(resources=self.resources, metadata=self.metadata)
+            return llvm_test.__test__()
         except Exception as e:
             return e
     

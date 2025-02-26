@@ -4,6 +4,7 @@ import sys
 import json
 from unittest.mock import MagicMock, patch
 import requests
+import unittest
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
 from api_backends import apis, claude
@@ -25,6 +26,7 @@ class test_claude:
         try:
             endpoint_handler = self.claude.create_claude_endpoint_handler()
             results["endpoint_handler"] = "Success" if callable(endpoint_handler) else "Failed to create endpoint handler"
+            assert callable(endpoint_handler), "Endpoint handler should be callable"
         except Exception as e:
             results["endpoint_handler"] = f"Error: {str(e)}"
             
@@ -32,7 +34,7 @@ class test_claude:
         try:
             with patch.object(self.claude, 'make_post_request_claude') as mock_post:
                 mock_post.return_value = {
-                    "id": "test-id",
+                    "id": "msg_01abcdefg",
                     "type": "message",
                     "role": "assistant",
                     "content": [{"type": "text", "text": "This is a test response"}],
@@ -47,10 +49,13 @@ class test_claude:
                 
                 test_result = self.claude.test_claude_endpoint()
                 results["test_endpoint"] = "Success" if test_result else "Failed endpoint test"
+                assert test_result, "Endpoint test should return True"
                 
                 # Verify correct parameters were used
                 args, kwargs = mock_post.call_args
-                results["test_endpoint_params"] = "Success" if "messages" in args[1] else "Failed to pass correct parameters"
+                has_messages = "messages" in args[1]
+                results["test_endpoint_params"] = "Success" if has_messages else "Failed to pass correct parameters"
+                assert has_messages, "Request should contain 'messages' parameter"
         except Exception as e:
             results["test_endpoint"] = f"Error: {str(e)}"
             
@@ -59,7 +64,7 @@ class test_claude:
             with patch.object(requests, 'post') as mock_post:
                 mock_response = MagicMock()
                 mock_response.json.return_value = {
-                    "id": "test-id",
+                    "id": "msg_01abcdefg",
                     "type": "message",
                     "role": "assistant",
                     "content": [{"type": "text", "text": "This is a test response"}],
@@ -75,7 +80,7 @@ class test_claude:
                 mock_post.return_value = mock_response
                 
                 data = {
-                    "model": "claude-3-opus-20240229",
+                    "model": "anthropic/claude-3-opus-20240229",
                     "messages": [{"role": "user", "content": "Hello"}],
                     "max_tokens": 1000,
                     "temperature": 0.7
@@ -83,6 +88,7 @@ class test_claude:
                 
                 post_result = self.claude.make_post_request_claude(data)
                 results["post_request"] = "Success" if "content" in post_result else "Failed post request"
+                assert "content" in post_result, "Response should contain 'content' field"
                 
                 # Verify headers were set correctly
                 args, kwargs = mock_post.call_args
@@ -91,6 +97,9 @@ class test_claude:
                 anthropic_header_set = "anthropic-version" in headers
                 content_type_set = headers.get("Content-Type") == "application/json"
                 results["post_request_headers"] = "Success" if auth_header_set and anthropic_header_set and content_type_set else "Failed to set headers correctly"
+                assert auth_header_set, "Authorization header should be set with API key"
+                assert anthropic_header_set, "Anthropic version header should be set"
+                assert content_type_set, "Content-Type header should be set to application/json"
         except Exception as e:
             results["post_request"] = f"Error: {str(e)}"
             
@@ -98,7 +107,7 @@ class test_claude:
         try:
             with patch.object(self.claude, 'make_post_request_claude') as mock_post:
                 mock_post.return_value = {
-                    "id": "test-id",
+                    "id": "msg_01abcdefg",
                     "type": "message",
                     "role": "assistant",
                     "content": [{"type": "text", "text": "This is a test chat response"}],
@@ -114,27 +123,93 @@ class test_claude:
                 messages = [{"role": "user", "content": "Hello"}]
                 chat_result = self.claude.chat(messages)
                 results["chat_method"] = "Success" if chat_result and isinstance(chat_result, dict) else "Failed chat method"
+                assert chat_result and isinstance(chat_result, dict), "Chat method should return a dictionary"
         except Exception as e:
             results["chat_method"] = f"Error: {str(e)}"
             
         # Test streaming functionality if implemented
         try:
             with patch.object(self.claude, 'make_stream_request_claude') as mock_stream:
+                # Updated streaming format based on Claude Messages API
                 mock_stream.return_value = iter([
-                    {"type": "message_start", "message": {"id": "test-id", "role": "assistant", "content": []}},
-                    {"type": "content_block_start", "content_block": {"type": "text", "text": ""}},
-                    {"type": "content_block_delta", "delta": {"type": "text", "text": "This "}},
-                    {"type": "content_block_delta", "delta": {"type": "text", "text": "is "}},
-                    {"type": "content_block_delta", "delta": {"type": "text", "text": "a "}},
-                    {"type": "content_block_delta", "delta": {"type": "text", "text": "test"}},
-                    {"type": "content_block_stop"},
-                    {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}},
-                    {"type": "message_stop"}
+                    {
+                        "type": "message_start",
+                        "message": {
+                            "id": "msg_01abcdefg",
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [],
+                            "model": "claude-3-opus-20240229",
+                            "stop_reason": None,
+                            "stop_sequence": None,
+                            "usage": {
+                                "input_tokens": 10
+                            }
+                        }
+                    },
+                    {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "text",
+                            "text": ""
+                        }
+                    },
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text",
+                            "text": "This "
+                        }
+                    },
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text",
+                            "text": "is "
+                        }
+                    },
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text",
+                            "text": "a "
+                        }
+                    },
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {
+                            "type": "text",
+                            "text": "test"
+                        }
+                    },
+                    {
+                        "type": "content_block_stop",
+                        "index": 0
+                    },
+                    {
+                        "type": "message_delta",
+                        "delta": {
+                            "stop_reason": "end_turn",
+                            "stop_sequence": None,
+                            "usage": {
+                                "output_tokens": 20
+                            }
+                        }
+                    },
+                    {
+                        "type": "message_stop"
+                    }
                 ])
                 
                 if hasattr(self.claude, 'stream_chat'):
                     stream_result = list(self.claude.stream_chat([{"role": "user", "content": "Hello"}]))
                     results["streaming"] = "Success" if len(stream_result) > 0 else "Failed streaming"
+                    assert len(stream_result) > 0, "Stream chat should return at least one result"
                 else:
                     results["streaming"] = "Not implemented"
         except Exception as e:
@@ -149,40 +224,51 @@ class test_claude:
                 mock_response.json.return_value = {"error": {"type": "authentication_error", "message": "Invalid API key"}}
                 mock_post.return_value = mock_response
                 
+                auth_error_caught = False
                 try:
                     self.claude.make_post_request_claude({"messages": [{"role": "user", "content": "test"}]})
-                    results["error_handling_auth"] = "Failed to catch authentication error"
                 except Exception:
-                    results["error_handling_auth"] = "Success"
+                    auth_error_caught = True
+                    
+                results["error_handling_auth"] = "Success" if auth_error_caught else "Failed to catch authentication error"
+                assert auth_error_caught, "Should raise exception on authentication error"
                     
                 # Test rate limit error
                 mock_response.status_code = 429
                 mock_response.json.return_value = {"error": {"type": "rate_limit_error", "message": "Rate limit exceeded"}}
                 
+                rate_limit_error_caught = False
                 try:
                     self.claude.make_post_request_claude({"messages": [{"role": "user", "content": "test"}]})
-                    results["error_handling_rate_limit"] = "Failed to catch rate limit error"
                 except Exception:
-                    results["error_handling_rate_limit"] = "Success"
+                    rate_limit_error_caught = True
+                    
+                results["error_handling_rate_limit"] = "Success" if rate_limit_error_caught else "Failed to catch rate limit error"
+                assert rate_limit_error_caught, "Should raise exception on rate limit error"
                     
                 # Test invalid request
                 mock_response.status_code = 400
                 mock_response.json.return_value = {"error": {"type": "invalid_request_error", "message": "Invalid request"}}
                 
+                bad_request_error_caught = False
                 try:
                     self.claude.make_post_request_claude({"invalid": "data"})
-                    results["error_handling_400"] = "Failed to catch invalid request error"
                 except Exception:
-                    results["error_handling_400"] = "Success"
+                    bad_request_error_caught = True
+                    
+                results["error_handling_400"] = "Success" if bad_request_error_caught else "Failed to catch invalid request error"
+                assert bad_request_error_caught, "Should raise exception on invalid request"
         except Exception as e:
             results["error_handling"] = f"Error: {str(e)}"
             
         # Test model compatibility if implemented
         try:
             if hasattr(self.claude, 'is_compatible_model'):
-                compatible = self.claude.is_compatible_model("claude-3-opus-20240229")
+                compatible = self.claude.is_compatible_model("anthropic/claude-3-opus-20240229")
                 incompatible = self.claude.is_compatible_model("nonexistent-model")
                 results["model_compatibility"] = "Success" if compatible and not incompatible else "Failed model compatibility check"
+                assert compatible, "Should recognize valid model name"
+                assert not incompatible, "Should reject invalid model name"
             else:
                 results["model_compatibility"] = "Not implemented"
         except Exception as e:
@@ -213,10 +299,30 @@ class test_claude:
         if os.path.exists(expected_file):
             with open(expected_file, 'r') as f:
                 expected_results = json.load(f)
-                if expected_results != test_results:
+                
+                # More detailed comparison of results
+                all_match = True
+                mismatches = []
+                
+                for key in set(expected_results.keys()) | set(test_results.keys()):
+                    if key not in expected_results:
+                        mismatches.append(f"Missing expected key: {key}")
+                        all_match = False
+                    elif key not in test_results:
+                        mismatches.append(f"Missing actual key: {key}")
+                        all_match = False
+                    elif expected_results[key] != test_results[key]:
+                        mismatches.append(f"Key '{key}' differs: Expected '{expected_results[key]}', got '{test_results[key]}'")
+                        all_match = False
+                
+                if not all_match:
                     print("Test results differ from expected results!")
-                    print(f"Expected: {expected_results}")
-                    print(f"Got: {test_results}")
+                    for mismatch in mismatches:
+                        print(f"- {mismatch}")
+                    print(f"\nComplete expected results: {json.dumps(expected_results, indent=2)}")
+                    print(f"\nComplete actual results: {json.dumps(test_results, indent=2)}")
+                else:
+                    print("All test results match expected results.")
         else:
             # Create expected results file if it doesn't exist
             with open(expected_file, 'w') as f:
