@@ -1,5 +1,5 @@
-from .hf_embed import *
-from .hf_lm import *
+from .default_embed import *
+from .default_lm import *
 from .hf_qwen2 import *
 from .hf_llava import *
 from .hf_clip import *
