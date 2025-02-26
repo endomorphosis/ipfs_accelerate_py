@@ -41,3 +41,5 @@ opencv-python
 decord
 websocket
 websocket-client
+anthropic
+google-generativeai
