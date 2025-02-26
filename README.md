@@ -40,5 +40,86 @@ https://github.com/endomorphosis/ipfs_agents/
 for ipfs accelerate visit:
 https://github.com/endomorphosis/ipfs_accelerate/
 
+# IPFS Accelerate Python
+
+## API Backends
+
+The package provides flexible API backends for interfacing with different model serving solutions:
+
+### LLVM Backend
+The LLVM backend provides integration with LLVM-based model endpoints. Features:
+- Standard text completion generation
+- Chat completions with structured messages
+- Streaming responses for real-time generation
+- Model management and listing
+
+Example usage:
+```python
+from ipfs_accelerate_py.api_backends import llvm
+
+# Initialize backend
+llvm_backend = llvm()
+
+# Get endpoint handler
+endpoint_url, api_key, handler, queue, batch_size = llvm_backend.init(
+    endpoint_url="http://localhost:8080",
+    model_name="my-model",
+    endpoint_type="chat"  # or "completion", "streaming"
+)
+
+# Use handler for generation
+messages = [
+    {"role": "user", "content": "Hello! How are you?"}
+]
+response = handler(messages)
+```
+
+### Ollama Backend
+The Ollama backend integrates with Ollama's API for local model serving. Features:
+- Text completion generation
+- Chat completions with history
+- Streaming responses
+- Text embeddings
+- Model management and tags
+
+Example usage:
+```python
+from ipfs_accelerate_py.api_backends import ollama
+
+# Initialize backend
+ollama_backend = ollama()
+
+# Get endpoint handler
+endpoint_url, api_key, handler, queue, batch_size = ollama_backend.init(
+    endpoint_url="http://localhost:11434",
+    model_name="llama2",
+    endpoint_type="chat"  # or "completion", "streaming", "embedding"
+)
+
+# Use handler for generation
+response = handler("What is machine learning?", 
+    parameters={
+        "temperature": 0.7,
+        "num_predict": 100
+    }
+)
+```
+
+### Common Features
+Both backends support:
+- Async and sync request handling
+- Request queueing and batching
+- Multiple response formats
+- Error handling and retries
+- Model endpoint management
+
+The handlers are designed to be interchangeable, following similar patterns for:
+- Text completion
+- Chat completion 
+- Streaming responses
+- Model management
+
+Refer to the API documentation of each backend class for detailed method signatures and parameters.
+
 Author - Benjamin Barber
 QA - Kevin De Haan

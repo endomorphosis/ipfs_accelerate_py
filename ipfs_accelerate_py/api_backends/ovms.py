@@ -1,112 +1,539 @@
 import asyncio
 import json
+import requests
+import os
+from typing import Dict, List, Optional, Union, Any, Callable
+
 class ovms:
-    def __init__(self, resources, metadata):
+    def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
+        # Register method references
+        self.create_remote_ovms_endpoint_handler = self.create_remote_ovms_endpoint_handler
         self.test_ovms_endpoint = self.test_ovms_endpoint
         self.create_ovms_endpoint_handler = self.create_ovms_endpoint_handler
-        self.test_ovms_endpoint = self.test_ovms_endpoint
         self.make_post_request_ovms = self.make_post_request_ovms
+        self.make_async_post_request_ovms = self.make_async_post_request_ovms
         self.request_ovms_endpoint = self.request_ovms_endpoint
+        self.list_available_ovms_models = self.list_available_ovms_models
+        self.get_model_metadata = self.get_model_metadata
+        self.init = self.init
+        self.__test__ = self.__test__
+        # Add endpoints tracking
+        self.endpoints = {}
+        self.endpoint_status = {}
+        self.registered_models = {}
+        # Add queue for managing requests
+        self.request_queue = asyncio.Queue(64)
         return None
     
-    def request_ovms_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+    def init(self, endpoint_url=None, api_key=None, model_name=None, context_length=None):
+        """Initialize a connection to an OpenVINO Model Server (OVMS) endpoint
         
-        return None
-
-    def create_ovms_endpoint_handler(self, model, endpoint, context_length):
-        from transformers import AutoTokenizer, AutoModel, AutoConfig
-        async def handler(x):
-            tokenizer = None
-            tokens = None
-            if model not in list(self.resources["tokenizer"].keys()):
-                self.resources["tokenizer"][model] = {}
-            tokenizers = list(self.resources["tokenizer"][model].keys())
-            if len(tokenizers) == 0:
-                self.resources["tokenizer"][model]["cpu"] = AutoTokenizer.from_pretrained(model, device='cpu', use_fast=True, trust_remote_code=True)
-                tokens = await self.resources["tokenizer"][model]["cpu"](x, return_tensors="pt", padding=True, truncation=True)
+        Args:
+            endpoint_url: The URL of the remote endpoint
+            api_key: API key for authentication, if required
+            model_name: Name of the model to use
+            context_length: Maximum context length for the model
+            
+        Returns:
+            tuple: (endpoint_url, api_key, handler, queue, batch_size)
+        """
+        # Create the endpoint handler
+        endpoint_handler = self.create_remote_ovms_endpoint_handler(endpoint_url, api_key, model_name, context_length)
+        
+        # Register the endpoint
+        if model_name not in self.endpoints:
+            self.endpoints[model_name] = []
+        
+        if endpoint_url not in self.endpoints[model_name]:
+            self.endpoints[model_name].append(endpoint_url)
+            self.endpoint_status[endpoint_url] = 32  # Default batch size
+            
+            # Register model in the registered_models dictionary
+            if model_name not in self.registered_models:
+                self.registered_models[model_name] = {
+                    "endpoints": [endpoint_url],
+                    "context_length": context_length
+                }
             else:
-                for tokenizer in tokenizers:
-                    try:
-                        this_tokenizer = self.resources["tokenizer"][model][tokenizer]
-                        tokens = await this_tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-                    except Exception as e:
-                        pass
-            if tokens is None:
-                raise ValueError("No tokenizer found for model " + model)            
-            tokens = await self.tokenizer[model][endpoint](x, return_tensors="pt", padding=True, truncation=True)
-            remote_endpoint = await self.make_post_request_openvino(tokens, x)
-            return remote_endpoint
-        return handler
+                if endpoint_url not in self.registered_models[model_name]["endpoints"]:
+                    self.registered_models[model_name]["endpoints"].append(endpoint_url)
+                if context_length and not self.registered_models[model_name].get("context_length"):
+                    self.registered_models[model_name]["context_length"] = context_length
+        
+        return endpoint_url, api_key, endpoint_handler, self.request_queue, self.endpoint_status[endpoint_url]
     
-    async def test_ovms_endpoint(self, model, endpoint_list=None):
-        this_endpoint = None
-        filtered_list = {}
-        test_results = {}
-        api_endpoints = self.resources["ovms_endpoints"]
-        api_endpoints_types = [x[1] for x in api_endpoints]
-        api_endpoints_by_model = self.endpoints["ovms_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["ovms_endpoints"][model]
-        if endpoint_list is not None:
-            api_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) and x[1] in list(endpoint_handlers_by_model.keys()) ]
-        else:
-            api_endpoints_by_model_by_endpoint_list = [ x for x in api_endpoints_by_model if "openvino:" in json.dumps(x) ]
-        if len(api_endpoints_by_model_by_endpoint_list) > 0:
-            for endpoint in api_endpoints_by_model_by_endpoint_list:
-                endpoint_handler = endpoint_handlers_by_model[endpoint]
-                try:
-                    test = await endpoint_handler("hello world")
-                    test_results[endpoint] = test
-                except Exception as e:
-                    try:
-                        test = endpoint_handler("hello world")
-                        test_results[endpoint] = test
-                    except Exception as e:
-                        test_results[endpoint] = e
-                    pass
-        else:
-            return ValueError("No endpoint_handlers found")
-        return test_results
+    def list_available_ovms_models(self, endpoint_url=None, api_key=None):
+        """List available models from an OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the OVMS endpoint
+            api_key: API key for authentication, if required
+            
+        Returns:
+            list: List of available models or None if the request fails
+        """
+        if not endpoint_url:
+            if self.endpoints:
+                # Use the first available endpoint
+                model_name = next(iter(self.endpoints))
+                endpoint_url = self.endpoints[model_name][0]
+            else:
+                return None
+                
+        try:
+            # OVMS typically uses a /v1/models or /v2/models endpoint for model listing
+            for models_path in ["/v2/models", "/v1/models", "/models"]:
+                models_endpoint = f"{endpoint_url.rstrip('/')}{models_path}"
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                
+                response = requests.get(models_endpoint, headers=headers)
+                if response.status_code == 200:
+                    result = response.json()
                     
-    async def make_post_request_ovms(self, endpoint, data):
+                    # Different OVMS versions might structure the response differently
+                    if "models" in result:
+                        return result["models"]
+                    elif "model_versions" in result:
+                        return result["model_versions"]
+                    else:
+                        return result
+            
+            # If all paths failed but didn't raise exceptions
+            return None
+        except Exception as e:
+            print(f"Failed to list OVMS models: {e}")
+            return None
+    
+    def get_model_metadata(self, model_name, endpoint_url=None, api_key=None):
+        """Get metadata for a specific model from an OVMS endpoint
+        
+        Args:
+            model_name: Name of the model
+            endpoint_url: URL of the OVMS endpoint
+            api_key: API key for authentication, if required
+            
+        Returns:
+            dict: Model metadata or None if the request fails
+        """
+        if not endpoint_url:
+            if model_name in self.endpoints and self.endpoints[model_name]:
+                endpoint_url = self.endpoints[model_name][0]
+            else:
+                return None
+                
+        try:
+            # Try different API versions
+            for api_version in ["v2", "v1"]:
+                metadata_endpoint = f"{endpoint_url.rstrip('/')}/{api_version}/models/{model_name}/metadata"
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                
+                response = requests.get(metadata_endpoint, headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+            
+            # If all versions failed, try OVMS-specific endpoint
+            metadata_endpoint = f"{endpoint_url.rstrip('/')}/models/{model_name}/metadata"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            response = requests.get(metadata_endpoint, headers=headers)
+            if response.status_code == 200:
+                return response.json()
+                
+            return None
+        except Exception as e:
+            print(f"Failed to get metadata for model {model_name}: {e}")
+            return None
+    
+    def __test__(self, endpoint_url, endpoint_handler, endpoint_label, api_key=None):
+        """Test the remote OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            endpoint_handler: The handler function
+            endpoint_label: Label for the endpoint
+            api_key: API key for authentication
+            
+        Returns:
+            bool: True if test passes, False otherwise
+        """
+        test_text = "The quick brown fox jumps over the lazy dog"
+        try:
+            result = endpoint_handler(test_text)
+            if result is not None:
+                print(f"Remote OVMS test passed for {endpoint_label}")
+                return True
+            else:
+                print(f"Remote OVMS test failed for {endpoint_label}: No result")
+                return False
+        except Exception as e:
+            print(f"Remote OVMS test failed for {endpoint_label}: {e}")
+            return False
+    
+    def make_post_request_ovms(self, endpoint_url, data, api_key=None):
+        """Make a POST request to an OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            data: Data to send in the request
+            api_key: API key for authentication, if required
+            
+        Returns:
+            dict: Response from the endpoint
+        """
+        try:
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            # Format data according to OVMS expectations
+            if isinstance(data, str):
+                formatted_data = {"instances": [{"data": data}]}
+            elif isinstance(data, dict):
+                formatted_data = {"instances": [data]}
+            elif isinstance(data, list):
+                formatted_data = {"instances": data}
+            else:
+                raise ValueError("Unsupported data format")
+            
+            response = requests.post(endpoint_url, headers=headers, json=formatted_data)
+            response.raise_for_status()
+            
+            return response.json()
+        
+        except Exception as e:
+            print(f"Error making request to OVMS endpoint: {e}")
+            return None
+    
+    async def make_async_post_request_ovms(self, endpoint_url, data, api_key=None):
+        """Make an asynchronous POST request to an OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            data: Data to send in the request
+            api_key: API key for authentication, if required
+            
+        Returns:
+            dict: Response from the endpoint
+        """
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
-        if type(data) is dict:
-            raise ValueError("Data must be a string")
-        if type(data) is list:
-            if len(data) > 1:
-                raise ValueError("batch size must be 1")
-            data = data[0]
-        headers = {'Content-Type': 'application/json'}
-        timeout = ClientTimeout(total=300) 
-        async with ClientSession(timeout=timeout) as session:
-            try:
-                async with session.post(endpoint, headers=headers, json=data) as response:
+        
+        # Format data according to OVMS expectations
+        if isinstance(data, str):
+            formatted_data = {"instances": [{"data": data}]}
+        elif isinstance(data, dict):
+            formatted_data = {"instances": [data]}
+        elif isinstance(data, list):
+            formatted_data = {"instances": data}
+        else:
+            raise ValueError("Unsupported data format")
+        
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+            
+        timeout = ClientTimeout(total=300)
+        
+        try:
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(endpoint_url, headers=headers, json=formatted_data) as response:
                     if response.status != 200:
-                        return ValueError(response)
+                        error_text = await response.text()
+                        raise ValueError(f"Error {response.status}: {error_text}")
                     return await response.json()
+                    
+        except Exception as e:
+            print(f"Error in async request to OVMS endpoint: {e}")
+            raise e
+    
+    async def test_ovms_endpoint(self, model=None, endpoint_url=None, api_key=None, endpoint_list=None):
+        """Test an OVMS endpoint or list of endpoints
+        
+        Args:
+            model: Name of the model
+            endpoint_url: URL of a specific endpoint to test
+            api_key: API key for authentication
+            endpoint_list: List of endpoints to test
+            
+        Returns:
+            dict: Results of endpoint tests
+        """
+        test_results = {}
+        
+        if endpoint_url and not endpoint_list:
+            endpoint_list = [endpoint_url]
+            
+        if not endpoint_list and model in self.endpoints:
+            endpoint_list = self.endpoints[model]
+            
+        if not endpoint_list:
+            return {"error": "No endpoints provided for testing"}
+            
+        for endpoint in endpoint_list:
+            try:
+                handler = self.create_remote_ovms_endpoint_handler(endpoint, api_key, model)
+                test_input = "The quick brown fox jumps over the lazy dog"
+                
+                if asyncio.iscoroutinefunction(handler):
+                    result = await handler(test_input)
+                else:
+                    result = handler(test_input)
+                    
+                test_results[endpoint] = {
+                    "status": "success" if result is not None else "failed",
+                    "result": result if result is not None else "No result"
+                }
+                
             except Exception as e:
-                print(str(e))
-                if "Can not write request body" in str(e):
-                    print( "endpoint " + endpoint + " is not accepting requests")
-                    return ValueError(e)
-                if "Timeout" in str(e):
-                    print("Timeout error")
-                    return ValueError(e)
-                if "Payload is not completed" in str(e):
-                    print("Payload is not completed")
-                    return ValueError(e)
-                if "Can not write request body" in str(e):
-                    return ValueError(e)
-                pass
-            except aiohttp.ClientPayloadError as e:
-                print(f"ClientPayloadError: {str(e)}")
-                return ValueError(f"ClientPayloadError: {str(e)}")
-            except asyncio.TimeoutError as e:
-                print(f"Timeout error: {str(e)}")
-                return ValueError(f"Timeout error: {str(e)}")
+                test_results[endpoint] = {
+                    "status": "error",
+                    "message": str(e)
+                }
+                
+        return test_results
+    
+    def request_ovms_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+        """Request an OVMS endpoint
+        
+        Args:
+            model: Name of the model
+            endpoint: Specific endpoint URL (optional)
+            endpoint_type: Type of endpoint (optional)
+            batch: Batch size (optional)
+            
+        Returns:
+            str: URL of the selected endpoint
+        """
+        incoming_batch_size = len(batch) if batch else 1
+        
+        # If endpoint is specified and has sufficient capacity, use it
+        if endpoint in self.endpoint_status:
+            endpoint_batch_size = self.endpoint_status[endpoint]
+            if incoming_batch_size <= endpoint_batch_size:
+                return endpoint
+        
+        # Check in endpoints dictionary
+        if model in self.endpoints:
+            for e in self.endpoints[model]:
+                if e in self.endpoint_status and self.endpoint_status[e] >= incoming_batch_size:
+                    return e
+        
+        # No suitable endpoint found
+        return None
+
+    def create_ovms_endpoint_handler(self, model=None, endpoint=None, endpoint_type=None, batch=None, preprocessing=None, postprocessing=None):
+        """Create an endpoint handler for OVMS
+        
+        Args:
+            model: Name of the model
+            endpoint: Specific endpoint URL
+            endpoint_type: Type of endpoint (optional)
+            batch: Batch size (optional)
+            preprocessing: Custom preprocessing function (optional)
+            postprocessing: Custom postprocessing function (optional)
+            
+        Returns:
+            function: Handler for the endpoint
+        """
+        return self.create_remote_ovms_endpoint_handler(endpoint, None, model, preprocessing=preprocessing, postprocessing=postprocessing)
+    
+    def create_remote_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, context_length=None, preprocessing=None, postprocessing=None):
+        """Create a handler for a remote OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            api_key: API key for authentication, if required
+            model_name: Name of the model to use
+            context_length: Maximum context length for the model
+            preprocessing: Custom preprocessing function (optional)
+            postprocessing: Custom postprocessing function (optional)
+            
+        Returns:
+            function: Handler for the endpoint
+        """
+        from transformers import AutoTokenizer
+        
+        # Try to get or create a tokenizer for this model
+        tokenizer = None
+        if self.resources and "tokenizer" in self.resources:
+            if model_name in self.resources["tokenizer"]:
+                tokenizer = self.resources["tokenizer"][model_name].get("cpu")
+                
+        try:
+            if not tokenizer and model_name:
+                tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
+                if self.resources and "tokenizer" in self.resources:
+                    if model_name not in self.resources["tokenizer"]:
+                        self.resources["tokenizer"][model_name] = {}
+                    self.resources["tokenizer"][model_name]["cpu"] = tokenizer
+        except Exception as e:
+            print(f"Could not load tokenizer for {model_name}: {e}")
+            # Continue without tokenizer
+        
+        def handler(inputs, parameters=None, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
+            try:
+                # Apply custom preprocessing if provided
+                if preprocessing and callable(preprocessing):
+                    inputs = preprocessing(inputs)
+                
+                tokens = None
+                data = None
+                
+                # If parameters contain the 'raw' flag, skip tokenization
+                if parameters and parameters.get("raw", False):
+                    data = inputs
+                # If we have a tokenizer, tokenize the input
+                elif tokenizer:
+                    if isinstance(inputs, str):
+                        tokens = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True)
+                        # Convert to standard Python types for JSON serialization
+                        data = {
+                            "input_ids": tokens["input_ids"].tolist(),
+                            "attention_mask": tokens["attention_mask"].tolist()
+                        }
+                    else:
+                        # Assume inputs is already tokenized or properly structured
+                        data = inputs
+                else:
+                    # If no tokenizer, pass raw input
+                    data = inputs
+                
+                # Add model name to request if not already in data
+                if isinstance(data, dict) and "model_name" not in data and model_name:
+                    data["model_name"] = model_name
+                
+                # Extract specific endpoint path from parameters if provided
+                specific_path = None
+                if parameters and "endpoint_path" in parameters:
+                    specific_path = parameters.pop("endpoint_path")
+                    
+                # Construct the full endpoint URL
+                full_url = endpoint_url
+                if specific_path:
+                    full_url = f"{endpoint_url.rstrip('/')}/{specific_path.lstrip('/')}"
+                
+                # Make the request
+                response = self.make_post_request_ovms(full_url, data, api_key)
+                
+                # Apply custom postprocessing if provided
+                if postprocessing and callable(postprocessing) and response:
+                    response = postprocessing(response)
+                    
+                if response:
+                    # Handle different possible response formats from OVMS
+                    if "predictions" in response:
+                        return response["predictions"]
+                    elif "outputs" in response:
+                        return response["outputs"]
+                    
+                return response
+                
             except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                return ValueError(f"Unexpected error: {str(e)}")
- 
+                print(f"Error in OVMS handler: {e}")
+                return None
+                
+        return handler
+        
+    async def create_async_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, preprocessing=None, postprocessing=None):
+        """Create an asynchronous handler for an OVMS endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            api_key: API key for authentication, if required
+            model_name: Name of the model to use
+            preprocessing: Custom preprocessing function (optional)
+            postprocessing: Custom postprocessing function (optional)
+            
+        Returns:
+            function: Async handler for the endpoint
+        """
+        from transformers import AutoTokenizer
+        
+        # Try to get or create a tokenizer for this model
+        tokenizer = None
+        if self.resources and "tokenizer" in self.resources:
+            if model_name in self.resources["tokenizer"]:
+                tokenizer = self.resources["tokenizer"][model_name].get("cpu")
+                
+        try:
+            if not tokenizer and model_name:
+                tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
+                if self.resources and "tokenizer" in self.resources:
+                    if model_name not in self.resources["tokenizer"]:
+                        self.resources["tokenizer"][model_name] = {}
+                    self.resources["tokenizer"][model_name]["cpu"] = tokenizer
+        except Exception as e:
+            print(f"Could not load tokenizer for {model_name}: {e}")
+            # Continue without tokenizer
+            
+        async def handler(inputs, parameters=None, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
+            try:
+                # Apply custom preprocessing if provided
+                if preprocessing and callable(preprocessing):
+                    inputs = preprocessing(inputs)
+                
+                tokens = None
+                data = None
+                
+                # If parameters contain the 'raw' flag, skip tokenization
+                if parameters and parameters.get("raw", False):
+                    data = inputs
+                # If we have a tokenizer, tokenize the input
+                elif tokenizer:
+                    if isinstance(inputs, str):
+                        tokens = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True)
+                        # Convert to standard Python types for JSON serialization
+                        data = {
+                            "input_ids": tokens["input_ids"].tolist(),
+                            "attention_mask": tokens["attention_mask"].tolist()
+                        }
+                    else:
+                        # Assume inputs is already tokenized or properly structured
+                        data = inputs
+                else:
+                    # If no tokenizer, pass raw input
+                    data = inputs
+                
+                # Add model name to request if not already in data
+                if isinstance(data, dict) and "model_name" not in data and model_name:
+                    data["model_name"] = model_name
+                
+                # Extract specific endpoint path from parameters if provided
+                specific_path = None
+                if parameters and "endpoint_path" in parameters:
+                    specific_path = parameters.pop("endpoint_path")
+                    
+                # Construct the full endpoint URL
+                full_url = endpoint_url
+                if specific_path:
+                    full_url = f"{endpoint_url.rstrip('/')}/{specific_path.lstrip('/')}"
+                    
+                # Make the async request
+                response = await self.make_async_post_request_ovms(full_url, data, api_key)
+                
+                # Apply custom postprocessing if provided
+                if postprocessing and callable(postprocessing) and response:
+                    response = postprocessing(response)
+                    
+                if response:
+                    # Handle different possible response formats from OVMS
+                    if "predictions" in response:
+                        return response["predictions"]
+                    elif "outputs" in response:
+                        return response["outputs"]
+                    
+                return response
+                
+            except Exception as e:
+                print(f"Error in async OVMS handler: {e}")
+                return None
+                
+        return handler
