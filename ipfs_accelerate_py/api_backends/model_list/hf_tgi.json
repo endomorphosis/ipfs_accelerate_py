@@ -1,0 +1,19 @@
+[
+    "huggingface/falcon-40b",
+    "huggingface/falcon-7b",
+    "huggingface/mistral-7b",
+    "huggingface/mistral-8x7b",
+    "huggingface/llama-2-7b",
+    "huggingface/llama-2-13b",
+    "huggingface/llama-2-70b",
+    "huggingface/codellama-7b",
+    "huggingface/codellama-13b",
+    "huggingface/codellama-34b",
+    "huggingface/starcoder-15.5b",
+    "huggingface/starcoder2-7b",
+    "huggingface/starcoder2-15b",
+    "huggingface/phi-2",
+    "huggingface/mpt-7b",
+    "huggingface/mpt-30b",
+    "huggingface/gpt-neox-20b"
+]

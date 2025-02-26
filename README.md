@@ -20,7 +20,7 @@ for orbitdb_kit nodejs library visit:
 https://github.com/endomorphosis/orbitdb_kit/
 
 for fireproof_kit nodejs library visit:
-https://github.com/endomorphosis/fireproof_kit
+https://github.com/endomorphosis/fireproof_kit/
 
 for ipfs_kit nodejs library visit:
 https://github.com/endomorphosis/ipfs_kit/
@@ -42,84 +42,60 @@ https://github.com/endomorphosis/ipfs_accelerate/
 
 # IPFS Accelerate Python
 
+Author - Benjamin Barber
+QA - Kevin De Haan
+
 ## API Backends
 
-The package provides flexible API backends for interfacing with different model serving solutions:
-
-### LLVM Backend
-The LLVM backend provides integration with LLVM-based model endpoints. Features:
-- Standard text completion generation
-- Chat completions with structured messages
-- Streaming responses for real-time generation
-- Model management and listing
-
-Example usage:
-```python
-from ipfs_accelerate_py.api_backends import llvm
-
-# Initialize backend
-llvm_backend = llvm()
-
-# Get endpoint handler
-endpoint_url, api_key, handler, queue, batch_size = llvm_backend.init(
-    endpoint_url="http://localhost:8080",
-    model_name="my-model",
-    endpoint_type="chat"  # or "completion", "streaming"
-)
-
-# Use handler for generation
-messages = [
-    {"role": "user", "content": "Hello! How are you?"}
-]
-response = handler(messages)
-```
-
-### Ollama Backend
-The Ollama backend integrates with Ollama's API for local model serving. Features:
-- Text completion generation
-- Chat completions with history
-- Streaming responses
-- Text embeddings
-- Model management and tags
+### OpenVINO Model Server (OVMS) Backend
+The OVMS backend provides integration with OpenVINO Model Server deployments. Features:
+- Any OpenVINO-supported model type (classification, NLP, vision, speech)
+- Both sync and async inference modes 
+- Automatic input handling and tokenization
+- Custom pre/post processing pipelines
+- Batched inference support
+- Multiple precision support (FP32, FP16, INT8)
 
 Example usage:
 ```python
-from ipfs_accelerate_py.api_backends import ollama
+from ipfs_accelerate_py.api_backends import ovms
 
 # Initialize backend
-ollama_backend = ollama()
+ovms_backend = ovms()
 
-# Get endpoint handler
-endpoint_url, api_key, handler, queue, batch_size = ollama_backend.init(
-    endpoint_url="http://localhost:11434",
-    model_name="llama2",
-    endpoint_type="chat"  # or "completion", "streaming", "embedding"
+# For text/NLP models
+endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
+    endpoint_url="http://localhost:9000",
+    model_name="gpt2",
+    context_length=1024
 )
 
-# Use handler for generation
-response = handler("What is machine learning?", 
-    parameters={
-        "temperature": 0.7,
-        "num_predict": 100
-    }
+response = handler("What is quantum computing?")
+
+# For vision models with custom preprocessing
+def preprocess_image(image_data):
+    # Convert image to model input format
+    return processed_data
+
+handler = ovms_backend.create_remote_ovms_endpoint_handler(
+    endpoint_url="http://localhost:9000",
+    model_name="resnet50",
+    preprocessing=preprocess_image
+)
+
+result = handler(image_data, parameters={"raw": True})
+
+# For async high-throughput inference
+async_handler = await ovms_backend.create_async_ovms_endpoint_handler(
+    endpoint_url="http://localhost:9000",
+    model_name="bert-base"
+)
+
+results = await asyncio.gather(
+    async_handler(batch1),
+    async_handler(batch2)
 )
 ```
 
 ### Common Features
-Both backends support:
-- Async and sync request handling
-- Request queueing and batching
-- Multiple response formats
-- Error handling and retries
-- Model endpoint management
-
-The handlers are designed to be interchangeable, following similar patterns for:
-- Text completion
-- Chat completion 
-- Streaming responses
-- Model management
-
-Refer to the API documentation of each backend class for detailed method signatures and parameters.
-
-Author - Benjamin Barber
-QA - Kevin De Haan
+All backends support:

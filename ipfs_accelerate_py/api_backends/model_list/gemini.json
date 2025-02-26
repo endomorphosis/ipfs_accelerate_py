@@ -1,0 +1,9 @@
+[
+    "google/gemini-pro",
+    "google/gemini-pro-vision",
+    "google/gemini-nano",
+    "google/gemini-ultra",
+    "google/embedding-001",
+    "google/embedding-gecko",
+    "google/text-embedding-model-001"
+]

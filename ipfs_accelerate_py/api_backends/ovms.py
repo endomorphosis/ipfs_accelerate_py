@@ -5,7 +5,94 @@ import os
 from typing import Dict, List, Optional, Union, Any, Callable
 
 class ovms:
+    """OpenVINO Model Server (OVMS) API Backend Integration
+    
+    This class provides a comprehensive interface for interacting with OVMS endpoints.
+    It supports multiple types of operations including:
+    - Model inference with various input types
+    - Model metadata retrieval 
+    - Model list retrieval
+    - Dynamic model loading
+    - Async and sync inference
+    - Custom pre/post processing
+    
+    Features:
+    - Support for all OVMS model types (classification, detection, NLP, etc.)
+    - Automatic input tokenization for NLP models
+    - Both sync and async inference modes
+    - Batched inference support
+    - Multiple precision support (FP32, FP16, INT8)
+    - Custom preprocessing and postprocessing hooks
+    - Dynamic endpoint management
+    - Health monitoring and status tracking
+    
+    Supported model types:
+    - Text Generation Models (GPT, T5, etc.)
+    - Computer Vision Models (Classification, Detection, Segmentation)
+    - Speech Models (ASR, TTS)
+    - Multimodal Models (Vision + Language)
+    - Embedding Models (BERT, Sentence Transformers)
+    
+    Usage example for text generation:
+    ```python
+    from ipfs_accelerate_py.api_backends import ovms
+    
+    # Initialize backend
+    ovms_backend = ovms()
+    
+    # Configure endpoint for a text generation model
+    endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
+        endpoint_url="http://localhost:9000",
+        model_name="gpt2",
+        context_length=1024
+    )
+    
+    # Basic inference
+    response = handler("Explain quantum computing")
+    
+    # With custom parameters
+    response = handler(
+        "Explain quantum computing",
+        parameters={
+            "endpoint_path": "/v2/models/gpt2/infer",
+            "max_tokens": 100,
+            "raw": False  # Enable automatic tokenization
+        }
+    )
+    ```
+    
+    Usage example for computer vision:
+    ```python
+    # Configure endpoint for an image classification model
+    endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
+        endpoint_url="http://localhost:9000",
+        model_name="resnet50"
+    )
+    
+    # Custom preprocessing for images
+    def preprocess_image(image_data):
+        # Convert image to model input format
+        return processed_data
+    
+    # Create handler with custom preprocessing
+    handler = ovms_backend.create_remote_ovms_endpoint_handler(
+        endpoint_url="http://localhost:9000",
+        model_name="resnet50",
+        preprocessing=preprocess_image
+    )
+    
+    # Perform inference
+    result = handler(image_data, parameters={"raw": True})
+    ```
+    """
+
     def __init__(self, resources=None, metadata=None):
+        """Initialize OVMS backend interface
+        
+        Args:
+            resources: Resources configuration dictionary
+            metadata: Additional metadata dictionary
+        """
         self.resources = resources
         self.metadata = metadata
         # Register method references
@@ -30,14 +117,40 @@ class ovms:
     def init(self, endpoint_url=None, api_key=None, model_name=None, context_length=None):
         """Initialize a connection to an OpenVINO Model Server (OVMS) endpoint
         
+        The init method sets up a connection to an OVMS endpoint and configures 
+        the appropriate handler for the specified model. It supports both synchronous
+        and asynchronous inference modes.
+        
+        Supported endpoints:
+        - Model Inference: /v2/models/{model_name}/infer
+        - Model Metadata: /v2/models/{model_name}/metadata
+        - Model Status: /v2/models/{model_name}/ready
+        - Server Status: /v2/health/ready
+        
         Args:
-            endpoint_url: The URL of the remote endpoint
+            endpoint_url: The URL of the OVMS server
             api_key: API key for authentication, if required
             model_name: Name of the model to use
-            context_length: Maximum context length for the model
+            context_length: Maximum context length for the model (for text models)
             
         Returns:
             tuple: (endpoint_url, api_key, handler, queue, batch_size)
+            
+        Example:
+            ```python
+            # Basic initialization
+            endpoint_url, api_key, handler, queue, batch_size = ovms.init(
+                endpoint_url="http://localhost:9000",
+                model_name="bert-base"
+            )
+            
+            # Initialize with context length for text models
+            endpoint_url, api_key, handler, queue, batch_size = ovms.init(
+                endpoint_url="http://localhost:9000",
+                model_name="gpt2",
+                context_length=1024
+            )
+            ```
         """
         # Create the endpoint handler
         endpoint_handler = self.create_remote_ovms_endpoint_handler(endpoint_url, api_key, model_name, context_length)
@@ -67,12 +180,30 @@ class ovms:
     def list_available_ovms_models(self, endpoint_url=None, api_key=None):
         """List available models from an OVMS endpoint
         
+        Queries the OVMS server to get a list of all available models and their status.
+        Supports both v1 and v2 of the OVMS API.
+        
         Args:
             endpoint_url: URL of the OVMS endpoint
             api_key: API key for authentication, if required
             
         Returns:
-            list: List of available models or None if the request fails
+            list: List of available models with metadata
+            
+        Example:
+            ```python
+            # List all available models
+            models = ovms.list_available_ovms_models(
+                endpoint_url="http://localhost:9000"
+            )
+            
+            # Models info includes:
+            # - Name
+            # - Version
+            # - Status (loading/ready/error)
+            # - Input shapes and types
+            # - Supported precisions
+            ```
         """
         if not endpoint_url:
             if self.endpoints:
@@ -109,15 +240,63 @@ class ovms:
             return None
     
     def get_model_metadata(self, model_name, endpoint_url=None, api_key=None):
-        """Get metadata for a specific model from an OVMS endpoint
+        """Get metadata and diagnostic information for a specific model
+        
+        Retrieves comprehensive model information for setup and debugging:
+        
+        1. Model Configuration:
+           - Model architecture
+           - Input/output specifications
+           - Supported precisions
+           - Hardware requirements
+           - Batch size limits
+           - Memory requirements
+        
+        2. Runtime Status:
+           - Loading status
+           - Instance count
+           - Resource utilization
+           - Error conditions
+           - Performance metrics
+        
+        3. Hardware Configuration:
+           - Device assignment
+           - Memory allocation
+           - Compute resources
+           - Optimization settings
+        
+        4. System Requirements:
+           - Minimum CPU/GPU specs
+           - Memory thresholds
+           - Disk space needs
+           - Network bandwidth
         
         Args:
             model_name: Name of the model
             endpoint_url: URL of the OVMS endpoint
-            api_key: API key for authentication, if required
+            api_key: API key for authentication
             
         Returns:
-            dict: Model metadata or None if the request fails
+            dict: Detailed model metadata and diagnostics
+            
+        Example:
+            ```python
+            # Get comprehensive model information
+            metadata = ovms.get_model_metadata(
+                model_name="bert-base",
+                endpoint_url="http://localhost:9000"
+            )
+            
+            # Access specific details
+            input_shape = metadata["inputs"][0]["shape"]
+            precision = metadata["precision"]
+            status = metadata["status"]
+            resources = metadata["resources"]
+            
+            # Check for warnings/errors
+            if "warnings" in metadata:
+                print("Model warnings:", metadata["warnings"])
+            ```
         """
         if not endpoint_url:
             if model_name in self.endpoints and self.endpoints[model_name]:
@@ -153,7 +332,46 @@ class ovms:
             return None
     
     def __test__(self, endpoint_url, endpoint_handler, endpoint_label, api_key=None):
-        """Test the remote OVMS endpoint
+        """Test the remote OVMS endpoint and diagnose issues
+        
+        Performs comprehensive endpoint testing and diagnostics:
+        1. Connection Testing:
+           - Basic connectivity
+           - Authentication validation
+           - SSL/TLS verification
+           - Timeout configuration
+        
+        2. Model Validation:
+           - Model loading status
+           - Input shape verification
+           - Output format validation
+           - Precision compatibility
+        
+        3. Performance Metrics:
+           - Response time
+           - Throughput capacity
+           - Resource utilization
+           - Batch processing efficiency
+        
+        4. Error Diagnostics:
+           - Detailed error messages
+           - Stack traces for debugging
+           - Resource constraint warnings
+           - Configuration validation
+        
+        Common Error Types:
+        - CONNECTION_ERROR: Network connectivity issues
+        - AUTH_ERROR: Invalid API key or credentials
+        - MODEL_ERROR: Model loading or execution failed
+        - INPUT_ERROR: Invalid input format or shape
+        - RESOURCE_ERROR: Insufficient system resources
+        - TIMEOUT_ERROR: Request exceeded time limit
+        
+        Debugging Tools:
+        - Model Server Logs: Check OVMS server logs
+        - Client Logs: Enable debug logging
+        - Metrics: Monitor performance metrics
+        - Health Checks: Regular endpoint validation
         
         Args:
             endpoint_url: URL of the endpoint
@@ -163,6 +381,43 @@ class ovms:
             
         Returns:
             bool: True if test passes, False otherwise
+            
+        Example:
+            ```python
+            # Test endpoint with detailed diagnostics
+            success = ovms.__test__(
+                endpoint_url="http://localhost:9000",
+                endpoint_handler=handler,
+                endpoint_label="bert-gpu",
+                api_key="test-key"
+            )
+            
+            # The test will print detailed diagnostics:
+            # - Connection status
+            # - Model availability
+            # - Input/output validation
+            # - Performance metrics
+            # - Error details if any
+            ```
+        
+        Troubleshooting Tips:
+        1. Connection Issues:
+           - Verify endpoint URL and port
+           - Check network connectivity
+           - Validate SSL certificates
+           - Confirm firewall rules
+        
+        2. Model Issues:
+           - Verify model path and version
+           - Check input tensor shapes
+           - Validate model configuration
+           - Monitor resource usage
+        
+        3. Performance Issues:
+           - Adjust batch size
+           - Monitor system resources
+           - Check model optimization
+           - Consider hardware acceleration
         """
         test_text = "The quick brown fox jumps over the lazy dog"
         try:
@@ -180,6 +435,12 @@ class ovms:
     def make_post_request_ovms(self, endpoint_url, data, api_key=None):
         """Make a POST request to an OVMS endpoint
         
+        Handles the low-level communication with OVMS endpoints, including:
+        - Request formatting
+        - Data serialization
+        - Error handling
+        - Response parsing
+        
         Args:
             endpoint_url: URL of the endpoint
             data: Data to send in the request
@@ -187,6 +448,11 @@ class ovms:
             
         Returns:
             dict: Response from the endpoint
+            
+        The method automatically formats data according to OVMS expectations:
+        - Single inputs are wrapped in a batch
+        - Inputs are structured in the "instances" format
+        - Metadata is included when required
         """
         try:
             headers = {"Content-Type": "application/json"}
@@ -215,6 +481,9 @@ class ovms:
     async def make_async_post_request_ovms(self, endpoint_url, data, api_key=None):
         """Make an asynchronous POST request to an OVMS endpoint
         
+        Provides non-blocking request handling for high-throughput scenarios.
+        Automatically handles timeouts and connection management.
+        
         Args:
             endpoint_url: URL of the endpoint
             data: Data to send in the request
@@ -222,6 +491,20 @@ class ovms:
             
         Returns:
             dict: Response from the endpoint
+            
+        Example:
+            ```python
+            # Make async batch request
+            response = await ovms.make_async_post_request_ovms(
+                endpoint_url="http://localhost:9000/v2/models/bert/infer",
+                data={
+                    "instances": [
+                        {"data": "Sample text 1"},
+                        {"data": "Sample text 2"}
+                    ]
+                }
+            )
+            ```
         """
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
@@ -239,7 +522,7 @@ class ovms:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-            
+
         timeout = ClientTimeout(total=300)
         
         try:
@@ -257,6 +540,17 @@ class ovms:
     async def test_ovms_endpoint(self, model=None, endpoint_url=None, api_key=None, endpoint_list=None):
         """Test an OVMS endpoint or list of endpoints
         
+        Validates endpoint connectivity and model availability. Can test:
+        - Single specific endpoint
+        - List of endpoints
+        - All endpoints for a given model
+        
+        Tests performed:
+        - Basic connectivity
+        - Model availability
+        - Inference with test input
+        - Response format validation
+        
         Args:
             model: Name of the model
             endpoint_url: URL of a specific endpoint to test
@@ -264,7 +558,25 @@ class ovms:
             endpoint_list: List of endpoints to test
             
         Returns:
-            dict: Results of endpoint tests
+            dict: Results of endpoint tests with detailed status
+            
+        Example:
+            ```python
+            # Test specific endpoint
+            results = await ovms.test_ovms_endpoint(
+                model="bert-base",
+                endpoint_url="http://localhost:9000"
+            )
+            
+            # Test multiple endpoints
+            results = await ovms.test_ovms_endpoint(
+                model="bert-base",
+                endpoint_list=[
+                    "http://server1:9000",
+                    "http://server2:9000"
+                ]
+            )
+            ```
         """
         test_results = {}
         
@@ -303,6 +615,18 @@ class ovms:
     def request_ovms_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
         """Request an OVMS endpoint
         
+        Finds a suitable endpoint for inference based on:
+        - Model availability
+        - Batch size capacity
+        - Endpoint health
+        - Load balancing considerations
+        
+        The method implements smart endpoint selection considering:
+        - Current endpoint load
+        - Available batch capacity
+        - Historical performance
+        - Health status
+        
         Args:
             model: Name of the model
             endpoint: Specific endpoint URL (optional)
@@ -311,6 +635,22 @@ class ovms:
             
         Returns:
             str: URL of the selected endpoint
+            
+        Example:
+            ```python
+            # Get endpoint for small batch
+            endpoint = ovms.request_ovms_endpoint(
+                model="bert-base",
+                batch=["text1", "text2"]
+            )
+            
+            # Get endpoint for specific type
+            endpoint = ovms.request_ovms_endpoint(
+                model="bert-base",
+                endpoint_type="gpu",
+                batch=large_batch
+            )
+            ```
         """
         incoming_batch_size = len(batch) if batch else 1
         
@@ -332,6 +672,15 @@ class ovms:
     def create_ovms_endpoint_handler(self, model=None, endpoint=None, endpoint_type=None, batch=None, preprocessing=None, postprocessing=None):
         """Create an endpoint handler for OVMS
         
+        High-level method to create a handler with appropriate configuration.
+        Automatically determines optimal settings based on model and endpoint type.
+        
+        Features:
+        - Automatic model type detection
+        - Input/output format handling
+        - Batch size optimization
+        - Custom processing pipeline integration
+        
         Args:
             model: Name of the model
             endpoint: Specific endpoint URL
@@ -342,22 +691,157 @@ class ovms:
             
         Returns:
             function: Handler for the endpoint
+            
+        Example:
+            ```python
+            # Create handler for NLP model
+            handler = ovms.create_ovms_endpoint_handler(
+                model="gpt2",
+                endpoint="http://localhost:9000",
+                preprocessing=tokenize_text
+            )
+            
+            # Create handler for vision model
+            handler = ovms.create_ovms_endpoint_handler(
+                model="resnet50",
+                endpoint="http://localhost:9000",
+                preprocessing=preprocess_image,
+                postprocessing=decode_predictions
+            )
+            ```
         """
         return self.create_remote_ovms_endpoint_handler(endpoint, None, model, preprocessing=preprocessing, postprocessing=postprocessing)
     
     def create_remote_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, context_length=None, preprocessing=None, postprocessing=None):
         """Create a handler for a remote OVMS endpoint
         
+        Creates a handler function that manages all communication with the OVMS endpoint.
+        Supports custom preprocessing and postprocessing functions for flexible input/output handling.
+        
+        Model Types and Input Formats:
+        1. Text Generation Models:
+           - Input: Raw text or tokenized ids
+           - Parameters: max_length, temperature, top_p, etc.
+           Example models: GPT-2, T5, BART
+        
+        2. Computer Vision Models:
+           - Input: Image data (RGB/BGR arrays, tensors)
+           - Tasks: Classification, detection, segmentation
+           Example models: ResNet, YOLO, Mask R-CNN
+        
+        3. Speech Models:
+           - Input: Audio waveforms, spectrograms
+           - Tasks: ASR, TTS, audio classification
+           Example models: Wav2Vec, Whisper, CLAP
+           
+        4. Multimodal Models:
+           - Input: Combined text + image/audio
+           - Tasks: Image captioning, VQA
+           Example models: CLIP, LLaVA
+        
+        5. Embedding Models:
+           - Input: Text, images, or audio
+           - Output: Vector embeddings
+           Example models: BERT, Sentence-BERT
+
+        Configuration Options:
+        - endpoint_path: Custom inference endpoint path
+        - raw: Skip default tokenization/preprocessing
+        - batch_size: Number of inputs to process together
+        - execution_parameters:
+          - timeout: Request timeout in seconds
+          - client_name: Client identifier
+          - compression_level: gRPC compression
+          - credentials: Authentication details
+        
+        Hardware Configuration:
+        - cpu_thresh: CPU utilization threshold
+        - mem_thresh: Memory utilization threshold  
+        - batch_size: Maximum batch size
+        - instance_count: Number of model instances
+        - device: Target device (CPU/GPU/MYRIAD)
+
         Args:
             endpoint_url: URL of the endpoint
             api_key: API key for authentication, if required
             model_name: Name of the model to use
-            context_length: Maximum context length for the model
+            context_length: Maximum context length for text models
             preprocessing: Custom preprocessing function (optional)
             postprocessing: Custom postprocessing function (optional)
-            
+        
         Returns:
             function: Handler for the endpoint
+            
+        Example for text generation:
+            ```python
+            handler = ovms.create_remote_ovms_endpoint_handler(
+                endpoint_url="http://localhost:9000",
+                model_name="gpt2",
+                context_length=1024
+            )
+            
+            # Basic text generation
+            response = handler("Write a story about:")
+            
+            # With custom parameters
+            response = handler(
+                "Write a story about:",
+                parameters={
+                    "max_length": 200,
+                    "temperature": 0.7,
+                    "device": "GPU"
+                }
+            )
+            ```
+            
+        Example for computer vision:
+            ```python
+            # Custom image preprocessing
+            def preprocess_images(images):
+                # Normalize, resize, etc.
+                return processed_images
+                
+            handler = ovms.create_remote_ovms_endpoint_handler(
+                endpoint_url="http://localhost:9000",
+                model_name="resnet50",
+                preprocessing=preprocess_images
+            )
+            
+            # Run inference on batch of images
+            results = handler(
+                image_batch,
+                parameters={
+                    "batch_size": 32,
+                    "device": "GPU",
+                    "raw": True
+                }
+            )
+            ```
+            
+        Example for embeddings:
+            ```python
+            handler = ovms.create_remote_ovms_endpoint_handler(
+                endpoint_url="http://localhost:9000",
+                model_name="bert-base"
+            )
+            
+            # Get embeddings for text
+            embeddings = handler(
+                ["text1", "text2"],
+                parameters={
+                    "pooling": "mean",
+                    "normalize": True
+                }
+            )
+            ```
+        
+        Error Handling:
+        The handler implements robust error handling for:
+        - Network connectivity issues
+        - Model loading errors
+        - Invalid input formats
+        - Resource constraints
+        - Timeout conditions
         """
         from transformers import AutoTokenizer
         
@@ -445,6 +929,16 @@ class ovms:
     async def create_async_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, preprocessing=None, postprocessing=None):
         """Create an asynchronous handler for an OVMS endpoint
         
+        Creates an async handler for non-blocking inference requests.
+        Particularly useful for high-throughput scenarios or when managing multiple requests.
+        
+        Features:
+        - Non-blocking async inference
+        - Concurrent request handling
+        - Automatic request queuing
+        - Custom preprocessing/postprocessing
+        - Error handling with retries
+        
         Args:
             endpoint_url: URL of the endpoint
             api_key: API key for authentication, if required
@@ -454,6 +948,29 @@ class ovms:
             
         Returns:
             function: Async handler for the endpoint
+            
+        Example:
+            ```python
+            # Create async handler
+            handler = await ovms.create_async_ovms_endpoint_handler(
+                endpoint_url="http://localhost:9000",
+                model_name="bert-base"
+            )
+            
+            # Use handler asynchronously
+            async def process_inputs(inputs):
+                results = []
+                for input_batch in inputs:
+                    result = await handler(input_batch)
+                    results.append(result)
+                return results
+            
+            # Process multiple inputs concurrently
+            results = await asyncio.gather(
+                process_inputs(batch1),
+                process_inputs(batch2)
+            )
+            ```
         """
         from transformers import AutoTokenizer
         

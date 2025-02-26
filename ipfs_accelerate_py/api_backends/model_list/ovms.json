@@ -1,0 +1,21 @@
+[
+    "openvino/bert-base-uncased",
+    "openvino/roberta-base",
+    "openvino/distilbert-base-uncased",
+    "openvino/mobilenet-v3-large",
+    "openvino/resnet50",
+    "openvino/yolov5",
+    "openvino/faster-rcnn",
+    "openvino/deeplabv3",
+    "openvino/wav2vec2-base",
+    "openvino/whisper-tiny",
+    "openvino/whisper-base",
+    "openvino/gpt2",
+    "openvino/opt-350m",
+    "openvino/bloom-560m",
+    "openvino/stable-diffusion-v1-5",
+    "openvino/llava-v1.5-7b",
+    "openvino/clip-vit-base-patch32",
+    "openvino/t5-small",
+    "openvino/mt5-small"
+]
