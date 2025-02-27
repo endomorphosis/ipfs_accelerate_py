@@ -7,8 +7,7 @@
   "cpu_text_embedding": "Success",
   "cpu_similarity": "Success",
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
+  "openvino_tests": "Error: list index out of range",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
   "qualcomm_handler": "Success"

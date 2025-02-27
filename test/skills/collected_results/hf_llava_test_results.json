@@ -1,5 +1,9 @@
 {
   "init": "Success",
+  "transform": "Success",
+  "preprocess": "Success",
+  "load_image_file": "Success",
+  "load_image_url": "Success",
   "cpu_init": "Success",
   "cpu_text_only": "Success",
   "cpu_image_text": "Success",
