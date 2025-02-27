@@ -207,29 +207,43 @@ class test_ollama:
             test_results = {"test_error": str(e)}
         
         # Create directories if they don't exist
-        expected_dir = os.path.join(os.path.dirname(__file__), 'expected_results')
-        collected_dir = os.path.join(os.path.dirname(__file__), 'collected_results')
-        os.makedirs(expected_dir, exist_ok=True)
-        os.makedirs(collected_dir, exist_ok=True)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        expected_dir = os.path.join(base_dir, 'expected_results')
+        collected_dir = os.path.join(base_dir, 'collected_results')
+        
+        # Create directories with appropriate permissions
+        for directory in [expected_dir, collected_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory, mode=0o755, exist_ok=True)
         
         # Save collected results
-        with open(os.path.join(collected_dir, 'ollama_test_results.json'), 'w') as f:
-            json.dump(test_results, f, indent=2)
+        results_file = os.path.join(collected_dir, 'ollama_test_results.json')
+        try:
+            with open(results_file, 'w') as f:
+                json.dump(test_results, f, indent=2)
+        except Exception as e:
+            print(f"Error saving results to {results_file}: {str(e)}")
             
         # Compare with expected results if they exist
         expected_file = os.path.join(expected_dir, 'ollama_test_results.json')
         if os.path.exists(expected_file):
-            with open(expected_file, 'r') as f:
-                expected_results = json.load(f)
-                if expected_results != test_results:
-                    print("Test results differ from expected results!")
-                    print(f"Expected: {expected_results}")
-                    print(f"Got: {test_results}")
+            try:
+                with open(expected_file, 'r') as f:
+                    expected_results = json.load(f)
+                    if expected_results != test_results:
+                        print("Test results differ from expected results!")
+                        print(f"Expected: {json.dumps(expected_results, indent=2)}")
+                        print(f"Got: {json.dumps(test_results, indent=2)}")
+            except Exception as e:
+                print(f"Error comparing results with {expected_file}: {str(e)}")
         else:
             # Create expected results file if it doesn't exist
-            with open(expected_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-                print(f"Created new expected results file: {expected_file}")
+            try:
+                with open(expected_file, 'w') as f:
+                    json.dump(test_results, f, indent=2)
+                    print(f"Created new expected results file: {expected_file}")
+            except Exception as e:
+                print(f"Error creating {expected_file}: {str(e)}")
 
         return test_results
 
