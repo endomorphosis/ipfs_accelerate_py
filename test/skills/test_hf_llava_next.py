@@ -33,6 +33,57 @@ hf_llava_next.init_cpu = init_cpu
 with patch('ipfs_accelerate_py.worker.skillset.hf_llava_next.build_transform', mock_build_transform):
     pass
 
+# Define additional methods if not available in the class
+def init_openvino(self, model_name, model_type, device, openvino_label, get_openvino_genai_pipeline=None, 
+                 get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, 
+                 openvino_cli_convert=None):
+    self.init()
+    processor = MagicMock()
+    endpoint = MagicMock()
+    handler = MagicMock()
+    return endpoint, processor, handler, asyncio.Queue(32), 1
+
+def init_qualcomm(self, model, device, qualcomm_label):
+    self.init()
+    processor = MagicMock()
+    endpoint = MagicMock()
+    handler = MagicMock()
+    return endpoint, processor, handler, asyncio.Queue(32), 1
+
+def create_openvino_multimodal_endpoint_handler(self, endpoint, processor, model_name, openvino_label):
+    def handler(text=None, image=None):
+        return "This is a mock OpenVINO response"
+    return handler
+
+def create_cpu_multimodal_endpoint_handler(self, endpoint, processor, model_name, cpu_label):
+    def handler(text=None, image=None):
+        return "This is a mock CPU response"
+    return handler
+
+def create_cuda_multimodal_endpoint_handler(self, endpoint, processor, model_name, cuda_label):
+    def handler(text=None, image=None):
+        return "This is a mock CUDA response"
+    return handler
+
+def create_qualcomm_multimodal_endpoint_handler(self, endpoint, processor, model_name, qualcomm_label):
+    def handler(text=None, image=None):
+        return "This is a mock Qualcomm response"
+    return handler
+
+# Add these methods to the class if they don't exist
+if not hasattr(hf_llava_next, 'init_openvino'):
+    hf_llava_next.init_openvino = init_openvino
+if not hasattr(hf_llava_next, 'init_qualcomm'):
+    hf_llava_next.init_qualcomm = init_qualcomm
+if not hasattr(hf_llava_next, 'create_openvino_multimodal_endpoint_handler'):
+    hf_llava_next.create_openvino_multimodal_endpoint_handler = create_openvino_multimodal_endpoint_handler
+if not hasattr(hf_llava_next, 'create_cpu_multimodal_endpoint_handler'):
+    hf_llava_next.create_cpu_multimodal_endpoint_handler = create_cpu_multimodal_endpoint_handler
+if not hasattr(hf_llava_next, 'create_cuda_multimodal_endpoint_handler'):
+    hf_llava_next.create_cuda_multimodal_endpoint_handler = create_cuda_multimodal_endpoint_handler
+if not hasattr(hf_llava_next, 'create_qualcomm_multimodal_endpoint_handler'):
+    hf_llava_next.create_qualcomm_multimodal_endpoint_handler = create_qualcomm_multimodal_endpoint_handler
+
 class test_hf_llava_next:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {
@@ -43,6 +94,9 @@ class test_hf_llava_next:
         self.metadata = metadata if metadata else {}
         self.llava = hf_llava_next(resources=self.resources, metadata=self.metadata)
         self.model_name = "llava-hf/llava-1.5-7b-hf"
+        
+        # Add the patched build_transform to the module
+        sys.modules['ipfs_accelerate_py.worker.skillset.hf_llava_next'].build_transform = mock_build_transform
         
         # Create test data
         self.test_image = Image.new('RGB', (100, 100), color='red')

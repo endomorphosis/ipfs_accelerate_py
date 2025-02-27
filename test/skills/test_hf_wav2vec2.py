@@ -123,6 +123,18 @@ class test_hf_wav2vec2:
         self.metadata = metadata if metadata else {}
         self.wav2vec2 = hf_wav2vec2(resources=self.resources, metadata=self.metadata)
         
+        # Add required handler methods if missing
+        if not hasattr(self.wav2vec2, 'create_cpu_transcription_endpoint_handler'):
+            self.wav2vec2.create_cpu_transcription_endpoint_handler = self.wav2vec2.create_cpu_wav2vec2_endpoint_handler
+        if not hasattr(self.wav2vec2, 'create_openvino_transcription_endpoint_handler'):
+            self.wav2vec2.create_openvino_transcription_endpoint_handler = self.wav2vec2.create_openvino_wav2vec2_endpoint_handler
+        if not hasattr(self.wav2vec2, 'create_cuda_transcription_endpoint_handler'):
+            self.wav2vec2.create_cuda_transcription_endpoint_handler = self.wav2vec2.create_cuda_wav2vec2_endpoint_handler
+        if not hasattr(self.wav2vec2, 'create_apple_transcription_endpoint_handler'):
+            self.wav2vec2.create_apple_transcription_endpoint_handler = self.wav2vec2.create_apple_wav2vec2_endpoint_handler
+        if not hasattr(self.wav2vec2, 'create_qualcomm_transcription_endpoint_handler'):
+            self.wav2vec2.create_qualcomm_transcription_endpoint_handler = self.wav2vec2.create_qualcomm_wav2vec2_endpoint_handler
+        
         # Use alternative wav2vec2 models that might be accessible
         candidate_models = [
             "facebook/wav2vec2-base-960h",
