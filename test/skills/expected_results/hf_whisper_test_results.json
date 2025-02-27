@@ -1,0 +1,12 @@
+{
+  "init": "Success",
+  "load_audio": "Success",
+  "audio_format": "Shape: (251062,), SR: 16000",
+  "cpu_error": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
+  "cpu_init": "Success (Mock)",
+  "cpu_handler": "Failed CPU handler",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_tests": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`"
+}

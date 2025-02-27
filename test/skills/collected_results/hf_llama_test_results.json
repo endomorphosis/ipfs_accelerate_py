@@ -2,9 +2,23 @@
   "init": "Success",
   "cpu_init": "Success",
   "cpu_handler": "Success",
+  "cpu_output": "Valid",
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "openvino_init": "Success",
+  "openvino_handler": "Success",
+  "openvino_output": "Valid",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
-  "qualcomm_handler": "Success"
+  "qualcomm_handler": "Success",
+  "qualcomm_output": "Valid",
+  "metadata": {
+    "timestamp": 1740626394.7027977,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_model": "facebook/opt-125m"
+  }
 }

@@ -1,8 +1,14 @@
 {
   "init": "Success",
-  "cpu_tests": "Error: cannot unpack non-iterable NoneType object",
+  "cpu_init": "Success",
+  "cpu_standard": "Success",
+  "cpu_config": "Success",
+  "cpu_batch": "Success",
   "cuda_tests": "CUDA not available",
   "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_tests": "Error: 'hf_lm' object has no attribute 'init_qualcomm'"
+  "qualcomm_init": "Success",
+  "qualcomm_handler": "Success",
+  "qualcomm_config": "Success",
+  "qualcomm_batch": "Success"
 }
