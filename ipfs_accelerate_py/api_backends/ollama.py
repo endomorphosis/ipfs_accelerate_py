@@ -46,12 +46,17 @@ class ollama:
         self.request_ollama_endpoint = self.request_ollama_endpoint
         self.test_ollama_endpoint = self.test_ollama_endpoint
         self.make_post_request_ollama = self.make_post_request_ollama
+        self.make_stream_request_ollama = self.make_stream_request_ollama
         self.make_async_post_request_ollama = self.make_async_post_request_ollama
         self.create_ollama_endpoint_handler = self.create_ollama_endpoint_handler
         self.create_ollama_chat_endpoint_handler = self.create_ollama_chat_endpoint_handler
         self.create_ollama_streaming_endpoint_handler = self.create_ollama_streaming_endpoint_handler
         self.create_ollama_embedding_endpoint_handler = self.create_ollama_embedding_endpoint_handler
         self.list_available_ollama_models = self.list_available_ollama_models
+        self.list_models = self.list_models
+        self.pull_model = self.pull_model
+        self.chat = self.chat
+        self.stream_chat = self.stream_chat
         self.init = self.init
         self.__test__ = self.__test__
         # Add endpoints tracking
@@ -236,20 +241,155 @@ class ollama:
             
         Returns:
             dict: Response from the endpoint
+            
+        Raises:
+            ConnectionError: If connection to endpoint fails
+            ValueError: If endpoint returns an error status code
+            RuntimeError: If response cannot be parsed as JSON
         """
         try:
             headers = {"Content-Type": "application/json"}
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
             
-            response = requests.post(endpoint_url, headers=headers, json=data)
-            response.raise_for_status()
+            try:
+                response = requests.post(endpoint_url, headers=headers, json=data)
+            except requests.ConnectionError as e:
+                print(f"Connection error to Ollama endpoint: {e}")
+                raise ConnectionError(f"Failed to connect to Ollama endpoint: {e}")
+                
+            # Handle specific error status codes
+            if response.status_code == 404:
+                error_msg = f"Resource not found: {endpoint_url}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Resource not found: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            if response.status_code == 500:
+                error_msg = "Internal server error from Ollama endpoint"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Server error: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            if response.status_code != 200:
+                error_msg = f"Unexpected status code: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Error {response.status_code}: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
             
-            return response.json()
+            try:
+                return response.json()
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse JSON response: {e}")
+                raise RuntimeError(f"Invalid JSON response from Ollama: {e}")
         
+        except (ConnectionError, ValueError, RuntimeError):
+            # Re-raise these specific exceptions
+            raise
         except Exception as e:
             print(f"Error making request to Ollama endpoint: {e}")
-            return None
+            raise ValueError(f"Ollama API request failed: {str(e)}")
+            
+    def make_stream_request_ollama(self, endpoint_url, data, api_key=None):
+        """Make a streaming request to an Ollama endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint
+            data: Data to send in the request
+            api_key: API key for authentication, if required
+            
+        Returns:
+            generator: A generator yielding response chunks
+            
+        Raises:
+            ConnectionError: If connection to endpoint fails
+            ValueError: If endpoint returns an error status code
+        """
+        try:
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            # Ensure streaming is enabled
+            if not data.get("stream", False):
+                data["stream"] = True
+                
+            try:
+                response = requests.post(endpoint_url, headers=headers, json=data, stream=True)
+            except requests.ConnectionError as e:
+                print(f"Connection error to Ollama streaming endpoint: {e}")
+                raise ConnectionError(f"Failed to connect to Ollama streaming endpoint: {e}")
+                
+            # Handle error status codes
+            if response.status_code == 404:
+                error_msg = f"Resource not found: {endpoint_url}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Resource not found: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            if response.status_code == 500:
+                error_msg = "Internal server error from Ollama endpoint"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Server error: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            if response.status_code != 200:
+                error_msg = f"Unexpected status code: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"Error {response.status_code}: {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+            
+            # Process the streaming response
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        chunk = json.loads(line)
+                        yield chunk
+                        
+                        # Some Ollama endpoints signal completion with a "done" flag
+                        if isinstance(chunk, dict) and chunk.get("done", False):
+                            break
+                    except json.JSONDecodeError as e:
+                        print(f"Warning: Failed to parse streaming JSON chunk: {e}")
+                        # Yield raw text as a fallback
+                        yield {"text": line.decode("utf-8", errors="replace"), "parse_error": True}
+        
+        except (ConnectionError, ValueError):
+            # Re-raise these specific exceptions
+            raise
+        except Exception as e:
+            print(f"Error in Ollama streaming request: {e}")
+            yield {"error": str(e)}
     
     async def make_async_post_request_ollama(self, endpoint_url, data, api_key=None):
         """Make an asynchronous POST request to a remote Ollama endpoint
@@ -874,4 +1014,185 @@ class ollama:
                 return None
         
         return handler
+        
+    def list_models(self, endpoint_url=None, api_key=None):
+        """List available models from an Ollama endpoint
+        
+        Alias for list_available_ollama_models for API consistency
+        
+        Args:
+            endpoint_url: URL of the Ollama endpoint
+            api_key: API key for authentication, if required
+            
+        Returns:
+            list: List of available models or None if request fails
+        """
+        return self.list_available_ollama_models(endpoint_url, api_key)
+        
+    def pull_model(self, model_name, endpoint_url=None, api_key=None):
+        """Pull a model to an Ollama endpoint
+        
+        Args:
+            model_name: Name of the model to pull (e.g., "llama2", "mistral")
+            endpoint_url: URL of the Ollama endpoint
+            api_key: API key for authentication, if required
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not endpoint_url:
+            if self.endpoints:
+                # Use the first available endpoint
+                first_model = next(iter(self.endpoints))
+                endpoint_url = self.endpoints[first_model][0]
+            else:
+                print("No endpoint URLs available")
+                return False
+                
+        try:
+            # Ollama uses /api/pull endpoint to download models
+            pull_endpoint = f"{endpoint_url.rstrip('/')}/api/pull"
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            
+            data = {"name": model_name}
+            
+            response = requests.post(pull_endpoint, headers=headers, json=data)
+            response.raise_for_status()
+            
+            # Note: The actual pull operation is asynchronous in Ollama
+            # This just starts the pull and returns success
+            return True
+            
+        except Exception as e:
+            print(f"Failed to pull Ollama model: {e}")
+            return False
+            
+    def chat(self, model_name, messages, parameters=None, endpoint_url=None, api_key=None):
+        """Send a chat request to an Ollama model
+        
+        Args:
+            model_name: Name of the model to use
+            messages: List of message dictionaries with "role" and "content" keys
+            parameters: Optional parameters dictionary
+            endpoint_url: URL of the Ollama endpoint (optional)
+            api_key: API key for authentication (optional)
+            
+        Returns:
+            dict: Response from the Ollama API
+        """
+        if not endpoint_url:
+            endpoint_url = self.request_ollama_endpoint(model_name, endpoint_type="chat")
+            if not endpoint_url:
+                print(f"No chat endpoint available for model {model_name}")
+                return None
+                
+        try:
+            # Create chat endpoint URL
+            chat_endpoint = f"{endpoint_url.rstrip('/')}/api/chat"
+            
+            # Prepare default options
+            default_options = {
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "num_predict": 128
+            }
+            
+            # Update with any provided parameters
+            options = default_options.copy()
+            if parameters:
+                if "options" in parameters:
+                    options.update(parameters["options"])
+                
+                # Map OpenAI-style parameters to Ollama options
+                if "max_tokens" in parameters:
+                    options["num_predict"] = parameters["max_tokens"]
+                if "temperature" in parameters:
+                    options["temperature"] = parameters["temperature"]
+                if "top_p" in parameters:
+                    options["top_p"] = parameters["top_p"]
+                if "stop" in parameters and parameters["stop"]:
+                    options["stop"] = parameters["stop"]
+            
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "messages": messages,
+                "options": options
+            }
+            
+            # Make the request
+            response = self.make_post_request_ollama(chat_endpoint, data, api_key)
+            
+            return response
+            
+        except Exception as e:
+            print(f"Error in Ollama chat: {e}")
+            return None
+            
+    def stream_chat(self, model_name, messages, parameters=None, endpoint_url=None, api_key=None):
+        """Send a streaming chat request to an Ollama model
+        
+        Args:
+            model_name: Name of the model to use
+            messages: List of message dictionaries with "role" and "content" keys
+            parameters: Optional parameters dictionary
+            endpoint_url: URL of the Ollama endpoint (optional)
+            api_key: API key for authentication (optional)
+            
+        Returns:
+            generator: A generator yielding response chunks
+        """
+        if not endpoint_url:
+            endpoint_url = self.request_ollama_endpoint(model_name, endpoint_type="streaming")
+            if not endpoint_url:
+                print(f"No streaming endpoint available for model {model_name}")
+                yield {"error": f"No streaming endpoint available for model {model_name}"}
+                return
+                
+        try:
+            # Create chat endpoint URL
+            chat_endpoint = f"{endpoint_url.rstrip('/')}/api/chat"
+            
+            # Prepare default options
+            default_options = {
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "num_predict": 128
+            }
+            
+            # Update with any provided parameters
+            options = default_options.copy()
+            if parameters:
+                if "options" in parameters:
+                    options.update(parameters["options"])
+                
+                # Map OpenAI-style parameters to Ollama options
+                if "max_tokens" in parameters:
+                    options["num_predict"] = parameters["max_tokens"]
+                if "temperature" in parameters:
+                    options["temperature"] = parameters["temperature"]
+                if "top_p" in parameters:
+                    options["top_p"] = parameters["top_p"]
+                if "stop" in parameters and parameters["stop"]:
+                    options["stop"] = parameters["stop"]
+            
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "messages": messages,
+                "options": options,
+                "stream": True
+            }
+            
+            # Make the streaming request
+            for chunk in self.make_stream_request_ollama(chat_endpoint, data, api_key):
+                yield chunk
+                
+        except Exception as e:
+            print(f"Error in Ollama streaming chat: {e}")
+            yield {"error": str(e)}
 
