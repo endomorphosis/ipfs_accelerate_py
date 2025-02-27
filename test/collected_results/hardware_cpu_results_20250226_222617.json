@@ -1,0 +1,139 @@
+{
+  "test_default_embed": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_single": "Success",
+    "cpu_single_shape": [
+      1,
+      384
+    ],
+    "cpu_single_type": "torch.float32",
+    "cpu_batch": "Success",
+    "cpu_batch_shape": [
+      2,
+      384
+    ],
+    "cpu_similarity": "Success",
+    "cpu_similarity_in_range": true,
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Failed Qualcomm initialization",
+    "qualcomm_handler": "Failed Qualcomm handler"
+  },
+  "test_default_lm": "'transformers'",
+  "test_hf_bert": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success",
+    "cpu_embedding_shape": [
+      1,
+      768
+    ],
+    "cpu_embedding_type": "torch.float32",
+    "cuda_tests": "CUDA not available",
+    "openvino_init": "Success",
+    "openvino_handler": "Success",
+    "openvino_embedding_shape": [
+      1,
+      768
+    ],
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_tests": "Error: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+  },
+  "test_hf_clap": {
+    "init": "Success",
+    "audio_utils": "Error: name 'load_audio' is not defined",
+    "cpu_init": "Failed CPU initialization",
+    "cpu_tests": "Error: name 'tokenizer' is not defined",
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_tests": "Error: name 'tokenizer' is not defined"
+  },
+  "test_hf_clip": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_similarity": "Success",
+    "cpu_similarity_shape": [
+      1,
+      1
+    ],
+    "cpu_similarity_range": [
+      -0.2,
+      1.0
+    ],
+    "cpu_image_embedding": "Success",
+    "cpu_image_embedding_shape": [
+      1,
+      512
+    ],
+    "cpu_text_embedding": "Success",
+    "cpu_text_embedding_shape": [
+      1,
+      512
+    ],
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_tests": "Error: name 'processor' is not defined"
+  },
+  "test_hf_llama": "'transformers'",
+  "test_hf_llava": {
+    "init": "Success",
+    "utility_tests": "Error: name 'build_transform' is not defined",
+    "cpu_tests": "Error: not enough values to unpack (expected 2, got 0)",
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_handler": "Success"
+  },
+  "test_hf_llava_next": {
+    "init": "Success",
+    "utility_tests": "Error: name 'build_transform' is not defined",
+    "cpu_init": "Success",
+    "cpu_tests": "Error: 'hf_llava_next' object has no attribute 'create_cpu_multimodal_endpoint_handler'",
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_tests": "Error: 'hf_llava_next' object has no attribute 'init_qualcomm'"
+  },
+  "test_hf_t5": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success",
+    "cpu_output": "Example generated text from T5",
+    "cpu_output_length": 30,
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_handler": "Success"
+  },
+  "test_hf_wav2vec2": {
+    "init": "Success",
+    "audio_utils": "Error: name 'load_audio' is not defined",
+    "cpu_init": "Failed CPU initialization",
+    "cpu_tests": "Error: 'hf_wav2vec2' object has no attribute 'create_cpu_transcription_endpoint_handler'",
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_tests": "Error: 'hf_wav2vec2' object has no attribute 'create_qualcomm_transcription_endpoint_handler'"
+  },
+  "test_hf_whisper": "'transformers'",
+  "test_hf_xclip": {
+    "init": "Success",
+    "video_utils": "Error: name 'load_video_frames' is not defined",
+    "cpu_tests": "Error: module transformers has no attribute AutoModelForVideoTextRetrieval",
+    "cuda_tests": "CUDA not available",
+    "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success",
+    "qualcomm_handler": "Success"
+  }
+}

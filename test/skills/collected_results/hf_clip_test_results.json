@@ -21,8 +21,15 @@
     512
   ],
   "cuda_tests": "CUDA not available",
+<<<<<<< HEAD
   "openvino_tests": "Error in OpenVINO utils: list index out of range",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success"
+=======
+  "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_tests": "Error: name 'processor' is not defined"
+>>>>>>> refs/remotes/origin/main
 }

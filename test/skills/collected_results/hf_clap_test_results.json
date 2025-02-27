@@ -1,10 +1,14 @@
 {
   "init": "Success",
   "audio_utils": "Error: name 'load_audio' is not defined",
-  "cpu_init": "Success",
+  "cpu_init": "Failed CPU initialization",
   "cpu_tests": "Error: name 'tokenizer' is not defined",
   "cuda_tests": "CUDA not available",
+<<<<<<< HEAD
   "openvino_tests": "Error: list index out of range",
+=======
+  "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+>>>>>>> refs/remotes/origin/main
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
   "qualcomm_tests": "Error: name 'tokenizer' is not defined"

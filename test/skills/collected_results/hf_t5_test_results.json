@@ -5,8 +5,12 @@
   "cpu_output": "Example generated text from T5",
   "cpu_output_length": 30,
   "cuda_tests": "CUDA not available",
+<<<<<<< HEAD
   "openvino_tests": "Error: t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
+=======
+  "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+>>>>>>> refs/remotes/origin/main
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_init": "Success",
   "qualcomm_handler": "Success"
 }

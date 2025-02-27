@@ -15,8 +15,12 @@
   "cpu_similarity": "Success",
   "cpu_similarity_in_range": true,
   "cuda_tests": "CUDA not available",
+<<<<<<< HEAD
   "openvino_init": "Success",
   "openvino_handler": "Success",
+=======
+  "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
+>>>>>>> refs/remotes/origin/main
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Failed Qualcomm handler"
