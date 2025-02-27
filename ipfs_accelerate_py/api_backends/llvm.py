@@ -218,20 +218,47 @@ class llvm:
             
         Returns:
             dict: Response from the endpoint
+            
+        Raises:
+            ConnectionError: If connection to endpoint fails
+            ValueError: If endpoint returns an error code
+            RuntimeError: If response cannot be parsed as JSON
         """
         try:
             headers = {"Content-Type": "application/json"}
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
             
-            response = requests.post(endpoint_url, headers=headers, json=data)
-            response.raise_for_status()
+            try:
+                response = requests.post(endpoint_url, headers=headers, json=data)
+            except requests.ConnectionError as e:
+                print(f"Connection error to LLVM endpoint: {e}")
+                raise ConnectionError(f"Failed to connect to LLVM endpoint: {e}")
             
-            return response.json()
+            # Handle specific error status codes
+            if response.status_code >= 400:
+                error_msg = f"LLVM API error: HTTP {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"{error_msg} - {error_data['error']}"
+                except:
+                    pass
+                print(error_msg)
+                raise ValueError(error_msg)
+            
+            try:
+                return response.json()
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse JSON response: {e}")
+                raise RuntimeError(f"Invalid JSON response from LLVM: {e}")
         
+        except (ConnectionError, ValueError, RuntimeError):
+            # Re-raise these specific exceptions
+            raise
         except Exception as e:
             print(f"Error making request to LLVM endpoint: {e}")
-            return None
+            raise ValueError(f"LLVM API request failed: {str(e)}")
     
     async def make_async_post_request_llvm(self, endpoint_url, data, api_key=None):
         """Make an asynchronous POST request to a remote LLVM endpoint
@@ -634,6 +661,162 @@ class llvm:
         
         return handler
     
+    def format_request(self, handler, input_data, **kwargs):
+        """Format a request for the LLVM inference API
+        
+        Args:
+            handler: The endpoint handler function
+            input_data: The input data to process (string, list, or dict)
+            **kwargs: Additional parameters for inference
+            
+        Returns:
+            Any: The response from the handler
+        """
+        try:
+            # Prepare the parameters
+            parameters = {}
+            
+            # Extract inference parameters from kwargs
+            for param in ['max_tokens', 'temperature', 'top_p', 'top_k', 
+                         'repetition_penalty', 'stop', 'batch_size',
+                         'precision', 'seed']:
+                if param in kwargs:
+                    parameters[param] = kwargs[param]
+            
+            # Format the request data based on input type
+            if isinstance(input_data, str):
+                # Simple text input
+                data = {
+                    "input": input_data
+                }
+                if parameters:
+                    data["parameters"] = parameters
+                    
+            elif isinstance(input_data, list):
+                # Batch input
+                if all(isinstance(item, str) for item in input_data):
+                    data = {
+                        "inputs": input_data
+                    }
+                    if parameters:
+                        data["parameters"] = parameters
+                else:
+                    # List of complex objects, pass as is
+                    data = input_data
+                    
+            elif isinstance(input_data, dict):
+                # Dictionary input, use as is
+                data = input_data
+                
+                # Add parameters if they don't exist
+                if parameters and "parameters" not in data:
+                    data["parameters"] = parameters
+                elif parameters and "parameters" in data:
+                    # Merge parameters
+                    data["parameters"].update(parameters)
+            else:
+                # Unknown input type
+                raise ValueError(f"Unsupported input type: {type(input_data)}")
+                
+            # Call the handler with the formatted data
+            return handler(data)
+            
+        except Exception as e:
+            print(f"Error formatting LLVM request: {e}")
+            return None
+            
+    def process_batch(self, inputs, model=None, endpoint=None, parameters=None):
+        """Process a batch of inputs
+        
+        Args:
+            inputs: List of input strings or objects
+            model: Name of the model to use (optional)
+            endpoint: URL of the endpoint (optional)
+            parameters: Additional parameters (optional)
+            
+        Returns:
+            list: List of outputs corresponding to inputs
+        """
+        try:
+            # Get the endpoint URL
+            endpoint_url = self.request_llvm_endpoint(model, endpoint, "completion", inputs)
+            if not endpoint_url:
+                raise ValueError(f"No LLVM endpoint available for batch processing")
+                
+            # Prepare the request data
+            data = {
+                "inputs": inputs
+            }
+            
+            if model:
+                data["model"] = model
+                
+            if parameters:
+                data["parameters"] = parameters
+                
+            # Make the batch request
+            response = self.make_post_request_llvm(endpoint_url, data)
+            
+            # Extract results from the response
+            if isinstance(response, dict):
+                if "results" in response:
+                    return response["results"]
+                elif "outputs" in response:
+                    return response["outputs"]
+                elif "choices" in response and isinstance(response["choices"], list):
+                    return [choice.get("text") for choice in response["choices"]]
+                    
+            # Fallback: return the raw response
+            return response
+            
+        except Exception as e:
+            print(f"Error in batch processing: {e}")
+            return None
+            
+    def get_model_info(self, endpoint_url=None, model_name=None, api_key=None):
+        """Get information about a specific model
+        
+        Args:
+            endpoint_url: URL of the endpoint (optional)
+            model_name: Name of the model (optional)
+            api_key: API key for authentication (optional)
+            
+        Returns:
+            dict: Model information or None if not available
+        """
+        try:
+            # Determine the endpoint URL
+            if not endpoint_url:
+                if model_name and model_name in self.endpoints and self.endpoints[model_name]:
+                    endpoint_url = self.endpoints[model_name][0]
+                elif self.endpoints:
+                    # Use the first available endpoint
+                    first_model = next(iter(self.endpoints))
+                    endpoint_url = self.endpoints[first_model][0]
+                else:
+                    return None
+                    
+            # Create the model info endpoint URL
+            if model_name:
+                model_info_url = f"{endpoint_url.rstrip('/')}/models/{model_name}"
+            else:
+                model_info_url = f"{endpoint_url.rstrip('/')}/models"
+                
+            # Set up headers
+            headers = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+                
+            # Make the request
+            response = requests.get(model_info_url, headers=headers)
+            response.raise_for_status()
+            
+            return response.json()
+            
+        except Exception as e:
+            print(f"Error getting model info: {e}")
+            return None
+            
     def create_remote_llvm_streaming_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
         """Create a handler for streaming responses
         

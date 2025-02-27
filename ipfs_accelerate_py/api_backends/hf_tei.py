@@ -167,58 +167,143 @@ class hf_tei:
                         return endpoint
             return None
     
-    async def make_post_request_hf_tei(self, endpoint, data=None):
+    def make_post_request_hf_tei(self, endpoint, data=None, api_key=None):
         """Make a POST request to a remote text embedding interface
         
         Args:
             endpoint: URL of the endpoint
             data: Data to send in the request
+            api_key: API key for authentication, if required
             
         Returns:
             dict: Response from the endpoint
+            
+        Raises:
+            ValueError: If the request fails or the response status is not 200
+        """
+        try:
+            # Set up headers
+            headers = {'Content-Type': 'application/json'}
+            if api_key:
+                headers['Authorization'] = f'Bearer {api_key}'
+                
+            # Format the data properly
+            if data is None:
+                return None
+                
+            # Convert different input formats to the expected format
+            if isinstance(data, dict):
+                if "inputs" not in data:
+                    data = {"inputs": data}
+            elif isinstance(data, list):
+                data = {"inputs": data}
+            elif isinstance(data, str):
+                data = {"inputs": data}
+                
+            # Make the synchronous request
+            response = requests.post(endpoint, headers=headers, json=data)
+            
+            # Handle error status codes
+            if response.status_code == 401:
+                raise ValueError(f"Authentication failed (401): Please check your API key")
+            elif response.status_code == 404:
+                raise ValueError(f"Resource not found (404): Model or endpoint may not exist")
+            elif response.status_code >= 400:
+                error_msg = f"Request failed with status code {response.status_code}"
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_msg = f"{error_msg}: {error_data['error']}"
+                except:
+                    pass
+                raise ValueError(error_msg)
+                
+            # Parse and return the response
+            return response.json()
+            
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            # Convert other exceptions to ValueError
+            error_msg = str(e)
+            if "Connection" in error_msg:
+                raise ValueError(f"Connection error: {error_msg}")
+            elif "Timeout" in error_msg:
+                raise ValueError(f"Timeout error: {error_msg}")
+            else:
+                raise ValueError(f"Error in request: {error_msg}")
+                
+    async def make_async_post_request_hf_tei(self, endpoint, data=None, api_key=None):
+        """Make an asynchronous POST request to a remote text embedding interface
+        
+        Args:
+            endpoint: URL of the endpoint
+            data: Data to send in the request
+            api_key: API key for authentication, if required
+            
+        Returns:
+            dict: Response from the endpoint
+            
+        Raises:
+            ValueError: If the request fails or the response status is not 200
         """
         import aiohttp
         from aiohttp import ClientSession, ClientTimeout
+        
+        # Format the data properly
         if data is None:
             return None
-        else:
-            pass
-        if type(data) is dict:
-            if "inputs" not in list(data.keys()):
+            
+        # Convert different input formats to the expected format
+        if isinstance(data, dict):
+            if "inputs" not in data:
                 data = {"inputs": data}
-        if type(data) is list:
+        elif isinstance(data, list):
             data = {"inputs": data}
+        elif isinstance(data, str):
+            data = {"inputs": data}
+            
+        # Set up headers
         headers = {'Content-Type': 'application/json'}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+            
         timeout = ClientTimeout(total=300) 
-        async with ClientSession(timeout=timeout) as session:
-            try:
+        
+        try:
+            async with ClientSession(timeout=timeout) as session:
                 async with session.post(endpoint, headers=headers, json=data) as response:
-                    if response.status != 200:
-                        return ValueError(response)
+                    # Handle error status codes
+                    if response.status == 401:
+                        raise ValueError(f"Authentication failed (401): Please check your API key")
+                    elif response.status == 404:
+                        raise ValueError(f"Resource not found (404): Model or endpoint may not exist")
+                    elif response.status >= 400:
+                        error_text = await response.text()
+                        try:
+                            error_data = json.loads(error_text)
+                            if "error" in error_data:
+                                error_msg = f"Error {response.status}: {error_data['error']}"
+                            else:
+                                error_msg = f"Error {response.status}: {error_text}"
+                        except:
+                            error_msg = f"Error {response.status}: {error_text}"
+                        raise ValueError(error_msg)
+                        
+                    # Parse and return the response
                     return await response.json()
-            except Exception as e:
-                print(str(e))
-                if "Can not write request body" in str(e):
-                    print( "endpoint " + endpoint + " is not accepting requests")
-                    return ValueError(e)
-                if "Timeout" in str(e):
-                    print("Timeout error")
-                    return ValueError(e)
-                if "Payload is not completed" in str(e):
-                    print("Payload is not completed")
-                    return ValueError(e)
-                if "Can not write request body" in str(e):
-                    return ValueError(e)
-                pass
-            except aiohttp.ClientPayloadError as e:
-                print(f"ClientPayloadError: {str(e)}")
-                return ValueError(f"ClientPayloadError: {str(e)}")
-            except asyncio.TimeoutError as e:
-                print(f"Timeout error: {str(e)}")
-                return ValueError(f"Timeout error: {str(e)}")
-            except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                return ValueError(f"Unexpected error: {str(e)}")
+                    
+        except aiohttp.ClientPayloadError as e:
+            raise ValueError(f"ClientPayloadError: {str(e)}")
+        except asyncio.TimeoutError as e:
+            raise ValueError(f"Timeout error: {str(e)}")
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            # Convert other exceptions to ValueError
+            raise ValueError(f"Unexpected error: {str(e)}")
 
     def create_remote_text_embedding_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
         """Create a handler for a remote text embedding endpoint
