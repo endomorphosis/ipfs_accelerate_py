@@ -4,6 +4,7 @@ import json
 import torch
 import numpy as np
 from unittest.mock import MagicMock, patch
+import transformers
 
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
@@ -14,7 +15,7 @@ class test_hf_embed:
         self.resources = resources if resources else {
             "torch": torch,
             "numpy": np,
-            "transformers": MagicMock()
+            "transformers": transformers  # Use real transformers
         }
         self.metadata = metadata if metadata else {}
         self.embed = hf_embed(resources=self.resources, metadata=self.metadata)
@@ -35,45 +36,52 @@ class test_hf_embed:
         except Exception as e:
             results["init"] = f"Error: {str(e)}"
 
-        # Test CPU initialization and handler
+        # Test CPU initialization and handler with real inference
         try:
-            with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                 patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
-                 patch('transformers.AutoModel.from_pretrained') as mock_model:
+            print("Initializing embedding model for CPU...")
+            
+            # Initialize without mocks
+            endpoint, tokenizer, handler, queue, batch_size = self.embed.init_cpu(
+                self.model_name,
+                "cpu",
+                "cpu"
+            )
+            
+            valid_init = endpoint is not None and tokenizer is not None and handler is not None
+            results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
+            
+            # Use handler directly from initialization
+            test_handler = handler
+            
+            # Test single text embedding
+            print(f"Testing embedding for single text: '{self.test_texts[0][:30]}...'")
+            single_output = test_handler(self.test_texts[0])
+            results["cpu_single"] = "Success" if single_output is not None and len(single_output.shape) == 2 else "Failed single embedding"
+            
+            # Add embedding details if successful
+            if single_output is not None and len(single_output.shape) == 2:
+                results["cpu_single_shape"] = list(single_output.shape)
+                results["cpu_single_type"] = str(single_output.dtype)
+            
+            # Test batch text embedding
+            print(f"Testing embedding for batch of {len(self.test_texts)} texts")
+            batch_output = test_handler(self.test_texts)
+            results["cpu_batch"] = "Success" if batch_output is not None and len(batch_output.shape) == 2 else "Failed batch embedding"
+            
+            # Add batch details if successful
+            if batch_output is not None and len(batch_output.shape) == 2:
+                results["cpu_batch_shape"] = list(batch_output.shape)
+            
+            # Test embedding similarity
+            if single_output is not None and batch_output is not None:
+                similarity = torch.nn.functional.cosine_similarity(single_output, batch_output[0].unsqueeze(0))
+                results["cpu_similarity"] = "Success" if similarity is not None else "Failed similarity computation"
                 
-                mock_config.return_value = MagicMock()
-                mock_tokenizer.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
-                mock_model.return_value.last_hidden_state = torch.randn(1, 10, 384)
-                
-                endpoint, tokenizer, handler, queue, batch_size = self.embed.init_cpu(
-                    self.model_name,
-                    "cpu",
-                    "cpu"
-                )
-                
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
-                
-                test_handler = self.embed.create_cpu_text_embedding_endpoint_handler(
-                    endpoint,
-                    "cpu",
-                    endpoint,
-                    tokenizer
-                )
-                
-                # Test single text embedding
-                single_output = test_handler(self.test_texts[0])
-                results["cpu_single"] = "Success" if single_output is not None and len(single_output.shape) == 2 else "Failed single embedding"
-                
-                # Test batch text embedding
-                batch_output = test_handler(self.test_texts)
-                results["cpu_batch"] = "Success" if batch_output is not None and len(batch_output.shape) == 2 else "Failed batch embedding"
-                
-                # Test embedding similarity
-                if single_output is not None and batch_output is not None:
-                    similarity = torch.nn.functional.cosine_similarity(single_output, batch_output[0].unsqueeze(0))
-                    results["cpu_similarity"] = "Success" if similarity is not None else "Failed similarity computation"
+                # Add similarity value range instead of exact value (which will vary)
+                if similarity is not None:
+                    # Just store if the similarity is in a reasonable range [0, 1]
+                    sim_value = float(similarity.item())
+                    results["cpu_similarity_in_range"] = 0.0 <= sim_value <= 1.0
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
