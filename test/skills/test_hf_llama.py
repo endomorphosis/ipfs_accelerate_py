@@ -4,7 +4,10 @@ import json
 import torch
 import numpy as np
 from unittest.mock import MagicMock, patch
-from ...worker.skillset.hf_llama import hf_llama
+
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_llama import hf_llama
 
 class test_hf_llama:
     def __init__(self, resources=None, metadata=None):
@@ -50,11 +53,11 @@ class test_hf_llama:
                 valid_init = endpoint is not None and tokenizer is not None and handler is not None
                 results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
                 
-                test_handler = self.llama.create_cpu_llm_endpoint_handler(
-                    endpoint,
+                test_handler = self.llama.create_cpu_llama_endpoint_handler(
                     tokenizer,
                     self.model_name,
-                    "cpu"
+                    "cpu",
+                    endpoint
                 )
                 
                 output = test_handler(self.test_prompt)
@@ -85,11 +88,11 @@ class test_hf_llama:
                     valid_init = endpoint is not None and tokenizer is not None and handler is not None
                     results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
                     
-                    test_handler = self.llama.create_cuda_llm_endpoint_handler(
-                        endpoint,
+                    test_handler = self.llama.create_cuda_llama_endpoint_handler(
                         tokenizer,
                         self.model_name,
-                        "cuda:0"
+                        "cuda:0",
+                        endpoint
                     )
                     
                     output = test_handler(self.test_prompt)
@@ -121,11 +124,11 @@ class test_hf_llama:
                 valid_init = handler is not None
                 results["openvino_init"] = "Success" if valid_init else "Failed OpenVINO initialization"
                 
-                test_handler = self.llama.create_openvino_llm_endpoint_handler(
-                    endpoint,
+                test_handler = self.llama.create_openvino_llama_endpoint_handler(
                     tokenizer,
                     self.model_name,
-                    "openvino:0"
+                    "openvino:0",
+                    endpoint
                 )
                 
                 output = test_handler(self.test_prompt)
@@ -151,7 +154,7 @@ class test_hf_llama:
                     valid_init = handler is not None
                     results["apple_init"] = "Success" if valid_init else "Failed Apple initialization"
                     
-                    test_handler = self.llama.create_apple_llm_endpoint_handler(
+                    test_handler = self.llama.create_apple_text_generation_endpoint_handler(
                         endpoint,
                         tokenizer,
                         self.model_name,
@@ -172,21 +175,31 @@ class test_hf_llama:
             with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
                 mock_snpe.return_value = MagicMock()
                 
+                # Mock all required functions for Qualcomm
+                mock_get_qualcomm_genai_pipeline = MagicMock()
+                mock_get_optimum_qualcomm_model = MagicMock()
+                mock_get_qualcomm_model = MagicMock()
+                mock_get_qualcomm_pipeline_type = MagicMock()
+                
                 endpoint, processor, handler, queue, batch_size = self.llama.init_qualcomm(
                     self.model_name,
                     "text-generation",
                     "qualcomm",
-                    "qualcomm:0"
+                    "qualcomm:0",
+                    mock_get_qualcomm_genai_pipeline,
+                    mock_get_optimum_qualcomm_model,
+                    mock_get_qualcomm_model,
+                    mock_get_qualcomm_pipeline_type
                 )
                 
                 valid_init = handler is not None
                 results["qualcomm_init"] = "Success" if valid_init else "Failed Qualcomm initialization"
                 
-                test_handler = self.llama.create_qualcomm_llm_endpoint_handler(
-                    endpoint,
+                test_handler = self.llama.create_qualcomm_llama_endpoint_handler(
                     tokenizer,
                     self.model_name,
-                    "qualcomm:0"
+                    "qualcomm:0",
+                    endpoint
                 )
                 
                 output = test_handler(self.test_prompt)

@@ -3,9 +3,15 @@ import sys
 import json
 import torch
 import numpy as np
-from unittest.mock import MagicMock, patch
-from PIL import Image
-from ...worker.skillset.hf_llava_next import hf_llava_next, build_transform, load_image, dynamic_preprocess
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_llava_next import hf_hf_llava_next
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_llava_next import hf_hf_llava_next
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_llava_next import hf_hf_llava_next
 
 class test_hf_llava_next:
     def __init__(self, resources=None, metadata=None):

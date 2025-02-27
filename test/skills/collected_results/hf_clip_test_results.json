@@ -1,0 +1,12 @@
+{
+  "init": "Success",
+  "cpu_init": "Success",
+  "cpu_similarity": "Success",
+  "cpu_image_embedding": "Success",
+  "cpu_tests": "Error: hf_clip.create_cpu_image_embedding_endpoint_handler.<locals>.handler() got an unexpected keyword argument 'text'",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_tests": "Error: name 'processor' is not defined"
+}

@@ -3,9 +3,15 @@ import sys
 import json
 import torch
 import numpy as np
-from unittest.mock import MagicMock, patch
-from PIL import Image
-from ...worker.skillset.hf_xclip import hf_xclip, load_image, load_video_frames
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_xclip import hf_hf_xclip
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_xclip import hf_hf_xclip
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_xclip import hf_hf_xclip
 
 class test_hf_xclip:
     def __init__(self, resources=None, metadata=None):

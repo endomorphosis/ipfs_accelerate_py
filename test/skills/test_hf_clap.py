@@ -3,8 +3,12 @@ import sys
 import json
 import torch
 import numpy as np
-from unittest.mock import MagicMock, patch
-from ...worker.skillset.hf_clap import hf_clap, load_audio, load_audio_tensor
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_clap import hf_hf_clap
+# Use direct import with the absolute path
+sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+from ipfs_accelerate_py.worker.skillset.hf_hf_clap import hf_hf_clap
 
 class test_hf_clap:
     def __init__(self, resources=None, metadata=None):
