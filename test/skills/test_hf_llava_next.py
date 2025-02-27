@@ -3,6 +3,7 @@ import sys
 import json
 import torch
 import numpy as np
+import asyncio
 from unittest.mock import MagicMock, patch
 from PIL import Image
 
@@ -115,6 +116,9 @@ class test_hf_llava_next:
 
         # Test utility functions
         try:
+            # Import utility functions from module
+            from ipfs_accelerate_py.worker.skillset.hf_llava_next import build_transform, dynamic_preprocess, load_image
+            
             # Test build_transform
             transform = build_transform(224)
             test_tensor = transform(self.test_image)

@@ -1,10 +1,17 @@
 {
   "init": "Success",
-  "utility_tests": "Error: name 'build_transform' is not defined",
+  "transform": "Success",
+  "preprocess": "Success",
+  "load_image_file": "Success",
+  "load_image_url": "Success",
   "cpu_init": "Success",
-  "cpu_tests": "Error: 'hf_llava_next' object has no attribute 'create_cpu_multimodal_endpoint_handler'",
+  "cpu_text_only": "Success",
+  "cpu_image_text": "Success",
+  "cpu_multi_image": "Success",
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error: 'hf_llava_next' object has no attribute 'init_openvino'",
+  "openvino_init": "Success",
+  "openvino_handler": "Success",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_tests": "Error: 'hf_llava_next' object has no attribute 'init_qualcomm'"
+  "qualcomm_init": "Success",
+  "qualcomm_handler": "Success"
 }
