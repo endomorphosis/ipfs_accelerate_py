@@ -1,10 +1,13 @@
 {
   "endpoint_handler": "Success",
-  "test_endpoint": "hf_tei.test_hf_tei_endpoint() got an unexpected keyword argument 'endpoint_url'",
-  "post_request": "hf_tei.make_post_request_hf_tei() takes from 2 to 3 positional arguments but 4 were given",
-  "format_request": "Method not implemented",
+  "test_endpoint": "Success",
+  "test_endpoint_params": "Success",
+  "post_request": "Success",
+  "post_request_headers": "Failed to set headers correctly",
+  "format_request_simple": "Success",
+  "format_request_list": "Success",
   "error_handling_auth": "Success",
   "error_handling_404": "Success",
-  "normalization": "Method not implemented",
+  "normalization": "Success",
   "internal_test": "Success"
 }

@@ -74,8 +74,64 @@ class hf_tei:
         # Implementation details
         pass
     
-    async def test_hf_tei_endpoint(self, model, endpoint_list=None):
-        """Test a list of text embedding endpoints
+    def test_hf_tei_endpoint(self, endpoint_url=None, api_key=None, model_name=None):
+        """Test a text embedding endpoint
+        
+        Args:
+            endpoint_url: URL of the endpoint to test
+            api_key: API key for authentication, if required
+            model_name: Name of the model to use
+            
+        Returns:
+            bool: True if test passes, False otherwise
+        """
+        try:
+            # Create a test request
+            test_text = "Hello, world! This is a test message for embedding."
+            
+            # Create the request data
+            data = {
+                "inputs": test_text
+            }
+            
+            if model_name:
+                data["model"] = model_name
+                
+            # Make the request
+            result = self.make_post_request_hf_tei(endpoint_url, data, api_key)
+            
+            # Check the response format
+            if result is None:
+                return False
+                
+            # Different embedding models return in different formats:
+            # - Some return a list of floats directly
+            # - Some return a list of lists for batched inputs
+            # - Some return a dictionary with embeddings
+            
+            if isinstance(result, list):
+                # Direct embedding list
+                if all(isinstance(x, (int, float)) for x in result):
+                    return True
+                # List of lists (batch output)
+                elif (isinstance(result, list) and len(result) > 0 and 
+                      isinstance(result[0], list) and 
+                      all(isinstance(x, (int, float)) for x in result[0])):
+                    return True
+            elif isinstance(result, dict):
+                # Dictionary format
+                if "embeddings" in result:
+                    return True
+                    
+            # Unknown format
+            return False
+            
+        except Exception as e:
+            print(f"Failed to test TEI endpoint: {e}")
+            return False
+            
+    async def test_hf_tei_endpoints_async(self, model, endpoint_list=None):
+        """Test a list of text embedding endpoints asynchronously
         
         Args:
             model: Name of the model
@@ -87,28 +143,36 @@ class hf_tei:
         this_endpoint = None
         filtered_list = {}
         test_results = {}
-        local_endpoints = self.resources["tei_endpoints"]
-        local_endpoints_types = [x[1] for x in local_endpoints]
-        local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
-        endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
-        local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
-        local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
-        if len(local_endpoints_by_model_by_endpoint) > 0:
-            for endpoint in local_endpoints_by_model_by_endpoint:
-                endpoint_handler = endpoint_handlers_by_model[endpoint]
-                try:
-                    test = await endpoint_handler("hello world")
-                    test_results[endpoint] = test
-                except Exception as e:
+        
+        try:
+            local_endpoints = self.resources["tei_endpoints"]
+            local_endpoints_types = [x[1] for x in local_endpoints]
+            local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
+            endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
+            local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+            local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
+            
+            if len(local_endpoints_by_model_by_endpoint) > 0:
+                for endpoint in local_endpoints_by_model_by_endpoint:
+                    endpoint_handler = endpoint_handlers_by_model[endpoint]
                     try:
-                        test = endpoint_handler("hello world")
+                        test = await endpoint_handler("hello world")
                         test_results[endpoint] = test
                     except Exception as e:
-                        test_results[endpoint] = e
-                    pass
-        else:
-            return ValueError("No endpoint_handlers found")
-        return test_results
+                        try:
+                            test = endpoint_handler("hello world")
+                            test_results[endpoint] = test
+                        except Exception as e:
+                            test_results[endpoint] = e
+                        pass
+            else:
+                raise ValueError("No endpoint_handlers found")
+                
+            return test_results
+            
+        except Exception as e:
+            print(f"Error testing embedding endpoints: {e}")
+            return {"error": str(e)}
     
     async def create_hf_tei_endpoint_handler(self, model, endpoint=None, endpoint_type=None, batch=None):
         """Create an endpoint handler for text embedding
@@ -305,6 +369,78 @@ class hf_tei:
             # Convert other exceptions to ValueError
             raise ValueError(f"Unexpected error: {str(e)}")
 
+    def normalize_embedding(self, embedding):
+        """Normalize an embedding vector to unit length
+        
+        Args:
+            embedding: List of embedding values
+            
+        Returns:
+            list: Normalized embedding vector
+        """
+        try:
+            # Calculate the magnitude (L2 norm)
+            magnitude = sum(x*x for x in embedding) ** 0.5
+            
+            # Check for zero magnitude to avoid division by zero
+            if magnitude <= 1e-10:
+                return [0.0] * len(embedding)
+                
+            # Normalize by dividing each component by the magnitude
+            return [x / magnitude for x in embedding]
+            
+        except Exception as e:
+            print(f"Error normalizing embedding: {e}")
+            return embedding
+            
+    def format_request(self, handler, input_data, **kwargs):
+        """Format a request for the text embedding interface
+        
+        Args:
+            handler: The endpoint handler function
+            input_data: The input data to process (string, list, or dict)
+            **kwargs: Additional parameters for the embedding
+            
+        Returns:
+            Any: The response from the handler
+        """
+        try:
+            # Format the request data based on input type
+            if isinstance(input_data, str):
+                # Simple text input
+                data = {
+                    "inputs": input_data
+                }
+                    
+            elif isinstance(input_data, list):
+                # List of texts for batch processing
+                data = {
+                    "inputs": input_data
+                }
+                    
+            elif isinstance(input_data, dict):
+                # Dictionary input, use as is if it has 'inputs'
+                if "inputs" in input_data:
+                    data = input_data
+                else:
+                    # Add inputs wrapper if missing
+                    data = {"inputs": input_data}
+            else:
+                # Unknown input type
+                raise ValueError(f"Unsupported input type: {type(input_data)}")
+                
+            # Add any additional parameters from kwargs
+            for key, value in kwargs.items():
+                if key not in ["inputs"]:  # Avoid overriding inputs
+                    data[key] = value
+                
+            # Call the handler with the formatted data
+            return handler(data)
+            
+        except Exception as e:
+            print(f"Error formatting embedding request: {e}")
+            return None
+    
     def create_remote_text_embedding_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
         """Create a handler for a remote text embedding endpoint
         
@@ -316,22 +452,40 @@ class hf_tei:
         Returns:
             function: Handler for the endpoint
         """
-        def handler(input_text, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
+        def handler(input_data, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
             try:
-                headers = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
+                # Prepare the data based on input type
+                if isinstance(input_data, dict) and "inputs" in input_data:
+                    # Already properly formatted
+                    data = input_data
+                elif isinstance(input_data, (str, list)):
+                    # Simple text or list of texts
+                    data = {"inputs": input_data}
+                else:
+                    # Other inputs, wrap in inputs
+                    data = {"inputs": input_data}
                 
-                data = {
-                    "input": input_text,
-                    "model": model_name
-                }
+                # Add model name if provided
+                if model_name:
+                    data["model"] = model_name
                 
-                response = requests.post(endpoint_url, headers=headers, json=data)
-                response.raise_for_status()
+                # Make the request
+                result = self.make_post_request_hf_tei(endpoint_url, data, api_key)
                 
-                result = response.json()
-                return result.get("embeddings", result)
+                # Process the result
+                if result is None:
+                    return None
+                
+                # Different embedding models return in different formats,
+                # so try to handle the common patterns
+                if isinstance(result, dict) and "embeddings" in result:
+                    return result["embeddings"]
+                elif isinstance(result, list):
+                    # Either a direct embedding or a list of embeddings
+                    return result
+                else:
+                    # Unknown format, return as is
+                    return result
             
             except Exception as e:
                 print(f"Error making request to text embedding endpoint: {e}")
