@@ -52,8 +52,11 @@ class test_gemini:
                 results["test_endpoint"] = "Success" if test_result else "Failed endpoint test"
                 
                 # Verify correct parameters were used
-                args, kwargs = mock_post.call_args
-                results["test_endpoint_params"] = "Success" if "contents" in args[1] else "Failed to pass correct parameters"
+                if mock_post.call_args:
+                    args, kwargs = mock_post.call_args
+                    results["test_endpoint_params"] = "Success" if len(args) > 1 and "contents" in args[1] else "Failed to pass correct parameters"
+                else:
+                    results["test_endpoint_params"] = "Failed - no call made"
         except Exception as e:
             results["test_endpoint"] = f"Error: {str(e)}"
             

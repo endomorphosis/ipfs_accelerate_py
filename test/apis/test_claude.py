@@ -51,10 +51,14 @@ class test_claude:
                 assert test_result, "Endpoint test should return True"
                 
                 # Verify correct parameters were used
-                args, kwargs = mock_post.call_args
-                has_messages = "messages" in args[1]
-                results["test_endpoint_params"] = "Success" if has_messages else "Failed to pass correct parameters"
-                assert has_messages, "Request should contain 'messages' parameter"
+                if mock_post.call_args:
+                    args, kwargs = mock_post.call_args
+                    has_messages = len(args) > 1 and "messages" in args[1] 
+                    results["test_endpoint_params"] = "Success" if has_messages else "Failed to pass correct parameters"
+                    assert has_messages, "Request should contain 'messages' parameter"
+                else:
+                    results["test_endpoint_params"] = "Failed - no call made"
+                    assert False, "No API call was made"
         except Exception as e:
             results["test_endpoint"] = f"Error: {str(e)}"
             
