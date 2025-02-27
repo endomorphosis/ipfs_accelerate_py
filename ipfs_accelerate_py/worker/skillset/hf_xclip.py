@@ -650,12 +650,19 @@ class hf_xclip:
                 frames: Optional video frames/images
                 
             Returns:
-                Dictionary with embeddings and/or similarity scores
+                Dictionary with embeddings and/or similarity scores with implementation type
             """
-            if "eval" in dir(endpoint):
-                endpoint.eval()
+            # Flag to track if we're using real implementation or mock
+            is_mock = True  # Default to mock for CPU implementation for now
             
-            # Create mock embeddings for testing
+            # Initialize model if available
+            if endpoint is not None and "eval" in dir(endpoint):
+                try:
+                    endpoint.eval()
+                except Exception as e:
+                    print(f"Error putting model in eval mode: {e}")
+            
+            # Create embeddings for response
             result = {}
             
             # Create text embedding if text input is provided
@@ -672,6 +679,9 @@ class hf_xclip:
             if text is not None and frames is not None:
                 similarity = self.torch.tensor([[0.8]])  # Mock similarity score
                 result["similarity"] = similarity
+            
+            # Add implementation type to result
+            result["implementation_type"] = "MOCK"
             
             # Return the appropriate result
             return result
@@ -686,12 +696,88 @@ class hf_xclip:
                 frames: Optional video frames/images
                 
             Returns:
-                Dictionary with embeddings and/or similarity scores
+                Dictionary with embeddings and/or similarity scores with implementation type
             """
-            if "eval" in dir(endpoint):
-                endpoint.eval()
+            # Flag to track if we're using real implementation or mock
+            is_mock = True  # Default to mock for Qualcomm implementation (will update to REAL if successful)
             
-            # Create mock embeddings for Qualcomm implementation
+            # Initialize model if available
+            if endpoint is not None and "eval" in dir(endpoint):
+                try:
+                    endpoint.eval()
+                except Exception as e:
+                    print(f"Error putting model in eval mode: {e}")
+            
+            # Check if we have self.snpe_utils available for inference
+            has_snpe = hasattr(self, 'snpe_utils') and self.snpe_utils is not None and hasattr(self.snpe_utils, 'run_inference')
+            
+            # Try to use real implementation if available
+            if has_snpe and endpoint is not None and tokenizer is not None:
+                try:
+                    # Process inputs
+                    inputs = {}
+                    
+                    # Process text if provided
+                    if text is not None:
+                        text_inputs = tokenizer(text=text, return_tensors="np")
+                        for key, value in text_inputs.items():
+                            inputs[key] = value
+                    
+                    # Process frames if provided
+                    if frames is not None:
+                        if isinstance(frames, list) and len(frames) > 0:
+                            frame_inputs = tokenizer(images=frames, return_tensors="np")
+                            for key, value in frame_inputs.items():
+                                inputs[key] = value
+                    
+                    # Run inference if we have inputs
+                    if inputs:
+                        inference_results = self.snpe_utils.run_inference(endpoint, inputs)
+                        
+                        # If we got results, we're using real implementation
+                        if inference_results:
+                            is_mock = False
+                            
+                            # Extract results
+                            result = {}
+                            
+                            # Map outputs to standard format
+                            if "text_embeds" in inference_results and text is not None:
+                                result["text_embedding"] = self.torch.tensor(inference_results["text_embeds"])
+                            
+                            if "image_embeds" in inference_results and frames is not None:
+                                result["video_embedding"] = self.torch.tensor(inference_results["image_embeds"])
+                            
+                            # Calculate similarity if we have both embeddings
+                            if "text_embeds" in inference_results and "image_embeds" in inference_results:
+                                text_embeds = self.torch.tensor(inference_results["text_embeds"])
+                                image_embeds = self.torch.tensor(inference_results["image_embeds"])
+                                
+                                # Normalize embeddings
+                                text_norm = text_embeds.norm(dim=-1, keepdim=True)
+                                image_norm = image_embeds.norm(dim=-1, keepdim=True)
+                                
+                                # Check for zero norms to avoid NaN issues
+                                if torch.all(text_norm > 0) and torch.all(image_norm > 0):
+                                    text_embeds_norm = text_embeds / text_norm
+                                    image_embeds_norm = image_embeds / image_norm
+                                    
+                                    # Calculate similarity
+                                    result["similarity"] = self.torch.matmul(text_embeds_norm, image_embeds_norm.T)
+                                else:
+                                    # Fallback for zero norm case
+                                    result["similarity"] = self.torch.tensor([[0.8]])
+                                    is_mock = True
+                            
+                            # Add implementation type and return if successful
+                            if result:
+                                result["implementation_type"] = "REAL"
+                                return result
+                except Exception as e:
+                    print(f"Error in Qualcomm real implementation: {e}")
+                    is_mock = True
+            
+            # Create mock embeddings for Qualcomm implementation as fallback
             result = {}
             
             # Create text embedding if text input is provided
@@ -708,6 +794,9 @@ class hf_xclip:
             if text is not None and frames is not None:
                 similarity = self.torch.tensor([[0.8]])  # Mock similarity score
                 result["similarity"] = similarity
+            
+            # Add implementation type
+            result["implementation_type"] = "MOCK"
             
             # Return the appropriate result
             return result
@@ -722,12 +811,88 @@ class hf_xclip:
                 frames: Optional video frames/images
                 
             Returns:
-                Dictionary with embeddings and/or similarity scores
+                Dictionary with embeddings and/or similarity scores with implementation type
             """
-            if "eval" in dir(endpoint):
-                endpoint.eval()
+            # Flag to track if we're using real implementation or mock
+            is_mock = True  # Default to mock for Apple implementation (will update to REAL if successful)
             
-            # Create mock embeddings for Apple Silicon implementation
+            # Initialize model if available
+            if endpoint is not None and "eval" in dir(endpoint):
+                try:
+                    endpoint.eval()
+                except Exception as e:
+                    print(f"Error putting model in eval mode: {e}")
+            
+            # Check if we have CoreML utilities available
+            has_coreml = hasattr(self, 'coreml_utils') and self.coreml_utils is not None and hasattr(self.coreml_utils, 'run_inference')
+            
+            # Try to use real implementation if available
+            if has_coreml and endpoint is not None and tokenizer is not None:
+                try:
+                    # Process inputs
+                    inputs = {}
+                    
+                    # Handle text input
+                    if text is not None:
+                        if isinstance(text, str):
+                            text_inputs = tokenizer(text=text, return_tensors="np")
+                            for key, value in text_inputs.items():
+                                inputs[key] = value
+                    
+                    # Handle frame/image input
+                    if frames is not None:
+                        if isinstance(frames, list) and len(frames) > 0:
+                            frame_inputs = tokenizer(images=frames, return_tensors="np")
+                            for key, value in frame_inputs.items():
+                                inputs[key] = value
+                    
+                    # If we have valid inputs, run inference
+                    if inputs:
+                        outputs = self.coreml_utils.run_inference(endpoint, inputs)
+                        
+                        # If we have outputs, we're using real implementation
+                        if outputs:
+                            is_mock = False
+                            result = {}
+                            
+                            # Extract text embeddings
+                            if 'text_embeds' in outputs and text is not None:
+                                result['text_embedding'] = self.torch.tensor(outputs['text_embeds'])
+                                
+                            # Extract image/video embeddings
+                            if 'image_embeds' in outputs and frames is not None:
+                                result['video_embedding'] = self.torch.tensor(outputs['image_embeds'])
+                                
+                            # Calculate similarity if we have both embeddings
+                            if 'text_embeds' in outputs and 'image_embeds' in outputs:
+                                text_emb = self.torch.tensor(outputs['text_embeds'])
+                                image_emb = self.torch.tensor(outputs['image_embeds'])
+                                
+                                # Normalize embeddings with safe operations
+                                text_norm = text_emb.norm(dim=-1, keepdim=True)
+                                image_norm = image_emb.norm(dim=-1, keepdim=True)
+                                
+                                # Check for zero norms to avoid NaN issues
+                                if self.torch.all(text_norm > 0) and self.torch.all(image_norm > 0):
+                                    text_emb_norm = text_emb / text_norm
+                                    image_emb_norm = image_emb / image_norm
+                                    
+                                    # Calculate similarity
+                                    result['similarity'] = self.torch.matmul(text_emb_norm, image_emb_norm.T)
+                                else:
+                                    # Fallback for zero norm case
+                                    result['similarity'] = self.torch.tensor([[0.8]])
+                                    is_mock = True
+                            
+                            # Return with REAL implementation type if successful
+                            if result:
+                                result["implementation_type"] = "REAL"
+                                return result
+                except Exception as e:
+                    print(f"Error in Apple Silicon real implementation: {e}")
+                    is_mock = True
+            
+            # Create mock embeddings for Apple Silicon implementation as fallback
             result = {}
             
             # Create text embedding if text input is provided
@@ -744,6 +909,9 @@ class hf_xclip:
             if text is not None and frames is not None:
                 similarity = self.torch.tensor([[0.8]])  # Mock similarity score
                 result["similarity"] = similarity
+            
+            # Add implementation type
+            result["implementation_type"] = "MOCK"
             
             # Return the appropriate result
             return result
@@ -769,15 +937,38 @@ class hf_xclip:
                 frames: Optional video frames/images
                 
             Returns:
-                Dictionary with embeddings and/or similarity scores
+                Dictionary with embeddings and/or similarity scores with implementation type
             """
             # Import torch directly inside the handler
             import torch
             import numpy as np
             
-            if endpoint is not None and hasattr(endpoint, "eval"):
-                endpoint.eval()
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
             
+            # Initialize model if available
+            if endpoint is not None and hasattr(endpoint, "eval"):
+                try:
+                    endpoint.eval()
+                except Exception as e:
+                    print(f"Error putting model in eval mode: {e}")
+                    is_mock = True
+            else:
+                is_mock = True
+            
+            # Check if CUDA is truly available for inference
+            cuda_available = (
+                hasattr(torch, 'cuda') and 
+                torch.cuda.is_available() and 
+                endpoint is not None and
+                hasattr(endpoint, "device") and
+                "cuda" in str(endpoint.device)
+            )
+            
+            # If CUDA isn't available, we'll have to use mock implementation
+            if not cuda_available:
+                is_mock = True
+                
             try:
                 with torch.no_grad():
                     # Clean GPU cache if available
@@ -787,7 +978,7 @@ class hf_xclip:
                     result = {}
                     
                     # Process text if provided
-                    if text is not None and tokenizer is not None and endpoint is not None:
+                    if text is not None and tokenizer is not None and endpoint is not None and not is_mock:
                         try:
                             # Process text input
                             text_inputs = tokenizer(
@@ -797,7 +988,7 @@ class hf_xclip:
                             )
                             
                             # Move inputs to GPU
-                            for key in text_inputs:
+                            for key in list(text_inputs.keys()):  # Use list to avoid dict size change issues
                                 if isinstance(text_inputs[key], torch.Tensor):
                                     text_inputs[key] = text_inputs[key].to(endpoint.device)
                             
@@ -810,20 +1001,24 @@ class hf_xclip:
                                 result["text_embedding"] = text_embedding.cpu().detach()
                             else:
                                 # Create mock embedding if structure unexpected
+                                print("Model output doesn't contain text_embeds attribute, using mock embedding")
                                 text_embedding = torch.randn(1, 512, device=endpoint.device)
                                 result["text_embedding"] = text_embedding.cpu()
+                                is_mock = True
                         except Exception as text_error:
                             print(f"Error processing text input: {text_error}")
                             # Create mock text embedding on fallback
                             text_embedding = torch.randn(1, 512)
                             result["text_embedding"] = text_embedding
+                            is_mock = True
                     elif text is not None:
                         # Create mock text embedding if no model/tokenizer
                         text_embedding = torch.randn(1, 512)
                         result["text_embedding"] = text_embedding
+                        is_mock = True
                     
                     # Process video frames if provided
-                    if frames is not None and tokenizer is not None and endpoint is not None:
+                    if frames is not None and tokenizer is not None and endpoint is not None and not is_mock:
                         try:
                             # Process video/image input
                             if isinstance(frames, list) and len(frames) > 0:
@@ -834,7 +1029,7 @@ class hf_xclip:
                                 )
                                 
                                 # Move inputs to GPU
-                                for key in frame_inputs:
+                                for key in list(frame_inputs.keys()):  # Use list to avoid dict size change issues
                                     if isinstance(frame_inputs[key], torch.Tensor):
                                         frame_inputs[key] = frame_inputs[key].to(endpoint.device)
                                 
@@ -847,21 +1042,27 @@ class hf_xclip:
                                     result["video_embedding"] = video_embedding.cpu().detach()
                                 else:
                                     # Create mock embedding if structure unexpected
+                                    print("Model output doesn't contain image_embeds attribute, using mock embedding")
                                     video_embedding = torch.randn(1, 512, device=endpoint.device)
                                     result["video_embedding"] = video_embedding.cpu()
+                                    is_mock = True
                             else:
                                 # Create mock embedding if frames not in expected format
+                                print("Frames not in expected format, using mock embedding")
                                 video_embedding = torch.randn(1, 512)
                                 result["video_embedding"] = video_embedding
+                                is_mock = True
                         except Exception as video_error:
                             print(f"Error processing video input: {video_error}")
                             # Create mock video embedding on fallback
                             video_embedding = torch.randn(1, 512)
                             result["video_embedding"] = video_embedding
+                            is_mock = True
                     elif frames is not None:
                         # Create mock video embedding if no model/tokenizer
                         video_embedding = torch.randn(1, 512)
                         result["video_embedding"] = video_embedding
+                        is_mock = True
                     
                     # Calculate similarity if both embeddings are available
                     if "text_embedding" in result and "video_embedding" in result:
@@ -869,22 +1070,34 @@ class hf_xclip:
                             text_emb = result["text_embedding"]
                             video_emb = result["video_embedding"]
                             
-                            # Normalize embeddings
-                            text_emb_norm = text_emb / text_emb.norm(dim=-1, keepdim=True)
-                            video_emb_norm = video_emb / video_emb.norm(dim=-1, keepdim=True)
+                            # Normalize embeddings with safe operations
+                            text_norm = text_emb.norm(dim=-1, keepdim=True)
+                            video_norm = video_emb.norm(dim=-1, keepdim=True)
                             
-                            # Calculate similarity
-                            similarity = torch.matmul(text_emb_norm, video_emb_norm.transpose(0, 1))
-                            result["similarity"] = similarity
+                            # Check for zero norms to avoid NaN issues
+                            if torch.all(text_norm > 0) and torch.all(video_norm > 0):
+                                text_emb_norm = text_emb / text_norm
+                                video_emb_norm = video_emb / video_norm
+                                
+                                # Calculate similarity
+                                similarity = torch.matmul(text_emb_norm, video_emb_norm.transpose(0, 1))
+                                result["similarity"] = similarity
+                            else:
+                                print("Zero norm detected in embeddings, using mock similarity")
+                                result["similarity"] = torch.tensor([[0.8]])
+                                is_mock = True
                         except Exception as sim_error:
                             print(f"Error calculating similarity: {sim_error}")
                             # Create mock similarity on fallback
                             result["similarity"] = torch.tensor([[0.8]])
+                            is_mock = True
                     
                     # Clean GPU memory
                     if hasattr(torch, 'cuda') and hasattr(torch.cuda, 'empty_cache'):
                         torch.cuda.empty_cache()
                     
+                    # Add implementation type to result
+                    result["implementation_type"] = "REAL" if not is_mock else "MOCK"
                     return result
             except Exception as e:
                 print(f"CUDA video/text embedding error: {e}")
@@ -896,6 +1109,7 @@ class hf_xclip:
                     result["video_embedding"] = torch.randn(1, 512)
                 if text is not None and frames is not None:
                     result["similarity"] = torch.tensor([[0.8]])
+                result["implementation_type"] = "MOCK"
                 return result
         return handler
 
@@ -921,44 +1135,52 @@ class hf_xclip:
             Returns:
                 Dictionary with embeddings and/or similarity scores
             """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
             self.np.random.seed(0)
             video_frames = None
             
             # Process video input if provided
             if frames is not None:
-                # Handle different types of video input
-                if isinstance(frames, str):
-                    # It's a path to a video
-                    videoreader = None
-                    if os.path.exists(frames):
-                        videoreader = self.decord.VideoReader(frames, num_threads=1, ctx=self.decord.cpu(0))
-                    elif "http" in frames:
-                        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
-                            f.write(requests.get(frames).content)
-                            f.flush()
-                            videoreader = self.decord.VideoReader(f.name, num_threads=1, ctx=self.decord.cpu(0))
+                try:
+                    # Handle different types of video input
+                    if isinstance(frames, str):
+                        # It's a path to a video
+                        videoreader = None
+                        if os.path.exists(frames):
+                            videoreader = self.decord.VideoReader(frames, num_threads=1, ctx=self.decord.cpu(0))
+                        elif "http" in frames:
+                            with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+                                f.write(requests.get(frames).content)
+                                f.flush()
+                                videoreader = self.decord.VideoReader(f.name, num_threads=1, ctx=self.decord.cpu(0))
+                        
+                        if videoreader is not None:
+                            videoreader.seek(0)
+                            indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
+                            video_frames = videoreader.get_batch(indices).asnumpy()
                     
-                    if videoreader is not None:
-                        videoreader.seek(0)
-                        indices = sample_frame_indices(clip_len=32, frame_sample_rate=4, seg_len=len(videoreader))
-                        video_frames = videoreader.get_batch(indices).asnumpy()
-                
-                elif isinstance(frames, list):
-                    # It's already a list of frames
-                    video_frames = self.np.stack([self.np.array(frame) for frame in frames])
+                    elif isinstance(frames, list):
+                        # It's already a list of frames
+                        video_frames = self.np.stack([self.np.array(frame) for frame in frames])
+                except Exception as e:
+                    print(f"Error processing video frames: {e}")
+                    video_frames = None
             
             # Fall back to mock data if we couldn't process the input
             if video_frames is None and frames is not None:
                 # Create mock video frames
                 video_frames = self.np.random.randint(0, 255, (32, 224, 224, 3), dtype=self.np.uint8)
+                is_mock = True
             
             # Process text if provided
             text_input = ""
             if text is not None:
                 text_input = text if isinstance(text, str) else ""
             
-            # Create mock result if we don't have real data
+            # Check if we need to use mock implementation
             if endpoint is None or not hasattr(endpoint, "__call__"):
+                is_mock = True
                 result = {}
                 if text is not None:
                     result["text_embedding"] = self.torch.randn(1, 512)
@@ -966,64 +1188,102 @@ class hf_xclip:
                     result["video_embedding"] = self.torch.randn(1, 512)
                 if text is not None and frames is not None:
                     result["similarity"] = self.torch.tensor([[0.8]])
+                
+                # Add implementation type
+                result["implementation_type"] = "MOCK"
                 return result
             
-            # Create actual inputs for the model
+            # Try to use real implementation for inference
             try:
-                # Try to process with real tokenizer if available
-                if video_frames is not None:
-                    processed_data = tokenizer(
-                        text=text_input,
-                        videos=list(video_frames) if video_frames is not None else None,
-                        return_tensors="pt",
-                        padding=True,
-                    )
-                    
-                    new_processed_data = {
-                        'input_ids': processed_data.get("input_ids", self.torch.ones((1, 10), dtype=self.torch.long)),
-                        'attention_mask': processed_data.get("attention_mask", self.torch.ones((1, 10), dtype=self.torch.long)),
-                        'pixel_values': processed_data.get("pixel_values", self.torch.zeros((1, 3, 224, 224), dtype=self.torch.float32))
-                    }
-                    
-                    # Try to run inference
+                # Only proceed if we have the necessary inputs
+                if (text_input or video_frames) and tokenizer is not None and hasattr(tokenizer, "__call__"):
+                    # Process the inputs with tokenizer
                     try:
-                        inference_results = endpoint_model(dict(new_processed_data))
-                        results_list = list(inference_results.values())
+                        processed_data = tokenizer(
+                            text=text_input,
+                            videos=list(video_frames) if video_frames is not None else None,
+                            return_tensors="pt",
+                            padding=True,
+                        )
                         
-                        if len(results_list) >= 6:
-                            text_embeddings = results_list[3]
-                            video_embeddings = results_list[5]
+                        # Use a copy of keys to avoid "dictionary changed size during iteration" error
+                        keys_to_check = list(processed_data.keys())
+                        
+                        # Create a standardized processed data dict with fallbacks
+                        new_processed_data = {
+                            'input_ids': processed_data.get("input_ids", self.torch.ones((1, 10), dtype=self.torch.long)),
+                            'attention_mask': processed_data.get("attention_mask", self.torch.ones((1, 10), dtype=self.torch.long)),
+                            'pixel_values': processed_data.get("pixel_values", self.torch.zeros((1, 3, 224, 224), dtype=self.torch.float32))
+                        }
+                        
+                        # Try to run inference with OpenVINO model
+                        try:
+                            inference_results = endpoint_model(dict(new_processed_data))
                             
-                            # Return appropriate embeddings based on inputs
-                            if text is not None and frames is not None:
-                                return {
-                                    'video_embedding': video_embeddings,
-                                    'text_embedding': text_embeddings,
-                                    'similarity': self.torch.matmul(
-                                        text_embeddings / text_embeddings.norm(dim=-1, keepdim=True),
-                                        (video_embeddings / video_embeddings.norm(dim=-1, keepdim=True)).T
-                                    )
-                                }
-                            elif text is not None:
-                                return {'text_embedding': text_embeddings}
-                            elif frames is not None:
-                                return {'video_embedding': video_embeddings}
-                        
+                            # Safely extract output values
+                            if inference_results and hasattr(inference_results, "values"):
+                                results_list = list(inference_results.values())
+                                
+                                # Safe list indexing with length check
+                                if len(results_list) >= 6:
+                                    text_embeddings = results_list[3]
+                                    video_embeddings = results_list[5]
+                                    
+                                    # Return appropriate embeddings based on inputs
+                                    if text is not None and frames is not None:
+                                        return {
+                                            'video_embedding': video_embeddings,
+                                            'text_embedding': text_embeddings,
+                                            'similarity': self.torch.matmul(
+                                                text_embeddings / text_embeddings.norm(dim=-1, keepdim=True),
+                                                (video_embeddings / video_embeddings.norm(dim=-1, keepdim=True)).T
+                                            ),
+                                            'implementation_type': 'REAL'
+                                        }
+                                    elif text is not None:
+                                        return {
+                                            'text_embedding': text_embeddings,
+                                            'implementation_type': 'REAL'
+                                        }
+                                    elif frames is not None:
+                                        return {
+                                            'video_embedding': video_embeddings,
+                                            'implementation_type': 'REAL'
+                                        }
+                                else:
+                                    print(f"OpenVINO inference results list length insufficient: {len(results_list)}")
+                                    is_mock = True
+                            else:
+                                print("OpenVINO inference results invalid format")
+                                is_mock = True
+                        except Exception as e:
+                            print(f"Error in OpenVINO inference: {e}")
+                            is_mock = True
                     except Exception as e:
-                        print(f"Error in OpenVINO inference: {e}")
+                        print(f"Error processing inputs with tokenizer: {e}")
+                        is_mock = True
+                else:
+                    is_mock = True
             except Exception as e:
-                print(f"Error processing inputs: {e}")
+                print(f"Error in OpenVINO handler: {e}")
+                is_mock = True
             
-            # Fall back to mock data if everything else fails
-            result = {}
-            if text is not None:
-                result["text_embedding"] = self.torch.randn(1, 512)
-            if frames is not None:
-                result["video_embedding"] = self.torch.randn(1, 512)
-            if text is not None and frames is not None:
-                result["similarity"] = self.torch.tensor([[0.8]])
+            # Fall back to mock data if real implementation failed
+            if is_mock:
+                result = {}
+                if text is not None:
+                    result["text_embedding"] = self.torch.randn(1, 512)
+                if frames is not None:
+                    result["video_embedding"] = self.torch.randn(1, 512)
+                if text is not None and frames is not None:
+                    result["similarity"] = self.torch.tensor([[0.8]])
+                
+                # Add implementation type
+                result["implementation_type"] = "MOCK"
+                return result
             
-            return result
+            # This should never be reached, but just in case
+            return {"error": "Unexpected execution path", "implementation_type": "MOCK"}
         return handler
 
 
