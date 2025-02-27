@@ -1,7 +1,8 @@
 import os 
 import sys
 
-from apis import (
+# Update imports to reference the test.apis submodule instead of a top-level apis module
+from test.apis import (
     test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm,
     test_openai_api, test_ovms, test_ollama, test_s3_kit,
     test_gemini, test_opea
