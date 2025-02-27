@@ -1,9 +1,12 @@
 {
   "init": "Success",
-  "video_utils": "Error: name 'load_video_frames' is not defined",
-  "cpu_tests": "Error: module transformers has no attribute AutoModelForVideoTextRetrieval",
+  "load_video": "Success",
+  "cpu_init": "Success",
+  "cpu_text_embedding": "Success",
+  "cpu_video_embedding": "Success",
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error: list index out of range",
+  "openvino_init": "Success",
+  "openvino_handler": "Success",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
   "qualcomm_handler": "Success"

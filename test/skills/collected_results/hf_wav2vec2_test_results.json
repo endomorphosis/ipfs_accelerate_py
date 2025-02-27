@@ -1,7 +1,28 @@
 {
   "init": "Success",
   "load_audio": "Success",
-  "audio_format": "Shape: (251062,), SR: 16000",
+  "audio_format": "Shape: (224000,), SR: 16000",
   "cpu_init": "Success",
-  "cpu_handler": "Success",
-  "cpu_transcription": 
+  "cpu_transcription_handler": "Success",
+  "cpu_transcription": "(MOCK) This is a mock CPU transcription output",
+  "cpu_embedding_handler": "Success",
+  "cpu_embedding_length": 768,
+  "cpu_embedding_sample": "(MOCK) [-1.1870490312576294, -0.3356824815273285, -0.24722129106521606, -0.7617142200469971, -2.009021282196045]...",
+  "cuda_tests": "CUDA not available",
+  "openvino_init": "Failed OpenVINO initialization",
+  "openvino_handler": "Success",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_handler": "Success",
+  "metadata": {
+    "timestamp": 1740646415.6102738,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "test_model": "facebook/wav2vec2-base"
+  }
+}
