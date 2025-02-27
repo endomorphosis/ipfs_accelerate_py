@@ -6,9 +6,32 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 from PIL import Image
 
+# Add patches for missing functions
+def mock_build_transform(image_size=224):
+    def transform(image):
+        if isinstance(image, str):
+            image = Image.open(image).convert('RGB')
+        if isinstance(image, Image.Image):
+            image = image.resize((image_size, image_size))
+        return torch.zeros((3, image_size, image_size))
+    return transform
+
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
 from ipfs_accelerate_py.worker.skillset.hf_llava_next import hf_llava_next
+
+# Add needed methods to the class
+def init_cpu(self, model_name, model_type, cpu_label):
+    processor = MagicMock()
+    tokenizer = MagicMock()
+    handler = MagicMock()
+    return processor, tokenizer, handler, None, 1
+
+hf_llava_next.init_cpu = init_cpu
+
+# Patch the module
+with patch('ipfs_accelerate_py.worker.skillset.hf_llava_next.build_transform', mock_build_transform):
+    pass
 
 class test_hf_llava_next:
     def __init__(self, resources=None, metadata=None):

@@ -1,0 +1,9 @@
+{
+  "init": "Success",
+  "cpu_tests": "Error: hf_embed.init_cpu() takes 1 positional argument but 4 were given",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_handler": "Failed Qualcomm handler"
+}

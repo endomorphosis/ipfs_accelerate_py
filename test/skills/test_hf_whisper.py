@@ -6,8 +6,14 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 from PIL import Image
 
+# Add a patch for missing functions
+def mock_load_audio(audio_file):
+    return np.zeros(16000, dtype=np.float32), 16000
+
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+# Apply the patch
+sys.modules['ipfs_accelerate_py.worker.skillset.hf_whisper'].load_audio = mock_load_audio
 from ipfs_accelerate_py.worker.skillset.hf_whisper import hf_whisper
 
 class test_hf_whisper:
