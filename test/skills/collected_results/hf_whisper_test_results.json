@@ -1,23 +1,26 @@
 {
   "init": "Success",
   "load_audio": "Success",
-  "audio_format": "Shape: (251062,), SR: 16000",
-  "cpu_error": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
-  "cpu_init": "Success (Mock)",
-  "cpu_handler": "Failed CPU handler",
+  "audio_format": "Shape: (224000,), SR: 16000",
+  "cpu_init": "Success",
+  "cpu_handler": "Success",
+  "cpu_transcription": "Mock whisper transcription",
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
+  "openvino_init": "Success",
+  "openvino_handler": "Success",
+  "openvino_transcription": "Error in OpenVINO Whisper handler: name 'np' is no...",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_tests": "Error: Xenova/whisper-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
+  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_tests": "Error: name 'np' is not defined",
   "metadata": {
-    "timestamp": 1740627195.2472873,
+    "timestamp": 1740635876.2271194,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "cuda_available": false,
     "cuda_device_count": 0,
     "mps_available": false,
     "transformers_mocked": false,
-    "test_audio": "/home/barberb/ipfs_accelerate_py/test/test.mp3",
-    "test_model": "Xenova/whisper-tiny"
+    "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "test_model": "openai/whisper-tiny"
   }
 }

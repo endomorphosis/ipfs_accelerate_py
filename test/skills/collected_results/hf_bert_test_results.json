@@ -8,12 +8,7 @@
   ],
   "cpu_embedding_type": "torch.float32",
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
-  "openvino_embedding_shape": [
-    1,
-    768
-  ],
+  "openvino_tests": "Error: name 'mock_get_openvino_model' is not defined",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success"

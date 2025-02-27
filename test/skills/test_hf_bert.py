@@ -136,18 +136,19 @@ class test_hf_bert:
             # We'll use a combination of mocks for parts we can't run directly
             # and real inference for the parts we can
             
-            # Create mock functions that would normally come from outside
-            mock_get_openvino_model = MagicMock()
-            mock_get_optimum_openvino_model = MagicMock()
-            mock_get_openvino_pipeline_type = MagicMock()
-            mock_openvino_cli_convert = MagicMock()
+            # Import the existing OpenVINO utils from the main package
+            from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
             
-            # Make these useful mocks
-            mock_get_openvino_pipeline_type.return_value = "feature-extraction"
+            # Initialize openvino_utils
+            ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
             
             # Create a minimal OpenVINO model for testing
             try:
-                from openvino.runtime import Core
+                # Import Core from the correct location based on OpenVINO version
+                try:
+                    from openvino.runtime import Core
+                except (ImportError, AttributeError):
+                    from openvino import Core
                 core = Core()
                 
                 # Option 1: Try to create a minimal OpenVINO model from scratch
@@ -190,16 +191,16 @@ class test_hf_bert:
                 mock_get_openvino_model.return_value = mock_ov_model
                 mock_get_optimum_openvino_model.return_value = mock_ov_model
                 
-                # Initialize with our mocks
+                # Initialize with real OpenVINO utils
                 endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
                     model_name=self.model_name,
                     model_type="feature-extraction",
                     device="CPU",
                     openvino_label="openvino:0",
-                    get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                    get_openvino_model=mock_get_openvino_model,
-                    get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                    openvino_cli_convert=mock_openvino_cli_convert
+                    get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
+                    get_openvino_model=ov_utils.get_openvino_model,
+                    get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
+                    openvino_cli_convert=ov_utils.openvino_cli_convert
                 )
                 
                 # If we got a handler back, we succeeded

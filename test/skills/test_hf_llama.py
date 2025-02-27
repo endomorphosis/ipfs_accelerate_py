@@ -173,34 +173,26 @@ class test_hf_llama:
 
         # Test OpenVINO if installed
         try:
-            # We need to mock OpenVINO since most test environments don't have OpenVINO installed
-            # but we set it up to be more realistic and provide better testing
+            # Import the existing OpenVINO utils from the main package
             import openvino
+            from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
             
-            # Initialize mocks
-            mock_get_openvino_model = MagicMock()
-            mock_get_optimum_openvino_model = MagicMock()
-            mock_get_openvino_pipeline_type = MagicMock()
-            
-            # Create a minimal inference engine mock for testing
-            mock_engine = MagicMock()
-            mock_engine.run_model = MagicMock(return_value={"logits": np.random.rand(1, 10, 30522)})
-            mock_get_openvino_model.return_value = mock_engine
+            # Initialize openvino_utils
+            ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
             
             # Setup OpenVINO runtime environment
-            # Try different import paths that might exist in different versions
-            with patch('openvino.runtime.Core') as mock_runtime:
-                mock_runtime.return_value = MagicMock()
+            with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
                 
-                # Initialize OpenVINO endpoint
+                # Initialize OpenVINO endpoint with real utils
                 endpoint, tokenizer, handler, queue, batch_size = self.llama.init_openvino(
                     self.model_name,
                     "text-generation",
                     "CPU",
                     "openvino:0",
-                    mock_get_optimum_openvino_model,
-                    mock_get_openvino_model,
-                    mock_get_openvino_pipeline_type
+                    ov_utils.get_optimum_openvino_model,
+                    ov_utils.get_openvino_model,
+                    ov_utils.get_openvino_pipeline_type,
+                    ov_utils.openvino_cli_convert
                 )
                 
                 valid_init = handler is not None

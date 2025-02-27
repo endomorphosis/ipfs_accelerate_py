@@ -282,10 +282,26 @@ class hf_xclip:
                 weight_format = "int4" ## npu
         model_dst_path = model_dst_path+"_"+weight_format
         if not os.path.exists(model_dst_path):
-            # os.makedirs(model_dst_path)
-            ## convert model to openvino format
-            # openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-            pass
+            os.makedirs(model_dst_path, exist_ok=True)
+            # Try using openvino_skill_convert if available
+            try:
+                convert = self.openvino_skill_convert(model, model_dst_path, task, weight_format)
+            except Exception as e:
+                print(f"Error using openvino_skill_convert: {e}")
+                # Fall back to openvino_cli_convert
+                try:
+                    convert = openvino_cli_convert(
+                        model, 
+                        model_dst_path=model_dst_path, 
+                        task=task, 
+                        weight_format=weight_format, 
+                        ratio="1.0", 
+                        group_size=128, 
+                        sym=True
+                    )
+                    print(f"Successfully converted model using OpenVINO CLI: {convert}")
+                except Exception as e:
+                    print(f"Error using openvino_cli_convert: {e}")
         try:
             tokenizer =  self.transformers.AutoProcessor.from_pretrained(
                 model

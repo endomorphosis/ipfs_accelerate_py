@@ -1149,7 +1149,7 @@ if __name__ == "__main__":
             # "openai/clip-vit-base-patch16",  ## fix audio tensor and check that the right format is being used for whisper models in the test Can't set the input tensor with index: 0, because the model input (shape=[?,?]) and the tensor (shape=(0)) are incompatible  
             # "openai/whisper-large-v3-turbo",
             # "meta-llama/Meta-Llama-3.1-8B-Instruct",
-            # "distil-whisper/distil-large-v3",
+            # "distil-whisper/distil-small.en",
             # "Qwen/Qwen2-7B",
             # "llava-hf/llava-interleave-qwen-0.5b-hf",
             # "lmms-lab/LLaVA-Video-7B-Qwen2",

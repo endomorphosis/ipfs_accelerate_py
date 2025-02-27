@@ -173,20 +173,25 @@ class test_hf_llava:
                 results["openvino_tests"] = "OpenVINO not installed"
                 return results
                 
-            with patch('openvino.Runtime') as mock_runtime:
-                mock_runtime.return_value = MagicMock()
-                mock_get_openvino_model = MagicMock()
-                mock_get_optimum_openvino_model = MagicMock()
-                mock_get_openvino_pipeline_type = MagicMock()
+            # Import the existing OpenVINO utils from the main package
+            from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
+            
+            # Initialize openvino_utils
+            ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
+            
+            # Use a patched version for testing
+            with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
                 
                 endpoint, processor, handler, queue, batch_size = self.llava.init_openvino(
                     self.model_name,
                     "text-generation",
                     "CPU",
                     "openvino:0",
-                    mock_get_optimum_openvino_model,
-                    mock_get_openvino_model,
-                    mock_get_openvino_pipeline_type
+                    ov_utils.get_openvino_genai_pipeline,
+                    ov_utils.get_optimum_openvino_model,
+                    ov_utils.get_openvino_model,
+                    ov_utils.get_openvino_pipeline_type,
+                    ov_utils.openvino_cli_convert
                 )
                 
                 valid_init = handler is not None

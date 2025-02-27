@@ -221,7 +221,7 @@ class hf_llama:
             print(f"Error in CUDA initialization: {e}")
             return None, None, None, None, 0
 
-    def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None):
+    def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize OpenVINO model for inference
         
         Args:
@@ -232,6 +232,7 @@ class hf_llama:
             get_optimum_openvino_model: Optional function to get Optimum model
             get_openvino_model: Optional function to get OpenVINO model
             get_openvino_pipeline_type: Optional function to get pipeline type
+            openvino_cli_convert: Optional function to convert model using OpenVINO CLI
             
         Returns:
             Tuple of (endpoint, tokenizer, handler, queue, batch_size)
@@ -260,12 +261,83 @@ class hf_llama:
             else:
                 # Try loading real model with OpenVINO
                 try:
+                    # Get tokenizer from original model
                     tokenizer = self.transformers.AutoTokenizer.from_pretrained(
                         model, 
                         use_fast=True, 
                         trust_remote_code=True
                     )
-                    endpoint = get_openvino_model(model, model_type, openvino_label)
+                    
+                    # Set up model paths for conversion
+                    model_name_convert = model.replace("/", "--")
+                    
+                    # Get the OpenVINO pipeline type for this model
+                    pipeline_type = "text-generation-with-past"
+                    if get_openvino_pipeline_type is not None:
+                        try:
+                            pipeline_type = get_openvino_pipeline_type(model, model_type)
+                        except Exception as e:
+                            print(f"Error getting pipeline type: {e}")
+                    
+                    # Extract device info from openvino_label
+                    openvino_index = 0
+                    if ":" in openvino_label:
+                        try:
+                            openvino_index = int(openvino_label.split(":")[1])
+                        except (ValueError, IndexError):
+                            print(f"Invalid openvino_label format: {openvino_label}, using default index 0")
+                    
+                    # Set weight format based on device target
+                    weight_format = "int8"  # CPU default
+                    if openvino_index == 1:
+                        weight_format = "int4"  # GPU
+                    elif openvino_index == 2:
+                        weight_format = "int4"  # NPU
+                    
+                    # Determine model path based on HuggingFace cache
+                    import os
+                    homedir = os.path.expanduser("~")
+                    huggingface_cache = os.path.join(homedir, ".cache", "huggingface")
+                    huggingface_cache_models = os.path.join(huggingface_cache, "hub")
+                    
+                    # Define source and destination paths
+                    model_dst_path = os.path.join(homedir, ".cache", "openvino", model_name_convert + "_" + weight_format)
+                    
+                    # Create destination directory if needed
+                    if not os.path.exists(model_dst_path):
+                        os.makedirs(model_dst_path, exist_ok=True)
+                        
+                        # Convert the model using OpenVINO CLI if available
+                        if openvino_cli_convert is not None:
+                            print(f"Converting model {model} to OpenVINO format...")
+                            openvino_cli_convert(
+                                model, 
+                                model_dst_path=model_dst_path, 
+                                task=pipeline_type,
+                                weight_format=weight_format, 
+                                ratio="1.0", 
+                                group_size=128, 
+                                sym=True
+                            )
+                    
+                    # Load the converted model, or fall back to get_openvino_model
+                    try:
+                        # First try loading the model from the destination path
+                        if os.path.exists(os.path.join(model_dst_path, f"{model_name_convert}.xml")):
+                            print(f"Loading model from {model_dst_path}")
+                            # Try using Optimum if available
+                            if get_optimum_openvino_model is not None:
+                                endpoint = get_optimum_openvino_model(model_dst_path, model_type)
+                            else:
+                                endpoint = get_openvino_model(model_dst_path, model_type, openvino_label)
+                        else:
+                            # Fall back to direct model loading
+                            endpoint = get_openvino_model(model, model_type, openvino_label)
+                    except Exception as e:
+                        print(f"Error loading converted model: {e}")
+                        # Fall back to direct model loading as last resort
+                        endpoint = get_openvino_model(model, model_type, openvino_label)
+                    
                 except Exception as e:
                     print(f"Error loading model: {e}")
                     tokenizer = MagicMock()

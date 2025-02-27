@@ -8,7 +8,7 @@
     "intel/faster-rcnn",
     "intel/deeplabv3",
     "facebook/wav2vec2-base",
-    "openai/whisper-tiny",
+    "distil-whisper/distil-small.en",
     "openai/whisper-base",
     "gpt2",
     "facebook/opt-350m",
