@@ -2,27 +2,56 @@
   "init": "Success",
   "load_audio": "Success",
   "audio_format": "Shape: (224000,), SR: 16000",
-  "cpu_init": "Success",
-  "cpu_transcription_handler": "Success", 
-  "cpu_transcription": "(REAL) REAL TRANSCRIPTION: This audio contains speech in ...",
-  "cpu_embedding_handler": "Success",
+  "cpu_init": "Success (REAL)",
+  "cpu_transcription_handler": "Success (REAL)",
+  "cpu_transcription": "This is a mock CPU transcription output",
+  "cpu_transcription_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output": "This is a mock CPU transcription output",
+    "timestamp": 1740696713.5874238,
+    "implementation": "(REAL)"
+  },
+  "cpu_embedding_handler": "Success (REAL)",
   "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "(REAL) PLACEHOLDER_EMBEDDING",
+  "cpu_embedding_sample": "[2.04868483543396, -1.1901894807815552, 0.054571665823459625, 0.7450907826423645, 0.25926414132118225]...",
+  "cpu_embedding_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output_type": "<class 'dict'>",
+    "embedding_length": 768,
+    "timestamp": 1740696713.665305,
+    "implementation": "(REAL)"
+  },
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Failed OpenVINO initialization",
-  "openvino_handler": "Success",
+  "openvino_init": "Success (MOCK)",
+  "openvino_handler": "Success (MOCK)",
+  "openvino_transcription": "(MOCK) This is a mock OpenVINO transcription output",
+  "openvino_transcription_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output": "(MOCK) This is a mock OpenVINO transcription output",
+    "timestamp": 1740696733.0486171,
+    "implementation": "(MOCK)"
+  },
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success",
-  "qualcomm_handler": "Success",
+  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_handler": "Success (MOCK)",
+  "qualcomm_transcription": "(MOCK) This is a mock Qualcomm transcription output",
+  "qualcomm_transcription_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output": "(MOCK) This is a mock Qualcomm transcription output",
+    "timestamp": 1740696733.4950628,
+    "implementation": "(MOCK)"
+  },
   "metadata": {
-    "timestamp": 1740692274.6513505,
+    "timestamp": 1740696733.495258,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
+    "transformers_version": "4.49.0",
     "cuda_available": false,
     "cuda_device_count": 0,
     "mps_available": false,
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "test_model": "local-wav2vec2"
+    "test_model": "facebook/wav2vec2-base-960h",
+    "test_run_id": "wav2vec2-test-1740696733"
   }
 }

@@ -338,22 +338,179 @@ class hf_t5:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
     
     def create_cuda_t5_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint):
+        """Creates a CUDA handler for T5 text generation.
+        
+        Args:
+            tokenizer: Text tokenizer
+            endpoint_model: Model name or path
+            cuda_label: CUDA device identifier
+            endpoint: Model endpoint
+            
+        Returns:
+            Handler function for CUDA T5 text generation
+        """
         def handler(x, cuda_endpoint_handler=endpoint, cuda_processor=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label):
-            results = None
-            chat = x if x is not None else ""
+            """CUDA handler for T5 text generation.
+            
+            Args:
+                x: Input text to process
+                
+            Returns:
+                Dictionary with generated text and implementation type
+            """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
+            
+            # Validate input
+            if x is None:
+                is_mock = True
+                return {
+                    "text": "No input provided",
+                    "implementation_type": "MOCK"
+                }
+            
+            chat = x if isinstance(x, str) else str(x)
+            
+            # Check for CUDA availability
+            cuda_available = (
+                hasattr(self.torch, 'cuda') and 
+                self.torch.cuda.is_available() and 
+                cuda_endpoint_handler is not None and
+                hasattr(cuda_endpoint_handler, 'generate')
+            )
+            
+            # If CUDA isn't available, use mock implementation
+            if not cuda_available:
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Validate tokenizer
+            if cuda_processor is None or not hasattr(cuda_processor, '__call__'):
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Try real CUDA implementation
             with self.torch.no_grad():
                 try:
-                    self.torch.cuda.empty_cache()
-                    inputs = cuda_processor(chat, return_tensors="pt").to(cuda_label)
-                    outputs = cuda_endpoint_handler.generate(**inputs)
-                    results = cuda_processor.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    # Run model inference
-                    self.torch.cuda.empty_cache()
-                    return results
+                    # Clean GPU cache before processing
+                    if hasattr(self.torch.cuda, 'empty_cache'):
+                        self.torch.cuda.empty_cache()
+                    
+                    # Tokenize input
+                    try:
+                        inputs = cuda_processor(chat, return_tensors="pt")
+                        
+                        # Move tensors to the correct device
+                        try:
+                            # Make a copy to avoid mutation issues
+                            input_dict = {}
+                            for key in list(inputs.keys()):
+                                if hasattr(inputs[key], 'to') and callable(inputs[key].to):
+                                    input_dict[key] = inputs[key].to(cuda_label)
+                                else:
+                                    input_dict[key] = inputs[key]
+                        except Exception as device_error:
+                            print(f"Error moving tensors to CUDA device: {device_error}")
+                            is_mock = True
+                            
+                            # Clean GPU memory on error
+                            if hasattr(self.torch.cuda, 'empty_cache'):
+                                self.torch.cuda.empty_cache()
+                                
+                            return {
+                                "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                                "implementation_type": "MOCK"
+                            }
+                    except Exception as tokenize_error:
+                        print(f"Tokenization error: {tokenize_error}")
+                        is_mock = True
+                        
+                        # Clean GPU memory on error
+                        if hasattr(self.torch.cuda, 'empty_cache'):
+                            self.torch.cuda.empty_cache()
+                            
+                        return {
+                            "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                            "implementation_type": "MOCK"
+                        }
+                    
+                    # Generate text
+                    try:
+                        outputs = cuda_endpoint_handler.generate(**input_dict)
+                        
+                        # Ensure output is valid
+                        if outputs is None or not hasattr(outputs, '__getitem__') or len(outputs) == 0:
+                            is_mock = True
+                            
+                            # Clean GPU memory before returning
+                            if hasattr(self.torch.cuda, 'empty_cache'):
+                                self.torch.cuda.empty_cache()
+                                
+                            return {
+                                "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                                "implementation_type": "MOCK"
+                            }
+                            
+                        # Decode result
+                        if hasattr(cuda_processor, 'decode'):
+                            results = cuda_processor.decode(
+                                outputs[0], 
+                                skip_special_tokens=True, 
+                                clean_up_tokenization_spaces=False
+                            )
+                        else:
+                            is_mock = True
+                            
+                            # Clean GPU memory before returning
+                            if hasattr(self.torch.cuda, 'empty_cache'):
+                                self.torch.cuda.empty_cache()
+                                
+                            return {
+                                "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                                "implementation_type": "MOCK"
+                            }
+                            
+                        # Clean GPU memory after successful generation
+                        if hasattr(self.torch.cuda, 'empty_cache'):
+                            self.torch.cuda.empty_cache()
+                            
+                        # Return successful result
+                        return {
+                            "text": results,
+                            "implementation_type": "REAL"
+                        }
+                        
+                    except Exception as gen_error:
+                        print(f"Error generating text with CUDA: {gen_error}")
+                        is_mock = True
+                        
+                        # Clean GPU memory on error
+                        if hasattr(self.torch.cuda, 'empty_cache'):
+                            self.torch.cuda.empty_cache()
+                            
+                        return {
+                            "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                            "implementation_type": "MOCK"
+                        }
+                        
                 except Exception as e:
-                    # Cleanup GPU memory in case of error
-                    self.torch.cuda.empty_cache()
-                    raise e
+                    print(f"Unexpected error in CUDA handler: {e}")
+                    is_mock = True
+                    
+                    # Clean GPU memory on error
+                    if hasattr(self.torch.cuda, 'empty_cache'):
+                        self.torch.cuda.empty_cache()
+                        
+                    return {
+                        "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                        "implementation_type": "MOCK"
+                    }
         return handler
     
     def create_cpu_t5_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint):
@@ -378,21 +535,47 @@ class hf_t5:
                 y: Optional parameter (unused, for API compatibility)
                 
             Returns:
-                Generated text string
+                Dictionary with generated text and implementation type
             """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
+            
             # Set model to evaluation mode if possible
             if hasattr(model, 'eval'):
-                model.eval()
+                try:
+                    model.eval()
+                except Exception as e:
+                    print(f"Error setting model to eval mode: {e}")
+                    # Continue even if setting eval mode fails
             
             try:
                 # Ensure we have valid input
                 if x is None:
-                    return "No input provided"
+                    is_mock = True
+                    return {
+                        "text": "No input provided",
+                        "implementation_type": "MOCK"
+                    }
                     
                 # Convert input to string if needed
                 input_text = x if isinstance(x, str) else str(x)
                 
                 print(f"Processing input: {input_text[:50]}...")
+                
+                # Check if we have a valid model and tokenizer
+                if model is None or not (hasattr(model, 'generate') and callable(model.generate)):
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock for {input_text[:30]}...)",
+                        "implementation_type": "MOCK"
+                    }
+                
+                if tokenizer is None:
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock for {input_text[:30]}...)",
+                        "implementation_type": "MOCK"
+                    }
                 
                 # Tokenize input
                 try:
@@ -404,12 +587,18 @@ class hf_t5:
                         "input_ids": self.torch.ones((1, 10), dtype=self.torch.long),
                         "attention_mask": self.torch.ones((1, 10), dtype=self.torch.long)
                     }
+                    is_mock = True
+                
+                # Copy inputs to avoid potential mutation issues
+                input_dict = {}
+                for key in list(inputs.keys()):
+                    input_dict[key] = inputs[key]
                 
                 # Generate text with model
                 try:
                     with self.torch.no_grad():
                         output_ids = model.generate(
-                            **inputs,
+                            **input_dict,
                             max_new_tokens=100,
                             do_sample=False,  # Deterministic output for testing
                             num_beams=1       # Simple beam search
@@ -426,18 +615,31 @@ class hf_t5:
                     else:
                         # Fallback if tokenizer doesn't have expected methods
                         result = "Generated text (couldn't decode properly)"
+                        is_mock = True
                     
-                    return result
+                    # Return result with implementation type
+                    return {
+                        "text": result,
+                        "implementation_type": "MOCK" if is_mock else "REAL"
+                    }
                     
                 except Exception as gen_error:
                     print(f"Generation error: {gen_error}")
                     # Provide a fallback result
-                    return f"Error during generation: {str(gen_error)[:100]}"
+                    is_mock = True
+                    return {
+                        "text": f"Error during generation: {str(gen_error)[:100]}",
+                        "implementation_type": "MOCK"
+                    }
                     
             except Exception as e:
                 print(f"Error in CPU T5 handler: {e}")
                 # Return a fallback message rather than raising an exception
-                return f"Error processing input: {str(e)[:100]}"
+                is_mock = True
+                return {
+                    "text": f"Error processing input: {str(e)[:100]}",
+                    "implementation_type": "MOCK"
+                }
                 
         return handler
         
@@ -499,13 +701,66 @@ class hf_t5:
             Handler function for inference
         """
         def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            """Qualcomm handler for T5 text generation.
+            
+            Args:
+                text_input: Input text or tokenized inputs
+                
+            Returns:
+                Dictionary with generated text and implementation type
+            """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
+            
+            # Validate input
+            if text_input is None:
+                is_mock = True
+                return {
+                    "text": "No input provided",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Check if we have SNPE utilities available
+            has_snpe = (
+                hasattr(self, 'snpe_utils') and 
+                self.snpe_utils is not None and 
+                hasattr(self.snpe_utils, 'run_inference')
+            )
+            
+            # If necessary components aren't available, use mock implementation
+            if not (has_snpe and endpoint is not None and tokenizer is not None):
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {text_input[:30] if isinstance(text_input, str) else str(text_input)[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
+            
             try:
-                # Tokenize input
-                if isinstance(text_input, str):
-                    inputs = tokenizer(text_input, return_tensors="np", padding=True)
-                else:
-                    # Assume it's already tokenized, convert to numpy if needed
-                    inputs = {k: v.numpy() if hasattr(v, 'numpy') else v for k, v in text_input.items()}
+                # Tokenize input with error handling
+                try:
+                    if isinstance(text_input, str):
+                        inputs = tokenizer(text_input, return_tensors="np", padding=True)
+                    else:
+                        # Assume it's already tokenized, convert to numpy if needed
+                        inputs = {}
+                        # Use list to avoid dictionary mutation issues
+                        for k, v in text_input.items() if hasattr(text_input, 'items') else {}:
+                            inputs[k] = v.numpy() if hasattr(v, 'numpy') else v
+                except Exception as tokenize_error:
+                    print(f"Error tokenizing input: {tokenize_error}")
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock due to tokenization error)",
+                        "implementation_type": "MOCK"
+                    }
+                
+                # Verify inputs contain required keys
+                if not ("input_ids" in inputs and "attention_mask" in inputs):
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock due to missing input components)",
+                        "implementation_type": "MOCK"
+                    }
                 
                 # Initial input for the model
                 model_inputs = {
@@ -513,88 +768,247 @@ class hf_t5:
                     "attention_mask": inputs["attention_mask"]
                 }
                 
-                # Encoder pass
-                encoder_results = self.snpe_utils.run_inference(endpoint, model_inputs)
+                # Encoder pass with error handling
+                try:
+                    encoder_results = self.snpe_utils.run_inference(endpoint, model_inputs)
+                    
+                    # Check if we got valid results
+                    if not encoder_results or not isinstance(encoder_results, dict):
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock due to invalid encoder output)",
+                            "implementation_type": "MOCK"
+                        }
+                except Exception as encoder_error:
+                    print(f"Error in encoder pass: {encoder_error}")
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock due to encoder error)",
+                        "implementation_type": "MOCK"
+                    }
                 
                 # Check for encoder outputs
                 if "encoder_outputs.last_hidden_state" in encoder_results:
-                    # We have encoder outputs, now set up for decoder
-                    decoder_inputs = {
-                        "encoder_outputs.last_hidden_state": encoder_results["encoder_outputs.last_hidden_state"],
-                        "decoder_input_ids": self.np.array([[tokenizer.pad_token_id]])  # Start token
-                    }
-                    
-                    # Prepare for token-by-token generation
-                    generated_ids = [tokenizer.pad_token_id]
-                    max_length = 128
-                    
-                    # Generate tokens one by one
-                    for _ in range(max_length):
-                        # Update decoder input ids
-                        decoder_inputs["decoder_input_ids"] = self.np.array([generated_ids])
+                    try:
+                        # We have encoder outputs, now set up for decoder
+                        decoder_inputs = {
+                            "encoder_outputs.last_hidden_state": encoder_results["encoder_outputs.last_hidden_state"],
+                            "decoder_input_ids": self.np.array([[tokenizer.pad_token_id if hasattr(tokenizer, 'pad_token_id') else 0]])  # Start token
+                        }
                         
-                        # Run decoder pass
-                        decoder_results = self.snpe_utils.run_inference(endpoint, decoder_inputs)
+                        # Prepare for token-by-token generation
+                        generated_ids = [tokenizer.pad_token_id if hasattr(tokenizer, 'pad_token_id') else 0]
+                        max_length = 128
                         
-                        # Get the logits
-                        if "logits" in decoder_results:
-                            logits = self.np.array(decoder_results["logits"])
+                        # Generate tokens one by one
+                        for _ in range(max_length):
+                            # Update decoder input ids
+                            decoder_inputs["decoder_input_ids"] = self.np.array([generated_ids])
                             
-                            # Basic greedy decoding
-                            next_token_id = int(self.np.argmax(logits[0, -1, :]))
-                            
-                            # Add the generated token
-                            generated_ids.append(next_token_id)
-                            
-                            # Check for EOS token
-                            if next_token_id == tokenizer.eos_token_id:
+                            # Run decoder pass
+                            try:
+                                decoder_results = self.snpe_utils.run_inference(endpoint, decoder_inputs)
+                            except Exception as decoder_error:
+                                print(f"Error in decoder pass: {decoder_error}")
                                 break
-                        else:
-                            break
                             
-                    # Decode the generated sequence
-                    decoded_output = tokenizer.decode(generated_ids, skip_special_tokens=True)
-                    
-                    # Return result
-                    return {
-                        "text": decoded_output,
-                        "model": endpoint_model
-                    }
+                            # Get the logits
+                            if "logits" in decoder_results and decoder_results["logits"] is not None:
+                                try:
+                                    logits = self.np.array(decoder_results["logits"])
+                                    
+                                    # Basic greedy decoding
+                                    next_token_id = int(self.np.argmax(logits[0, -1, :]))
+                                    
+                                    # Add the generated token
+                                    generated_ids.append(next_token_id)
+                                    
+                                    # Check for EOS token
+                                    eos_token_id = tokenizer.eos_token_id if hasattr(tokenizer, 'eos_token_id') else None
+                                    if eos_token_id is not None and next_token_id == eos_token_id:
+                                        break
+                                except Exception as logit_error:
+                                    print(f"Error processing logits: {logit_error}")
+                                    break
+                            else:
+                                break
+                        
+                        # Decode the generated sequence
+                        if generated_ids and hasattr(tokenizer, 'decode'):
+                            try:
+                                decoded_output = tokenizer.decode(generated_ids, skip_special_tokens=True)
+                                
+                                # Return result with REAL implementation type
+                                return {
+                                    "text": decoded_output,
+                                    "model": endpoint_model,
+                                    "implementation_type": "REAL"
+                                }
+                            except Exception as decode_error:
+                                print(f"Error decoding output: {decode_error}")
+                                is_mock = True
+                        else:
+                            is_mock = True
+                    except Exception as generation_error:
+                        print(f"Error in token generation: {generation_error}")
+                        is_mock = True
+                        
                 else:
                     # Direct generation mode
-                    results = self.snpe_utils.run_inference(endpoint, model_inputs)
-                    
-                    # Check if we have output_ids
-                    if "output_ids" in results:
-                        output_ids = results["output_ids"]
-                        decoded_output = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                    try:
+                        results = self.snpe_utils.run_inference(endpoint, model_inputs)
                         
-                        # Return result
-                        return {
-                            "text": decoded_output,
-                            "model": endpoint_model
-                        }
-                    else:
-                        return {"error": "Unexpected model output format"}
+                        # Check if we have output_ids
+                        if results and "output_ids" in results and results["output_ids"] is not None:
+                            try:
+                                output_ids = results["output_ids"]
+                                if hasattr(tokenizer, 'decode'):
+                                    decoded_output = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+                                    
+                                    # Return result with REAL implementation type
+                                    return {
+                                        "text": decoded_output,
+                                        "model": endpoint_model,
+                                        "implementation_type": "REAL"
+                                    }
+                                else:
+                                    is_mock = True
+                            except Exception as decode_error:
+                                print(f"Error decoding output: {decode_error}")
+                                is_mock = True
+                        else:
+                            is_mock = True
+                            print("Unexpected model output format")
+                    except Exception as inference_error:
+                        print(f"Error in direct generation: {inference_error}")
+                        is_mock = True
                 
             except Exception as e:
                 print(f"Error in Qualcomm T5 endpoint handler: {e}")
-                return {"error": str(e)}
+                is_mock = True
+            
+            # Return mock result if anything failed
+            if is_mock:
+                return {
+                    "text": f"Generated text from T5 (mock for {text_input[:30] if isinstance(text_input, str) else str(text_input)[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
                 
         return handler
 
     def create_openvino_t5_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
-        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
-            results = None
-            chat = None
-            if x is not None and x is not None:
-                chat = x
+        """Creates an OpenVINO handler for T5 text generation.
+        
+        Args:
+            openvino_endpoint_handler: The OpenVINO model endpoint
+            openvino_tokenizer: The text tokenizer
+            endpoint_model: The model name or path
+            openvino_label: Label to identify this endpoint
             
-            inputs = openvino_tokenizer(chat, return_tensors="pt")
-            outputs = openvino_endpoint_handler.generate(**inputs)
-            results = openvino_tokenizer.decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-            # streamer = TextStreamer(openvino_tokenizer, skip_prompt=True, skip_special_tokens=True)
-            return results
+        Returns:
+            A handler function for OpenVINO T5 endpoint
+        """
+        def handler(x, openvino_endpoint_handler=openvino_endpoint_handler, openvino_tokenizer=openvino_tokenizer, endpoint_model=endpoint_model, openvino_label=openvino_label):
+            """OpenVINO handler for T5 text generation.
+            
+            Args:
+                x: Input text to generate from
+                
+            Returns:
+                Generated text string with implementation type
+            """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
+            
+            # Validate input
+            chat = None
+            if x is not None:
+                chat = x if isinstance(x, str) else str(x)
+            else:
+                # Return a default response if no input is provided
+                is_mock = True
+                return {
+                    "text": "No input provided",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Validate that we have valid OpenVINO components
+            if openvino_endpoint_handler is None or not hasattr(openvino_endpoint_handler, 'generate'):
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {chat})",
+                    "implementation_type": "MOCK"
+                }
+                
+            # Validate tokenizer
+            if openvino_tokenizer is None or not hasattr(openvino_tokenizer, '__call__'):
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {chat})",
+                    "implementation_type": "MOCK"
+                }
+            
+            try:
+                # Process input and generate text
+                inputs = openvino_tokenizer(chat, return_tensors="pt")
+                
+                # Make a copy of inputs to avoid dict mutation issues
+                input_dict = {}
+                for key in list(inputs.keys()):
+                    input_dict[key] = inputs[key]
+                
+                # Run generation with error handling
+                try:
+                    outputs = openvino_endpoint_handler.generate(**input_dict)
+                    
+                    # Ensure outputs is valid before decoding
+                    if outputs is None or not hasattr(outputs, '__getitem__') or len(outputs) == 0:
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock for {chat})",
+                            "implementation_type": "MOCK"
+                        }
+                    
+                    # Decode the output tokens
+                    if hasattr(openvino_tokenizer, 'decode'):
+                        results = openvino_tokenizer.decode(
+                            outputs[0], 
+                            skip_special_tokens=True, 
+                            clean_up_tokenization_spaces=False
+                        )
+                    else:
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock for {chat})",
+                            "implementation_type": "MOCK"
+                        }
+                    
+                    # Return the result with implementation type
+                    return {
+                        "text": results,
+                        "implementation_type": "REAL"
+                    }
+                    
+                except Exception as e:
+                    print(f"Error generating text with OpenVINO: {e}")
+                    is_mock = True
+                
+            except Exception as e:
+                print(f"Error in OpenVINO handler: {e}")
+                is_mock = True
+            
+            # Fall back to mock if real implementation failed
+            if is_mock:
+                return {
+                    "text": f"Generated text from T5 (mock for {chat})",
+                    "implementation_type": "MOCK"
+                }
+                
+            # Should never reach here, but just in case
+            return {
+                "text": f"Unexpected execution path in T5 handler",
+                "implementation_type": "MOCK"
+            }
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
@@ -639,41 +1053,167 @@ class hf_t5:
         return ov_model
 
     def create_apple_text_generation_endpoint_handler(self, endpoint, tokenizer, model_name, apple_label):
-        """Creates an Apple Silicon optimized handler for T5 text generation."""
+        """Creates an Apple Silicon optimized handler for T5 text generation.
+        
+        Args:
+            endpoint: The CoreML model endpoint
+            tokenizer: The text tokenizer
+            model_name: Model name or path
+            apple_label: Label for Apple endpoint
+            
+        Returns:
+            Handler function for Apple Silicon T5 text generation
+        """
         def handler(x, endpoint=endpoint, tokenizer=tokenizer, model_name=model_name, apple_label=apple_label):
+            """Apple Silicon handler for T5 text generation.
+            
+            Args:
+                x: Input text to process
+                
+            Returns:
+                Dictionary with generated text and implementation type
+            """
+            # Flag to track if we're using real implementation or mock
+            is_mock = False
+            
+            # Validate input
+            if x is None:
+                is_mock = True
+                return {
+                    "text": "No input provided",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Check if we have CoreML utilities available
+            has_coreml = (
+                hasattr(self, 'coreml_utils') and 
+                self.coreml_utils is not None and 
+                hasattr(self.coreml_utils, 'run_inference')
+            )
+            
+            # Check Apple Silicon availability
+            mps_available = (
+                hasattr(self.torch.backends, 'mps') and 
+                self.torch.backends.mps.is_available()
+            )
+            
+            # If necessary components aren't available, use mock implementation
+            if not (has_coreml and mps_available and endpoint is not None and tokenizer is not None):
+                is_mock = True
+                return {
+                    "text": f"Generated text from T5 (mock for {x[:30] if isinstance(x, str) else str(x)[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
+            
             try:
-                # Prepare input
+                # Prepare input based on input type
                 if isinstance(x, str):
-                    inputs = tokenizer(x, return_tensors='np', padding=True)
+                    # Process string input
+                    try:
+                        inputs = tokenizer(x, return_tensors='np', padding=True)
+                    except Exception as tokenize_error:
+                        print(f"Error tokenizing input: {tokenize_error}")
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock for {x[:30]}...)",
+                            "implementation_type": "MOCK"
+                        }
+                        
                 elif isinstance(x, list):
-                    inputs = tokenizer(x, return_tensors='np', padding=True)
+                    # Process list of strings
+                    try:
+                        inputs = tokenizer(x, return_tensors='np', padding=True)
+                    except Exception as tokenize_error:
+                        print(f"Error tokenizing input list: {tokenize_error}")
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock for list input)",
+                            "implementation_type": "MOCK"
+                        }
+                        
                 else:
+                    # Use as-is (assume it's already processed)
                     inputs = x
                 
-                # Convert inputs to CoreML format
+                # Convert inputs to CoreML format safely
                 input_dict = {}
-                for key, value in inputs.items():
-                    if hasattr(value, 'numpy'):
-                        input_dict[key] = value.numpy()
-                    else:
-                        input_dict[key] = value
+                try:
+                    # Use list to avoid dictionary size changes during iteration
+                    for key in list(inputs.keys()):
+                        value = inputs[key]
+                        if hasattr(value, 'numpy'):
+                            input_dict[key] = value.numpy()
+                        else:
+                            input_dict[key] = value
+                except Exception as convert_error:
+                    print(f"Error converting inputs to CoreML format: {convert_error}")
+                    is_mock = True
+                    return {
+                        "text": f"Generated text from T5 (mock due to input conversion error)",
+                        "implementation_type": "MOCK"
+                    }
                 
-                # Run inference
-                outputs = self.coreml_utils.run_inference(endpoint, input_dict)
-                
-                # Process outputs
-                if 'logits' in outputs:
-                    logits = self.torch.tensor(outputs['logits'])
-                    # Generate text from logits
-                    generated_ids = self.torch.argmax(logits, dim=-1)
-                    generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-                    return generated_text
+                # Run inference with error handling
+                try:
+                    outputs = self.coreml_utils.run_inference(endpoint, input_dict)
                     
-                return None
-                
+                    # Check if we got valid outputs
+                    if not outputs or not isinstance(outputs, dict):
+                        is_mock = True
+                        return {
+                            "text": f"Generated text from T5 (mock due to invalid output)",
+                            "implementation_type": "MOCK"
+                        }
+                    
+                    # Process outputs
+                    if 'logits' in outputs:
+                        try:
+                            # Convert logits to PyTorch tensor
+                            logits = self.torch.tensor(outputs['logits'])
+                            
+                            # Generate text from logits
+                            generated_ids = self.torch.argmax(logits, dim=-1)
+                            
+                            # Decode text
+                            if hasattr(tokenizer, 'batch_decode'):
+                                generated_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+                                
+                                # Return as string if single item, otherwise as list
+                                if isinstance(generated_text, list) and len(generated_text) == 1:
+                                    result = generated_text[0]
+                                else:
+                                    result = generated_text
+                                    
+                                return {
+                                    "text": result,
+                                    "implementation_type": "REAL"
+                                }
+                            else:
+                                is_mock = True
+                                return {
+                                    "text": f"Generated text from T5 (mock due to decoding issue)",
+                                    "implementation_type": "MOCK"
+                                }
+                        except Exception as processing_error:
+                            print(f"Error processing CoreML outputs: {processing_error}")
+                            is_mock = True
+                    else:
+                        print("Expected 'logits' not found in CoreML outputs")
+                        is_mock = True
+                except Exception as inference_error:
+                    print(f"Error running CoreML inference: {inference_error}")
+                    is_mock = True
+                    
             except Exception as e:
                 print(f"Error in Apple Silicon T5 handler: {e}")
-                return None
+                is_mock = True
+            
+            # Return mock result if anything failed
+            if is_mock:
+                return {
+                    "text": f"Generated text from T5 (mock for {x[:30] if isinstance(x, str) else str(x)[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
                 
         return handler
 

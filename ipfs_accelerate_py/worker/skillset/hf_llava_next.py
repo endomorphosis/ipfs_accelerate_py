@@ -130,11 +130,37 @@ def load_image_tensor(image_file):
     return transform(image).unsqueeze(0)  # Add batch dimension
 
 class hf_llava_next:
+    """HuggingFace LLaVA-Next (Large Language and Vision Assistant, Next Generation) implementation.
+    
+    This class provides standardized interfaces for working with LLaVA-Next models
+    across different hardware backends (CPU, CUDA, OpenVINO, Apple, Qualcomm).
+    
+    LLaVA-Next extends LLaVA with improved multimodal capabilities, including
+    multi-image understanding, better visual reasoning, and enhanced vision-language alignment.
+    """
+    
     def __init__(self, resources=None, metadata=None):
+        """Initialize the LLaVA-Next model.
+        
+        Args:
+            resources (dict): Dictionary of shared resources (torch, transformers, etc.)
+            metadata (dict): Configuration metadata
+        """
         self.resources = resources
         self.metadata = metadata
+        
+        # Handler creation methods
+        self.create_cpu_multimodal_endpoint_handler = self.create_cpu_multimodal_endpoint_handler if hasattr(self, 'create_cpu_multimodal_endpoint_handler') else None
+        self.create_cuda_multimodal_endpoint_handler = self.create_cuda_multimodal_endpoint_handler if hasattr(self, 'create_cuda_multimodal_endpoint_handler') else None
+        self.create_openvino_multimodal_endpoint_handler = self.create_openvino_multimodal_endpoint_handler if hasattr(self, 'create_openvino_multimodal_endpoint_handler') else None
+        self.create_apple_multimodal_endpoint_handler = self.create_apple_multimodal_endpoint_handler if hasattr(self, 'create_apple_multimodal_endpoint_handler') else None
+        self.create_qualcomm_multimodal_endpoint_handler = self.create_qualcomm_multimodal_endpoint_handler if hasattr(self, 'create_qualcomm_multimodal_endpoint_handler') else None
+        
+        # Initialization methods
         self.init = self.init
-        self.coreml_utils = None
+        
+        # Hardware-specific utilities
+        self.coreml_utils = None  # Apple CoreML utils
 
     def init(self):
         if "torch" not in list(self.resources.keys()):

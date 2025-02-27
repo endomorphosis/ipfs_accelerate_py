@@ -1,23 +1,107 @@
 {
-  "init": "Success",
-  "cpu_init": "Success",
-  "cpu_single": "Success",
-  "cpu_single_shape": [
-    1,
-    384
+  "status": {
+    "init": "Success (REAL)",
+    "cpu_init": "Success (REAL)",
+    "cpu_single": "Success (REAL)",
+    "cpu_single_shape": [
+      1,
+      384
+    ],
+    "cpu_single_type": "torch.float32",
+    "cpu_batch": "Success (REAL)",
+    "cpu_batch_shape": [
+      2,
+      384
+    ],
+    "cpu_similarity": "Success (REAL)",
+    "cpu_similarity_in_range": true,
+    "cuda_tests": "CUDA not available",
+    "openvino_init": "Success (MOCK)",
+    "openvino_handler": "Success (MOCK)",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Failed Qualcomm initialization",
+    "qualcomm_handler": "Failed Qualcomm handler"
+  },
+  "examples": [
+    {
+      "input": "The quick brown fox jumps over the lazy dog",
+      "output": {
+        "embedding_shape": [
+          1,
+          384
+        ],
+        "embedding_type": "torch.float32"
+      },
+      "timestamp": "2025-02-27T15:28:44.766014",
+      "elapsed_time": 0.0018775463104248047,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "single"
+    },
+    {
+      "input": "Batch of 2 texts",
+      "output": {
+        "embedding_shape": [
+          2,
+          384
+        ],
+        "embedding_type": "torch.float32"
+      },
+      "timestamp": "2025-02-27T15:28:44.766803",
+      "elapsed_time": 0.0007262229919433594,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "batch"
+    },
+    {
+      "input": "Similarity test between single and first batch embedding",
+      "output": {
+        "similarity_value": 0.9841361045837402,
+        "in_range": true
+      },
+      "timestamp": "2025-02-27T15:28:44.767222",
+      "elapsed_time": 0.001,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "similarity"
+    },
+    {
+      "input": "Batch of 2 texts",
+      "output": {
+        "embedding_shape": [
+          2,
+          384
+        ]
+      },
+      "timestamp": "2025-02-27T15:28:52.775282",
+      "elapsed_time": 0.0020728111267089844,
+      "implementation_type": "(MOCK)",
+      "platform": "OpenVINO"
+    }
   ],
-  "cpu_single_type": "torch.float32",
-  "cpu_batch": "Success",
-  "cpu_batch_shape": [
-    2,
-    384
-  ],
-  "cpu_similarity": "Success",
-  "cpu_similarity_in_range": true,
-  "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
-  "qualcomm_handler": "Failed Qualcomm handler"
+  "metadata": {
+    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+    "test_timestamp": "2025-02-27T15:28:52.875869",
+    "timestamp": 1740698932.8758876,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "transformers_version": "4.49.0",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_texts": [
+      "The quick brown fox jumps over the lazy dog",
+      "A fast auburn canine leaps above the sleepy hound"
+    ],
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "platform_status": {
+      "cpu": "Ready (REAL)",
+      "cuda": "CUDA not available",
+      "openvino": "Ready (MOCK)",
+      "apple": "Apple Silicon not available",
+      "qualcomm": "Failed initialization"
+    },
+    "test_run_id": "embed-test-1740698932"
+  }
 }

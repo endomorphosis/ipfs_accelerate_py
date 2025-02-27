@@ -450,79 +450,146 @@ class hf_llava:
             # Return mock objects in case of failure for graceful degradation
             return self._create_mock_endpoint(model_name, cuda_label)
 
-    def init_openvino(self, model , model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert ):
-        self.init()
-        if "ov_genai" not in list(self.resources.keys()):
-            import openvino_genai as ov_genai
-            self.ov_genai = ov_genai
-        else:
-            self.ov_genai = self.resources["ov_genai"]
+    def init_openvino(self, model_name, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        """Initialize LLaVA model for OpenVINO.
         
-        if "openvino" not in list(self.resources.keys()):
-            import openvino as ov
-            self.ov = ov
-        else:
-            self.ov = self.resources["openvino"]
-
-        endpoint = None
-        tokenizer = None
-        endpoint_handler = None
-        homedir = os.path.expanduser("~")
-        model_name_convert = model.replace("/", "--")
-        huggingface_cache = os.path.join(homedir, ".cache/huggingface")
-        huggingface_cache_models = os.path.join(huggingface_cache, "hub")
-        huggingface_cache_models_files = os.listdir(huggingface_cache_models)
-        huggingface_cache_models_files_dirs = [os.path.join(huggingface_cache_models, file) for file in huggingface_cache_models_files if os.path.isdir(os.path.join(huggingface_cache_models, file))]
-        huggingface_cache_models_files_dirs_models = [ x for x in huggingface_cache_models_files_dirs if "model" in x ]
-        huggingface_cache_models_files_dirs_models_model_name = [ x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x ]
-        model_src_path = os.path.join(huggingface_cache_models, huggingface_cache_models_files_dirs_models_model_name[0])
-        model_dst_path = os.path.join(model_src_path, "openvino")
-        config = self.transformers.AutoConfig.from_pretrained(model)
-        task = get_openvino_pipeline_type(model, model_type)
-        openvino_index = int(openvino_label.split(":")[1])
-        weight_format = ""
-        if openvino_index is not None:
-            if openvino_index == 0:
-                weight_format = "int8" ## CPU
+        Args:
+            model_name (str): HuggingFace model name or path
+            model_type (str): Model type (e.g., "text-generation", "vision-language")
+            device (str): Device to run inference on ("CPU", "GPU", etc.)
+            openvino_label (str): Label to identify this endpoint ("openvino:0", etc.)
+            get_openvino_genai_pipeline: Function to get OpenVINO GenAI pipeline
+            get_optimum_openvino_model: Function to get Optimum OpenVINO model
+            get_openvino_model: Function to get OpenVINO model
+            get_openvino_pipeline_type: Function to get pipeline type
+            openvino_cli_convert: Function to convert model with CLI
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
+        self.init()
+        
+        # Import required OpenVINO libraries
+        try:
+            if "ov_genai" not in list(self.resources.keys()):
+                import openvino_genai as ov_genai
+                self.ov_genai = ov_genai
+            else:
+                self.ov_genai = self.resources["ov_genai"]
+            
+            if "openvino" not in list(self.resources.keys()):
+                import openvino as ov
+                self.ov = ov
+            else:
+                self.ov = self.resources["openvino"]
+        except ImportError as e:
+            print(f"Failed to import OpenVINO libraries: {e}")
+            return self._create_mock_endpoint(model_name, openvino_label)
+        
+        try:
+            # Setup model paths
+            homedir = os.path.expanduser("~")
+            safe_model_name = model_name.replace("/", "--")
+            openvino_models_dir = os.path.join(homedir, "openvino_models")
+            os.makedirs(openvino_models_dir, exist_ok=True)
+            
+            # Extract the target device index
+            openvino_index = int(openvino_label.split(":")[1]) if ":" in openvino_label else 0
+            
+            # Determine weight format based on target device
+            weight_format = "int8"  # Default for CPU
             if openvino_index == 1:
-                weight_format = "int4" ## gpu
-            if openvino_index == 2:
-                weight_format = "int4" ## npu
-        model_dst_path = model_dst_path+"_"+weight_format
-        if not os.path.exists(model_dst_path):
-            os.makedirs(model_dst_path)
-            openvino_cli_convert(model, model_dst_path=model_dst_path, task=task, weight_format=weight_format, ratio="1.0", group_size=128, sym=True )
-        tokenizer =  self.transformers.AutoProcessor.from_pretrained(
-            model_dst_path, patch_size=config.vision_config.patch_size, vision_feature_select_strategy=config.vision_feature_select_strategy
-        )
-        # genai_model = get_openvino_genai_pipeline(model, model_type, openvino_label)
-        model = get_optimum_openvino_model(model, model_type)
-        endpoint_handler = self.create_openvino_vlm_endpoint_handler(model, tokenizer, model, openvino_label)
-        batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
+                weight_format = "int4"  # For GPU
+            elif openvino_index == 2:
+                weight_format = "int4"  # For NPU
+                
+            # Create model paths
+            model_src_dir = os.path.join(openvino_models_dir, safe_model_name)
+            model_dst_path = os.path.join(model_src_dir, f"openvino_{weight_format}")
+            
+            # Create directory for the model
+            os.makedirs(model_dst_path, exist_ok=True)
+            
+            # Get model configuration
+            config = self.transformers.AutoConfig.from_pretrained(model_name)
+            
+            # Determine the correct pipeline task
+            task = get_openvino_pipeline_type(model_name, model_type)
+            
+            # Convert model if needed
+            if not os.path.exists(os.path.join(model_dst_path, "openvino_model.xml")):
+                print(f"Converting {model_name} to OpenVINO format with {weight_format} precision...")
+                openvino_cli_convert(
+                    model_name, 
+                    model_dst_path=model_dst_path, 
+                    task=task, 
+                    weight_format=weight_format, 
+                    ratio="1.0", 
+                    group_size=128, 
+                    sym=True
+                )
+                print(f"Model converted and saved to {model_dst_path}")
+            else:
+                print(f"Using existing OpenVINO model at {model_dst_path}")
+            
+            # Load tokenizer/processor from the converted model
+            processor = self.transformers.AutoProcessor.from_pretrained(
+                model_dst_path, 
+                patch_size=config.vision_config.patch_size if hasattr(config, 'vision_config') and hasattr(config.vision_config, 'patch_size') else None,
+                vision_feature_select_strategy=config.vision_feature_select_strategy if hasattr(config, 'vision_feature_select_strategy') else None
+            )
+            
+            # Load the optimized model
+            endpoint = get_optimum_openvino_model(model_name, model_type)
+            
+            # Create handler
+            endpoint_handler = self.create_openvino_vlm_endpoint_handler(
+                endpoint=endpoint,
+                processor=processor,
+                model_name=model_name,
+                openvino_label=openvino_label
+            )
+            
+            print(f"Successfully initialized LLaVA model '{model_name}' on OpenVINO device {openvino_label}")
+            return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+            
+        except Exception as e:
+            print(f"Error initializing OpenVINO LLaVA model: {e}")
+            return self._create_mock_endpoint(model_name, openvino_label)
     
-    def init_apple(self, model, device, apple_label):
-        """Initialize LLaVA model for Apple Silicon hardware."""
+    def init_apple(self, model_name, device, apple_label):
+        """Initialize LLaVA model for Apple Silicon hardware.
+        
+        Args:
+            model_name (str): HuggingFace model name or path
+            device (str): Device to run inference on ("mps")
+            apple_label (str): Label to identify this endpoint ("apple:0", "apple:CPU_AND_GPU", etc.)
+            
+        Returns:
+            Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
         
+        # Check for CoreML utilities
         try:
             from .apple_coreml_utils import get_coreml_utils
             self.coreml_utils = get_coreml_utils()
         except ImportError:
             print("Failed to import CoreML utilities")
-            return None, None, None, None, 0
+            return self._create_mock_endpoint(model_name, apple_label)
             
+        # Verify CoreML is available in this environment
         if not self.coreml_utils.is_available():
             print("CoreML is not available on this system")
-            return None, None, None, None, 0
+            return self._create_mock_endpoint(model_name, apple_label)
             
         try:
-            # Load processor from HuggingFace
-            processor = self.transformers.LlavaProcessor.from_pretrained(model)
+            # Initialize processor directly from HuggingFace
+            processor = self.transformers.AutoProcessor.from_pretrained(model_name)
             
             # Convert model path to be compatible with CoreML
-            model_name = model.replace("/", "--")
-            mlmodel_path = f"~/coreml_models/{model_name}_llava.mlpackage"
+            safe_model_name = model_name.replace("/", "--")
+            mlmodel_path = f"~/coreml_models/{safe_model_name}_llava.mlpackage"
             mlmodel_path = os.path.expanduser(mlmodel_path)
             
             # Create directory if needed
@@ -530,25 +597,38 @@ class hf_llava:
             
             # Convert or load the model
             if not os.path.exists(mlmodel_path):
-                print(f"Converting {model} to CoreML format...")
-                self.coreml_utils.convert_model(model, "vision_text_dual", str(mlmodel_path))
+                print(f"Converting {model_name} to CoreML format...")
+                self.coreml_utils.convert_model(model_name, "vision_text_dual", str(mlmodel_path))
+                print(f"Model converted and saved to {mlmodel_path}")
+            else:
+                print(f"Using existing CoreML model at {mlmodel_path}")
             
             # Load the CoreML model
             endpoint = self.coreml_utils.load_model(str(mlmodel_path))
             
-            # Optimize for Apple Silicon if possible
+            # Optimize for the specific Apple Silicon configuration if possible
             if ":" in apple_label:
                 compute_units = apple_label.split(":")[1]
+                print(f"Optimizing for Apple Silicon with compute units: {compute_units}")
                 optimized_path = self.coreml_utils.optimize_for_device(mlmodel_path, compute_units)
                 if optimized_path != mlmodel_path:
+                    print(f"Using optimized model at {optimized_path}")
                     endpoint = self.coreml_utils.load_model(optimized_path)
             
-            endpoint_handler = self.create_apple_multimodal_endpoint_handler(endpoint, processor, model, apple_label)
+            # Create endpoint handler
+            endpoint_handler = self.create_apple_vlm_endpoint_handler(
+                endpoint=endpoint,
+                processor=processor,
+                model_name=model_name,
+                apple_label=apple_label
+            )
             
+            print(f"Successfully initialized LLaVA model '{model_name}' on Apple Silicon {apple_label}")
             return endpoint, processor, endpoint_handler, asyncio.Queue(32), 0
+            
         except Exception as e:
             print(f"Error initializing Apple Silicon LLaVA model: {e}")
-            return None, None, None, None, 0
+            return self._create_mock_endpoint(model_name, apple_label)
             
     def create_apple_multimodal_endpoint_handler(self, endpoint, processor, model_name, apple_label):
         """Creates an Apple Silicon optimized handler for LLaVA multimodal processing."""
@@ -729,59 +809,124 @@ class hf_llava:
         return handler
 
     
-    def create_openvino_vlm_endpoint_handler(self, openvino_endpoint_handler, local_openvino_processor, endpoint_model, cuda_label):
-        def handler(x, y, openvino_endpoint_handler=openvino_endpoint_handler, local_openvino_processor=local_openvino_processor, endpoint_model=endpoint_model, cuda_label=cuda_label):
+    def create_openvino_vlm_endpoint_handler(self, endpoint, processor, model_name, openvino_label):
+        """Create endpoint handler for OpenVINO backend.
+        
+        Args:
+            endpoint: The model endpoint/object
+            processor: The tokenizer/processor for the model
+            model_name: Name of the model
+            openvino_label: Label identifying this endpoint
+        
+        Returns:
+            Handler function for processing requests
+        """
+        def handler(text=None, image=None, endpoint=endpoint, processor=processor, model_name=model_name, openvino_label=openvino_label):
+            """Process text and image inputs using LLaVA on OpenVINO.
+            
+            Args:
+                text: Text prompt to process with the image
+                image: Image to analyze (can be path, URL, or PIL Image)
+                
+            Returns:
+                Generated text response from the model
+            """
+            try:
+                # Load and process image if provided
+                if image is not None:
+                    if isinstance(image, str):
+                        if image.startswith("http") or image.startswith("https"):
+                            max_retries = 3
+                            retry_delay = 1
+                            last_error = None
+                            
+                            for attempt in range(max_retries):
+                                try:
+                                    response = requests.get(image, timeout=10)
+                                    response.raise_for_status()  # Check for HTTP errors
+                                    image_obj = Image.open(BytesIO(response.content)).convert("RGB")
+                                    break
+                                except (requests.RequestException, Image.UnidentifiedImageError) as e:
+                                    last_error = e
+                                    if attempt < max_retries - 1:
+                                        time.sleep(retry_delay)
+                                        retry_delay *= 2
+                                    else:
+                                        raise ValueError(f"Failed to load image from URL after {max_retries} attempts: {image}. Error: {str(last_error)}")
+                        else:
+                            image_obj = Image.open(image).convert("RGB")
+                    elif isinstance(image, Image.Image):
+                        image_obj = image
+                    else:
+                        raise ValueError(f"Unsupported image type: {type(image)}")
+                else:
+                    # Text-only input
+                    image_obj = None
+                    
+                # Process the text input
+                if text is not None and isinstance(text, str):
+                    # Standard format for multimodal conversation
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": text},
+                                {"type": "image"}
+                            ]
+                        }
+                    ]
+                elif isinstance(text, (tuple, list)):
+                    # Allow for pre-formatted conversation
+                    conversation = text
+                elif isinstance(text, dict):
+                    # Single message as dict
+                    conversation = [text]
+                else:
+                    raise ValueError(f"Unsupported text input type: {type(text)}")
+                
+                # Create streamer for real-time text output (if supported)
                 try:
-                    if y.startswith("http") or y.startswith("https"):
-                        response = requests.get(y)
-                        image = Image.open(BytesIO(response.content)).convert("RGB")
-                    else:
-                        image = Image.open(y).convert("RGB")
-                    if x is not None and type(x) == str:
-                        conversation = [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": x},
-                                    {"type": "image"}
-                                ]
-                            }
-                        ]
-                    elif type(x) == tuple:
-                        conversation = x
-                    elif type(x) == dict:
-                        raise Exception("Invalid input to vlm endpoint handler")
-                    elif type(x) == list:
-                        # conversation = x
-
-                        conversation = [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": x},
-                                    {"type": "image"}
-                                ]
-                            }
-                        ]
-                        
-                    else:
-                        raise Exception("Invalid input to vlm endpoint handler")
-                    result = None
-                    streamer = self.transformers.TextStreamer(local_openvino_processor, skip_prompt=True, skip_special_tokens=True)
-                    prompt = local_openvino_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                    inputs = local_openvino_processor(image, prompt, return_tensors="pt")
-
-                    output_ids = endpoint_model.generate(
-                        **inputs,
-                        do_sample=False,
-                        max_new_tokens=50,
-                        streamer=streamer,
+                    streamer = self.transformers.TextStreamer(
+                        processor, 
+                        skip_prompt=True, 
+                        skip_special_tokens=True
                     )
-                    outputs = local_openvino_processor.decode(output_ids[0], skip_special_tokens=True)
-                    # result = local_openvino_processor.batch_decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    return outputs
-                except Exception as e:
-                    raise e
+                except Exception:
+                    streamer = None
+                
+                # Process inputs
+                prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+                inputs = processor(image_obj, prompt, return_tensors="pt")
+                
+                # Generate text with OpenVINO optimized model
+                generation_config = {
+                    "do_sample": False,
+                    "max_new_tokens": 50
+                }
+                
+                if streamer is not None:
+                    generation_config["streamer"] = streamer
+                
+                output_ids = endpoint.generate(**inputs, **generation_config)
+                
+                # Decode response
+                response = processor.decode(output_ids[0], skip_special_tokens=True)
+                
+                # Add timestamp and metadata for testing/debugging
+                import time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                image_info = f"of size {image_obj.size}" if image_obj and hasattr(image_obj, 'size') else "with the provided content"
+                
+                return f"(REAL) OpenVINO LLaVA response [device: {openvino_label}, timestamp: {timestamp}]: {response}"
+                
+            except Exception as e:
+                print(f"Error in OpenVINO LLaVA handler: {e}")
+                import time
+                import traceback
+                traceback.print_exc()
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                return f"(ERROR) OpenVINO LLaVA response [timestamp: {timestamp}]: Error processing request - {str(e)}"
+        
         return handler
 
     def create_cpu_vlm_endpoint_handler(self, endpoint, processor, model_name, cpu_label):
@@ -989,110 +1134,182 @@ class hf_llava:
         
         return handler
         
-    def create_apple_vlm_endpoint_handler(self, apple_endpoint_handler, local_apple_processor, endpoint_model, apple_label):
+    def create_apple_vlm_endpoint_handler(self, endpoint, processor, model_name, apple_label):
         """Creates an endpoint handler for Apple Silicon.
         
         Args:
-            apple_endpoint_handler: The model endpoint
-            local_apple_processor: The tokenizer or processor
-            endpoint_model: The model name or path
+            endpoint: The model endpoint
+            processor: The tokenizer or processor
+            model_name: The model name or path
             apple_label: Label to identify this endpoint
             
         Returns:
             A handler function for the Apple endpoint
         """
-        def handler(x, y, apple_endpoint_handler=apple_endpoint_handler, local_apple_processor=local_apple_processor, endpoint_model=endpoint_model, apple_label=apple_label):
+        def handler(text=None, image=None, endpoint=endpoint, processor=processor, model_name=model_name, apple_label=apple_label):
+            """Process text and image inputs using LLaVA on Apple Silicon.
+            
+            Args:
+                text: Text prompt to process with the image
+                image: Image to analyze (can be path, URL, or PIL Image)
+                
+            Returns:
+                Generated text response from the model
+            """
             try:
-                if y.startswith("http") or y.startswith("https"):
-                    response = requests.get(y)
-                    image = Image.open(BytesIO(response.content)).convert("RGB")
+                # Load and process image if provided
+                if image is not None:
+                    if isinstance(image, str):
+                        if image.startswith("http") or image.startswith("https"):
+                            max_retries = 3
+                            retry_delay = 1
+                            last_error = None
+                            
+                            for attempt in range(max_retries):
+                                try:
+                                    response = requests.get(image, timeout=10)
+                                    response.raise_for_status() 
+                                    image_obj = Image.open(BytesIO(response.content)).convert("RGB")
+                                    break
+                                except (requests.RequestException, Image.UnidentifiedImageError) as e:
+                                    last_error = e
+                                    if attempt < max_retries - 1:
+                                        time.sleep(retry_delay)
+                                        retry_delay *= 2
+                                    else:
+                                        raise ValueError(f"Failed to load image from URL after {max_retries} attempts: {image}. Error: {str(last_error)}")
+                        else:
+                            image_obj = Image.open(image).convert("RGB")
+                    elif isinstance(image, Image.Image):
+                        image_obj = image
+                    else:
+                        raise ValueError(f"Unsupported image type: {type(image)}")
                 else:
-                    image = Image.open(y).convert("RGB")
+                    # Text-only input
+                    image_obj = None
                     
-                if x is not None and type(x) == str:
+                # Process the text input
+                if text is not None and isinstance(text, str):
+                    # Standard format for multimodal conversation
                     conversation = [
                         {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": x},
+                                {"type": "text", "text": text},
                                 {"type": "image"}
                             ]
                         }
                     ]
-                elif type(x) == tuple:
-                    conversation = x
-                elif type(x) == dict:
-                    raise Exception("Invalid input to vlm endpoint handler")
-                elif type(x) == list:
-                    conversation = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": x},
-                                {"type": "image"}
-                            ]
-                        }
-                    ]
+                elif isinstance(text, (tuple, list)):
+                    # Allow for pre-formatted conversation
+                    conversation = text
+                elif isinstance(text, dict):
+                    # Single message as dict
+                    conversation = [text]
                 else:
-                    raise Exception("Invalid input to vlm endpoint handler")
-                    
-                result = None
-                streamer = self.transformers.TextStreamer(local_apple_processor, skip_prompt=True, skip_special_tokens=True)
-                prompt = local_apple_processor.apply_chat_template(conversation, add_generation_prompt=True)
-                inputs = local_apple_processor(image, prompt, return_tensors="pt")
+                    raise ValueError(f"Unsupported text input type: {type(text)}")
                 
-                if apple_endpoint_handler is not None:
-                    # Move inputs to MPS device if available
-                    if hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
-                        for key in inputs:
-                            if isinstance(inputs[key], self.torch.Tensor):
-                                inputs[key] = inputs[key].to("mps")
-                
-                    output_ids = apple_endpoint_handler.generate(
-                        **inputs,
-                        do_sample=False,
-                        max_new_tokens=50,
-                        streamer=streamer,
+                # Create streamer for real-time text output
+                try:
+                    streamer = self.transformers.TextStreamer(
+                        processor, 
+                        skip_prompt=True, 
+                        skip_special_tokens=True
                     )
-                    outputs = local_apple_processor.decode(output_ids[0], skip_special_tokens=True)
-                    return outputs
-                    
-                return "Model not loaded properly on Apple Silicon"
+                except Exception:
+                    streamer = None
+                
+                # Process inputs
+                prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+                inputs = processor(image_obj, prompt, return_tensors="pt")
+                
+                # Move inputs to MPS device if available
+                if hasattr(self.torch, 'backends') and hasattr(self.torch.backends, 'mps') and self.torch.backends.mps.is_available():
+                    for key in inputs:
+                        if isinstance(inputs[key], self.torch.Tensor):
+                            inputs[key] = inputs[key].to("mps")
+                
+                # Generate response with MPS acceleration
+                generation_config = {
+                    "do_sample": False,
+                    "max_new_tokens": 50
+                }
+                
+                if streamer is not None:
+                    generation_config["streamer"] = streamer
+                
+                output_ids = endpoint.generate(**inputs, **generation_config)
+                
+                # Decode response
+                response = processor.decode(output_ids[0], skip_special_tokens=True)
+                
+                # Add timestamp and metadata for testing/debugging
+                import time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                image_info = f"of size {image_obj.size}" if image_obj and hasattr(image_obj, 'size') else "with the provided content"
+                
+                return f"(REAL) Apple Silicon LLaVA response [device: {apple_label}, timestamp: {timestamp}]: {response}"
+                
             except Exception as e:
-                raise e
+                print(f"Error in Apple Silicon LLaVA handler: {e}")
+                import time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                return f"(ERROR) Apple Silicon LLaVA response [timestamp: {timestamp}]: Error processing request - {str(e)}"
+        
         return handler
         
-    def create_qualcomm_vlm_endpoint_handler(self, qualcomm_endpoint_handler, local_qualcomm_processor, endpoint_model, qualcomm_label):
+    def create_qualcomm_vlm_endpoint_handler(self, endpoint, processor, model_name, qualcomm_label):
         """Creates an endpoint handler for Qualcomm hardware.
         
         Args:
-            qualcomm_endpoint_handler: The model endpoint
-            local_qualcomm_processor: The tokenizer or processor
-            endpoint_model: The model name or path
+            endpoint: The model endpoint
+            processor: The tokenizer or processor
+            model_name: The model name or path
             qualcomm_label: Label to identify this endpoint
             
         Returns:
             A handler function for the Qualcomm endpoint
         """
-        def handler(x, y, qualcomm_endpoint_handler=qualcomm_endpoint_handler, local_qualcomm_processor=local_qualcomm_processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label):
+        def handler(text=None, image=None, endpoint=endpoint, processor=processor, model_name=model_name, qualcomm_label=qualcomm_label):
+            """Process text and image inputs using LLaVA on Qualcomm hardware.
+            
+            Args:
+                text: Text prompt to process with the image
+                image: Image to analyze (can be path, URL, or PIL Image)
+                
+            Returns:
+                Generated text response from the model
+            """
             try:
-                # Process inputs
-                if isinstance(image_input, str):
-                    # Load image from URL or file
-                    image = load_image(image_input)
-                elif isinstance(image_input, Image.Image):
-                    # If it's already a PIL Image
-                    image = image_input
+                # Check if SNPE utils is available
+                if self.snpe_utils is None:
+                    import time
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                    return f"(MOCK) Qualcomm LLaVA response [timestamp: {timestamp}]: Qualcomm SNPE not available in this environment"
+                
+                # Load and process image if provided
+                if image is not None:
+                    if isinstance(image, str):
+                        if image.startswith("http") or image.startswith("https"):
+                            response = requests.get(image)
+                            image_obj = Image.open(BytesIO(response.content)).convert("RGB")
+                        else:
+                            image_obj = Image.open(image).convert("RGB")
+                    elif isinstance(image, Image.Image):
+                        image_obj = image
+                    else:
+                        raise ValueError(f"Unsupported image type: {type(image)}")
                 else:
-                    image = None
+                    # Text-only input
+                    image_obj = None
                 
                 # Create model inputs in numpy format
-                if image is not None:
-                    inputs = processor(text=text_input, images=image, return_tensors="np")
+                if image_obj is not None:
+                    inputs = processor(text=text, images=image_obj, return_tensors="np")
                 else:
-                    inputs = processor(text=text_input, return_tensors="np")
+                    inputs = processor(text=text, return_tensors="np")
                 
-                # Run initial inference for image encoding and prompt processing
+                # Run inference through SNPE
                 results = self.snpe_utils.run_inference(endpoint, inputs)
                 
                 # For LLaVA models, we might need to do generation token by token
@@ -1145,22 +1362,25 @@ class hf_llava:
                             generated_ids.append(next_token_id)
                             
                             # Check for EOS token
-                            if next_token_id == self.processor.tokenizer.eos_token_id:
+                            if next_token_id == processor.tokenizer.eos_token_id:
                                 break
                         else:
                             break
                 
                 # Decode the generated text
-                generated_text = self.processor.batch_decode([generated_ids], skip_special_tokens=True)[0]
+                generated_text = processor.batch_decode([generated_ids], skip_special_tokens=True)[0]
                 
-                # Return result
-                return {
-                    "generated_text": generated_text,
-                    "model": endpoint_model
-                }
+                # Add timestamp and metadata for testing/debugging
+                import time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                image_info = f"of size {image_obj.size}" if image_obj and hasattr(image_obj, 'size') else "with the provided content"
+                
+                return f"(REAL) Qualcomm LLaVA response [device: {qualcomm_label}, timestamp: {timestamp}]: {generated_text}"
                 
             except Exception as e:
                 print(f"Error in Qualcomm LLaVA endpoint handler: {e}")
-                return {"error": str(e)}
+                import time
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                return f"(ERROR) Qualcomm LLaVA response [timestamp: {timestamp}]: Error processing request - {str(e)}"
                 
         return handler

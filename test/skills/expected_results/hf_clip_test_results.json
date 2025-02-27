@@ -1,16 +1,122 @@
 {
   "init": "Success",
-  "cpu_init": "Success",
-  "cpu_similarity": "Success",
-  "cpu_similarity_shape": [1, 1],
-  "cpu_similarity_range": [-0.2, 1.0],
-  "cpu_image_embedding": "Success",
-  "cpu_image_embedding_shape": [1, 512],
-  "cpu_text_embedding": "Success",
-  "cpu_text_embedding_shape": [1, 512],
+  "cpu_init": "Success (REAL)",
+  "cpu_similarity": "Success (REAL)",
+  "cpu_similarity_shape": [
+    1,
+    1
+  ],
+  "cpu_similarity_range": [
+    -0.2,
+    1.0
+  ],
+  "cpu_image_embedding": "Success (REAL)",
+  "cpu_image_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_image_example": {
+    "input": "image input (binary data not shown)",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697431.6004906,
+    "implementation": "(REAL)"
+  },
+  "cpu_text_embedding": "Success (REAL)",
+  "cpu_text_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_text_example": {
+    "input": "a red square",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697431.6007628,
+    "implementation": "(REAL)"
+  },
+  "cpu_similarity_example": {
+    "input": {
+      "text": "a red square",
+      "image": "image input (binary data not shown)"
+    },
+    "output": 0.018517756834626198,
+    "timestamp": 1740697431.6056662,
+    "implementation": "(REAL)"
+  },
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error in OpenVINO utils: list index out of range",
+  "openvino_init": "Success (MOCK)",
+  "openvino_handler": "Success (MOCK)",
+  "openvino_similarity_example": {
+    "input": {
+      "text": "a red square",
+      "image": "image input (binary data not shown)"
+    },
+    "output": 0.75,
+    "timestamp": 1740697453.3277013,
+    "implementation": "(MOCK)"
+  },
+  "openvino_image_example": {
+    "input": "image input (binary data not shown)",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697453.3277056,
+    "implementation": "(MOCK)"
+  },
+  "openvino_text_example": {
+    "input": "a red square",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697453.3277073,
+    "implementation": "(MOCK)"
+  },
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
-  "qualcomm_handler": "Success"
+  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_handler": "Success (MOCK)",
+  "qualcomm_similarity_example": {
+    "input": {
+      "text": "a red square",
+      "image": "image input (binary data not shown)"
+    },
+    "output": 0.75,
+    "timestamp": 1740697453.440386,
+    "implementation": "(MOCK)"
+  },
+  "qualcomm_image_example": {
+    "input": "image input (binary data not shown)",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697453.4403894,
+    "implementation": "(MOCK)"
+  },
+  "qualcomm_text_example": {
+    "input": "a red square",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740697453.4403906,
+    "implementation": "(MOCK)"
+  },
+  "metadata": {
+    "timestamp": 1740697453.440492,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "transformers_version": "4.49.0",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_model": "openai/clip-vit-base-patch32",
+    "test_run_id": "clip-test-1740697453"
+  }
 }

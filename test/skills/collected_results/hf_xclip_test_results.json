@@ -1,7 +1,7 @@
 {
   "init": "Success",
   "load_video": "Success (MOCK)",
-  "load_video_timestamp": 1740694608.2392027,
+  "load_video_timestamp": 1740699139.8923736,
   "load_video_frame_count": 8,
   "cpu_init": "Success (MOCK)",
   "cpu_text_embedding": "Success (MOCK)",
@@ -9,20 +9,20 @@
     1,
     512
   ],
-  "cpu_text_embedding_timestamp": 1740694610.746389,
+  "cpu_text_embedding_timestamp": 1740699142.1227615,
   "cpu_video_embedding": "Success (MOCK)",
   "cpu_video_embedding_shape": [
     1,
     512
   ],
-  "cpu_video_embedding_timestamp": 1740694610.7464404,
+  "cpu_video_embedding_timestamp": 1740699142.1228654,
   "cpu_similarity": "Success (MOCK)",
   "cpu_similarity_score": 0.800000011920929,
-  "cpu_similarity_timestamp": 1740694610.7466435,
+  "cpu_similarity_timestamp": 1740699142.1232102,
   "cuda_tests": "CUDA not available",
   "openvino_init": "Success (MOCK)",
   "openvino_handler": "Success (MOCK)",
-  "openvino_output_timestamp": 1740694629.5990133,
+  "openvino_output_timestamp": 1740699158.659956,
   "openvino_output_keys": [
     "text_embedding",
     "video_embedding",
@@ -41,7 +41,7 @@
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK)",
   "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_output_timestamp": 1740694630.0005984,
+  "qualcomm_output_timestamp": 1740699158.981697,
   "qualcomm_output_keys": [
     "text_embedding",
     "video_embedding",
@@ -58,7 +58,7 @@
   ],
   "qualcomm_similarity_score": 0.800000011920929,
   "metadata": {
-    "timestamp": 1740694630.0010493,
+    "timestamp": 1740699158.9819374,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "mocked",
@@ -66,7 +66,7 @@
     "cuda_device_count": 0,
     "mps_available": false,
     "test_model": "microsoft/xclip-base-patch32",
-    "test_run_id": "xclip-test-1740694630",
+    "test_run_id": "xclip-test-1740699158",
     "mock_implementation": true
   }
 }
