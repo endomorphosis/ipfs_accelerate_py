@@ -7,7 +7,7 @@
   "cpu_transcription": "(REAL) REAL TRANSCRIPTION: This audio contains speech in ...",
   "cpu_embedding_handler": "Success",
   "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "(REAL) [0.01468564197421074, -0.04997805878520012, 0.04634546488523483, 0.017062587663531303, 0.0189828984439373]...",
+  "cpu_embedding_sample": "(REAL) [-0.08930989354848862, -0.05226818472146988, -0.007373413536697626, -0.04525279626250267, -0.022651923820376396]...",
   "cuda_tests": "CUDA not available",
   "openvino_init": "Failed OpenVINO initialization",
   "openvino_handler": "Success",
@@ -15,7 +15,7 @@
   "qualcomm_init": "Success",
   "qualcomm_handler": "Success",
   "metadata": {
-    "timestamp": 1740646910.995785,
+    "timestamp": 1740692680.9031022,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "cuda_available": false,
