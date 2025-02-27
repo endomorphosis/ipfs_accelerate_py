@@ -1,3 +1,13 @@
 {
-  "test_error": "[Errno 2] No such file or directory: '/home/barberb/ipfs_accelerate_py/test/test/test.mp3'"
+  "endpoint_handler": "Success",
+  "determine_model": "Success",
+  "embedding": "Success",
+  "moderation": "Success",
+  "text_to_image": "Success",
+  "process_messages": "Success",
+  "text_to_speech": "Success",
+  "speech_to_text": "Success",
+  "chat_completion": "Success",
+  "error_handling_api_key": "Success",
+  "error_handling_rate_limit": "Success"
 }

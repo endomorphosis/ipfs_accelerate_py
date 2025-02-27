@@ -41,8 +41,17 @@ class gemini:
         self.create_remote_gemini_chat_endpoint_handler = self.create_remote_gemini_chat_endpoint_handler
         self.create_remote_gemini_vision_endpoint_handler = self.create_remote_gemini_vision_endpoint_handler
         self.create_remote_gemini_embedding_endpoint_handler = self.create_remote_gemini_embedding_endpoint_handler
+        self.create_gemini_endpoint_handler = self.create_gemini_endpoint_handler
+        self.create_gemini_chat_endpoint_handler = self.create_gemini_chat_endpoint_handler
+        self.create_gemini_vision_endpoint_handler = self.create_gemini_vision_endpoint_handler
+        self.create_gemini_embedding_endpoint_handler = self.create_gemini_embedding_endpoint_handler
         self.request_gemini_endpoint = self.request_gemini_endpoint
         self.test_gemini_endpoint = self.test_gemini_endpoint
+        self.make_post_request_gemini = self.make_post_request_gemini
+        self.make_stream_request_gemini = self.make_stream_request_gemini
+        self.chat = self.chat
+        self.stream_chat = self.stream_chat
+        self.process_image = self.process_image
         self.init = self.init
         self.__test__ = self.__test__
         # Add endpoints tracking
@@ -258,6 +267,423 @@ class gemini:
         
         return handler
 
+    def make_post_request_gemini(self, data, api_key=None):
+        """Make a POST request to Gemini's API
+        
+        Args:
+            data: Request data
+            api_key: API key for authentication
+            
+        Returns:
+            dict: Response from Gemini
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+                
+            if not api_key:
+                raise ValueError("API key is required")
+                
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key
+            }
+            
+            # Determine model from data
+            model = data.get("model", "gemini-pro")
+            
+            # Construct the endpoint URL
+            endpoint_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent"
+            
+            response = requests.post(
+                endpoint_url,
+                headers=headers,
+                json=data
+            )
+            
+            # Handle error responses
+            if response.status_code == 401:
+                raise ValueError("Authentication failed: Invalid API key")
+            elif response.status_code == 429:
+                raise ValueError("Rate limit exceeded: Resource exhausted")
+            elif response.status_code == 400:
+                error_data = response.json()
+                raise ValueError(f"Bad request: {error_data.get('error', {}).get('message', 'Unknown error')}")
+            elif response.status_code != 200:
+                raise ValueError(f"Request failed with status code {response.status_code}")
+                
+            return response.json()
+            
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            raise ValueError(f"Error in Gemini API request: {str(e)}")
+            
+    def make_stream_request_gemini(self, data, api_key=None):
+        """Make a streaming request to Gemini's API
+        
+        Args:
+            data: Request data
+            api_key: API key for authentication
+            
+        Returns:
+            generator: A generator yielding response chunks
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+                
+            if not api_key:
+                raise ValueError("API key is required")
+                
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key
+            }
+            
+            # Determine model from data
+            model = data.get("model", "gemini-pro")
+            
+            # Ensure streaming is enabled
+            data["stream"] = True
+            
+            # Construct the endpoint URL
+            endpoint_url = f"https://generativelanguage.googleapis.com/v1/models/{model}:streamGenerateContent"
+            
+            response = requests.post(
+                endpoint_url,
+                headers=headers,
+                json=data,
+                stream=True
+            )
+            
+            # Handle error responses
+            if response.status_code != 200:
+                error_message = f"Request failed with status code {response.status_code}"
+                try:
+                    error_data = json.loads(response.text)
+                    if "error" in error_data:
+                        error_message = f"{error_message}: {error_data['error']['message']}"
+                except:
+                    pass
+                raise ValueError(error_message)
+                
+            # Process the streaming response
+            for line in response.iter_lines():
+                if line:
+                    line = line.decode('utf-8')
+                    if line.startswith("data: "):
+                        line = line[6:]  # Remove "data: " prefix
+                    if line.strip() == "[DONE]":
+                        break
+                        
+                    try:
+                        chunk = json.loads(line)
+                        yield chunk
+                    except json.JSONDecodeError:
+                        yield {"error": f"Invalid JSON in streaming response: {line}"}
+            
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            yield {"error": f"Error in Gemini streaming request: {str(e)}"}
+            
+    def process_image(self, image_data, prompt, model_name=None):
+        """Process an image with text using Gemini Vision
+        
+        Args:
+            image_data: Binary image data or PIL Image object
+            prompt: Text prompt for image analysis
+            model_name: Name of the model (optional)
+            
+        Returns:
+            dict: Response from Gemini Vision
+        """
+        try:
+            if not model_name:
+                model_name = "gemini-pro-vision"
+                
+            api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+            
+            if not api_key:
+                raise ValueError("API key is required")
+                
+            # Convert image to base64 if needed
+            import base64
+            from PIL import Image
+            import io
+            
+            if isinstance(image_data, Image.Image):
+                # Convert PIL Image to bytes
+                buffer = io.BytesIO()
+                image_data.save(buffer, format="PNG")
+                image_bytes = buffer.getvalue()
+            elif isinstance(image_data, bytes):
+                # Already binary data
+                image_bytes = image_data
+            else:
+                raise ValueError("Image data must be PIL Image or bytes")
+                
+            # Encode to base64
+            base64_image = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Prepare request data
+            data = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inline_data": {
+                                    "mime_type": "image/png",
+                                    "data": base64_image
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            # Make the request
+            response = self.make_post_request_gemini(data, api_key)
+            return response
+            
+        except Exception as e:
+            print(f"Error in Gemini image processing: {e}")
+            return None
+            
+    def create_gemini_endpoint_handler(self, model_name=None):
+        """Create a handler for text generation with Gemini
+        
+        Args:
+            model_name: Name of the Gemini model (optional)
+            
+        Returns:
+            function: Handler for text generation
+        """
+        return self.create_remote_gemini_endpoint_handler(
+            api_key=self.metadata.get("gemini_api_key"),
+            model_name=model_name
+        )
+        
+    def create_gemini_chat_endpoint_handler(self, model_name=None):
+        """Create a handler for chat with Gemini
+        
+        Args:
+            model_name: Name of the Gemini model (optional)
+            
+        Returns:
+            function: Handler for chat
+        """
+        return self.create_remote_gemini_chat_endpoint_handler(
+            api_key=self.metadata.get("gemini_api_key"),
+            model_name=model_name
+        )
+        
+    def create_gemini_vision_endpoint_handler(self, model_name=None):
+        """Create a handler for vision tasks with Gemini
+        
+        Args:
+            model_name: Name of the Gemini model (optional)
+            
+        Returns:
+            function: Handler for vision tasks
+        """
+        return self.create_remote_gemini_vision_endpoint_handler(
+            api_key=self.metadata.get("gemini_api_key"),
+            model_name=model_name
+        )
+        
+    def create_gemini_embedding_endpoint_handler(self, model_name=None):
+        """Create a handler for embeddings with Gemini
+        
+        Args:
+            model_name: Name of the Gemini model (optional)
+            
+        Returns:
+            function: Handler for embeddings
+        """
+        return self.create_remote_gemini_embedding_endpoint_handler(
+            api_key=self.metadata.get("gemini_api_key"),
+            model_name=model_name
+        )
+        
+    def chat(self, messages, parameters=None, model_name=None):
+        """Send a chat request to Gemini
+        
+        Args:
+            messages: List of message dictionaries
+            parameters: Additional parameters (optional)
+            model_name: Name of the model to use (optional)
+            
+        Returns:
+            dict: Response from Gemini
+        """
+        try:
+            if not model_name:
+                model_name = "gemini-pro"  # Default model
+                
+            # Convert messages to Gemini format
+            contents = []
+            for msg in messages:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": msg["content"]}]
+                })
+                
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "contents": contents
+            }
+            
+            # Add generation config if parameters provided
+            if parameters:
+                generation_config = {}
+                if "temperature" in parameters:
+                    generation_config["temperature"] = parameters["temperature"]
+                if "max_tokens" in parameters:
+                    generation_config["maxOutputTokens"] = parameters["max_tokens"]
+                if "top_p" in parameters:
+                    generation_config["topP"] = parameters["top_p"]
+                if "top_k" in parameters:
+                    generation_config["topK"] = parameters["top_k"]
+                if "stop" in parameters:
+                    generation_config["stopSequences"] = parameters["stop"]
+                    
+                if generation_config:
+                    data["generationConfig"] = generation_config
+                    
+            # Make the request
+            api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+            response = self.make_post_request_gemini(data, api_key)
+            return response
+            
+        except Exception as e:
+            print(f"Error in Gemini chat: {e}")
+            return None
+            
+    def stream_chat(self, messages, parameters=None, model_name=None):
+        """Send a streaming chat request to Gemini
+        
+        Args:
+            messages: List of message dictionaries
+            parameters: Additional parameters (optional)
+            model_name: Name of the model to use (optional)
+            
+        Returns:
+            generator: A generator yielding response chunks
+        """
+        try:
+            if not model_name:
+                model_name = "gemini-pro"  # Default model
+                
+            # Convert messages to Gemini format
+            contents = []
+            for msg in messages:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": msg["content"]}]
+                })
+                
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "contents": contents,
+                "stream": True
+            }
+            
+            # Add generation config if parameters provided
+            if parameters:
+                generation_config = {}
+                if "temperature" in parameters:
+                    generation_config["temperature"] = parameters["temperature"]
+                if "max_tokens" in parameters:
+                    generation_config["maxOutputTokens"] = parameters["max_tokens"]
+                if "top_p" in parameters:
+                    generation_config["topP"] = parameters["top_p"]
+                if "top_k" in parameters:
+                    generation_config["topK"] = parameters["top_k"]
+                if "stop" in parameters:
+                    generation_config["stopSequences"] = parameters["stop"]
+                    
+                if generation_config:
+                    data["generationConfig"] = generation_config
+                    
+            # Make the streaming request
+            api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+            for chunk in self.make_stream_request_gemini(data, api_key):
+                yield chunk
+                
+        except Exception as e:
+            print(f"Error in Gemini streaming chat: {e}")
+            yield {"error": str(e)}
+            
+    def request_gemini_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+        """Request a Gemini endpoint
+        
+        Args:
+            model: Name of the model
+            endpoint: Specific endpoint URL (optional)
+            endpoint_type: Type of endpoint (optional)
+            batch: Batch size (optional)
+            
+        Returns:
+            str: URL of the selected endpoint
+        """
+        # For Gemini, we don't need to select an endpoint as we use the Google API directly
+        # Just verify the model and return a standard URL
+        if endpoint_type == "vision":
+            return "https://generativelanguage.googleapis.com/v1/models/gemini-pro-vision:generateContent"
+        elif endpoint_type == "embedding":
+            return "https://generativelanguage.googleapis.com/v1/models/embedding-001:embedContent"
+        else:
+            return f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent"
+            
+    def test_gemini_endpoint(self, model_name=None, api_key=None, endpoint_type="completion"):
+        """Test the Gemini API
+        
+        Args:
+            model_name: Name of the model to use (optional)
+            api_key: API key for authentication (optional)
+            endpoint_type: Type of endpoint to test (optional)
+            
+        Returns:
+            bool: True if the test passes, False otherwise
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("gemini_api_key") or os.environ.get("GOOGLE_API_KEY")
+                
+            if not model_name:
+                if endpoint_type == "vision":
+                    model_name = "gemini-pro-vision"
+                elif endpoint_type == "embedding":
+                    model_name = "embedding-001"
+                else:
+                    model_name = "gemini-pro"
+                    
+            # Initialize a test handler based on endpoint type
+            if endpoint_type == "chat":
+                handler = self.create_gemini_chat_endpoint_handler(model_name)
+            elif endpoint_type == "vision":
+                handler = self.create_gemini_vision_endpoint_handler(model_name)
+            elif endpoint_type == "embedding":
+                handler = self.create_gemini_embedding_endpoint_handler(model_name)
+            else:
+                handler = self.create_gemini_endpoint_handler(model_name)
+                
+            # Test the handler
+            return self.__test__(api_key, handler, model_name, endpoint_type)
+            
+        except Exception as e:
+            print(f"Error in Gemini endpoint test: {e}")
+            return False
+            
     def __test__(self, api_key, endpoint_handler, endpoint_label, endpoint_type="completion"):
         """Test the Gemini endpoint
         

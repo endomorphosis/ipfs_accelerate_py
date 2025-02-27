@@ -44,8 +44,14 @@ class claude:
         # Register method references
         self.create_remote_claude_endpoint_handler = self.create_remote_claude_endpoint_handler
         self.create_remote_claude_chat_endpoint_handler = self.create_remote_claude_chat_endpoint_handler
+        self.create_claude_endpoint_handler = self.create_claude_endpoint_handler
+        self.create_claude_chat_endpoint_handler = self.create_claude_chat_endpoint_handler
         self.request_claude_endpoint = self.request_claude_endpoint
         self.test_claude_endpoint = self.test_claude_endpoint
+        self.make_post_request_claude = self.make_post_request_claude
+        self.make_stream_request_claude = self.make_stream_request_claude
+        self.chat = self.chat
+        self.stream_chat = self.stream_chat
         self.init = self.init
         self.__test__ = self.__test__
         # Add endpoints tracking
@@ -232,6 +238,274 @@ class claude:
         
         return handler
 
+    def make_post_request_claude(self, data, api_key=None):
+        """Make a POST request to Claude's API
+        
+        Args:
+            data: Request data
+            api_key: API key for authentication
+            
+        Returns:
+            dict: Response from Claude
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("claude_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+                
+            if not api_key:
+                raise ValueError("API key is required")
+                
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01"
+            }
+            
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=data
+            )
+            
+            # Handle error responses
+            if response.status_code == 401:
+                raise ValueError("Authentication failed: Invalid API key")
+            elif response.status_code == 429:
+                raise ValueError("Rate limit exceeded")
+            elif response.status_code == 400:
+                error_data = response.json()
+                raise ValueError(f"Bad request: {error_data.get('error', {}).get('message', 'Unknown error')}")
+            elif response.status_code != 200:
+                raise ValueError(f"Request failed with status code {response.status_code}")
+                
+            return response.json()
+            
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            raise ValueError(f"Error in Claude API request: {str(e)}")
+            
+    def make_stream_request_claude(self, data, api_key=None):
+        """Make a streaming request to Claude's API
+        
+        Args:
+            data: Request data
+            api_key: API key for authentication
+            
+        Returns:
+            generator: A generator yielding response chunks
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("claude_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+                
+            if not api_key:
+                raise ValueError("API key is required")
+                
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01"
+            }
+            
+            # Ensure streaming is enabled
+            data["stream"] = True
+            
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=data,
+                stream=True
+            )
+            
+            # Handle error responses
+            if response.status_code != 200:
+                error_message = f"Request failed with status code {response.status_code}"
+                try:
+                    error_data = json.loads(response.text)
+                    if "error" in error_data:
+                        error_message = f"{error_message}: {error_data['error']['message']}"
+                except:
+                    pass
+                raise ValueError(error_message)
+                
+            # Process the streaming response
+            for line in response.iter_lines():
+                if line:
+                    line = line.decode('utf-8')
+                    if line.startswith("data: "):
+                        line = line[6:]  # Remove "data: " prefix
+                    if line.strip() == "[DONE]":
+                        break
+                        
+                    try:
+                        chunk = json.loads(line)
+                        yield chunk
+                    except json.JSONDecodeError:
+                        yield {"error": f"Invalid JSON in streaming response: {line}"}
+            
+        except ValueError:
+            # Re-raise ValueError exceptions
+            raise
+        except Exception as e:
+            yield {"error": f"Error in Claude streaming request: {str(e)}"}
+            
+    def create_claude_endpoint_handler(self, model_name=None, system_prompt=None):
+        """Create a handler for text completion with Claude
+        
+        Args:
+            model_name: Name of the Claude model (optional)
+            system_prompt: System prompt to use (optional)
+            
+        Returns:
+            function: Handler for completions
+        """
+        return self.create_remote_claude_endpoint_handler(
+            api_key=self.metadata.get("claude_api_key"),
+            model_name=model_name
+        )
+        
+    def create_claude_chat_endpoint_handler(self, model_name=None):
+        """Create a handler for chat completion with Claude
+        
+        Args:
+            model_name: Name of the Claude model (optional)
+            
+        Returns:
+            function: Handler for chat completions
+        """
+        return self.create_remote_claude_chat_endpoint_handler(
+            api_key=self.metadata.get("claude_api_key"),
+            model_name=model_name
+        )
+        
+    def chat(self, messages, parameters=None, model_name=None):
+        """Send a chat request to Claude
+        
+        Args:
+            messages: List of message dictionaries
+            parameters: Additional parameters (optional)
+            model_name: Name of the model to use (optional)
+            
+        Returns:
+            dict: Response from Claude
+        """
+        try:
+            if not model_name:
+                model_name = "claude-3-opus-20240229"  # Default model
+                
+            # Extract system message if present
+            system_msg = None
+            chat_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_msg = msg["content"]
+                else:
+                    chat_messages.append(msg)
+                    
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "messages": chat_messages,
+                "max_tokens": 1024
+            }
+            
+            # Add system prompt if present
+            if system_msg:
+                data["system"] = system_msg
+                
+            # Add additional parameters
+            if parameters:
+                for key, value in parameters.items():
+                    if key not in ["messages", "system"]:  # Don't override these
+                        data[key] = value
+                        
+            # Make the request
+            response = self.make_post_request_claude(data)
+            return response
+            
+        except Exception as e:
+            print(f"Error in Claude chat: {e}")
+            return None
+            
+    def stream_chat(self, messages, parameters=None, model_name=None):
+        """Send a streaming chat request to Claude
+        
+        Args:
+            messages: List of message dictionaries
+            parameters: Additional parameters (optional)
+            model_name: Name of the model to use (optional)
+            
+        Returns:
+            generator: A generator yielding response chunks
+        """
+        try:
+            if not model_name:
+                model_name = "claude-3-opus-20240229"  # Default model
+                
+            # Extract system message if present
+            system_msg = None
+            chat_messages = []
+            for msg in messages:
+                if msg["role"] == "system":
+                    system_msg = msg["content"]
+                else:
+                    chat_messages.append(msg)
+                    
+            # Prepare request data
+            data = {
+                "model": model_name,
+                "messages": chat_messages,
+                "max_tokens": 1024,
+                "stream": True
+            }
+            
+            # Add system prompt if present
+            if system_msg:
+                data["system"] = system_msg
+                
+            # Add additional parameters
+            if parameters:
+                for key, value in parameters.items():
+                    if key not in ["messages", "system", "stream"]:  # Don't override these
+                        data[key] = value
+                        
+            # Make the streaming request
+            for chunk in self.make_stream_request_claude(data):
+                yield chunk
+                
+        except Exception as e:
+            print(f"Error in Claude streaming chat: {e}")
+            yield {"error": str(e)}
+    
+    def test_claude_endpoint(self, model_name=None, api_key=None):
+        """Test the Claude API
+        
+        Args:
+            model_name: Name of the model to use (optional)
+            api_key: API key for authentication (optional)
+            
+        Returns:
+            bool: True if the test passes, False otherwise
+        """
+        try:
+            if not api_key:
+                api_key = self.metadata.get("claude_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+                
+            if not model_name:
+                model_name = "claude-3-opus-20240229"
+                
+            # Initialize a test handler
+            handler = self.create_claude_endpoint_handler(model_name)
+            
+            # Test the handler
+            return self.__test__(api_key, handler, model_name)
+            
+        except Exception as e:
+            print(f"Error in Claude endpoint test: {e}")
+            return False
+    
     def __test__(self, api_key, endpoint_handler, endpoint_label, endpoint_type="completion"):
         """Test the Claude endpoint
         

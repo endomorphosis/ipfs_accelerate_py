@@ -14,7 +14,7 @@ class test_claude:
         self.metadata = metadata if metadata else {
             "claude_api_key": os.environ.get("ANTHROPIC_API_KEY", "")
         }
-        self.claude = claude(resources=self.resources, metadata=self.metadata)
+        self.claude = claude.claude(resources=self.resources, metadata=self.metadata)
         return None
     
     def test(self):

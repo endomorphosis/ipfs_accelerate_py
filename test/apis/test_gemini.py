@@ -14,7 +14,7 @@ class test_gemini:
         self.metadata = metadata if metadata else {
             "gemini_api_key": os.environ.get("GEMINI_API_KEY", "")
         }
-        self.gemini = gemini(resources=self.resources, metadata=self.metadata)
+        self.gemini = gemini.gemini(resources=self.resources, metadata=self.metadata)
         return None
     
     def test(self):
