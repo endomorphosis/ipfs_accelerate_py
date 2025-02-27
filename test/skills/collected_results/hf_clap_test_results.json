@@ -1,14 +1,75 @@
 {
   "init": "Success",
-  "load_audio": "Success",
-  "load_audio_tensor": "Success",
-  "cpu_init": "Success",
-  "cpu_audio_embedding": "Success",
-  "cpu_text_embedding": "Success",
-  "cpu_similarity": "Success",
+  "load_audio": "Success (MOCK)",
+  "load_audio_shape": [
+    16000
+  ],
+  "load_audio_sample_rate": 16000,
+  "load_audio_timestamp": 1740691022.9786634,
+  "load_audio_tensor": "Success (MOCK)",
+  "load_audio_tensor_shape": [
+    1,
+    16000
+  ],
+  "load_audio_tensor_timestamp": 1740691022.9802513,
+  "cpu_init": "Success (MOCK)",
+  "cpu_audio_embedding": "Success (MOCK)",
+  "cpu_audio_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_audio_embedding_timestamp": 1740691024.860631,
+  "cpu_text_embedding": "Success (MOCK)",
+  "cpu_text_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_text_embedding_timestamp": 1740691024.86065,
+  "cpu_similarity": "Success (MOCK)",
+  "cpu_similarity_score": 0.800000011920929,
+  "cpu_similarity_timestamp": 1740691024.8608377,
+  "cpu_example": {
+    "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
+    "input_text": "buzzing bees",
+    "timestamp": 1740691024.8608382,
+    "implementation": "(MOCK)"
+  },
   "cuda_tests": "CUDA not available",
   "openvino_tests": "Error: list index out of range",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success",
-  "qualcomm_handler": "Success"
+  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_handler": "Success (MOCK)",
+  "qualcomm_output_timestamp": 1740691032.3327847,
+  "qualcomm_output_keys": [
+    "audio_embedding",
+    "text_embedding",
+    "similarity"
+  ],
+  "qualcomm_audio_embedding_shape": [
+    1,
+    512
+  ],
+  "qualcomm_text_embedding_shape": [
+    1,
+    512
+  ],
+  "qualcomm_similarity_score": 0.800000011920929,
+  "qualcomm_example": {
+    "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
+    "input_text": "buzzing bees",
+    "timestamp": 1740691032.3328304,
+    "implementation": "(MOCK)"
+  },
+  "metadata": {
+    "timestamp": 1740691032.3330445,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "test_model": "laion/clap-htsat-unfused",
+    "test_run_id": "clap-test-1740691032",
+    "mock_implementation": true,
+    "implementation_type": "(MOCK)"
+  }
 }

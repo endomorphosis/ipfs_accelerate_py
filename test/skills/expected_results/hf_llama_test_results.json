@@ -1,14 +1,17 @@
 {
   "init": "Success",
-  "cpu_init": "Success",
-  "cpu_handler": "Success",
-  "cpu_output": "Valid",
+  "cpu_init": "Success (REAL)",
+  "cpu_handler": "Success (REAL)",
+  "cpu_output": "Valid (REAL)",
+  "cpu_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a clever fox named Finn who lived in the f...",
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
-  "openvino_output": "Valid",
+  "openvino_init": "Success (REAL)",
+  "openvino_handler": "Success (REAL)",
+  "openvino_output": "Valid (REAL)",
+  "openvino_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a fox named Rusty and a dog named Max...",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success",
-  "qualcomm_handler": "Success",
-  "qualcomm_output": "Valid"
+  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_handler": "Success (MOCK)",
+  "qualcomm_output": "Valid (MOCK)",
+  "qualcomm_sample_text": "(MOCK) Qualcomm SNPE output: Once upon a time in the forest, there liv"
 }

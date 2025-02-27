@@ -1,13 +1,70 @@
 {
   "init": "Success",
-  "load_video": "Success",
-  "cpu_init": "Success",
-  "cpu_text_embedding": "Success",
-  "cpu_video_embedding": "Success",
+  "load_video": "Success (MOCK)",
+  "load_video_timestamp": 1740690972.9559174,
+  "load_video_frame_count": 8,
+  "cpu_init": "Success (MOCK)",
+  "cpu_text_embedding": "Success (MOCK)",
+  "cpu_text_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_text_embedding_timestamp": 1740690975.3851054,
+  "cpu_video_embedding": "Success (MOCK)",
+  "cpu_video_embedding_shape": [
+    1,
+    512
+  ],
+  "cpu_video_embedding_timestamp": 1740690975.3851593,
+  "cpu_similarity": "Success (MOCK)",
+  "cpu_similarity_score": 0.800000011920929,
+  "cpu_similarity_timestamp": 1740690975.385358,
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
+  "openvino_init": "Success (MOCK)",
+  "openvino_handler": "Success (MOCK)",
+  "openvino_output_timestamp": 1740690989.6251247,
+  "openvino_output_keys": [
+    "text_embedding",
+    "video_embedding",
+    "similarity"
+  ],
+  "openvino_text_embedding_shape": [
+    1,
+    512
+  ],
+  "openvino_video_embedding_shape": [
+    1,
+    512
+  ],
+  "openvino_similarity_score": 0.800000011920929,
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success",
-  "qualcomm_handler": "Success"
+  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_handler": "Success (MOCK)",
+  "qualcomm_output_timestamp": 1740690989.881254,
+  "qualcomm_output_keys": [
+    "text_embedding",
+    "video_embedding",
+    "similarity"
+  ],
+  "qualcomm_text_embedding_shape": [
+    1,
+    512
+  ],
+  "qualcomm_video_embedding_shape": [
+    1,
+    512
+  ],
+  "qualcomm_similarity_score": 0.800000011920929,
+  "metadata": {
+    "timestamp": 1740690989.8816016,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "transformers_version": "mocked",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "test_model": "microsoft/xclip-base-patch32",
+    "test_run_id": "xclip-test-1740690989",
+    "mock_implementation": true
+  }
 }

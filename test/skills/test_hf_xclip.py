@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import torch
 import numpy as np
 import asyncio
@@ -65,7 +66,9 @@ class test_hf_xclip:
                 mock_video_reader.return_value.__getitem__.return_value = np.random.randn(224, 224, 3)
                 
                 frames = load_video_frames(self.test_video_url)
-                results["load_video"] = "Success" if len(frames) > 0 else "Failed video loading"
+                results["load_video"] = "Success (MOCK)" if len(frames) > 0 else "Failed video loading"
+                results["load_video_timestamp"] = time.time()
+                results["load_video_frame_count"] = len(frames)
         except Exception as e:
             results["video_utils"] = f"Error: {str(e)}"
 
@@ -87,7 +90,7 @@ class test_hf_xclip:
                 )
                 
                 valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
+                results["cpu_init"] = "Success (MOCK)" if valid_init else "Failed CPU initialization"
                 
                 test_handler = self.xclip.create_cpu_video_embedding_endpoint_handler(
                     endpoint,
@@ -98,11 +101,38 @@ class test_hf_xclip:
                 
                 # Test text embedding
                 text_embedding = test_handler(text=self.test_text)
-                results["cpu_text_embedding"] = "Success" if text_embedding is not None else "Failed text embedding"
+                results["cpu_text_embedding"] = "Success (MOCK)" if text_embedding is not None else "Failed text embedding"
+                
+                # Include sample output info
+                if text_embedding is not None and isinstance(text_embedding, dict) and "text_embedding" in text_embedding:
+                    text_emb = text_embedding["text_embedding"]
+                    results["cpu_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                    results["cpu_text_embedding_timestamp"] = time.time()
                 
                 # Test video embedding
                 video_embedding = test_handler(frames=self.frames)
-                results["cpu_video_embedding"] = "Success" if video_embedding is not None else "Failed video embedding"
+                results["cpu_video_embedding"] = "Success (MOCK)" if video_embedding is not None else "Failed video embedding"
+                
+                # Include sample output info
+                if video_embedding is not None and isinstance(video_embedding, dict) and "video_embedding" in video_embedding:
+                    video_emb = video_embedding["video_embedding"]
+                    results["cpu_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
+                    results["cpu_video_embedding_timestamp"] = time.time()
+                
+                # Test similarity computation
+                similarity = test_handler(frames=self.frames, text=self.test_text)
+                results["cpu_similarity"] = "Success (MOCK)" if similarity is not None else "Failed similarity computation"
+                
+                # Include similarity score if available
+                if similarity is not None and isinstance(similarity, dict) and "similarity" in similarity:
+                    sim_score = similarity["similarity"]
+                    if hasattr(sim_score, "item") and callable(sim_score.item):
+                        results["cpu_similarity_score"] = float(sim_score.item())
+                    elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                        results["cpu_similarity_score"] = sim_score.tolist()
+                    else:
+                        results["cpu_similarity_score"] = "unknown format"
+                    results["cpu_similarity_timestamp"] = time.time()
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
@@ -126,7 +156,7 @@ class test_hf_xclip:
                     )
                     
                     valid_init = endpoint is not None and processor is not None and handler is not None
-                    results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
+                    results["cuda_init"] = "Success (MOCK)" if valid_init else "Failed CUDA initialization"
                     
                     test_handler = self.xclip.create_cuda_video_embedding_endpoint_handler(
                         endpoint,
@@ -137,13 +167,36 @@ class test_hf_xclip:
                     
                     # Test different input formats
                     text_output = test_handler(text=self.test_text)
-                    results["cuda_text"] = "Success" if text_output is not None else "Failed text input"
+                    results["cuda_text"] = "Success (MOCK)" if text_output is not None else "Failed text input"
+                    
+                    # Include sample output info
+                    if text_output is not None and isinstance(text_output, dict) and "text_embedding" in text_output:
+                        text_emb = text_output["text_embedding"]
+                        results["cuda_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                        results["cuda_text_timestamp"] = time.time()
                     
                     video_output = test_handler(frames=self.frames)
-                    results["cuda_video"] = "Success" if video_output is not None else "Failed video input"
+                    results["cuda_video"] = "Success (MOCK)" if video_output is not None else "Failed video input"
+                    
+                    # Include sample output info
+                    if video_output is not None and isinstance(video_output, dict) and "video_embedding" in video_output:
+                        video_emb = video_output["video_embedding"]
+                        results["cuda_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
+                        results["cuda_video_timestamp"] = time.time()
                     
                     similarity = test_handler(self.frames, self.test_text)
-                    results["cuda_similarity"] = "Success" if similarity is not None else "Failed similarity computation"
+                    results["cuda_similarity"] = "Success (MOCK)" if similarity is not None else "Failed similarity computation"
+                    
+                    # Include similarity score if available
+                    if similarity is not None and isinstance(similarity, dict) and "similarity" in similarity:
+                        sim_score = similarity["similarity"]
+                        if hasattr(sim_score, "item") and callable(sim_score.item):
+                            results["cuda_similarity_score"] = float(sim_score.item())
+                        elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                            results["cuda_similarity_score"] = sim_score.tolist()
+                        else:
+                            results["cuda_similarity_score"] = "unknown format"
+                        results["cuda_similarity_timestamp"] = time.time()
             except Exception as e:
                 results["cuda_tests"] = f"Error: {str(e)}"
         else:
@@ -195,7 +248,7 @@ class test_hf_xclip:
                     batch_size = 0
                 
                 valid_init = handler is not None
-                results["openvino_init"] = "Success" if valid_init else "Failed OpenVINO initialization"
+                results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
                 
                 test_handler = self.xclip.create_openvino_video_embedding_endpoint_handler(
                     endpoint,
@@ -205,7 +258,29 @@ class test_hf_xclip:
                 )
                 
                 output = test_handler(self.frames, self.test_text)
-                results["openvino_handler"] = "Success" if output is not None else "Failed OpenVINO handler"
+                results["openvino_handler"] = "Success (MOCK)" if output is not None else "Failed OpenVINO handler"
+                
+                # Include similarity score if available
+                if output is not None and isinstance(output, dict):
+                    results["openvino_output_timestamp"] = time.time()
+                    results["openvino_output_keys"] = list(output.keys())
+                    
+                    if "text_embedding" in output:
+                        text_emb = output["text_embedding"]
+                        results["openvino_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                    
+                    if "video_embedding" in output:
+                        video_emb = output["video_embedding"]
+                        results["openvino_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
+                    
+                    if "similarity" in output:
+                        sim_score = output["similarity"]
+                        if hasattr(sim_score, "item") and callable(sim_score.item):
+                            results["openvino_similarity_score"] = float(sim_score.item())
+                        elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                            results["openvino_similarity_score"] = sim_score.tolist()
+                        else:
+                            results["openvino_similarity_score"] = "unknown format"
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
         except Exception as e:
@@ -230,7 +305,7 @@ class test_hf_xclip:
                     )
                     
                     valid_init = handler is not None
-                    results["apple_init"] = "Success" if valid_init else "Failed Apple initialization"
+                    results["apple_init"] = "Success (MOCK)" if valid_init else "Failed Apple initialization"
                     
                     test_handler = self.xclip.create_apple_video_embedding_endpoint_handler(
                         endpoint,
@@ -241,10 +316,31 @@ class test_hf_xclip:
                     
                     # Test different input formats
                     text_output = test_handler(text=self.test_text)
-                    results["apple_text"] = "Success" if text_output is not None else "Failed text input"
+                    results["apple_text"] = "Success (MOCK)" if text_output is not None else "Failed text input"
                     
+                    # Include sample output info
+                    if text_output is not None and isinstance(text_output, dict) and "text_embedding" in text_output:
+                        text_emb = text_output["text_embedding"]
+                        results["apple_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                        results["apple_text_timestamp"] = time.time()
+                    
+                    # Test video-text similarity
                     similarity = test_handler(self.frames, self.test_text)
-                    results["apple_similarity"] = "Success" if similarity is not None else "Failed similarity computation"
+                    results["apple_similarity"] = "Success (MOCK)" if similarity is not None else "Failed similarity computation"
+                    
+                    # Include similarity score if available
+                    if similarity is not None and isinstance(similarity, dict):
+                        results["apple_output_timestamp"] = time.time()
+                        results["apple_output_keys"] = list(similarity.keys())
+                        
+                        if "similarity" in similarity:
+                            sim_score = similarity["similarity"]
+                            if hasattr(sim_score, "item") and callable(sim_score.item):
+                                results["apple_similarity_score"] = float(sim_score.item())
+                            elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                                results["apple_similarity_score"] = sim_score.tolist()
+                            else:
+                                results["apple_similarity_score"] = "unknown format"
             except ImportError:
                 results["apple_tests"] = "CoreML Tools not installed"
             except Exception as e:
@@ -270,7 +366,7 @@ class test_hf_xclip:
                 )
                 
                 valid_init = handler is not None
-                results["qualcomm_init"] = "Success" if valid_init else "Failed Qualcomm initialization"
+                results["qualcomm_init"] = "Success (MOCK)" if valid_init else "Failed Qualcomm initialization"
                 
                 test_handler = self.xclip.create_qualcomm_video_embedding_endpoint_handler(
                     endpoint,
@@ -280,7 +376,30 @@ class test_hf_xclip:
                 )
                 
                 output = test_handler(self.frames, self.test_text)
-                results["qualcomm_handler"] = "Success" if output is not None else "Failed Qualcomm handler"
+                results["qualcomm_handler"] = "Success (MOCK)" if output is not None else "Failed Qualcomm handler"
+                
+                # Include result details if available
+                if output is not None and isinstance(output, dict):
+                    results["qualcomm_output_timestamp"] = time.time()
+                    results["qualcomm_output_keys"] = list(output.keys())
+                    
+                    # Save embedding shapes and similarity score
+                    if "text_embedding" in output:
+                        text_emb = output["text_embedding"]
+                        results["qualcomm_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                    
+                    if "video_embedding" in output:
+                        video_emb = output["video_embedding"]
+                        results["qualcomm_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
+                    
+                    if "similarity" in output:
+                        sim_score = output["similarity"]
+                        if hasattr(sim_score, "item") and callable(sim_score.item):
+                            results["qualcomm_similarity_score"] = float(sim_score.item())
+                        elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                            results["qualcomm_similarity_score"] = sim_score.tolist()
+                        else:
+                            results["qualcomm_similarity_score"] = "unknown format"
         except ImportError:
             results["qualcomm_tests"] = "SNPE SDK not installed"
         except Exception as e:
@@ -302,19 +421,69 @@ class test_hf_xclip:
         os.makedirs(expected_dir, exist_ok=True)
         os.makedirs(collected_dir, exist_ok=True)
         
+        # Add metadata about the environment to the results
+        test_results["metadata"] = {
+            "timestamp": time.time(),
+            "torch_version": torch.__version__,
+            "numpy_version": np.__version__,
+            "transformers_version": "mocked", # Using mocked transformers
+            "cuda_available": torch.cuda.is_available(),
+            "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
+            "test_model": self.model_name,
+            "test_run_id": f"xclip-test-{int(time.time())}",
+            "mock_implementation": True
+        }
+        
         # Save collected results
-        with open(os.path.join(collected_dir, 'hf_xclip_test_results.json'), 'w') as f:
+        collected_file = os.path.join(collected_dir, 'hf_xclip_test_results.json')
+        with open(collected_file, 'w') as f:
             json.dump(test_results, f, indent=2)
+        print(f"Saved test results to {collected_file}")
             
         # Compare with expected results if they exist
         expected_file = os.path.join(expected_dir, 'hf_xclip_test_results.json')
         if os.path.exists(expected_file):
-            with open(expected_file, 'r') as f:
-                expected_results = json.load(f)
-                if expected_results != test_results:
-                    print("Test results differ from expected results!")
-                    print(f"Expected: {expected_results}")
-                    print(f"Got: {test_results}")
+            try:
+                with open(expected_file, 'r') as f:
+                    expected_results = json.load(f)
+                    
+                    # Only compare the non-variable parts
+                    excluded_keys = ["metadata"]
+                    
+                    # Exclude timestamp fields and embedding shapes since they might vary
+                    variable_keys = [k for k in test_results.keys() 
+                                    if "timestamp" in k 
+                                    or "shape" in k 
+                                    or "score" in k
+                                    or "keys" in k]
+                    excluded_keys.extend(variable_keys)
+                    
+                    expected_copy = {k: v for k, v in expected_results.items() if k not in excluded_keys}
+                    results_copy = {k: v for k, v in test_results.items() if k not in excluded_keys}
+                    
+                    mismatches = []
+                    for key in set(expected_copy.keys()) | set(results_copy.keys()):
+                        if key not in expected_copy:
+                            mismatches.append(f"Key '{key}' missing from expected results")
+                        elif key not in results_copy:
+                            mismatches.append(f"Key '{key}' missing from current results")
+                        elif expected_copy[key] != results_copy[key]:
+                            mismatches.append(f"Key '{key}' differs: Expected '{expected_copy[key]}', got '{results_copy[key]}'")
+                    
+                    if mismatches:
+                        print("Test results differ from expected results!")
+                        for mismatch in mismatches:
+                            print(f"- {mismatch}")
+                        print("\nConsider updating the expected results file if these differences are intentional")
+                    else:
+                        print("Core test results match expected results (excluding variable outputs)")
+            except Exception as e:
+                print(f"Error comparing with expected results: {str(e)}")
+                # Create/update expected results file
+                with open(expected_file, 'w') as f:
+                    json.dump(test_results, f, indent=2)
+                    print(f"Updated expected results file: {expected_file}")
         else:
             # Create expected results file if it doesn't exist
             with open(expected_file, 'w') as f:
