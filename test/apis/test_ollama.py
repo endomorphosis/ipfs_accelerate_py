@@ -5,7 +5,8 @@ import json
 from unittest.mock import MagicMock, patch
 import requests
 
-from ipfs_accelerate_py.api_backends import apis, ollama
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
+from api_backends import apis, ollama
 
 class test_ollama:
     def __init__(self, resources=None, metadata=None):

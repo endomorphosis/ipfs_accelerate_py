@@ -1,11 +1,15 @@
 import os 
 import sys
 
-from .apis import (
+from apis import (
     test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm,
     test_openai_api, test_ovms, test_ollama, test_s3_kit,
     test_gemini, test_opea
 )
+
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_accelerate_py'))
+import api_backends
+
 
 class test_api_backend:
     def __init__(self, resources, metadata):
@@ -157,5 +161,6 @@ class test_api_backend:
         return results
         
 if __name__ == "__main__":
-    test_api_backend(resources={}, metadata={}).__test__()
+    this_api_backend = test_api_backend(resources={}, metadata={})
+    results = this_api_backend.__test__()
     print("test_api_backend passed")

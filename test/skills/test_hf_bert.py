@@ -234,10 +234,30 @@ class test_hf_bert:
         if os.path.exists(expected_file):
             with open(expected_file, 'r') as f:
                 expected_results = json.load(f)
-                if expected_results != test_results:
+                
+                # More detailed comparison of results
+                all_match = True
+                mismatches = []
+                
+                for key in set(expected_results.keys()) | set(test_results.keys()):
+                    if key not in expected_results:
+                        mismatches.append(f"Missing expected key: {key}")
+                        all_match = False
+                    elif key not in test_results:
+                        mismatches.append(f"Missing actual key: {key}")
+                        all_match = False
+                    elif expected_results[key] != test_results[key]:
+                        mismatches.append(f"Key '{key}' differs: Expected '{expected_results[key]}', got '{test_results[key]}'")
+                        all_match = False
+                
+                if not all_match:
                     print("Test results differ from expected results!")
-                    print(f"Expected: {expected_results}")
-                    print(f"Got: {test_results}")
+                    for mismatch in mismatches:
+                        print(f"- {mismatch}")
+                    print(f"\nComplete expected results: {json.dumps(expected_results, indent=2)}")
+                    print(f"\nComplete actual results: {json.dumps(test_results, indent=2)}")
+                else:
+                    print("All test results match expected results.")
         else:
             # Create expected results file if it doesn't exist
             with open(expected_file, 'w') as f:

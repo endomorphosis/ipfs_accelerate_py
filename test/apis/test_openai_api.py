@@ -5,7 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 import tempfile
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
 from api_backends import apis, openai_api
 
 class test_openai_api:
