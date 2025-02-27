@@ -3,12 +3,12 @@ import sys
 import json
 import torch
 import numpy as np
+from unittest.mock import MagicMock, patch
+from PIL import Image
+
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-from ipfs_accelerate_py.worker.skillset.hf_hf_whisper import hf_hf_whisper
-# Use direct import with the absolute path
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-from ipfs_accelerate_py.worker.skillset.hf_hf_whisper import hf_hf_whisper
+from ipfs_accelerate_py.worker.skillset.hf_whisper import hf_whisper
 
 class test_hf_whisper:
     def __init__(self, resources=None, metadata=None):

@@ -1,0 +1,10 @@
+{
+  "init": "Success",
+  "video_utils": "Error: name 'load_video_frames' is not defined",
+  "cpu_tests": "Error: module transformers has no attribute AutoModelForVideoTextRetrieval",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_handler": "Success"
+}

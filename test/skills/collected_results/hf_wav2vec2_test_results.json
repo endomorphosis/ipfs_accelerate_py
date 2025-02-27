@@ -1,0 +1,11 @@
+{
+  "init": "Success",
+  "audio_utils": "Error: name 'load_audio' is not defined",
+  "cpu_init": "Success",
+  "cpu_tests": "Error: 'hf_wav2vec2' object has no attribute 'create_cpu_transcription_endpoint_handler'",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_tests": "Error: 'hf_wav2vec2' object has no attribute 'create_qualcomm_transcription_endpoint_handler'"
+}
