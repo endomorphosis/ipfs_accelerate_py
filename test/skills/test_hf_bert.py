@@ -3,7 +3,8 @@ import sys
 import json
 import torch
 import numpy as np
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch, MagicMock
+import transformers
 
 # Use direct import with the absolute path
 sys.path.insert(0, '/home/barberb/ipfs_accelerate_py')
@@ -14,7 +15,7 @@ class test_hf_bert:
         self.resources = resources if resources else {
             "torch": torch,
             "numpy": np,
-            "transformers": MagicMock()
+            "transformers": transformers
         }
         self.metadata = metadata if metadata else {}
         self.bert = hf_bert(resources=self.resources, metadata=self.metadata)
@@ -32,67 +33,92 @@ class test_hf_bert:
         except Exception as e:
             results["init"] = f"Error: {str(e)}"
 
-        # Test CPU initialization and handler
+        # Test CPU initialization and handler - using real inference
         try:
-            with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                 patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
-                 patch('transformers.AutoModel.from_pretrained') as mock_model:
-                
-                mock_config.return_value = MagicMock()
-                mock_tokenizer.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
-                
-                endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cpu(
-                    self.model_name,
-                    "cpu",
-                    "cpu"
-                )
-                
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
-                
-                test_handler = self.bert.create_cpu_text_embedding_endpoint_handler(
-                    endpoint,
-                    self.model_name,
-                    "cpu",
-                    tokenizer
-                )
-                
-                output = test_handler(self.test_text)
-                results["cpu_handler"] = "Success" if output is not None else "Failed CPU handler"
+            # Initialize for CPU without mocks
+            endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cpu(
+                self.model_name,
+                "cpu", 
+                "cpu"
+            )
+            
+            valid_init = endpoint is not None and tokenizer is not None and handler is not None
+            results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
+            
+            # Get handler for CPU directly from initialization
+            # The handler should now be real and not mocked
+            test_handler = handler
+            
+            # Run actual inference
+            output = test_handler(self.test_text)
+            
+            # Verify the output is a real embedding tensor
+            is_valid_embedding = (
+                output is not None and 
+                isinstance(output, torch.Tensor) and 
+                output.dim() == 2 and 
+                output.size(0) == 1  # batch size
+            )
+            
+            results["cpu_handler"] = "Success" if is_valid_embedding else "Failed CPU handler"
+            
+            # Add embedding shape to results
+            if is_valid_embedding:
+                results["cpu_embedding_shape"] = list(output.shape)
+                results["cpu_embedding_type"] = str(output.dtype)
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
 
-        # Test CUDA if available
+        # Test CUDA if available - using real inference
         if torch.cuda.is_available():
             try:
-                with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                     patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
-                     patch('transformers.AutoModel.from_pretrained') as mock_model:
-                    
-                    mock_config.return_value = MagicMock()
-                    mock_tokenizer.return_value = MagicMock()
-                    mock_model.return_value = MagicMock()
-                    
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cuda(
-                        self.model_name,
-                        "cuda",
-                        "cuda:0"
+                # Initialize for CUDA without mocks
+                endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cuda(
+                    self.model_name,
+                    "cuda",
+                    "cuda:0"
+                )
+                
+                valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
+                
+                # Get handler for CUDA directly from initialization
+                test_handler = handler
+                
+                # Run actual inference
+                output = test_handler(self.test_text)
+                
+                # Verify the output is a real embedding
+                is_valid_embedding = False
+                if isinstance(output, dict):
+                    # Check for different possible output formats
+                    if 'hidden_states' in output:
+                        hidden_states = output['hidden_states']
+                        is_valid_embedding = (
+                            hidden_states is not None and
+                            hidden_states.shape[0] > 0
+                        )
+                    elif hasattr(output, 'keys') and len(output.keys()) > 0:
+                        # Just verify any output exists
+                        is_valid_embedding = True
+                elif isinstance(output, torch.Tensor) or isinstance(output, np.ndarray):
+                    is_valid_embedding = (
+                        output is not None and
+                        output.shape[0] > 0
                     )
-                    
-                    valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                    results["cuda_init"] = "Success" if valid_init else "Failed CUDA initialization"
-                    
-                    test_handler = self.bert.create_cuda_text_embedding_endpoint_handler(
-                        endpoint_model=self.model_name,
-                        cuda_label="cuda:0",
-                        endpoint=endpoint,
-                        tokenizer=tokenizer
-                    )
-                    
-                    output = test_handler(self.test_text)
-                    results["cuda_handler"] = "Success" if output is not None else "Failed CUDA handler"
+                
+                results["cuda_handler"] = "Success" if is_valid_embedding else "Failed CUDA handler"
+                
+                # Add embedding shape to results
+                if is_valid_embedding:
+                    if isinstance(output, dict) and 'hidden_states' in output:
+                        results["cuda_embedding_shape"] = list(output['hidden_states'].shape)
+                    elif isinstance(output, torch.Tensor):
+                        results["cuda_embedding_shape"] = list(output.shape)
+                    elif isinstance(output, np.ndarray):
+                        results["cuda_embedding_shape"] = list(output.shape)
+                
             except Exception as e:
                 results["cuda_tests"] = f"Error: {str(e)}"
         else:
@@ -100,19 +126,71 @@ class test_hf_bert:
 
         # Test OpenVINO if installed
         try:
+            # First check if OpenVINO is installed
             try:
                 import openvino
             except ImportError:
                 results["openvino_tests"] = "OpenVINO not installed"
                 return results
                 
-            with patch('openvino.Runtime') as mock_runtime:
-                mock_runtime.return_value = MagicMock()
-                mock_get_openvino_model = MagicMock()
-                mock_get_optimum_openvino_model = MagicMock()
-                mock_get_openvino_pipeline_type = MagicMock()
-                mock_openvino_cli_convert = MagicMock()
+            # We'll use a combination of mocks for parts we can't run directly
+            # and real inference for the parts we can
+            
+            # Create mock functions that would normally come from outside
+            mock_get_openvino_model = MagicMock()
+            mock_get_optimum_openvino_model = MagicMock()
+            mock_get_openvino_pipeline_type = MagicMock()
+            mock_openvino_cli_convert = MagicMock()
+            
+            # Make these useful mocks
+            mock_get_openvino_pipeline_type.return_value = "feature-extraction"
+            
+            # Create a minimal OpenVINO model for testing
+            try:
+                from openvino.runtime import Core
+                core = Core()
                 
+                # Option 1: Try to create a minimal OpenVINO model from scratch
+                # Simple matrix multiplication model as mock BERT
+                import numpy as np
+                from openvino.runtime import PartialShape, Type, Model, Output
+                
+                input_shapes = {
+                    "input_ids": PartialShape([1, 10]),
+                    "attention_mask": PartialShape([1, 10])
+                }
+                
+                # Create a custom model class instead of a MagicMock
+                # This ensures our model returns real tensors with proper shapes
+                class CustomOpenVINOModel:
+                    def __init__(self):
+                        pass
+                        
+                    def infer(self, inputs):
+                        batch_size = 1
+                        seq_len = 10
+                        hidden_size = 768
+                        
+                        if isinstance(inputs, dict) and "input_ids" in inputs:
+                            # Get shapes from actual inputs if available
+                            if hasattr(inputs["input_ids"], "shape"):
+                                batch_size = inputs["input_ids"].shape[0]
+                                seq_len = inputs["input_ids"].shape[1]
+                        
+                        # Create output tensor (simulated hidden states)
+                        output = np.random.rand(batch_size, seq_len, hidden_size).astype(np.float32)
+                        return {"last_hidden_state": output}
+                        
+                    def __call__(self, inputs):
+                        return self.infer(inputs)
+                
+                mock_ov_model = CustomOpenVINOModel()
+                
+                # Have the mock getters return our mock model
+                mock_get_openvino_model.return_value = mock_ov_model
+                mock_get_optimum_openvino_model.return_value = mock_ov_model
+                
+                # Initialize with our mocks
                 endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
                     model_name=self.model_name,
                     model_type="feature-extraction",
@@ -124,18 +202,70 @@ class test_hf_bert:
                     openvino_cli_convert=mock_openvino_cli_convert
                 )
                 
+                # If we got a handler back, we succeeded
                 valid_init = handler is not None
                 results["openvino_init"] = "Success" if valid_init else "Failed OpenVINO initialization"
                 
-                test_handler = self.bert.create_openvino_text_embedding_endpoint_handler(
-                    endpoint_model=self.model_name,
-                    tokenizer=tokenizer,
-                    openvino_label="openvino:0",
-                    endpoint=endpoint
-                )
+                # If tokenizer is None (it might be from our mocks), create a simulated one
+                if tokenizer is None:
+                    # Create a functional tokenizer object
+                    class SimpleTokenizer:
+                        def __call__(self, text, return_tensors=None, padding=None, truncation=None, max_length=None):
+                            if isinstance(text, str):
+                                batch_size = 1
+                            else:
+                                batch_size = len(text)
+                                
+                            return {
+                                "input_ids": torch.ones((batch_size, 10), dtype=torch.long),
+                                "attention_mask": torch.ones((batch_size, 10), dtype=torch.long)
+                            }
+                    
+                    tokenizer = SimpleTokenizer()
                 
-                output = test_handler(self.test_text)
-                results["openvino_handler"] = "Success" if output is not None else "Failed OpenVINO handler"
+                # Create handler if needed
+                if handler is None:
+                    test_handler = self.bert.create_openvino_text_embedding_endpoint_handler(
+                        endpoint_model=self.model_name,
+                        tokenizer=tokenizer,
+                        openvino_label="openvino:0",
+                        endpoint=mock_ov_model
+                    )
+                else:
+                    test_handler = handler
+                
+                # Run inference with extra debugging
+                try:
+                    print("Running OpenVINO inference with test handler...")
+                    output = test_handler(self.test_text)
+                    print(f"OpenVINO output type: {type(output)}")
+                    if output is not None:
+                        print(f"OpenVINO output shape: {output.shape if hasattr(output, 'shape') else 'no shape'}")
+                    
+                    is_valid_embedding = (
+                        output is not None and
+                        isinstance(output, (torch.Tensor, np.ndarray)) and
+                        hasattr(output, 'shape') and
+                        output.shape[0] == 1  # batch size 1
+                    )
+                    
+                    results["openvino_handler"] = "Success" if is_valid_embedding else "Failed OpenVINO handler"
+                except Exception as e:
+                    print(f"Exception in OpenVINO handler: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    results["openvino_handler"] = f"Error: {str(e)}"
+                
+                # Add embedding details if successful
+                if is_valid_embedding:
+                    if isinstance(output, torch.Tensor):
+                        results["openvino_embedding_shape"] = list(output.shape)
+                    else:
+                        results["openvino_embedding_shape"] = list(output.shape)
+                
+            except Exception as e:
+                print(f"Error in OpenVINO inference test: {e}")
+                results["openvino_tests"] = f"Error: {str(e)}"
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
         except Exception as e:
@@ -186,8 +316,17 @@ class test_hf_bert:
                 results["qualcomm_tests"] = "SNPE SDK not installed"
                 return results
                 
+            # For Qualcomm, we need to mock since it's unlikely to be available in test environment
             with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
-                mock_snpe.return_value = MagicMock()
+                mock_snpe_utils = MagicMock()
+                mock_snpe_utils.is_available.return_value = True
+                mock_snpe_utils.convert_model.return_value = "mock_converted_model"
+                mock_snpe_utils.load_model.return_value = MagicMock()
+                mock_snpe_utils.optimize_for_device.return_value = "mock_optimized_model"
+                mock_snpe_utils.run_inference.return_value = {
+                    "last_hidden_state": np.random.rand(1, 10, 768)
+                }
+                mock_snpe.return_value = mock_snpe_utils
                 
                 endpoint, tokenizer, handler, queue, batch_size = self.bert.init_qualcomm(
                     self.model_name,
@@ -198,6 +337,14 @@ class test_hf_bert:
                 valid_init = handler is not None
                 results["qualcomm_init"] = "Success" if valid_init else "Failed Qualcomm initialization"
                 
+                # For handler testing, create a mock tokenizer
+                if tokenizer is None:
+                    tokenizer = MagicMock()
+                    tokenizer.return_value = {
+                        "input_ids": np.ones((1, 10)),
+                        "attention_mask": np.ones((1, 10))
+                    }
+                    
                 test_handler = self.bert.create_qualcomm_text_embedding_endpoint_handler(
                     endpoint_model=self.model_name,
                     qualcomm_label="qualcomm:0",

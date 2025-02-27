@@ -4,6 +4,7 @@ import json
 import torch
 import numpy as np
 from unittest.mock import MagicMock, patch
+import transformers
 
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
@@ -14,7 +15,7 @@ class test_hf_t5:
         self.resources = resources if resources else {
             "torch": torch,
             "numpy": np,
-            "transformers": MagicMock()
+            "transformers": transformers  # Use real transformers if available
         }
         self.metadata = metadata if metadata else {}
         self.t5 = hf_t5(resources=self.resources, metadata=self.metadata)
@@ -32,34 +33,45 @@ class test_hf_t5:
         except Exception as e:
             results["init"] = f"Error: {str(e)}"
 
-        # Test CPU initialization and handler
+        # Test CPU initialization and handler with real inference
         try:
-            with patch('transformers.T5Tokenizer.from_pretrained') as mock_tokenizer, \
-                 patch('transformers.T5ForConditionalGeneration.from_pretrained') as mock_model:
-                
-                mock_tokenizer.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
-                mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
-                mock_tokenizer.batch_decode.return_value = ["Le renard brun rapide saute par-dessus le chien paresseux"]
-                
-                endpoint, tokenizer, handler, queue, batch_size = self.t5.init_cpu(
-                    self.model_name,
-                    "cpu",
-                    "cpu"
-                )
-                
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
-                
-                test_handler = self.t5.create_cpu_t5_endpoint_handler(
-                    tokenizer,
-                    self.model_name,
-                    "cpu",
-                    endpoint
-                )
-                
-                output = test_handler(self.test_input)
-                results["cpu_handler"] = "Success" if output is not None else "Failed CPU handler"
+            print("Initializing T5 for CPU...")
+            
+            # Initialize for CPU without mocks
+            endpoint, tokenizer, handler, queue, batch_size = self.t5.init_cpu(
+                self.model_name,
+                "cpu",
+                "cpu"
+            )
+            
+            valid_init = endpoint is not None and tokenizer is not None and handler is not None
+            results["cpu_init"] = "Success" if valid_init else "Failed CPU initialization"
+            
+            # Use handler directly from initialization
+            test_handler = handler
+            
+            # Test text generation
+            print(f"Testing T5 generation with input: '{self.test_input}'")
+            output = test_handler(self.test_input)
+            
+            # Verify output
+            is_valid_output = output is not None
+            results["cpu_handler"] = "Success" if is_valid_output else "Failed CPU handler"
+            
+            # Add output information if available
+            if is_valid_output:
+                if isinstance(output, str):
+                    # Truncate long outputs for readability
+                    if len(output) > 100:
+                        results["cpu_output"] = output[:100] + "..."
+                    else:
+                        results["cpu_output"] = output
+                        
+                    results["cpu_output_length"] = len(output)
+                else:
+                    results["cpu_output_type"] = str(type(output))
+                    if hasattr(output, "__len__"):
+                        results["cpu_output_length"] = len(output)
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"

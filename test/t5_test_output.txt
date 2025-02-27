@@ -1,0 +1,47 @@
+/home/barberb/.local/lib/python3.12/site-packages/pydub/utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+connecting to master
+connecting to master
+Initializing T5 for CPU...
+Loading t5-small for CPU inference...
+Creating minimal T5 model for testing
+Testing T5 generation with input: 'translate English to French: The quick brown fox jumps over the lazy dog'
+Processing input: translate English to French: The quick brown fox j...
+Error initializing Qualcomm T5 model: t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Error in Qualcomm T5 endpoint handler: 'NoneType' object is not callable
+Test results differ from expected results!
+Expected: {
+  "init": "Success",
+  "cpu_init": "Success",
+  "cpu_handler": "Success",
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Success",
+  "qualcomm_handler": "Success"
+}
+Got: {
+  "init": "Success",
+  "cpu_init": "Success",
+  "cpu_handler": "Success",
+  "cpu_output": "Example generated text from T5",
+  "cpu_output_length": 30,
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_handler": "Success"
+}
+T5 Test Results: {
+  "init": "Success",
+  "cpu_init": "Success",
+  "cpu_handler": "Success",
+  "cpu_output": "Example generated text from T5",
+  "cpu_output_length": 30,
+  "cuda_tests": "CUDA not available",
+  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "apple_tests": "Apple Silicon not available",
+  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_handler": "Success"
+}
