@@ -1,10 +1,9 @@
 {
   "init": "Success",
   "utility_tests": "Error: name 'build_transform' is not defined",
-  "cpu_init": "Success",
-  "cpu_tests": "Error: hf_llava.create_cpu_vlm_endpoint_handler.<locals>.handler() missing 1 required positional argument: 'y'",
+  "cpu_tests": "Error: not enough values to unpack (expected 2, got 0)",
   "cuda_tests": "CUDA not available",
-  "openvino_tests": "Error: <module 'openvino' from '/home/barberb/.local/lib/python3.12/site-packages/openvino/__init__.py'> does not have the attribute 'Runtime'",
+  "openvino_tests": "Error: <module 'openvino' from 'c:\\\\Users\\\\barberb\\\\ipfs_accelerate_py\\\\.venv\\\\Lib\\\\site-packages\\\\openvino\\\\__init__.py'> does not have the attribute 'Runtime'",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
   "qualcomm_handler": "Success"

@@ -15,6 +15,6 @@
     768
   ],
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
-  "qualcomm_handler": "Success"
+  "qualcomm_init": "Success",
+  "qualcomm_tests": "Error: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
 }
