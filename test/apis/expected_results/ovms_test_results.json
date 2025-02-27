@@ -1,12 +1,11 @@
 {
   "endpoint_handler": "Success",
-  "test_endpoint": "Error: ovms.test_ovms_endpoint() got an unexpected keyword argument 'model_name'",
+  "test_endpoint": "Success",
   "post_request": "Success",
   "post_request_headers": "Success",
   "format_request": "Method not implemented",
   "model_list": "Success - Found models",
   "model_example": "intel/bert-base-uncased",
   "error_handling_connection": "Failed to catch connection error",
-  "error_handling_404": "Failed to raise exception on 404",
-  "internal_test": "Success"
+  "error_handling_404": "Failed to raise exception on 404"
 }

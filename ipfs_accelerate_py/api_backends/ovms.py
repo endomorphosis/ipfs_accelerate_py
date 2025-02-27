@@ -105,7 +105,6 @@ class ovms:
         self.list_available_ovms_models = self.list_available_ovms_models
         self.get_model_metadata = self.get_model_metadata
         self.init = self.init
-        self.__test__ = self.__test__
         # Add endpoints tracking
         self.endpoints = {}
         self.endpoint_status = {}
@@ -331,106 +330,7 @@ class ovms:
             print(f"Failed to get metadata for model {model_name}: {e}")
             return None
     
-    def __test__(self, endpoint_url, endpoint_handler, endpoint_label, api_key=None):
-        """Test the remote OVMS endpoint and diagnose issues
-        
-        Performs comprehensive endpoint testing and diagnostics:
-        1. Connection Testing:
-           - Basic connectivity
-           - Authentication validation
-           - SSL/TLS verification
-           - Timeout configuration
-        
-        2. Model Validation:
-           - Model loading status
-           - Input shape verification
-           - Output format validation
-           - Precision compatibility
-        
-        3. Performance Metrics:
-           - Response time
-           - Throughput capacity
-           - Resource utilization
-           - Batch processing efficiency
-        
-        4. Error Diagnostics:
-           - Detailed error messages
-           - Stack traces for debugging
-           - Resource constraint warnings
-           - Configuration validation
-        
-        Common Error Types:
-        - CONNECTION_ERROR: Network connectivity issues
-        - AUTH_ERROR: Invalid API key or credentials
-        - MODEL_ERROR: Model loading or execution failed
-        - INPUT_ERROR: Invalid input format or shape
-        - RESOURCE_ERROR: Insufficient system resources
-        - TIMEOUT_ERROR: Request exceeded time limit
-        
-        Debugging Tools:
-        - Model Server Logs: Check OVMS server logs
-        - Client Logs: Enable debug logging
-        - Metrics: Monitor performance metrics
-        - Health Checks: Regular endpoint validation
-        
-        Args:
-            endpoint_url: URL of the endpoint
-            endpoint_handler: The handler function
-            endpoint_label: Label for the endpoint
-            api_key: API key for authentication
-            
-        Returns:
-            bool: True if test passes, False otherwise
-            
-        Example:
-            ```python
-            # Test endpoint with detailed diagnostics
-            success = ovms.__test__(
-                endpoint_url="http://localhost:9000",
-                endpoint_handler=handler,
-                endpoint_label="bert-gpu",
-                api_key="test-key"
-            )
-            
-            # The test will print detailed diagnostics:
-            # - Connection status
-            # - Model availability
-            # - Input/output validation
-            # - Performance metrics
-            # - Error details if any
-            ```
-        
-        Troubleshooting Tips:
-        1. Connection Issues:
-           - Verify endpoint URL and port
-           - Check network connectivity
-           - Validate SSL certificates
-           - Confirm firewall rules
-        
-        2. Model Issues:
-           - Verify model path and version
-           - Check input tensor shapes
-           - Validate model configuration
-           - Monitor resource usage
-        
-        3. Performance Issues:
-           - Adjust batch size
-           - Monitor system resources
-           - Check model optimization
-           - Consider hardware acceleration
-        """
-        test_text = "The quick brown fox jumps over the lazy dog"
-        try:
-            result = endpoint_handler(test_text)
-            if result is not None:
-                print(f"Remote OVMS test passed for {endpoint_label}")
-                return True
-            else:
-                print(f"Remote OVMS test failed for {endpoint_label}: No result")
-                return False
-        except Exception as e:
-            print(f"Remote OVMS test failed for {endpoint_label}: {e}")
-            return False
+# This method has been replaced with test_ovms_endpoint and test_ovms_endpoints
     
     def make_post_request_ovms(self, endpoint_url, data, api_key=None):
         """Make a POST request to an OVMS endpoint
@@ -537,8 +437,39 @@ class ovms:
             print(f"Error in async request to OVMS endpoint: {e}")
             raise e
     
-    async def test_ovms_endpoint(self, model=None, endpoint_url=None, api_key=None, endpoint_list=None):
-        """Test an OVMS endpoint or list of endpoints
+    def test_ovms_endpoint(self, endpoint_url=None, api_key=None, model_name=None):
+        """Test an OVMS endpoint
+        
+        Tests a single OVMS endpoint for connectivity and basic functionality.
+        
+        Args:
+            endpoint_url: URL of the endpoint to test
+            api_key: API key for authentication (optional)
+            model_name: Name of the model to test (optional)
+            
+        Returns:
+            bool: True if the test passes, False otherwise
+        """
+        try:
+            # Create test data
+            test_data = {"instances": [{"data": [0, 1, 2, 3]}]}
+            
+            # Make a test request
+            response = self.make_post_request_ovms(endpoint_url, test_data, api_key)
+            
+            # Check if the response contains expected fields
+            if response and ("predictions" in response or "outputs" in response):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error testing OVMS endpoint: {e}")
+            return False
+    
+    
+    async def test_ovms_endpoints(self, model=None, endpoint_url=None, api_key=None, endpoint_list=None):
+        """Test one or more OVMS endpoints
         
         Validates endpoint connectivity and model availability. Can test:
         - Single specific endpoint
@@ -563,13 +494,13 @@ class ovms:
         Example:
             ```python
             # Test specific endpoint
-            results = await ovms.test_ovms_endpoint(
+            results = await ovms.test_ovms_endpoints(
                 model="bert-base",
                 endpoint_url="http://localhost:9000"
             )
             
             # Test multiple endpoints
-            results = await ovms.test_ovms_endpoint(
+            results = await ovms.test_ovms_endpoints(
                 model="bert-base",
                 endpoint_list=[
                     "http://server1:9000",

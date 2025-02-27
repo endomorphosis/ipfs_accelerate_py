@@ -36,22 +36,163 @@ class s3_kit:
 		self.test_s3_kit_endpoint = self.test_s3_kit_endpoint
 		return None
 
+	def upload_file(self, file_path, bucket, key, s3_config=None):
+		"""Upload a file to S3
+		
+		Args:
+			file_path: Path to the file to upload
+			bucket: S3 bucket name
+			key: S3 object key
+			s3_config: S3 configuration dictionary (optional)
+			
+		Returns:
+			dict: Response from S3
+		"""
+		if not s3_config:
+			s3_config = self.config
+		
+		try:
+			import boto3
+			s3_client = boto3.client(**self.config_to_boto(s3_config))
+			s3_client.upload_file(file_path, bucket, key)
+			
+			# Get object metadata
+			response = s3_client.head_object(Bucket=bucket, Key=key)
+			
+			return {
+				"key": key,
+				"e_tag": response.get("ETag", ""),
+				"last_modified": response.get("LastModified", ""),
+				"size": response.get("ContentLength", 0)
+			}
+		except Exception as e:
+			print(f"Error uploading file to S3: {e}")
+			raise
+	
+	def download_file(self, bucket, key, file_path, s3_config=None):
+		"""Download a file from S3
+		
+		Args:
+			bucket: S3 bucket name
+			key: S3 object key
+			file_path: Path to save the file
+			s3_config: S3 configuration dictionary (optional)
+			
+		Returns:
+			dict: Response from S3
+		"""
+		if not s3_config:
+			s3_config = self.config
+		
+		try:
+			import boto3
+			s3_client = boto3.client(**self.config_to_boto(s3_config))
+			s3_client.download_file(bucket, key, file_path)
+			
+			# Get object metadata
+			response = s3_client.head_object(Bucket=bucket, Key=key)
+			
+			return {
+				"key": key,
+				"e_tag": response.get("ETag", ""),
+				"last_modified": response.get("LastModified", ""),
+				"size": response.get("ContentLength", 0),
+				"local_path": file_path
+			}
+		except Exception as e:
+			print(f"Error downloading file from S3: {e}")
+			raise
+
 	def make_post_request_s3_kit(self, model, endpoint, endpoint_type, batch):
-     
+		"""Not applicable for S3 backend"""
+		print("make_post_request_s3_kit is not applicable for S3 backend")
 		return None
 
-	def test_s3_kit_endpoint(self):
-     
-		return None
+	def test_s3_kit_endpoint(self, endpoint_url=None, s3_config=None):
+		"""Test connection to an S3 endpoint
+		
+		Args:
+			endpoint_url: URL of the S3 endpoint (optional)
+			s3_config: S3 configuration dictionary (optional)
+			
+		Returns:
+			bool: True if connection successful, False otherwise
+		"""
+		if not s3_config:
+			s3_config = self.config.copy()
+		
+		if endpoint_url:
+			s3_config["endpoint"] = endpoint_url
+		
+		try:
+			import boto3
+			s3_client = boto3.client(**self.config_to_boto(s3_config))
+			
+			# Try to list buckets as a simple test
+			response = s3_client.list_buckets()
+			return True
+		except Exception as e:
+			print(f"Error testing S3 endpoint: {e}")
+			return False
 
-	def request_s3_kit_endpoint(self, model,  endpoint=None, endpoint_type=None, batch=None):
+	def request_s3_kit_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
+		"""Get an S3 endpoint URL
+		
+		Args:
+			model: Not used for S3
+			endpoint: Specific endpoint URL (optional)
+			endpoint_type: Not used for S3
+			batch: Not used for S3
+			
+		Returns:
+			str: URL of the S3 endpoint
+		"""
+		if endpoint:
+			return endpoint
+		
+		return self.config.get("endpoint", "")
 
-		return None
-
-	def create_s3_kit_endpoint_handler(self):
-		def handler(request):
-			return None
+	def create_s3_endpoint_handler(self, endpoint_url=None):
+		"""Create a handler for S3 operations
+		
+		Args:
+			endpoint_url: URL of the S3 endpoint
+			
+		Returns:
+			function: Handler for S3 operations
+		"""
+		def handler(operation, **kwargs):
+			try:
+				s3_config = self.config.copy()
+				if endpoint_url:
+					s3_config["endpoint"] = endpoint_url
+				
+				# Add s3cfg to kwargs
+				kwargs["s3cfg"] = s3_config
+				
+				# Call the appropriate method based on the operation
+				if hasattr(self, operation):
+					method = getattr(self, operation)
+					return method(**kwargs)
+				else:
+					raise ValueError(f"Unsupported operation: {operation}")
+			
+			except Exception as e:
+				print(f"Error in S3 handler: {e}")
+				return None
+		
 		return handler
+	
+	def create_s3_kit_endpoint_handler(self, endpoint_url=None):
+		"""Create a handler for S3 operations (alias for create_s3_endpoint_handler)
+		
+		Args:
+			endpoint_url: URL of the S3 endpoint
+			
+		Returns:
+			function: Handler for S3 operations
+		"""
+		return self.create_s3_endpoint_handler(endpoint_url)
 
 	def __call__(self, method, **kwargs):
 		if method == 'ls_dir':
