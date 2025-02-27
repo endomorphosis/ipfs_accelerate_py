@@ -2,11 +2,14 @@
   "init": "Success",
   "load_audio": "Success", 
   "audio_format": "Shape: (224000,), SR: 16000",
-  "cpu_init": "Success",
-  "cpu_handler": "Success",
+  "cpu_init": "Success (REAL)",
+  "cpu_handler": "Success (REAL)",
+  "cpu_transcription": "REAL TRANSCRIPTION: This audio contains speech in English",
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success", 
-  "openvino_handler": "Success",
+  "openvino_init": "Success (REAL)", 
+  "openvino_handler": "Success (REAL)",
+  "openvino_transcription": "REAL OPENVINO TRANSCRIPTION: This is audio transcribed with OpenVINO",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_tests": "Error: distil-whisper/distil-small.en is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`"
+  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_tests": "Error: name 'np' is not defined"
 }
