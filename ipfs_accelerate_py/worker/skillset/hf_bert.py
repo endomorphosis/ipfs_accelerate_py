@@ -700,6 +700,9 @@ class hf_bert:
             Returns:
                 Text embeddings tensor
             """
+            # Mark if we're using a mock
+            using_mock = False
+            
             try:
                 # Process different input types
                 text = None
@@ -745,54 +748,88 @@ class hf_bert:
                     else:
                         input_dict[key] = value
                 
-                # Run inference - OpenVINO model might have a different interface
-                if hasattr(endpoint, '__call__'):
-                    # Standard model call
-                    results = endpoint(**tokens)
-                elif hasattr(endpoint, 'infer'):
-                    # OpenVINO Runtime model
-                    results = endpoint.infer(input_dict)
-                    # Convert OpenVINO results to PyTorch
-                    if 'last_hidden_state' not in results and len(results) > 0:
-                        # Find the output tensor from OpenVINO result
-                        output_key = list(results.keys())[0]
-                        last_hidden_np = results[output_key]
-                        attention_mask_np = input_dict['attention_mask']
-                        
-                        # Create a mock results object
-                        class MockResults:
-                            pass
-                        
-                        results = MockResults()
-                        results.last_hidden_state = self.torch.tensor(last_hidden_np)
-                        tokens['attention_mask'] = self.torch.tensor(attention_mask_np)
-                else:
-                    # Unknown model interface, try dict access
-                    results = endpoint(input_dict)
+                # Check if we have a valid endpoint
+                if endpoint is None or not (hasattr(endpoint, '__call__') or hasattr(endpoint, 'infer')):
+                    print("No valid OpenVINO endpoint available - using mock output")
+                    using_mock = True
+                    # Create a fallback embedding
+                    if isinstance(x, str):
+                        batch_size = 1
+                    elif isinstance(x, list):
+                        batch_size = len(x)
+                    else:
+                        batch_size = 1
+                    
+                    fallback_embedding = self.torch.rand((batch_size, 768))
+                    return {
+                        "embedding": fallback_embedding,
+                        "status": "MOCK" 
+                    }
                 
-                # Mean pooling to create embeddings
-                last_hidden = results.last_hidden_state.masked_fill(
-                    ~tokens['attention_mask'].bool().unsqueeze(-1), 
-                    0.0
-                )
-                average_pool_results = last_hidden.sum(dim=1) / tokens['attention_mask'].sum(dim=1, keepdim=True)
+                # Run inference - OpenVINO model might have a different interface
+                try:
+                    if hasattr(endpoint, '__call__'):
+                        # Standard model call
+                        results = endpoint(**tokens)
+                    elif hasattr(endpoint, 'infer'):
+                        # OpenVINO Runtime model
+                        results = endpoint.infer(input_dict)
+                        # Convert OpenVINO results to PyTorch
+                        if 'last_hidden_state' not in results and len(results) > 0:
+                            # Find the output tensor from OpenVINO result
+                            output_key = list(results.keys())[0]
+                            last_hidden_np = results[output_key]
+                            attention_mask_np = input_dict['attention_mask']
+                            
+                            # Create a mock results object
+                            class MockResults:
+                                pass
+                            
+                            results = MockResults()
+                            results.last_hidden_state = self.torch.tensor(last_hidden_np)
+                            tokens['attention_mask'] = self.torch.tensor(attention_mask_np)
+                    else:
+                        # Unknown model interface, try dict access
+                        results = endpoint(input_dict)
+                        
+                    # Mean pooling to create embeddings
+                    last_hidden = results.last_hidden_state.masked_fill(
+                        ~tokens['attention_mask'].bool().unsqueeze(-1), 
+                        0.0
+                    )
+                    average_pool_results = last_hidden.sum(dim=1) / tokens['attention_mask'].sum(dim=1, keepdim=True)
 
-                return average_pool_results
+                    # Return embedding with REAL status
+                    return {
+                        "embedding": average_pool_results,
+                        "status": "REAL"
+                    }
+                    
+                except Exception as inference_error:
+                    print(f"Error running OpenVINO inference: {inference_error}")
+                    using_mock = True
+                    # Fall through to fallback handling
                 
             except Exception as e:
                 print(f"Error in OpenVINO text embedding handler: {e}")
-                # Fallback to a synthetic embedding
-                if isinstance(x, str):
-                    batch_size = 1
-                elif isinstance(x, list):
-                    batch_size = len(x)
-                else:
-                    batch_size = 1
+                using_mock = True
+                # Fall through to fallback handling
                 
-                # Return a random tensor as fallback
-                fallback_embedding = self.torch.rand((batch_size, 768))
-                print(f"WARNING: Using fallback embedding due to error")
-                return fallback_embedding
+            # Fallback to a synthetic embedding if we reach here
+            if isinstance(x, str):
+                batch_size = 1
+            elif isinstance(x, list):
+                batch_size = len(x)
+            else:
+                batch_size = 1
+            
+            # Return a random tensor as fallback with MOCK status
+            fallback_embedding = self.torch.rand((batch_size, 768))
+            print(f"WARNING: Using fallback embedding due to error")
+            return {
+                "embedding": fallback_embedding,
+                "status": "MOCK"
+            }
         
         return handler
 
