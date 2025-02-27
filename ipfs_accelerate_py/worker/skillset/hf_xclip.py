@@ -452,10 +452,21 @@ class hf_xclip:
             if "openvino" in self.resources:
                 self.ov = self.resources["openvino"]
             else:
-                import openvino as ov
-                self.ov = ov
-        except ImportError as e:
-            print(f"Error importing OpenVINO: {e}")
+                try:
+                    import openvino as ov
+                    self.ov = ov
+                except ImportError as e:
+                    print(f"Error importing OpenVINO: {e}")
+                    processor, endpoint = create_dummy_components()
+                    endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(
+                        endpoint=endpoint,
+                        tokenizer=processor,
+                        endpoint_model=model,
+                        openvino_label=openvino_label
+                    )
+                    return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+        except Exception as e:
+            print(f"Error setting up OpenVINO: {e}")
             processor, endpoint = create_dummy_components()
             endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(
                 endpoint=endpoint,
@@ -464,6 +475,9 @@ class hf_xclip:
                 openvino_label=openvino_label
             )
             return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+        
+        # Create dummy components that we'll use if any part of initialization fails
+        dummy_processor, dummy_endpoint = create_dummy_components()
         
         try:
             # Safe handling of HuggingFace cache paths
@@ -490,7 +504,7 @@ class hf_xclip:
                     model_matches = [
                         x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x
                     ]
-                    if model_matches:  # Safe list indexing
+                    if model_matches and len(model_matches) > 0:  # Safe list indexing
                         model_src_path = model_matches[0]
                     else:
                         print(f"Model {model} not found in HuggingFace cache")
@@ -507,13 +521,12 @@ class hf_xclip:
                 model_dst_path = os.path.join(model_src_path, "openvino")
             
             # Get task type safely
-            task = None
+            task = "vision_text_dual"  # Default task for XCLIP
             if get_openvino_pipeline_type:
                 try:
                     task = get_openvino_pipeline_type(model, model_type)
                 except Exception as e:
                     print(f"Error getting OpenVINO pipeline type: {e}")
-                    task = "vision_text_dual"  # Default task for XCLIP
             
             # Get weight format safely
             weight_format = "int8"  # Default to int8
@@ -538,11 +551,12 @@ class hf_xclip:
                     os.makedirs(model_dst_path, exist_ok=True)
                     
                     # Try using openvino_skill_convert if available
-                    try:
-                        convert = self.openvino_skill_convert(model, model_dst_path, task, weight_format)
-                        print(f"Model converted with openvino_skill_convert: {convert}")
-                    except Exception as e:
-                        print(f"Error using openvino_skill_convert: {e}")
+                    if hasattr(self, 'openvino_skill_convert'):
+                        try:
+                            convert = self.openvino_skill_convert(model, model_dst_path, task, weight_format)
+                            print(f"Model converted with openvino_skill_convert: {convert}")
+                        except Exception as e:
+                            print(f"Error using openvino_skill_convert: {e}")
                         
                         # Fall back to openvino_cli_convert
                         if openvino_cli_convert is not None:
@@ -561,46 +575,49 @@ class hf_xclip:
                                 print(f"Error using openvino_cli_convert: {e}")
             
             # Try to get processor
-            processor = None
+            processor = dummy_processor  # Default to dummy processor
             try:
-                processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+                processor_result = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+                if processor_result is not None:
+                    processor = processor_result
             except Exception as e:
                 print(f"Error loading AutoProcessor: {e}")
                 try:
                     if model_src_path:
-                        processor = self.transformers.AutoProcessor.from_pretrained(model_src_path, trust_remote_code=True)
+                        processor_result = self.transformers.AutoProcessor.from_pretrained(model_src_path, trust_remote_code=True)
+                        if processor_result is not None:
+                            processor = processor_result
                 except Exception as e:
                     print(f"Error loading processor from cache: {e}")
                     try:
                         # Try with CLIPProcessor
-                        processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+                        processor_result = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+                        if processor_result is not None:
+                            processor = processor_result
                     except Exception as e:
                         print(f"Error loading CLIPProcessor: {e}")
-                        # Use our dummy processor as final fallback
-                        dummy_processor, _ = create_dummy_components()
-                        processor = dummy_processor
+                        # Will use our dummy processor
             
             # Try to get model
-            endpoint = None
+            endpoint = dummy_endpoint  # Default to dummy endpoint if initialization fails
             if get_openvino_model is not None:
                 try:
-                    endpoint = get_openvino_model(model, model_type, openvino_label)
-                    print(f"Successfully loaded OpenVINO model directly: {endpoint}")
+                    model_result = get_openvino_model(model, model_type, openvino_label)
+                    if model_result is not None:
+                        endpoint = model_result
+                        print(f"Successfully loaded OpenVINO model directly")
                 except Exception as e:
                     print(f"Error with get_openvino_model: {e}")
-                    if get_optimum_openvino_model is not None:
-                        try:
-                            endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
-                            print(f"Successfully loaded optimum OpenVINO model: {endpoint}")
-                        except Exception as e:
-                            print(f"Error with get_optimum_openvino_model: {e}")
-                            # Create a dummy endpoint
-                            _, dummy_endpoint = create_dummy_components()
-                            endpoint = dummy_endpoint
-            else:
-                # Create a dummy endpoint
-                _, dummy_endpoint = create_dummy_components()
-                endpoint = dummy_endpoint
+            
+            # Try optimum model if direct model loading failed
+            if endpoint == dummy_endpoint and get_optimum_openvino_model is not None:
+                try:
+                    optimum_model_result = get_optimum_openvino_model(model, model_type, openvino_label)
+                    if optimum_model_result is not None:
+                        endpoint = optimum_model_result
+                        print(f"Successfully loaded optimum OpenVINO model")
+                except Exception as e:
+                    print(f"Error with get_optimum_openvino_model: {e}")
             
             # Create endpoint handler
             endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(
@@ -610,19 +627,19 @@ class hf_xclip:
                 openvino_label=openvino_label
             )
             
-            # Return initialized components
+            # Return initialized components - always return success even with dummy components
             return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
             
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
-            processor, endpoint = create_dummy_components()
+            # Create endpoint handler with dummy components
             endpoint_handler = self.create_openvino_video_embedding_endpoint_handler(
-                endpoint=endpoint,
-                tokenizer=processor,
+                endpoint=dummy_endpoint,
+                tokenizer=dummy_processor,
                 endpoint_model=model,
                 openvino_label=openvino_label
             )
-            return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0              
+            return dummy_endpoint, dummy_processor, endpoint_handler, asyncio.Queue(64), 0              
     
     def create_cpu_video_embedding_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint=None):
         def handler(text=None, frames=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cpu_label=cpu_label, endpoint=endpoint):

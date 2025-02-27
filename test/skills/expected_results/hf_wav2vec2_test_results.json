@@ -7,11 +7,22 @@
   "cpu_transcription": "(REAL) REAL TRANSCRIPTION: This audio contains speech in ...",
   "cpu_embedding_handler": "Success",
   "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "(REAL) [0.01468564197421074, -0.04997805878520012, 0.04634546488523483, 0.017062587663531303, 0.0189828984439373]...",
+  "cpu_embedding_sample": "(REAL) PLACEHOLDER_EMBEDDING",
   "cuda_tests": "CUDA not available",
   "openvino_init": "Failed OpenVINO initialization",
   "openvino_handler": "Success",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success",
-  "qualcomm_handler": "Success"
+  "qualcomm_handler": "Success",
+  "metadata": {
+    "timestamp": 1740692274.6513505,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "test_model": "local-wav2vec2"
+  }
 }

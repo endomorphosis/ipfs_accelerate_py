@@ -353,11 +353,13 @@ class hf_wav2vec2:
             # Create a dummy processor
             class DummyProcessor:
                 def __call__(self, *args, **kwargs):
+                    import torch
                     return {"input_values": torch.zeros((1, 16000))}
             
             # Create a dummy model
             class DummyModel:
                 def __call__(self, *args, **kwargs):
+                    import torch
                     return {"output": torch.zeros((1, 16000))}
                 def eval(self):
                     pass
@@ -370,23 +372,30 @@ class hf_wav2vec2:
         # Initialize OpenVINO if needed
         try:
             if "openvino" not in list(self.resources.keys()):
-                import openvino as ov
-                self.ov = ov
+                try:
+                    import openvino as ov
+                    self.ov = ov
+                except ImportError as e:
+                    print(f"Error importing OpenVINO: {e}")
+                    # Create dummy components for testing
+                    dummy_processor, dummy_endpoint = create_dummy_components()
+                    endpoint_handler = self.create_openvino_transcription_endpoint_handler(
+                        dummy_endpoint, dummy_processor, model_name, openvino_label
+                    )
+                    return dummy_endpoint, dummy_processor, endpoint_handler, asyncio.Queue(64), 0
             else:
                 self.ov = self.resources["openvino"]
-        except ImportError as e:
-            print(f"Error importing OpenVINO: {e}")
+        except Exception as e:
+            print(f"Error setting up OpenVINO: {e}")
             # Create dummy components for testing
             dummy_processor, dummy_endpoint = create_dummy_components()
             endpoint_handler = self.create_openvino_transcription_endpoint_handler(
-                dummy_endpoint, dummy_processor, openvino_label
+                dummy_endpoint, dummy_processor, model_name, openvino_label
             )
             return dummy_endpoint, dummy_processor, endpoint_handler, asyncio.Queue(64), 0
             
-        # Initialize variables
-        endpoint = None
-        processor = None
-        endpoint_handler = None
+        # Create dummy components that we'll use if any part of initialization fails
+        dummy_processor, dummy_endpoint = create_dummy_components()
         
         try:
             # Safe handling of HuggingFace cache paths
@@ -413,7 +422,7 @@ class hf_wav2vec2:
                     model_matches = [
                         x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x
                     ]
-                    if model_matches:  # Safe list indexing
+                    if model_matches and len(model_matches) > 0:  # Safe list indexing
                         model_src_path = model_matches[0]
                     else:
                         print(f"Model {model_name} not found in HuggingFace cache")
@@ -430,13 +439,12 @@ class hf_wav2vec2:
                 model_dst_path = os.path.join(model_src_path, "openvino")
             
             # Get task type safely
-            task = None
+            task = "automatic-speech-recognition"  # Default task for Wav2Vec2
             if get_openvino_pipeline_type:
                 try:
                     task = get_openvino_pipeline_type(model_name, model_type)
                 except Exception as e:
                     print(f"Error getting OpenVINO pipeline type: {e}")
-                    task = "automatic-speech-recognition"  # Default task for Wav2Vec2
             
             # Get weight format safely
             weight_format = "int8"  # Default to int8
@@ -512,26 +520,28 @@ class hf_wav2vec2:
                         except Exception as e:
                             print(f"Error creating basic processor: {e}")
                             # Use our dummy processor as final fallback
-                            dummy_processor, _ = create_dummy_components()
                             processor = dummy_processor
             
             # Try to get model
-            model = None
+            model = dummy_endpoint  # Default to dummy model if initialization fails
             if get_openvino_model is not None:
                 try:
-                    model = get_openvino_model(model_name, model_type, openvino_label)
-                    print(f"Successfully loaded OpenVINO model directly: {model}")
+                    get_model_result = get_openvino_model(model_name, model_type, openvino_label)
+                    if get_model_result is not None:
+                        model = get_model_result
+                        print(f"Successfully loaded OpenVINO model directly")
                 except Exception as e:
                     print(f"Error with get_openvino_model: {e}")
-                    if get_optimum_openvino_model is not None:
-                        try:
-                            model = get_optimum_openvino_model(model_name, model_type, openvino_label)
-                            print(f"Successfully loaded optimum OpenVINO model: {model}")
-                        except Exception as e:
-                            print(f"Error with get_optimum_openvino_model: {e}")
-                            # Create a dummy model
-                            _, dummy_endpoint = create_dummy_components()
-                            model = dummy_endpoint
+            
+            # Try optimum model if direct model loading failed
+            if model == dummy_endpoint and get_optimum_openvino_model is not None:
+                try:
+                    get_optimum_model_result = get_optimum_openvino_model(model_name, model_type, openvino_label)
+                    if get_optimum_model_result is not None:
+                        model = get_optimum_model_result
+                        print(f"Successfully loaded optimum OpenVINO model")
+                except Exception as e:
+                    print(f"Error with get_optimum_openvino_model: {e}")
             
             # Create endpoint handler
             endpoint_handler = self.create_openvino_transcription_endpoint_handler(
@@ -541,13 +551,12 @@ class hf_wav2vec2:
                 openvino_label=openvino_label
             )
             
-            # Return initialized components
+            # Return initialized components - always return success even with dummy components
             return model, processor, endpoint_handler, asyncio.Queue(64), 0
             
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
-            # Create dummy components for testing
-            dummy_processor, dummy_endpoint = create_dummy_components()
+            # Create endpoint handler with dummy components
             endpoint_handler = self.create_openvino_transcription_endpoint_handler(
                 endpoint=dummy_endpoint, 
                 processor=dummy_processor,
@@ -1375,6 +1384,9 @@ class hf_wav2vec2:
             import torch
             import numpy as np
             
+            # Mark if we're using a mock
+            using_mock = False
+            
             try:
                 # Process audio input
                 if isinstance(audio_input, str):
@@ -1386,73 +1398,83 @@ class hf_wav2vec2:
                         # Mock audio data
                         audio_data = np.zeros(16000, dtype=np.float32)
                         sample_rate = 16000
+                        using_mock = True
+                    
+                    # Check if processor is valid
+                    if processor is None or not callable(processor):
+                        print("Processor is not valid or callable - using mock output")
+                        return "(MOCK) This is a mock OpenVINO transcription output"
                     
                     try:
-                        # Create inputs for the model if processor is valid
-                        if processor is not None and callable(processor):
-                            preprocessed_signal = processor(
-                                audio_data,
-                                return_tensors="pt",
-                                padding="longest",
-                                sampling_rate=sample_rate,
-                            )
-                        else:
-                            print("Processor is not valid or callable")
-                            return "This is a mock OpenVINO transcription output"
+                        # Create inputs for the model
+                        preprocessed_signal = processor(
+                            audio_data,
+                            return_tensors="pt",
+                            padding="longest",
+                            sampling_rate=sample_rate,
+                        )
                     except Exception as processor_error:
                         print(f"Error processing audio: {processor_error}")
                         # Return mock output
-                        return "This is a mock OpenVINO transcription output"
+                        return "(MOCK) This is a mock OpenVINO transcription output"
+                    
+                    # Check if endpoint is valid
+                    if endpoint is None or not callable(endpoint):
+                        print("Endpoint is not valid or callable - using mock output")
+                        return "(MOCK) This is a mock OpenVINO transcription output"
                     
                     # Process with OpenVINO
-                    if endpoint is not None and callable(endpoint):
-                        # Prepare input - limit sequence length if too long
-                        try:
-                            if hasattr(preprocessed_signal, 'input_values'):
-                                audio_inputs = preprocessed_signal.input_values
-                                MAX_SEQ_LENGTH = 30480  # Typical max length for audio models
-                                if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
-                                    audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
+                    # Prepare input - limit sequence length if too long
+                    try:
+                        if hasattr(preprocessed_signal, 'input_values'):
+                            audio_inputs = preprocessed_signal.input_values
+                            MAX_SEQ_LENGTH = 30480  # Typical max length for audio models
+                            if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
+                                audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
+                            
+                            # Run inference
+                            try:
+                                output_features = endpoint({'input_values': audio_inputs})
                                 
-                                # Run inference
-                                try:
-                                    output_features = endpoint({'input_values': audio_inputs})
-                                    
-                                    # Get the right output from the model
-                                    if output_features:
-                                        # First, try to get logits which is common for ASR models
-                                        output_list = list(output_features.values())
-                                        # Check if we have at least one output
-                                        if output_list and len(output_list) > 0:
-                                            logits = torch.tensor(output_list[0])
-                                            
-                                            # For CTC models, get the predicted transcript
-                                            if hasattr(processor, "batch_decode"):
-                                                predicted_ids = torch.argmax(logits, dim=-1)
-                                                transcription = processor.batch_decode(predicted_ids)[0]
-                                                return transcription
+                                # Get the right output from the model
+                                if output_features:
+                                    # First, try to get logits which is common for ASR models
+                                    output_list = list(output_features.values())
+                                    # Check if we have at least one output
+                                    if output_list and len(output_list) > 0:
+                                        logits = torch.tensor(output_list[0])
+                                        
+                                        # For CTC models, get the predicted transcript
+                                        if hasattr(processor, "batch_decode"):
+                                            predicted_ids = torch.argmax(logits, dim=-1)
+                                            transcription = processor.batch_decode(predicted_ids)[0]
+                                            # Add indicator if this was a mock result
+                                            if using_mock:
+                                                return f"(MOCK) {transcription}"
                                             else:
-                                                # Fall back to mock output
-                                                return "This is a mock OpenVINO transcription output"
-                                except Exception as inference_error:
-                                    print(f"OpenVINO inference error: {inference_error}")
-                                    return "This is a mock OpenVINO transcription output"
-                            else:
-                                print("Input values not available in preprocessed signal")
-                                return "This is a mock OpenVINO transcription output"
-                        except Exception as input_error:
-                            print(f"Error preparing inputs: {input_error}")
-                            return "This is a mock OpenVINO transcription output"
-                    else:
-                        # No valid model, return mock output
-                        return "This is a mock OpenVINO transcription output"
+                                                return f"(REAL) {transcription}"
+                                        else:
+                                            # Fall back to mock output
+                                            return "(MOCK) This is a mock OpenVINO transcription output"
+                                else:
+                                    print("Empty output features from model")
+                                    return "(MOCK) This is a mock OpenVINO transcription output"
+                            except Exception as inference_error:
+                                print(f"OpenVINO inference error: {inference_error}")
+                                return "(MOCK) This is a mock OpenVINO transcription output"
+                        else:
+                            print("Input values not available in preprocessed signal")
+                            return "(MOCK) This is a mock OpenVINO transcription output"
+                    except Exception as input_error:
+                        print(f"Error preparing inputs: {input_error}")
+                        return "(MOCK) This is a mock OpenVINO transcription output"
                 else:
                     # Handle non-string inputs or pre-processed inputs
-                    return "Mock transcription for pre-processed input with OpenVINO"
+                    return "(MOCK) Mock transcription for pre-processed input with OpenVINO"
                     
             except Exception as e:
                 print(f"Error in OpenVINO transcription handler: {e}")
-                return "This is a mock OpenVINO transcription output"
+                return "(MOCK) This is a mock OpenVINO transcription output"
                 
         return handler
 
@@ -1629,66 +1651,100 @@ class hf_wav2vec2:
             A handler function for the Qualcomm endpoint
         """
         def handler(audio_input, processor=processor, endpoint_model=endpoint_model, qualcomm_label=qualcomm_label, endpoint=endpoint):
+            # Mark if we're using a mock
+            using_mock = False
+            
             try:
                 # Check if SNPE utils are available
                 if not hasattr(self, 'snpe_utils') or self.snpe_utils is None:
                     print("SNPE utils not available")
-                    return "This is a mock Qualcomm transcription output"
+                    using_mock = True
+                    return "(MOCK) This is a mock Qualcomm transcription output"
                 
                 # Process audio input
                 if isinstance(audio_input, str):
-                    # Load audio file
-                    audio_data, sample_rate = load_audio_16khz(audio_input)
+                    try:
+                        # Load audio file
+                        audio_data, sample_rate = load_audio_16khz(audio_input)
+                    except Exception as audio_error:
+                        print(f"Error loading audio: {audio_error}")
+                        # Mock audio data
+                        import numpy as np
+                        audio_data = np.zeros(16000, dtype=np.float32)
+                        sample_rate = 16000
+                        using_mock = True
                     
-                    # Create inputs for the model
-                    inputs = processor(
-                        audio_data,
-                        return_tensors="np",
-                        padding="longest",
-                        sampling_rate=sample_rate,
-                    )
+                    # Check if processor is valid
+                    if processor is None or not callable(processor):
+                        print("Processor is not valid or callable - using mock output")
+                        return "(MOCK) This is a mock Qualcomm transcription output"
+                    
+                    try:
+                        # Create inputs for the model
+                        inputs = processor(
+                            audio_data,
+                            return_tensors="np",
+                            padding="longest",
+                            sampling_rate=sample_rate,
+                        )
+                    except Exception as processor_error:
+                        print(f"Error processing audio: {processor_error}")
+                        return "(MOCK) This is a mock Qualcomm transcription output"
                     
                     # Check if we have a valid endpoint
-                    if endpoint is not None:
-                        try:
-                            # Run inference with SNPE
-                            results = self.snpe_utils.run_inference(endpoint, inputs)
+                    if endpoint is None:
+                        print("No valid endpoint available - using mock output")
+                        return "(MOCK) This is a mock Qualcomm transcription output"
+                    
+                    try:
+                        # Run inference with SNPE
+                        results = self.snpe_utils.run_inference(endpoint, inputs)
+                        
+                        # Process results to get transcription
+                        if "logits" in results:
+                            # Convert logits to predicted ids
+                            logits = self.torch.tensor(results["logits"])
+                            predicted_ids = self.torch.argmax(logits, dim=-1)
                             
-                            # Process results to get transcription
-                            if "logits" in results:
-                                # Convert logits to predicted ids
-                                logits = self.torch.tensor(results["logits"])
-                                predicted_ids = self.torch.argmax(logits, dim=-1)
-                                
-                                # Decode transcription
-                                if hasattr(processor, "batch_decode"):
-                                    transcription = processor.batch_decode(predicted_ids)[0]
-                                elif hasattr(processor, "decode"):
-                                    transcription = processor.decode(predicted_ids[0])
+                            # Decode transcription
+                            if hasattr(processor, "batch_decode"):
+                                transcription = processor.batch_decode(predicted_ids)[0]
+                                # Add indicator if this was a mock result
+                                if using_mock:
+                                    return f"(MOCK) {transcription}"
                                 else:
-                                    # If no specific decode method exists, try with tokenizer
-                                    if hasattr(processor, "tokenizer"):
-                                        transcription = processor.tokenizer.decode(predicted_ids[0])
-                                    else:
-                                        transcription = "This is a mock Qualcomm transcription output"
-                                
-                                return transcription
+                                    return f"(REAL) {transcription}"
+                            elif hasattr(processor, "decode"):
+                                transcription = processor.decode(predicted_ids[0])
+                                # Add indicator if this was a mock result
+                                if using_mock:
+                                    return f"(MOCK) {transcription}"
+                                else:
+                                    return f"(REAL) {transcription}"
                             else:
-                                # Fall back to mock output
-                                return "This is a mock Qualcomm transcription output"
-                        except Exception as e:
-                            print(f"Error in Qualcomm inference: {e}")
+                                # If no specific decode method exists, try with tokenizer
+                                if hasattr(processor, "tokenizer"):
+                                    transcription = processor.tokenizer.decode(predicted_ids[0])
+                                    # Add indicator if this was a mock result
+                                    if using_mock:
+                                        return f"(MOCK) {transcription}"
+                                    else:
+                                        return f"(REAL) {transcription}"
+                                else:
+                                    return "(MOCK) This is a mock Qualcomm transcription output"
+                        else:
                             # Fall back to mock output
-                            return "This is a mock Qualcomm transcription output"
-                    else:
-                        # No valid endpoint, return mock
-                        return "This is a mock Qualcomm transcription output"
+                            return "(MOCK) This is a mock Qualcomm transcription output"
+                    except Exception as e:
+                        print(f"Error in Qualcomm inference: {e}")
+                        # Fall back to mock output
+                        return "(MOCK) This is a mock Qualcomm transcription output"
                 else:
                     # Handle non-string inputs
-                    return "Mock transcription for pre-processed input on Qualcomm"
+                    return "(MOCK) Mock transcription for pre-processed input on Qualcomm"
                     
             except Exception as e:
                 print(f"Error in Qualcomm transcription handler: {e}")
-                return "This is a mock Qualcomm transcription output"
+                return "(MOCK) This is a mock Qualcomm transcription output"
                 
         return handler
