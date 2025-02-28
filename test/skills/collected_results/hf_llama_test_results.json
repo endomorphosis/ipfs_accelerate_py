@@ -4,76 +4,91 @@
     "cpu_init": "Success (REAL)",
     "cpu_handler": "Success (REAL)",
     "cpu_output": "Valid (REAL)",
-    "cpu_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a clever fox named Finn who lived in the f...",
+    "cpu_sample_text": "Invalid inputs format or missing input_ids",
     "cuda_init": "Success (REAL)",
     "cuda_handler": "Success (REAL)",
     "cuda_output": "Valid (REAL)",
-    "cuda_sample_text": "Write a short story about a fox and a dog. Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together...",
+    "cuda_sample_text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fo...",
+    "cuda_batch": "Success but unexpected format",
+    "cuda_config": "Success (REAL)",
+    "cuda_config_sample": "(MOCK CUDA) Generated text for prompt: Write a sho...",
     "openvino_init": "Success (REAL)",
     "openvino_handler": "Success (REAL)",
     "openvino_output": "Valid (REAL)",
-    "openvino_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a fox named Rusty and a dog named Max...",
+    "openvino_sample_text": "Failed to properly tokenize input: Write a short story about a fo...",
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Success (MOCK)",
     "qualcomm_handler": "Success (MOCK)",
     "qualcomm_output": "Valid (MOCK)",
-    "qualcomm_sample_text": "(MOCK) Qualcomm SNPE output: Once upon a time in the forest, there liv"
+    "qualcomm_sample_text": "(MOCK) Qualcomm SNPE output: Missing required input fields (input_ids or attent"
   },
   "examples": [
     {
       "input": "Write a short story about a fox and a dog.",
       "output": {
-        "generated_text": "Once upon a time, there was a clever fox named Finn who lived in the forest. One day, he met a friendly dog named Max who had gotten lost while on a walk with his owner."
+        "generated_text": "Invalid inputs format or missing input_ids"
       },
-      "timestamp": "2025-02-28T01:01:58.415093",
-      "elapsed_time": 1.5,
+      "timestamp": "2025-02-28T01:31:47.086463",
+      "elapsed_time": 0.0007643699645996094,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
     {
       "input": "Write a short story about a fox and a dog.",
       "output": {
-        "generated_text": "Once upon a time, there was a fox named Rusty and a dog named Max. They lived on opposite sides of a large forest but would often meet in the clearing by the river."
+        "text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fo...",
+        "device": "cuda:0 (mock)",
+        "gpu_memory_mb": 0.0
       },
-      "timestamp": "2025-02-28T01:01:58.415107",
-      "elapsed_time": 0.8,
+      "timestamp": "2025-02-28T01:31:47.335381",
+      "elapsed_time": 0.10040068626403809,
+      "implementation_type": "REAL",
+      "platform": "CUDA"
+    },
+    {
+      "input": "Write a short story about a fox and a dog. (with custom generation settings)",
+      "output": {
+        "text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fo...",
+        "config": {
+          "max_new_tokens": 30,
+          "temperature": 0.8,
+          "top_p": 0.95
+        }
+      },
+      "timestamp": "2025-02-28T01:31:47.536524",
+      "elapsed_time": 0.10051894187927246,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "test_type": "config"
+    },
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
+        "generated_text": "Failed to properly tokenize input: Write a short story about a fo..."
+      },
+      "timestamp": "2025-02-28T01:31:47.895488",
+      "elapsed_time": 0.0005083084106445312,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
     },
     {
       "input": "Write a short story about a fox and a dog.",
       "output": {
-        "generated_text": "Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together.",
-        "implementation_type": "REAL",
-        "memory_allocated_mb": 450.0,
-        "generation_time_seconds": 0.32,
-        "device": "cuda:0"
-      },
-      "timestamp": "2025-02-28T01:01:58.415110",
-      "elapsed_time": 0.32,
-      "implementation_type": "REAL",
-      "is_simulated": true,
-      "platform": "CUDA"
-    },
-    {
-      "input": "Write a short story about a fox and a dog.",
-      "output": {
         "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
       },
-      "timestamp": "2025-02-28T01:01:58.415113",
-      "elapsed_time": 0.5,
+      "timestamp": "2025-02-28T01:31:47.921458",
+      "elapsed_time": 0.003422260284423828,
       "implementation_type": "MOCK",
       "platform": "Qualcomm"
     }
   ],
   "metadata": {
     "model_name": "/tmp/llama_test_model",
-    "test_timestamp": "2025-02-28T01:01:58.415114",
+    "test_timestamp": "2025-02-28T01:31:47.921494",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",
     "platform_status": {
-      "cuda": "CUDA not available",
       "apple": "Apple Silicon not available"
     },
     "cuda_available": true,

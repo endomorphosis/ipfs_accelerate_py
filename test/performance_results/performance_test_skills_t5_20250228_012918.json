@@ -1,0 +1,98 @@
+{
+  "timestamp": "2025-02-28T01:29:09.406663",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter t5",
+  "skill_tests": {
+    "test_hf_t5.py": {
+      "test_file": "test_hf_t5.py",
+      "elapsed_time": 8.90803050994873,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nAttempting to use primary model: google/t5-efficient-tiny\nPrimary model validation failed: google/t5-efficient-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: t5-small\nAlternative model validation failed: t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: google/flan-t5-small\nAlternative model validation failed: google/flan-t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf thi...",
+      "stderr": "2025-02-28 01:29:15,177 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\n2025-02-28 01:29:16,409 - utils - INFO - Enhanced CUDA handler with implementation detection markers: False\n",
+      "json_result": {
+        "init": "Success",
+        "cpu_init": "Success (REAL)",
+        "cpu_handler": "Success (REAL)",
+        "cpu_output_type": "<class 'dict'>",
+        "cpu_output_length": 2,
+        "cpu_output_example": {
+          "input": "translate English to French: The quick brown fox jumps over the lazy dog",
+          "output": {
+            "text": "Example generated text from T5",
+            "implementation_type": "REAL"
+          },
+          "timestamp": 1740734955.1417263,
+          "implementation": "(REAL)"
+        },
+        "cuda_init": "Success (MOCK)",
+        "cuda_handler": "Success (MOCK)",
+        "cuda_total_time": 0.19482135772705078,
+        "cuda_generation_time": 0.08,
+        "cuda_generated_tokens": 9,
+        "cuda_tokens_per_second": 112.5,
+        "cuda_device_used": "cuda:0",
+        "cuda_output": "Le renard brun rapide saute par-dessus le chien paresseux",
+        "cuda_output_length": 57,
+        "cuda_timestamp": 1740734956.604712,
+        "cuda_output_example": {
+          "input": "translate English to French: The quick brown fox jumps over the lazy dog",
+          "output": "Le renard brun rapide saute par-dessus le chien paresseux",
+          "timestamp": 1740734956.6047134,
+          "implementation": "(MOCK)",
+          "platform": "CUDA",
+          "generation_config": {
+            "max_new_tokens": 50,
+            "do_sample": true,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "num_beams": 1
+          },
+          "total_time": 0.19482135772705078,
+          "generation_time": 0.08,
+          "generated_tokens": 9,
+          "tokens_per_second": 112.5,
+          "device": "cuda:0"
+        },
+        "openvino_init": "Success (MOCK)",
+        "openvino_handler": "Success (MOCK)",
+        "openvino_output": "Generated text from T5 (mock for translate English to French: The quick brown fox jumps over the laz...",
+        "openvino_output_length": 106,
+        "openvino_timestamp": 1740734956.9253266,
+        "openvino_output_example": {
+          "input": "translate English to French: The quick brown fox jumps over the lazy dog",
+          "output": "Generated text from T5 (mock for translate English to French: The quick brown fox jumps over the laz...",
+          "timestamp": 1740734956.9253418,
+          "elapsed_time": 0.01,
+          "implementation_type": "(MOCK)",
+          "platform": "OpenVINO"
+        },
+        "apple_tests": "Apple Silicon not available",
+        "qualcomm_init": "Success (MOCK)",
+        "qualcomm_handler": "Success (MOCK)",
+        "qualcomm_output": "Generated text from T5 (mock due to tokenization error)",
+        "qualcomm_output_length": 55,
+        "qualcomm_timestamp": 1740734956.9366171,
+        "qualcomm_output_example": {
+          "input": "translate English to French: The quick brown fox jumps over the lazy dog",
+          "output": "Generated text from T5 (mock due to tokenization error)",
+          "timestamp": 1740734956.9366188,
+          "elapsed_time": 0.01,
+          "implementation_type": "(MOCK)",
+          "platform": "Qualcomm"
+        },
+        "metadata": {
+          "timestamp": 1740734956.936943,
+          "torch_version": "2.4.0+cu121",
+          "numpy_version": "1.26.4",
+          "transformers_version": "4.49.0",
+          "cuda_available": true,
+          "cuda_device_count": 1,
+          "mps_available": false,
+          "transformers_mocked": false,
+          "test_model": "/tmp/t5_test_model",
+          "test_run_id": "t5-test-1740734956"
+        }
+      }
+    }
+  }
+}

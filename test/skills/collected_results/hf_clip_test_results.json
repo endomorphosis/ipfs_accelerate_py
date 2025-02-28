@@ -21,7 +21,7 @@
       1,
       512
     ],
-    "timestamp": 1740734451.0497277,
+    "timestamp": 1740735080.8519847,
     "implementation": "(REAL)"
   },
   "cpu_text_embedding": "Success (REAL)",
@@ -35,7 +35,7 @@
       1,
       512
     ],
-    "timestamp": 1740734451.0497918,
+    "timestamp": 1740735080.8521504,
     "implementation": "(REAL)"
   },
   "cpu_similarity_example": {
@@ -43,8 +43,8 @@
       "text": "a red square",
       "image": "image input (binary data not shown)"
     },
-    "output": 0.0004960373044013977,
-    "timestamp": 1740734451.049826,
+    "output": -0.01612771488726139,
+    "timestamp": 1740735080.8522828,
     "implementation": "(REAL)"
   },
   "cuda_init": "Failed CUDA initialization",
@@ -55,10 +55,10 @@
       "image": "image input (binary data not shown)"
     },
     "output": 0.75,
-    "timestamp": 1740734452.8830068,
+    "timestamp": 1740735082.7217324,
     "implementation_type": "REAL",
     "performance": {
-      "inference_time": 0.10029363632202148
+      "inference_time": 0.1003119945526123
     },
     "is_simulated": false
   },
@@ -68,7 +68,7 @@
       1,
       512
     ],
-    "timestamp": 1740734452.883008,
+    "timestamp": 1740735082.7217336,
     "implementation_type": "REAL",
     "is_simulated": false
   },
@@ -78,7 +78,7 @@
       1,
       512
     ],
-    "timestamp": 1740734452.883009,
+    "timestamp": 1740735082.7217343,
     "implementation_type": "REAL",
     "is_simulated": false
   },
@@ -99,7 +99,7 @@
       "image": "image input (binary data not shown)"
     },
     "output": 0.75,
-    "timestamp": 1740734468.8265004,
+    "timestamp": 1740735097.743192,
     "implementation": "(MOCK)"
   },
   "qualcomm_image_example": {
@@ -108,7 +108,7 @@
       1,
       512
     ],
-    "timestamp": 1740734468.8265035,
+    "timestamp": 1740735097.7431962,
     "implementation": "(MOCK)"
   },
   "qualcomm_text_example": {
@@ -117,11 +117,11 @@
       1,
       512
     ],
-    "timestamp": 1740734468.8265042,
+    "timestamp": 1740735097.743197,
     "implementation": "(MOCK)"
   },
   "metadata": {
-    "timestamp": 1740734468.826577,
+    "timestamp": 1740735097.743266,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -130,6 +130,6 @@
     "mps_available": false,
     "transformers_mocked": false,
     "test_model": "openai/clip-vit-base-patch16",
-    "test_run_id": "clip-test-1740734468"
+    "test_run_id": "clip-test-1740735097"
   }
 }

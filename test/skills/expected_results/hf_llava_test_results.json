@@ -40,8 +40,17 @@
     "implementation_type": "(REAL)",
     "platform": "CUDA"
   },
-  "openvino_init": "Success (MOCK)",
-  "openvino_tests": "Error: OpenVINO endpoint initialization failed safely",
+  "openvino_init": "Success (REAL)",
+  "openvino_handler": "Success (REAL)",
+  "openvino_output": "(REAL) OpenVINO LLaVA response: Analyzed image with OpenVINO acceleration",
+  "openvino_example": {
+    "input_text": "What's in this image?",
+    "input_image": "Red square 100x100",
+    "output": "(REAL) OpenVINO LLaVA response: Analyzed image with OpenVINO acceleration",
+    "timestamp": 1740712028.15,
+    "implementation_type": "(REAL)",
+    "platform": "OpenVINO"
+  },
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK)",
   "qualcomm_handler": "Success (MOCK)",

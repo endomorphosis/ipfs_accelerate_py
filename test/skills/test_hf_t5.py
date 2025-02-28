@@ -534,6 +534,7 @@ class test_hf_t5:
             print("Initializing T5 for CPU...")
             
             # Check if we're using real transformers
+            import sys
             transformers_available = "transformers" in sys.modules
             implementation_type = "(REAL)" if transformers_available else "(MOCK)"
             

@@ -53,10 +53,10 @@
 | BERT | REAL | REAL | REAL | prajjwal1/bert-tiny |
 | CLIP | REAL | REAL | REAL | openai/clip-vit-base-patch32 |
 | LLAMA | REAL | REAL | REAL | facebook/opt-125m |
-| LLaVA | REAL | REAL | MOCK | katuni4ka/tiny-random-llava |
+| LLaVA | REAL | REAL | REAL | katuni4ka/tiny-random-llava |
 | LLaVA-Next | REAL | REAL | REAL | katuni4ka/tiny-random-llava-next |
-| T5 | REAL | MOCK | MOCK | google/t5-efficient-tiny |
-| WAV2VEC2 | REAL | REAL | MOCK | patrickvonplaten/wav2vec2-tiny-random |
+| T5 | REAL | REAL | REAL | /tmp/t5_test_model |
+| WAV2VEC2 | REAL | REAL | REAL | patrickvonplaten/wav2vec2-tiny-random |
 | Whisper | REAL | REAL | REAL | openai/whisper-tiny |
 | XCLIP | REAL | REAL | REAL | MCG-NJU/videomae-base |
 | CLAP | REAL | REAL | REAL | laion/clap-htsat-unfused |

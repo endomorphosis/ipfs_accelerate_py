@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-02-28T01:29:37.435428",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter llama",
+  "skill_tests": {
+    "test_hf_llama.py": {
+      "test_file": "test_hf_llama.py",
+      "elapsed_time": 0.18503260612487793,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 1564\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 1564)\n"
+    }
+  }
+}

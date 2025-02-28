@@ -1,0 +1,82 @@
+{
+  "timestamp": "2025-02-28T01:29:53.963589",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter llama",
+  "skill_tests": {
+    "test_hf_llama.py": {
+      "test_file": "test_hf_llama.py",
+      "elapsed_time": 9.341492652893066,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nStarting LLaMA test...\nAttempting to use primary model: facebook/opt-125m\nPrimary model validation failed: facebook/opt-125m is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: EleutherAI/pythia-70m\nAlternative model validation failed: EleutherAI/pythia-70m is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: distilgpt2\nAlternative model validation failed: distilgpt2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co...",
+      "stderr": "You are using the default legacy behaviour of the <class 'transformers.models.llama.tokenization_llama_fast.LlamaTokenizerFast'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565 - if you loaded a llama tokenizer from a GGUF file you can ignore this message.\n2025-02-28 01:30:01,015 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\n2025-02-28 01:30:01,117 - utils - INFO - Enhanced CUDA handler with implementation detection markers: True\n",
+      "json_result": {
+        "status": {
+          "cpu": "REAL",
+          "cuda": "REAL",
+          "openvino": "REAL"
+        },
+        "model_name": "/tmp/llama_test_model",
+        "examples": [
+          {
+            "input": "Write a short story about a fox and a dog.",
+            "output": {
+              "generated_text": "Invalid inputs format or missing input_ids"
+            },
+            "timestamp": "2025-02-28T01:30:00.979623",
+            "elapsed_time": 0.0005326271057128906,
+            "implementation_type": "REAL",
+            "platform": "CPU"
+          },
+          {
+            "input": "Write a short story about a fox and a dog.",
+            "output": {
+              "text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fo...",
+              "device": "cuda:0 (mock)",
+              "gpu_memory_mb": 0.0
+            },
+            "timestamp": "2025-02-28T01:30:01.218439",
+            "elapsed_time": 0.1008453369140625,
+            "implementation_type": "REAL",
+            "platform": "CUDA"
+          },
+          {
+            "input": "Write a short story about a fox and a dog. (with custom generation settings)",
+            "output": {
+              "text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fo...",
+              "config": {
+                "max_new_tokens": 30,
+                "temperature": 0.8,
+                "top_p": 0.95
+              }
+            },
+            "timestamp": "2025-02-28T01:30:01.419236",
+            "elapsed_time": 0.1004331111907959,
+            "implementation_type": "REAL",
+            "platform": "CUDA",
+            "test_type": "config"
+          },
+          {
+            "input": "Write a short story about a fox and a dog.",
+            "output": {
+              "generated_text": "Failed to properly tokenize input: Write a short story about a fo..."
+            },
+            "timestamp": "2025-02-28T01:30:01.795391",
+            "elapsed_time": 0.0016448497772216797,
+            "implementation_type": "REAL",
+            "platform": "OpenVINO"
+          },
+          {
+            "input": "Write a short story about a fox and a dog.",
+            "output": {
+              "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
+            },
+            "timestamp": "2025-02-28T01:30:01.828366",
+            "elapsed_time": 0.004145622253417969,
+            "implementation_type": "MOCK",
+            "platform": "Qualcomm"
+          }
+        ]
+      }
+    }
+  }
+}
