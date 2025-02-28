@@ -144,7 +144,7 @@ class test_hf_whisper:
             test_model_dir = os.path.join("/tmp", "whisper_test_model")
             os.makedirs(test_model_dir, exist_ok=True)
             
-            # Create a minimal config file for a tiny Whisper model
+            # Create a minimal config file for a tiny Whisper model with correct dimensions
             config = {
                 "activation_function": "gelu",
                 "architectures": ["WhisperForConditionalGeneration"],
@@ -162,7 +162,7 @@ class test_hf_whisper:
                 "eos_token_id": 50257,
                 "forced_decoder_ids": [[1, 50259], [2, 50359]],
                 "hidden_size": 256,
-                "max_position_embeddings": 1500,
+                "max_position_embeddings": 448,  # Changed from 1500 to match model expectations
                 "max_source_positions": 1500,
                 "model_type": "whisper",
                 "num_hidden_layers": 2,
@@ -171,7 +171,8 @@ class test_hf_whisper:
                 "torch_dtype": "float32",
                 "transformers_version": "4.35.2",
                 "use_cache": True,
-                "vocab_size": 51865
+                "vocab_size": 51865,
+                "num_mel_bins": 80  # Added to match the expected input dimension
             }
             
             # Write config.json
@@ -185,7 +186,13 @@ class test_hf_whisper:
                 "language": "<|en|>",
                 "model_max_length": 1024,
                 "tokenizer_class": "WhisperTokenizer",
-                "unk_token": "<|endoftext|>"
+                "unk_token": "<|endoftext|>",
+                "added_tokens_decoder": {
+                    "50257": {"content": "<|endoftext|>", "special": True},
+                    "50258": {"content": "<|startoftranscript|>", "special": True},
+                    "50259": {"content": "<|en|>", "special": True},
+                    "50359": {"content": "<|transcribe|>", "special": True}
+                }
             }
             
             with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
@@ -225,6 +232,16 @@ class test_hf_whisper:
                     
                 json.dump(vocab, f)
                 
+            # Create added_tokens.json for tokenizer
+            with open(os.path.join(test_model_dir, "added_tokens.json"), "w") as f:
+                added_tokens = {
+                    "<|endoftext|>": 50257,
+                    "<|startoftranscript|>": 50258,
+                    "<|en|>": 50259,
+                    "<|transcribe|>": 50359
+                }
+                json.dump(added_tokens, f)
+                
             # Create model weights if torch is available
             if hasattr(torch, "save") and not isinstance(torch, MagicMock):
                 # Create random tensors for model weights
@@ -239,12 +256,13 @@ class test_hf_whisper:
                 decoder_ffn_dim = config["decoder_ffn_dim"]
                 encoder_attention_heads = config["encoder_attention_heads"]
                 decoder_attention_heads = config["decoder_attention_heads"]
+                num_mel_bins = config["num_mel_bins"]  # Use correct value for input dimensions
                 
                 # Encoder embedding
                 model_state["model.encoder.embed_positions.weight"] = torch.randn(config["max_source_positions"], d_model)
                 
-                # Encoder conv layers
-                model_state["model.encoder.conv1.weight"] = torch.randn(d_model, 1, 3)
+                # Encoder conv layers with correct dimensions
+                model_state["model.encoder.conv1.weight"] = torch.randn(d_model, num_mel_bins, 3)  # Fixed dimension from 1 to 80
                 model_state["model.encoder.conv1.bias"] = torch.zeros(d_model)
                 model_state["model.encoder.conv2.weight"] = torch.randn(d_model, d_model, 3)
                 model_state["model.encoder.conv2.bias"] = torch.zeros(d_model)
@@ -279,7 +297,7 @@ class test_hf_whisper:
                 
                 # Decoder embedding
                 model_state["model.decoder.embed_tokens.weight"] = torch.randn(vocab_size, d_model)
-                model_state["model.decoder.embed_positions.weight"] = torch.randn(config["max_position_embeddings"], d_model)
+                model_state["model.decoder.embed_positions.weight"] = torch.randn(config["max_position_embeddings"], d_model)  # Use 448 instead of 1500
                 
                 # Decoder layers
                 for i in range(decoder_layers):
@@ -321,9 +339,9 @@ class test_hf_whisper:
                 model_state["model.decoder.layer_norm.weight"] = torch.ones(d_model)
                 model_state["model.decoder.layer_norm.bias"] = torch.zeros(d_model)
                 
-                # Project out
-                model_state["proj_out.weight"] = torch.randn(vocab_size, d_model)
-                model_state["proj_out.bias"] = torch.zeros(vocab_size)
+                # Project out (correct naming for Whisper)
+                model_state["model.proj_out.weight"] = torch.randn(vocab_size, d_model)
+                model_state["model.proj_out.bias"] = torch.zeros(vocab_size)
                 
                 # Save model weights
                 torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
@@ -336,7 +354,13 @@ class test_hf_whisper:
                     "bos_token": "<|startoftranscript|>",
                     "eos_token": "<|endoftext|>",
                     "unk_token": "<|endoftext|>",
-                    "model_max_length": 1024
+                    "model_max_length": 1024,
+                    "added_tokens": [
+                        {"id": 50257, "content": "<|endoftext|>", "special": True},
+                        {"id": 50258, "content": "<|startoftranscript|>", "special": True},
+                        {"id": 50259, "content": "<|en|>", "special": True},
+                        {"id": 50359, "content": "<|transcribe|>", "special": True}
+                    ]
                 }
                 json.dump(tokenizer_json, f)
                 
@@ -356,6 +380,12 @@ class test_hf_whisper:
                 json.dump(preprocessor_config, f)
                 
             print(f"Test model created at {test_model_dir}")
+            
+            # Fallback directly to openly accessible model when test model isn't viable
+            if not os.path.exists(os.path.join(test_model_dir, "added_tokens.json")):
+                print("Test model missing critical files, falling back to openly accessible model")
+                return "openai/whisper-tiny"
+                
             return test_model_dir
             
         except Exception as e:
@@ -383,52 +413,42 @@ class test_hf_whisper:
         
         self.metadata = metadata if metadata else {}
         
-        # Try to create a local test model first
-        try:
-            self.model_name = self._create_local_test_model()
-            print(f"Using local test model: {self.model_name}")
-        except Exception as e:
-            print(f"Error creating local test model, will use fallback: {e}")
-            # Fallback models if local creation fails
-            self.model_name = "openai/whisper-tiny"  # Primary choice
-            self.model_candidates = [
-                "openai/whisper-tiny",  # Primary choice 
-                "distil-whisper/distil-small.en",  # Backup choice (~300MB)
-                "Xenova/whisper-tiny"  # Third option
-            ]
-            
-            # Try to find a working model from candidates if primary choice isn't available
-            if transformers_module == MagicMock:
-                print("Transformers not available, using mock implementation")
-            else:
-                for model in self.model_candidates:
-                    try:
-                        # First check if model is cached
-                        cached_path = transformers_module.utils.hub.cached_download(
-                            transformers_module.utils.hub.hf_hub_url(model, filename="config.json")
-                        )
-                        if os.path.exists(cached_path):
-                            print(f"Found cached model {model}")
-                            self.model_name = model
-                            break
-                            
-                        # If not cached, try to get model info without downloading
-                        print(f"Checking model {model} availability...")
-                        transformers_module.AutoConfig.from_pretrained(
-                            model, 
-                            trust_remote_code=True
-                        )
-                        print(f"Successfully validated model {model}")
+        # Skip local model creation and directly use publicly available model
+        # This ensures better compatibility with all test environments
+        self.model_name = "openai/whisper-tiny"  # Primary choice - openly accessible
+        self.model_candidates = [
+            "openai/whisper-tiny",  # Primary choice 
+            "distil-whisper/distil-small.en",  # Backup choice (~300MB)
+            "Xenova/whisper-tiny"  # Third option
+        ]
+        
+        # Try to find a working model from candidates if primary choice isn't available
+        if transformers_module == MagicMock:
+            print("Transformers not available, using mock implementation")
+        else:
+            for model in self.model_candidates:
+                try:
+                    # First check if model is cached
+                    cached_path = transformers_module.utils.hub.cached_download(
+                        transformers_module.utils.hub.hf_hub_url(model, filename="config.json")
+                    )
+                    if os.path.exists(cached_path):
+                        print(f"Found cached model {model}")
                         self.model_name = model
                         break
-                    except Exception as e:
-                        print(f"Model {model} not accessible: {e}")
-                        continue
-            
-            if not hasattr(self, 'model_name') or not self.model_name:
-                # Default to first option if none worked
-                self.model_name = self.model_candidates[0]
-                print(f"No models validated, defaulting to {self.model_name}")
+                        
+                    # If not cached, try to get model info without downloading
+                    print(f"Checking model {model} availability...")
+                    transformers_module.AutoConfig.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    print(f"Successfully validated model {model}")
+                    self.model_name = model
+                    break
+                except Exception as e:
+                    print(f"Model {model} not accessible: {e}")
+                    continue
         
         print(f"Selected Whisper model: {self.model_name}")
         

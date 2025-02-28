@@ -8,8 +8,8 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "REAL TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740722131.1053178,
-    "elapsed_time": 0.0017914772033691406,
+    "timestamp": 1740722908.9220629,
+    "elapsed_time": 0.0052454471588134766,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
@@ -19,8 +19,8 @@
   "cuda_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Simulated CUDA Whisper transcription",
-    "timestamp": 1740722131.12653,
-    "elapsed_time": 4.0531158447265625e-06,
+    "timestamp": 1740722909.0244384,
+    "elapsed_time": 1.430511474609375e-06,
     "implementation_type": "REAL",
     "platform": "CUDA",
     "performance_metrics": {
@@ -35,8 +35,8 @@
   "openvino_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "(REAL) Mock OpenVINO whisper transcription",
-    "timestamp": 1740722239.4057221,
-    "elapsed_time": 9.5367431640625e-07,
+    "timestamp": 1740723014.3221576,
+    "elapsed_time": 1.430511474609375e-06,
     "implementation_type": "REAL",
     "platform": "OpenVINO"
   },
@@ -47,13 +47,13 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740722239.432837,
+    "timestamp": 1740723014.5195806,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740722239.432904,
+    "timestamp": 1740723014.5196302,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -62,7 +62,7 @@
     "mps_available": false,
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "test_model": "/tmp/whisper_test_model",
-    "test_run_id": "whisper-test-1740722239"
+    "test_model": "openai/whisper-tiny",
+    "test_run_id": "whisper-test-1740723014"
   }
 }

@@ -1,0 +1,429 @@
+connecting to master
+connecting to master
+Starting text embedding test...
+Model sentence-transformers/paraphrase-MiniLM-L3-v2 not accessible: sentence-transformers/paraphrase-MiniLM-L3-v2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Alternative model sentence-transformers/paraphrase-MiniLM-L3-v2 not accessible: sentence-transformers/paraphrase-MiniLM-L3-v2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Alternative model sentence-transformers/all-MiniLM-L6-v2 not accessible: sentence-transformers/all-MiniLM-L6-v2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Successfully validated alternative model BAAI/bge-small-en-v1.5
+Selected embedding model: BAAI/bge-small-en-v1.5
+Testing text embedding on CPU...
+Loading BAAI/bge-small-en-v1.5 for CPU inference...
+Creating minimal embedding model for testing
+Testing embedding for single text: 'The quick brown fox jumps over...'
+Testing embedding for batch of 2 texts
+Testing text embedding on CUDA...
+Attempting to initialize real CUDA implementation...
+Real CUDA implementation failed: BAAI/bge-small-en-v1.5 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Falling back to mock implementation...
+Testing text embedding on OpenVINO...
+Could not infer whether the model was already converted or not to the OpenVINO IR, keeping `export=False`.
+401 Client Error. (Request ID: Root=1-67c1536b-1a19b42f0f70ebda79fb7061;f4f2bcbe-1650-4074-aa93-107f401a8d9c)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+Could not infer whether the model was already converted or not to the OpenVINO IR, keeping `export=False`.
+401 Client Error. (Request ID: Root=1-67c1536c-43cdfaa66cbcc9fc3a2c78ee;0ab292e1-aa98-47bd-b9d8-075f27d9a381)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Could not infer whether the model was already converted or not to the OpenVINO IR, keeping `export=False`.
+Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/home/barberb/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/openvino'. Use `repo_type` argument if needed.
+Could not infer whether the model was already converted or not to the OpenVINO IR, keeping `export=True`.
+401 Client Error. (Request ID: Root=1-67c1536c-411f8cf96f02ebbf425ccf9e;b0cb2a3f-60a0-4c55-b483-4c6b1ac777ef)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Traceback (most recent call last):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 406, in hf_raise_for_status
+    response.raise_for_status()
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/barberb/.local/bin/optimum-cli", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/commands/optimum_cli.py", line 208, in main
+    service.run()
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/commands/export/openvino.py", line 279, in run
+    library_name = _infer_library_from_model_name_or_path(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/intel/utils/modeling_utils.py", line 255, in _infer_library_from_model_name_or_path
+    all_files, _ = TasksManager.get_model_files(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/exporters/tasks.py", line 1465, in get_model_files
+    all_files = huggingface_hub.list_repo_files(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 2935, in list_repo_files
+    return [
+           ^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 3072, in list_repo_tree
+    for path_info in paginate(path=tree_url, headers=headers, params={"recursive": recursive, "expand": expand}):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_pagination.py", line 37, in paginate
+    hf_raise_for_status(r)
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 454, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-67c15374-77f5fa180a26112821cdb556;33f53a09-9acd-4044-87d7-4d9f1b7f3cef)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Successfully imported optimum.intel.openvino
+OpenVINO import successful
+Attempting real OpenVINO implementation for text embedding...
+Trying direct optimum-intel approach first...
+Using model path: BAAI/bge-small-en-v1.5
+Loading OVModelForFeatureExtraction model...
+Direct optimum-intel approach failed: 401 Client Error. (Request ID: Root=1-67c1536b-055db0c746ac92d45b7ac925;df496986-8878-4f24-bbdf-a8132d3301ca)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 406, in hf_raise_for_status
+    response.raise_for_status()
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 769, in test
+    ov_model = OVModelForFeatureExtraction.from_pretrained(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/intel/openvino/modeling_base.py", line 469, in from_pretrained
+    return super().from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/modeling_base.py", line 383, in from_pretrained
+    all_files, _ = TasksManager.get_model_files(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/exporters/tasks.py", line 1465, in get_model_files
+    all_files = huggingface_hub.list_repo_files(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 2935, in list_repo_files
+    return [
+           ^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 3072, in list_repo_tree
+    for path_info in paginate(path=tree_url, headers=headers, params={"recursive": recursive, "expand": expand}):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_pagination.py", line 37, in paginate
+    hf_raise_for_status(r)
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 454, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-67c1536b-055db0c746ac92d45b7ac925;df496986-8878-4f24-bbdf-a8132d3301ca)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+
+Will try alternative approaches...
+Received mock components in initialization
+Testing single text embedding with OpenVINO...
+Real OpenVINO implementation failed: 'NoneType' object is not subscriptable
+Loading BAAI/bge-small-en-v1.5 for OpenVINO inference...
+OpenVINO imported successfully
+Using OpenVINO device index: 0
+Using int8 weight format for CPU
+Using model directory: /home/barberb/.cache/openvino_models/BAAI--bge-small-en-v1.5
+Using destination path: /home/barberb/.cache/openvino_models/BAAI--bge-small-en-v1.5/openvino_int8
+Using lock file: /home/barberb/.cache/openvino_models/BAAI--bge-small-en-v1.5/.embed_conversion.lock
+Task type from pipeline type function: feature-extraction
+Loading tokenizer...
+Error loading tokenizer: BAAI/bge-small-en-v1.5 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Will create a mock tokenizer if needed
+Attempting to get model with get_optimum_openvino_model...
+Error with get_optimum_openvino_model: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/home/barberb/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/openvino'. Use `repo_type` argument if needed.
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 406, in hf_raise_for_status
+    response.raise_for_status()
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/openvino_utils.py", line 360, in get_optimum_openvino_model
+    results = OVModelForFeatureExtraction.from_pretrained(model_name, compile=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/intel/openvino/modeling_base.py", line 469, in from_pretrained
+    return super().from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/modeling_base.py", line 383, in from_pretrained
+    all_files, _ = TasksManager.get_model_files(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/exporters/tasks.py", line 1465, in get_model_files
+    all_files = huggingface_hub.list_repo_files(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 2935, in list_repo_files
+    return [
+           ^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 3072, in list_repo_tree
+    for path_info in paginate(path=tree_url, headers=headers, params={"recursive": recursive, "expand": expand}):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_pagination.py", line 37, in paginate
+    hf_raise_for_status(r)
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 454, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-67c1536c-5c33a91158a40fd06c841bc7;9c0f9022-a986-4c8c-9b5d-fada1da15798)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 532, in init_openvino
+    endpoint = get_optimum_openvino_model(model_name, task, openvino_label)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/openvino_utils.py", line 362, in get_optimum_openvino_model
+    results = OVModelForFeatureExtraction.from_pretrained(model_dst_path, compile=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/intel/openvino/modeling_base.py", line 469, in from_pretrained
+    return super().from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/modeling_base.py", line 383, in from_pretrained
+    all_files, _ = TasksManager.get_model_files(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/exporters/tasks.py", line 1465, in get_model_files
+    all_files = huggingface_hub.list_repo_files(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 154, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': '/home/barberb/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/openvino'. Use `repo_type` argument if needed.
+
+Attempting to get model with get_openvino_model...
+Error with get_openvino_model: Exception from src/inference/src/cpp/core.cpp:90:
+Check 'util::directory_exists(path) || util::file_exists(path)' failed at src/frontends/common/src/frontend.cpp:113:
+FrontEnd API failed with GeneralFailure:
+ir: Could not open the file: "/home/barberb/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/openvino_int8/BAAI--bge-small-en-v1.5.xml"
+
+
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 550, in init_openvino
+    endpoint = get_openvino_model(model_name, task, openvino_label)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/openvino_utils.py", line 198, in get_openvino_model
+    ov_model = core.read_model(os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/openvino/runtime/ie_api.py", line 502, in read_model
+    return Model(super().read_model(model))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Exception from src/inference/src/cpp/core.cpp:90:
+Check 'util::directory_exists(path) || util::file_exists(path)' failed at src/frontends/common/src/frontend.cpp:113:
+FrontEnd API failed with GeneralFailure:
+ir: Could not open the file: "/home/barberb/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/openvino_int8/BAAI--bge-small-en-v1.5.xml"
+
+
+
+Attempting direct model conversion with Optimum...
+Using model path: BAAI/bge-small-en-v1.5
+Error with direct Optimum conversion: 401 Client Error. (Request ID: Root=1-67c1536d-58d42d7e2116f8552bcd3bd7;3885412c-e339-4c8a-a84b-ef686c0fc605)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 406, in hf_raise_for_status
+    response.raise_for_status()
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 1021, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 572, in init_openvino
+    ov_model = OVModelForFeatureExtraction.from_pretrained(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/intel/openvino/modeling_base.py", line 469, in from_pretrained
+    return super().from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/modeling_base.py", line 383, in from_pretrained
+    all_files, _ = TasksManager.get_model_files(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/optimum/exporters/tasks.py", line 1465, in get_model_files
+    all_files = huggingface_hub.list_repo_files(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 114, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 2935, in list_repo_files
+    return [
+           ^
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/hf_api.py", line 3072, in list_repo_tree
+    for path_info in paginate(path=tree_url, headers=headers, params={"recursive": recursive, "expand": expand}):
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_pagination.py", line 37, in paginate
+    hf_raise_for_status(r)
+  File "/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 454, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response) from e
+huggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-67c1536d-58d42d7e2116f8552bcd3bd7;3885412c-e339-4c8a-a84b-ef686c0fc605)
+
+Repository Not Found for url: https://huggingface.co/api/models/BAAI/bge-small-en-v1.5/tree/main?recursive=True&expand=False.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated.
+Invalid credentials in Authorization header
+
+Attempting conversion with openvino_cli_convert...
+Command 'optimum-cli export openvino -m BAAI/bge-small-en-v1.5 --task feature-extraction --weight-format int8 --ratio 1.0 --sym --group-size 128 /home/barberb/.cache/openvino_models/BAAI--bge-small-en-v1.5/openvino_int8' returned non-zero exit status 1.
+CLI conversion result: None
+Model not found at expected path: /home/barberb/.cache/openvino_models/BAAI--bge-small-en-v1.5/openvino_int8/BAAI--bge-small-en-v1.5.xml
+Creating mock implementations for missing components...
+Creating mock OpenVINO model for testing
+Creating mock tokenizer for testing
+Testing model with sample input...
+Model test failed with __call__ interface: hf_embed.init_openvino.<locals>.MockOVModel.__call__() got an unexpected keyword argument 'input_ids'
+Creating OpenVINO text embedding handler with implementation type: MOCK
+Processing batch of 2 texts
+Input shape: torch.Size([2, 20])
+Using standard __call__ interface for inference
+Error using __call__ interface: hf_embed.init_openvino.<locals>.MockOVModel.__call__() got an unexpected keyword argument 'input_ids'
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 949, in handler
+    results = endpoint(**input_dict)
+              ^^^^^^^^^^^^^^^^^^^^^^
+TypeError: hf_embed.init_openvino.<locals>.MockOVModel.__call__() got an unexpected keyword argument 'input_ids'
+
+Error running OpenVINO inference: hf_embed.init_openvino.<locals>.MockOVModel.__call__() got an unexpected keyword argument 'input_ids'
+Traceback: Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py", line 915, in test
+    single_output = handler(self.test_texts[0])
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1186, in handler
+    raise e
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 1141, in handler
+    tokens = tokenizer[endpoint_model][cuda_label](
+             ~~~~~~~~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 954, in handler
+    raise call_error  # Try next method
+    ^^^^^^^^^^^^^^^^
+  File "/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_embed.py", line 949, in handler
+    results = endpoint(**input_dict)
+              ^^^^^^^^^^^^^^^^^^^^^^
+TypeError: hf_embed.init_openvino.<locals>.MockOVModel.__call__() got an unexpected keyword argument 'input_ids'
+
+Applied average_pool to get embeddings: torch.Size([2, 384])
+Generated embeddings using MOCK implementation
+Testing text embedding on Qualcomm...
+Error initializing Qualcomm embedding model: BAAI/bge-small-en-v1.5 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`
+Error in Qualcomm text embedding handler: 'NoneType' object is not callable
+Saved collected results to /home/barberb/ipfs_accelerate_py/test/skills/collected_results/hf_embed_test_results.json
+All test results match expected results.
+Text embedding test completed
+Status summary:
+  init: Success (REAL)
+  cpu_init: Success (REAL)
+  cpu_single: Success (REAL)
+  cpu_single_shape: [1, 384]
+  cpu_single_type: torch.float32
+  cpu_batch: Success (REAL)
+  cpu_batch_shape: [2, 384]
+  cpu_similarity: Success (REAL)
+  cpu_similarity_in_range: True
+  cuda_init: Success (MOCK)
+  cuda_handler: Success (MOCK)
+  openvino_init: Success (MOCK)
+  openvino_handler: Success (MOCK)
+  openvino_similarity: Success (MOCK)
+  openvino_similarity_in_range: True
+  apple_tests: Apple Silicon not available
+  qualcomm_init: Failed Qualcomm initialization
+  qualcomm_handler: Failed Qualcomm handler

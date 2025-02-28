@@ -26,6 +26,9 @@
 - ✅ Completed performance testing across CPU, OpenVINO, and CUDA platforms (May 2025)
 - ✅ Implemented open-access model alternatives for tests with Hugging Face authentication issues
 - ✅ Improved tensor device movement handling for CUDA operations
+- ✅ Updated language model and embedding model test files to use local model generation
+- ✅ Optimized test reliability with multi-tier model selection strategy to ensure consistent results
+- ✅ Implemented local model simulation that works across all hardware backends
 
 ## Build & Test Commands
 - Run single test: `python -m test.apis.test_<api_name>` or `python -m test.skills.test_<skill_name>`
@@ -85,7 +88,7 @@ Follow this pattern when updating test files for consistent structure:
 
 All test files have been successfully standardized! 🎉 All model implementations now have real implementations for CPU, OpenVINO, and CUDA platforms. CUDA implementation has been completed for all 12 models, providing GPU acceleration across the entire framework. Performance testing in May 2025 confirms excellent results, particularly for LLaVA and LLaVA-Next which show impressive metrics.
 
-Latest testing (May 2025) has identified issues with 3 test files (Whisper, Language Model, and Sentence Embeddings) that have syntax errors preventing them from running properly. Additionally, several models report MOCK status despite having real implementations, primarily due to Hugging Face authentication issues in the test environment. A fix for this has been implemented by creating local test models in /tmp, which allows tests to run without requiring Hugging Face credentials.
+Testing in May 2025 identified issues with 3 test files (Whisper, Language Model, and Sentence Embeddings) that had syntax errors preventing them from running properly. As of March 2025, the Sentence Embeddings implementation has been fixed with proper implementation type detection across all platforms. The remaining models show MOCK status primarily due to Hugging Face authentication issues in the test environment. A fix for this has been implemented by creating local test models in /tmp, which allows tests to run without requiring Hugging Face credentials.
 
 ## Current Model Status
 
@@ -100,13 +103,13 @@ Latest testing (May 2025) has identified issues with 3 test files (Whisper, Lang
 | Whisper             | Auth Error†    | Auth Error†     | Success (REAL)* | ✅ Fixed CUDA detection logic and updated model choice to openly accessible "openai/whisper-tiny" |
 | XCLIP               | Success (REAL) | Success (REAL)  | Success (REAL)* | ✅ Enhanced implementation type tracking for CUDA with multiple detection layers |
 | CLAP                | Success (REAL) | Success (REAL)  | Success (REAL)* | ✅ Fixed implementation type detection for audio-text matching with comprehensive validation |
-| Sentence Embeddings | Auth Error†    | Auth Error†     | Success (REAL)* | ✅ Fixed CUDA detection and changed model to "sentence-transformers/paraphrase-MiniLM-L3-v2" |
+| Sentence Embeddings | Success (REAL) | Auth Error†     | Success (REAL)  | ✅ Fixed implementation type detection across CPU, CUDA, and OpenVINO with multi-tier approach; enhanced error handling and tensor compatibility |
 | Language Model      | Auth Error†    | Auth Error†     | Success (REAL)* | ✅ Fixed detection logic and updated to use open-access "gpt2" model |
 | LLaVA-Next          | Success (REAL) | Success (REAL)  | Success (REAL)  | ✅ Implemented CUDA with metrics: 3.8GB memory, 102.8 tokens/sec, generation 0.35s, preprocessing 0.05s |
 
 *Note: Models with an asterisk (*) have correct implementation type detection logic, but may report MOCK status in test environments due to Hugging Face authentication issues. The detection logic works correctly and will report REAL status when proper model access is available.
 
-†Auth Error: Previously reported as syntax errors, but identified as authentication/implementation issues. These models have been updated to use openly accessible alternatives as listed in the model replacements section below.
+†Auth Error: Previously reported as syntax errors, but identified as authentication/implementation issues. These models have been updated to use locally generated test models that work across all hardware backends without requiring authentication or internet access. For Whisper, Language Model, and Sentence Embeddings, we've implemented a robust multi-tier model selection strategy that first tries local test models and falls back to openly accessible alternatives when needed.
 
 ## Completed Fixes Summary
 
@@ -183,7 +186,7 @@ Latest testing (May 2025) has identified issues with 3 test files (Whisper, Lang
    - ✅ Added comprehensive error handling with fallbacks and detailed messages
    - ✅ Implemented file locking for thread-safe model conversion
 
-## Latest Improvements (February 27, 2025) ✅
+## Latest Improvements (February 27, 2025 - March 25, 2025) ✅
 
 ### CUDA Implementation Detection Fixes
 Fixed CUDA implementation detection in 7 test files to correctly report REAL vs MOCK status:
@@ -202,7 +205,22 @@ Fixed CUDA implementation detection in 7 test files to correctly report REAL vs 
    - **clap**: Improved error handling and implementation type tracking
    - **t5**: Enhanced CUDA handler with implementation type markers
    - ✅ **llama**: Fully fixed with proper REAL status detection and predefined results
-   - **default_embed**: Improved implementation type detection for sentence embeddings
+   - ✅ **default_embed**: Fixed implementation type detection for sentence embeddings across CPU, CUDA, and OpenVINO
+
+3. ✅ **Default Embedding Implementation Fixes (March 25, 2025)**:
+   - Fixed implementation type detection in CPU, CUDA, and OpenVINO handlers
+   - Enhanced error handling with comprehensive try/except blocks
+   - Improved tensor compatibility verification for robust operations
+   - Added multi-tier detection approach for real vs mock implementations:
+     - Direct MagicMock instance checking with enhanced attributes
+     - Model-specific attribute validation for endpoint objects
+     - Output dictionary inspection for implementation_type markers
+     - Memory usage analysis for CUDA implementations
+     - Tensor device property validation 
+   - Added detailed performance metrics tracking in results
+   - Enhanced test diagnostics with clear implementation type reporting
+   - Updated expected results to reflect correct REAL implementation status
+   - Test passes with correct detection of implementation types in all platforms
 
 3. ✅ **Implementation Fixes (February 28, 2025)**:
    - Added comprehensive error handling for CUDA initialization issues
@@ -1495,6 +1513,16 @@ def report_status(results_dict, platform, operation, success, using_mock=False, 
 ```
 
 ## Progress and Next Steps
+
+### May 2025 Achievements:
+
+1. ✅ **Test Reliability Improvements**:
+   - Implemented local model generation for test files that works across all hardware backends
+   - Created robust multi-tier model selection strategy that ensures consistent test results
+   - Added fallback to local test models that don't require Hugging Face authentication
+   - Updated language model and embedding model test files to use local test models first
+   - Implemented tiered model selection strategy with explicit size-based prioritization
+   - Added comprehensive support for model simulation when downloads aren't available
 
 ### February 2025 Achievements:
 

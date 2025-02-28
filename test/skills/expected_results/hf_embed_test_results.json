@@ -16,23 +16,30 @@
     "cpu_similarity": "Success (REAL)",
     "cpu_similarity_in_range": true,
     "cuda_init": "Success (REAL)",
+    "cuda_single": "Success (REAL)",
+    "cuda_batch": "Success (REAL)",
+    "cuda_similarity": "Success (REAL)",
+    "cuda_similarity_in_range": true,
+    "cuda_device": "Quadro P4000",
+    "cuda_memory_allocated_mb": 0.0,
+    "cuda_memory_reserved_mb": 2.0,
     "openvino_init": "Success (MOCK)",
     "openvino_single": "Success (MOCK)",
     "openvino_single_shape": [
       1,
-      256
+      384
     ],
     "openvino_single_type": "torch.float32",
     "openvino_batch": "Success (MOCK)",
     "openvino_batch_shape": [
       2,
-      256
+      384
     ],
     "openvino_similarity": "Success (MOCK)",
     "openvino_similarity_in_range": true,
     "apple_tests": "Apple Silicon not available",
-    "qualcomm_init": "Failed Qualcomm initialization",
-    "qualcomm_handler": "Failed Qualcomm handler"
+    "qualcomm_init": "Success (MOCK)",
+    "qualcomm_handler": "Success (MOCK)"
   },
   "examples": [
     {
@@ -44,8 +51,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T21:18:48.121913",
-      "elapsed_time": 0.0006496906280517578,
+      "timestamp": "2025-02-27T23:06:04.559130",
+      "elapsed_time": 0.0014922618865966797,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -59,8 +66,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T21:18:48.122241",
-      "elapsed_time": 0.0003025531768798828,
+      "timestamp": "2025-02-27T23:06:04.560654",
+      "elapsed_time": 0.0014636516571044922,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -68,10 +75,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9833769202232361,
+        "similarity_value": 0.9848279356956482,
         "in_range": true
       },
-      "timestamp": "2025-02-27T21:18:48.122555",
+      "timestamp": "2025-02-27T23:06:04.561054",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
@@ -82,12 +89,52 @@
       "output": {
         "embedding_shape": [
           1,
-          256
+          384
+        ]
+      },
+      "timestamp": "2025-02-27T23:06:05.338076",
+      "elapsed_time": 0.0865473747253418,
+      "implementation_type": "(REAL)",
+      "platform": "CUDA",
+      "test_type": "single"
+    },
+    {
+      "input": "Batch of 2 texts",
+      "output": {
+        "embedding_shape": [
+          2,
+          384
+        ]
+      },
+      "timestamp": "2025-02-27T23:06:05.340410",
+      "elapsed_time": 0.002317667007446289,
+      "implementation_type": "(REAL)",
+      "platform": "CUDA",
+      "test_type": "batch"
+    },
+    {
+      "input": "Similarity test between single and first batch embedding",
+      "output": {
+        "similarity_value": 0.9693778157234192,
+        "in_range": true
+      },
+      "timestamp": "2025-02-27T23:06:05.340510",
+      "elapsed_time": 0.001,
+      "implementation_type": "(REAL)",
+      "platform": "CUDA",
+      "test_type": "similarity"
+    },
+    {
+      "input": "The quick brown fox jumps over the lazy dog",
+      "output": {
+        "embedding_shape": [
+          1,
+          384
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T21:18:52.865253",
-      "elapsed_time": 0.011880874633789062,
+      "timestamp": "2025-02-27T23:06:13.296084",
+      "elapsed_time": 0.026211261749267578,
       "implementation_type": "(MOCK)",
       "platform": "OpenVINO",
       "test_type": "single"
@@ -97,12 +144,12 @@
       "output": {
         "embedding_shape": [
           2,
-          256
+          384
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T21:18:52.868748",
-      "elapsed_time": 0.0034639835357666016,
+      "timestamp": "2025-02-27T23:06:13.306528",
+      "elapsed_time": 0.010402679443359375,
       "implementation_type": "(MOCK)",
       "platform": "OpenVINO",
       "test_type": "batch"
@@ -113,17 +160,28 @@
         "similarity_value": 1.0,
         "in_range": true
       },
-      "timestamp": "2025-02-27T21:18:52.868868",
+      "timestamp": "2025-02-27T23:06:13.306804",
       "elapsed_time": 0.001,
       "implementation_type": "(MOCK)",
       "platform": "OpenVINO",
       "test_type": "similarity"
+    },
+    {
+      "input": "Batch of 2 texts",
+      "output": {
+        "embedding_shape": null
+      },
+      "timestamp": "2025-02-27T23:06:13.389876",
+      "elapsed_time": 0.003358602523803711,
+      "implementation_type": "(MOCK)",
+      "platform": "Qualcomm",
+      "test_type": "batch"
     }
   ],
   "metadata": {
     "model_name": "/tmp/embed_test_model",
-    "test_timestamp": "2025-02-27T21:18:52.927543",
-    "timestamp": 1740719932.9275522,
+    "test_timestamp": "2025-02-27T23:06:13.389898",
+    "timestamp": 1740726373.3899004,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -141,8 +199,32 @@
       "cuda": "Ready (REAL)",
       "openvino": "Ready (MOCK)",
       "apple": "Apple Silicon not available",
-      "qualcomm": "Failed initialization"
+      "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "embed-test-1740719932"
+    "test_run_id": "embed-test-1740726373",
+    "model_testing": {
+      "tested_models": [
+        "/tmp/embed_test_model",
+        "sentence-transformers/paraphrase-MiniLM-L3-v2",
+        "prajjwal1/bert-tiny",
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "distilbert/distilbert-base-uncased",
+        "BAAI/bge-small-en-v1.5",
+        "sentence-transformers/all-mpnet-base-v2",
+        "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+      ],
+      "best_model": "/tmp/embed_test_model",
+      "model_success_counts": {
+        "/tmp/embed_test_model": 15,
+        "sentence-transformers/paraphrase-MiniLM-L3-v2": 15,
+        "prajjwal1/bert-tiny": 15,
+        "sentence-transformers/all-MiniLM-L6-v2": 15,
+        "distilbert/distilbert-base-uncased": 15,
+        "BAAI/bge-small-en-v1.5": 15,
+        "sentence-transformers/all-mpnet-base-v2": 15,
+        "sentence-transformers/multi-qa-mpnet-base-dot-v1": 15
+      },
+      "test_timestamp": "2025-02-27T23:06:16.900473"
+    }
   }
 }

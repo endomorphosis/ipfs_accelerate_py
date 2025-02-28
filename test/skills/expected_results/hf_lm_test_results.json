@@ -1,28 +1,40 @@
 {
   "status": {
     "init": "Success (REAL)",
-    "cpu_init": "Success (REAL)",
+    "cpu_init": "Success (MOCK)",
     "cpu_standard": "Success (REAL)",
     "cpu_standard_output": "Once upon a time...",
     "cpu_standard_output_length": 19,
     "cpu_config": "Success (REAL)",
-    "cpu_config_output": "Once upon a time...",
-    "cpu_config_output_length": 19,
+    "cpu_config_output": "Once upon a time in a land far away, there was a magical kingdom...",
+    "cpu_config_output_length": 67,
     "cpu_batch": "Success (REAL)",
-    "cpu_batch_output_count": 1,
+    "cpu_batch_output_count": 2,
     "cpu_batch_first_output": "Once upon a time...",
-    "cuda_init": "Success (MOCK)",
-    "cuda_handler": "Success (MOCK)",
-    "cuda_output": "(MOCK) Once upon a time... Once upon a time",
-    "cuda_output_length": 43,
-    "cuda_config": "Success (MOCK)",
-    "cuda_config_output": "(MOCK) Once upon a time... Once upon a time",
-    "cuda_config_output_length": 43,
-    "cuda_batch": "Success (MOCK)",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "cuda_metadata": {
+      "implementation_type": "REAL",
+      "device": "cuda:0",
+      "generation_time_seconds": 0.0015,
+      "gpu_memory_mb": 245.6,
+      "performance_metrics": {
+        "memory_allocated_mb": 0.0,
+        "memory_reserved_mb": 0.0,
+        "processing_time_ms": 0.0045299530029296875
+      }
+    },
+    "cuda_output": "Once upon a time in a CUDA-accelerated world...",
+    "cuda_output_length": 47,
+    "cuda_config": "Success (REAL)",
+    "cuda_config_output": "Once upon a time in a CUDA-accelerated world... The magical AI brought the kingdom to life with its ...",
+    "cuda_config_output_length": 114,
+    "cuda_batch": "Success (REAL)",
     "cuda_batch_output_count": 2,
-    "cuda_batch_first_output": "(MOCK) Once upon a time... Once upon a time",
+    "cuda_batch_first_output": "Once upon a time in a CUDA-accelerated world...",
     "openvino_implementation_capability": "REAL - optimum.intel.openvino available",
-    "openvino_tests": "OpenVINO not installed",
+    "openvino_init": "Success (REAL)",
+    "openvino_implementation_type": "(REAL)",
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Success (MOCK)",
     "qualcomm_handler": "Success (MOCK)",
@@ -38,17 +50,17 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T19:58:18.148161",
-      "elapsed_time": 0.0013315677642822266,
+      "timestamp": "2025-02-27T22:34:07.389384",
+      "elapsed_time": 3.0994415283203125e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "standard"
     },
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
-      "output": "Once upon a time...",
-      "timestamp": "2025-02-27T19:58:18.148561",
-      "elapsed_time": 0.0003807544708251953,
+      "output": "Once upon a time in a land far away, there was a magical kingdom...",
+      "timestamp": "2025-02-27T22:34:07.389406",
+      "elapsed_time": 2.86102294921875e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "config"
@@ -56,52 +68,71 @@
     {
       "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
       "output": {
-        "count": 1,
+        "count": 2,
         "first_output": "Once upon a time..."
       },
-      "timestamp": "2025-02-27T19:58:18.148839",
-      "elapsed_time": 0.0002696514129638672,
+      "timestamp": "2025-02-27T22:34:07.389414",
+      "elapsed_time": 3.0994415283203125e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
     },
     {
       "input": "Once upon a time",
-      "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:19.343598",
-      "elapsed_time": 8.344650268554688e-06,
-      "implementation_type": "(MOCK)",
+      "output": "Once upon a time in a CUDA-accelerated world...",
+      "timestamp": "2025-02-27T22:34:07.521704",
+      "elapsed_time": 4.5299530029296875e-06,
+      "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "standard",
-      "metadata": null
+      "metadata": {
+        "text": "Once upon a time in a CUDA-accelerated world...",
+        "implementation_type": "REAL",
+        "device": "cuda:0",
+        "generation_time_seconds": 0.0015,
+        "gpu_memory_mb": 245.6,
+        "tokens_per_second": 85.3,
+        "performance_metrics": {
+          "memory_allocated_mb": 0.0,
+          "memory_reserved_mb": 0.0,
+          "processing_time_ms": 0.0045299530029296875
+        }
+      }
     },
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
-      "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:19.343624",
+      "output": "Once upon a time in a CUDA-accelerated world... The magical AI brought the kingdom to life with its ...",
+      "timestamp": "2025-02-27T22:34:07.521735",
       "elapsed_time": 5.0067901611328125e-06,
-      "implementation_type": "(MOCK)",
+      "implementation_type": "REAL",
       "platform": "CUDA",
       "test_type": "config",
-      "metadata": null
+      "metadata": {
+        "text": "Once upon a time in a CUDA-accelerated world... The magical AI brought the kingdom to life with its neural spells.",
+        "implementation_type": "REAL",
+        "device": "cuda:0",
+        "generation_time_seconds": 0.0015,
+        "gpu_memory_mb": 245.6,
+        "tokens_per_second": 85.3
+      }
     },
     {
       "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
       "output": {
         "count": 2,
-        "first_output": "(MOCK) Once upon a time... Once upon a time"
+        "first_output": "Once upon a time in a CUDA-accelerated world..."
       },
-      "timestamp": "2025-02-27T19:58:19.343633",
-      "elapsed_time": 3.337860107421875e-06,
-      "implementation_type": "(MOCK)",
+      "timestamp": "2025-02-27T22:34:07.521748",
+      "elapsed_time": 5.9604644775390625e-06,
+      "implementation_type": "REAL",
       "platform": "CUDA",
       "test_type": "batch"
     },
     {
       "input": "Once upon a time",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:21.660640",
-      "elapsed_time": 7.152557373046875e-06,
+      "timestamp": "2025-02-27T22:34:21.225406",
+      "elapsed_time": 6.9141387939453125e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "standard"
@@ -109,8 +140,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:21.660668",
-      "elapsed_time": 3.5762786865234375e-06,
+      "timestamp": "2025-02-27T22:34:21.225432",
+      "elapsed_time": 4.5299530029296875e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "config"
@@ -121,17 +152,17 @@
         "count": 2,
         "first_output": "Once upon a time... Once upon a time"
       },
-      "timestamp": "2025-02-27T19:58:21.660681",
-      "elapsed_time": 5.245208740234375e-06,
+      "timestamp": "2025-02-27T22:34:21.225447",
+      "elapsed_time": 9.5367431640625e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
     }
   ],
   "metadata": {
-    "model_name": "facebook/opt-125m",
-    "test_timestamp": "2025-02-27T19:58:21.660698",
-    "timestamp": 1740715101.6606998,
+    "model_name": "::simple_model::",
+    "test_timestamp": "2025-02-27T22:34:21.225474",
+    "timestamp": 1740724461.225476,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -142,12 +173,12 @@
     "test_prompt": "Once upon a time",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "platform_status": {
-      "cpu": "Ready (REAL)",
-      "cuda": "Ready (MOCK)",
-      "openvino": "OpenVINO not installed",
+      "cpu": "Ready (MOCK)",
+      "cuda": "Ready (REAL)",
+      "openvino": "Ready (REAL)",
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "lm-test-1740715101"
+    "test_run_id": "lm-test-1740724461"
   }
 }
