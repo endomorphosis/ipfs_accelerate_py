@@ -1,0 +1,6 @@
+{
+  "timestamp": "2025-02-28T08:16:38.632928",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter t5|whisper|wav2vec2",
+  "skill_tests": {}
+}

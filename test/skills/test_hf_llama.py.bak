@@ -1535,8 +1535,7 @@ if __name__ == "__main__":
                 openvino_status = "MOCK"
         
         # Print summary in a parser-friendly format
-        print("
-LLAMA TEST RESULTS SUMMARY")
+        print("LLAMA TEST RESULTS SUMMARY")
         print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
         print(f"CPU_STATUS: {cpu_status}")
         print(f"CUDA_STATUS: {cuda_status}")
@@ -1548,8 +1547,7 @@ LLAMA TEST RESULTS SUMMARY")
             output = example.get("output", {})
             elapsed_time = example.get("elapsed_time", 0)
             
-            print(f"
-{platform} PERFORMANCE METRICS:")
+            print(f"{platform} PERFORMANCE METRICS:")
             print(f"  Elapsed time: {elapsed_time:.4f}s")
             
             if "generated_text" in output:
@@ -1563,8 +1561,7 @@ LLAMA TEST RESULTS SUMMARY")
                     print(f"  {k}: {v}")
         
         # Print a JSON representation to make it easier to parse
-        print("
-structured_results")
+        print("structured_results")
         print(json.dumps({
             "status": {
                 "cpu": cpu_status,

@@ -5,36 +5,36 @@
     16000
   ],
   "load_audio_sample_rate": 16000,
-  "load_audio_timestamp": 1740758622.4293048,
+  "load_audio_timestamp": 1740759186.3398707,
   "load_audio_tensor": "Success (REAL)",
   "load_audio_tensor_shape": [
     1,
     16000
   ],
-  "load_audio_tensor_timestamp": 1740758622.4295156,
+  "load_audio_tensor_timestamp": 1740759186.3400307,
   "cpu_init": "Success (REAL)",
   "cpu_audio_embedding": "Success (REAL)",
   "cpu_audio_embedding_shape": [
     1,
     512
   ],
-  "cpu_audio_embedding_timestamp": 1740758624.6270726,
-  "cpu_audio_embedding_time": 0.00022101402282714844,
+  "cpu_audio_embedding_timestamp": 1740759188.0366967,
+  "cpu_audio_embedding_time": 0.0003261566162109375,
   "cpu_text_embedding": "Success (REAL)",
   "cpu_text_embedding_shape": [
     1,
     512
   ],
-  "cpu_text_embedding_timestamp": 1740758624.6270952,
-  "cpu_text_embedding_time": 1.8596649169921875e-05,
+  "cpu_text_embedding_timestamp": 1740759188.0367286,
+  "cpu_text_embedding_time": 2.5510787963867188e-05,
   "cpu_similarity": "Success (REAL)",
   "cpu_similarity_score": 0.800000011920929,
-  "cpu_similarity_timestamp": 1740758624.6271992,
-  "cpu_similarity_time": 6.651878356933594e-05,
+  "cpu_similarity_timestamp": 1740759188.0368567,
+  "cpu_similarity_time": 7.987022399902344e-05,
   "cpu_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740758624.6272008,
+    "timestamp": 1740759188.0368586,
     "implementation": "(REAL)"
   },
   "cuda_init": "Success (REAL)",
@@ -45,7 +45,7 @@
     "memory_allocated_mb": 3.8193359375,
     "memory_reserved_mb": 22.0
   },
-  "cuda_output_timestamp": 1740758624.910774,
+  "cuda_output_timestamp": 1740759188.2749684,
   "cuda_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -57,12 +57,12 @@
     "memory_reserved_mb",
     "processing_time_ms"
   ],
-  "cuda_similarity_score": -0.5410517454147339,
+  "cuda_similarity_score": -1.370646595954895,
   "cuda_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740758624.913573,
-    "elapsed_time": 0.002568483352661133,
+    "timestamp": 1740759188.2761874,
+    "elapsed_time": 0.004006624221801758,
     "implementation_type": "REAL",
     "platform": "CUDA",
     "is_simulated": false,
@@ -70,12 +70,12 @@
     "performance": {
       "memory_allocated_mb": 3.8193359375,
       "memory_reserved_mb": 22.0,
-      "processing_time_ms": 2.568483352661133
+      "processing_time_ms": 4.006624221801758
     }
   },
   "openvino_init": "Success (REAL)",
   "openvino_handler": "Success (REAL)",
-  "openvino_output_timestamp": 1740758625.3403113,
+  "openvino_output_timestamp": 1740759188.5828278,
   "openvino_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -93,13 +93,13 @@
   "openvino_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740758625.34035,
+    "timestamp": 1740759188.5828695,
     "implementation": "(REAL)"
   },
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (REAL)",
-  "qualcomm_output_timestamp": 1740758625.3523102,
+  "qualcomm_output_timestamp": 1740759188.5911844,
   "qualcomm_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -117,18 +117,18 @@
   "qualcomm_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740758625.3523438,
+    "timestamp": 1740759188.591224,
     "implementation": "(REAL)"
   },
   "metadata": {
-    "timestamp": 1740758625.358347,
+    "timestamp": 1740759188.5990438,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "cuda_available": true,
     "cuda_device_count": 1,
     "mps_available": false,
     "test_model": "/tmp/clap_test_model",
-    "test_run_id": "clap-test-1740758625",
+    "test_run_id": "clap-test-1740759188",
     "mock_implementation": false,
     "implementation_type": "(REAL)",
     "transformers_available": true,

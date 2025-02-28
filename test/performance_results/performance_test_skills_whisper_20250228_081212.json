@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-02-28T08:12:07.334785",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter whisper",
+  "skill_tests": {
+    "test_hf_whisper.py": {
+      "test_file": "test_hf_whisper.py",
+      "elapsed_time": 5.208709478378296,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nCreating local test model for better compatibility...\nCreating simplified local test model for Whisper...\nSimplified test model created at /tmp/whisper_test_model_simple\nUsing local test model at: /tmp/whisper_test_model_simple\nUsing test audio: /home/barberb/ipfs_accelerate_py/test/trans_test.mp3\nSaved test results to /home/barberb/ipfs_accelerate_py/test/skills/collected_results/hf_whisper_test_results.json\nTest results differ from expected results!\n- Key 'openvino_direct_test' missing from current results\n- Key 'cuda_handler' missing from current results\n- Key 'total_execution_time' differs: Expected '2.3827476501464844', got '0.0006318092346191406'\n- Key 'cuda_init' missing from current results\n- Key 'audio_format' missing from current results\n- Key 'cpu_init' missing from current results\n- Key 'openvino_implementation_type' missing from current results\n- Key 'traceback' missing from expected results\n- Key 'load_audio' missing from current ...",
+      "stderr": "",
+      "json_result": {
+        "test_error": "cannot access local variable 'MagicMock' where it is not associated with a value",
+        "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 1163, in __test__\n    test_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 242, in test\n    transformers_available = not isinstance(self.resources[\"transformers\"], MagicMock)\n                                                                            ^^^^^^^^^\nUnboundLocalError: cannot access local variable 'MagicMock' where it is not associated with a value\n",
+        "total_execution_time": 0.0006318092346191406,
+        "metadata": {
+          "timestamp": 1740759131.7792351,
+          "torch_version": "2.4.0+cu121",
+          "numpy_version": "1.26.4",
+          "transformers_version": "4.49.0",
+          "cuda_available": true,
+          "cuda_device_count": 1,
+          "mps_available": false,
+          "transformers_mocked": false,
+          "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "test_model": "/tmp/whisper_test_model_simple",
+          "test_run_id": "whisper-test-1740759131",
+          "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+          "total_execution_time": 0.0006318092346191406,
+          "platform_status": {
+            "cpu": "Not tested yet",
+            "cuda": "Not tested yet",
+            "openvino": "Not tested yet",
+            "apple": "Not tested yet",
+            "qualcomm": "Not tested yet"
+          },
+          "is_local_model": true
+        }
+      }
+    }
+  }
+}

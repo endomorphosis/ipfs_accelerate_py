@@ -1,65 +1,7 @@
 {
-  "init": "Success",
-  "load_audio": "Success",
-  "audio_format": "Shape: (224000,), SR: 16000",
-  "cpu_init": "Success (REAL)",
-  "cpu_transcription_handler": "Success (REAL)",
-  "cpu_transcription": "",
-  "cpu_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "",
-    "timestamp": 1740758609.402919,
-    "elapsed_time": 0.1,
-    "implementation_type": "(REAL)",
-    "platform": "CPU"
-  },
-  "cpu_embedding_handler": "Success (REAL)",
-  "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "[0.05053972080349922, 2.2078423500061035, -0.3981507420539856, -0.6990397572517395, 0.8375648260116577]...",
-  "cpu_embedding_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output_type": "<class 'dict'>",
-    "embedding_length": 768,
-    "timestamp": 1740758609.4593627,
-    "elapsed_time": 0.2,
-    "implementation_type": "(REAL)",
-    "platform": "CPU"
-  },
-  "cuda_init": "Success (REAL)",
-  "cuda_handler": "Success (REAL)",
-  "cuda_transcription": {
-    "text": "(MOCK CUDA) Transcribed audio from /home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "implementation_type": "REAL",
-    "device": "cuda:0 (mock)",
-    "total_time": 0.10007119178771973,
-    "is_simulated": true,
-    "gpu_memory_mb": 0.0
-  },
-  "cuda_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "(MOCK CUDA) Transcribed audio from /home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "timestamp": 1740758609.6557205,
-    "elapsed_time": 0.10040616989135742,
-    "implementation_type": "(REAL)",
-    "platform": "CUDA",
-    "performance_metrics": {}
-  },
-  "openvino_init": "Success (MOCK)",
-  "openvino_handler": "Failed OpenVINO handler",
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success (MOCK)",
-  "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_transcription": "(MOCK) This is a mock Qualcomm transcription output",
-  "qualcomm_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "(MOCK) This is a mock Qualcomm transcription output",
-    "timestamp": 1740758610.046851,
-    "elapsed_time": 0.09,
-    "implementation_type": "(MOCK)",
-    "platform": "Qualcomm"
-  },
+  "test_error": "cannot access local variable 'MagicMock' where it is not associated with a value",
   "metadata": {
-    "timestamp": 1740758610.047881,
+    "timestamp": 1740759424.043979,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -69,10 +11,10 @@
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "/tmp/wav2vec2_test_model",
-    "test_run_id": "wav2vec2-test-1740758610",
+    "test_run_id": "wav2vec2-test-1740759424",
     "implementation_type": "(REAL)",
     "os_platform": "linux",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "test_date": "2025-02-28 08:03:30"
+    "test_date": "2025-02-28 08:17:04"
   }
 }

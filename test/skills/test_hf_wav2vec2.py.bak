@@ -1108,399 +1108,85 @@ class test_hf_wav2vec2:
         try:
             try:
                 import openvino
-                print("OpenVINO import successful")
             except ImportError:
                 results["openvino_tests"] = "OpenVINO not installed"
                 return results
-                
-            # Import OpenVINO utilities if available
-            try:
-                from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                ov_utils_available = True
-                print("Successfully imported ipfs_accelerate_py.worker.openvino_utils")
-                
-                # Initialize openvino_utils
-                ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-            except ImportError:
-                ov_utils_available = False
-                print("ipfs_accelerate_py.worker.openvino_utils not available")
-                ov_utils = None
             
-            # Create helper function for file locking
-            import fcntl
-            from contextlib import contextmanager
+            implementation_type = "(MOCK)"  # Always use mocks for OpenVINO tests
             
-            @contextmanager
-            def file_lock(lock_file, timeout=600):
-                """Simple file-based lock with timeout"""
-                start_time = time.time()
-                lock_dir = os.path.dirname(lock_file)
-                os.makedirs(lock_dir, exist_ok=True)
-                
-                fd = open(lock_file, 'w')
+            # Import the existing OpenVINO utils from the main package
+            from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
+            
+            # Initialize openvino_utils
+            ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
+            
+            # Define a safe wrapper for OpenVINO functions
+            def safe_get_openvino_model(*args, **kwargs):
                 try:
-                    while True:
-                        try:
-                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                            break
-                        except IOError:
-                            if time.time() - start_time > timeout:
-                                raise TimeoutError(f"Could not acquire lock on {lock_file} within {timeout} seconds")
-                            time.sleep(1)
-                    yield
-                finally:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                    fd.close()
-                    try:
-                        os.unlink(lock_file)
-                    except:
-                        pass
-            
-            print("\n==== INITIALIZING REAL OPENVINO IMPLEMENTATION FOR WAV2VEC2 ====")
-            print("No more simulations - implementing true OpenVINO backend")
-            
-            # Try to implement a real OpenVINO backend first
-            try:
-                # Try loading the optimum-intel package
+                    return ov_utils.get_openvino_model(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error in get_openvino_model: {e}")
+                    return MagicMock()
+                    
+            def safe_get_optimum_openvino_model(*args, **kwargs):
                 try:
-                    from optimum.intel.openvino import OVModelForAudioClassification
-                    optimum_available = True
-                    print("Successfully imported optimum.intel.openvino for audio processing")
-                except ImportError:
-                    optimum_available = False
-                    print("optimum.intel.openvino not available for audio processing")
-                
-                # First try using the wav2vec2 init_openvino method if available
+                    return ov_utils.get_optimum_openvino_model(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error in get_optimum_openvino_model: {e}")
+                    return MagicMock()
+                    
+            def safe_get_openvino_pipeline_type(*args, **kwargs):
                 try:
-                    if hasattr(self.wav2vec2, 'init_openvino'):
-                        print("Using wav2vec2.init_openvino method...")
-                        
-                        task_type = "automatic-speech-recognition"
-                        device_label = "openvino:0"
-                        
-                        # Initialize with openvino_utils if available
-                        if ov_utils_available:
-                            endpoint, processor, handler, queue, batch_size = self.wav2vec2.init_openvino(
-                                self.model_name,
-                                task_type,
-                                "CPU",
-                                device_label,
-                                ov_utils.get_optimum_openvino_model,
-                                ov_utils.get_openvino_model,
-                                ov_utils.get_openvino_pipeline_type,
-                                ov_utils.openvino_cli_convert
-                            )
-                        else:
-                            # Create basic placeholder functions if ov_utils not available
-                            def placeholder_get_model(*args, **kwargs):
-                                print("Placeholder function called: get_optimum_openvino_model")
-                                return None
-                                
-                            def placeholder_get_pipeline(*args, **kwargs):
-                                print("Placeholder function called: get_openvino_pipeline_type")
-                                return None
-                                
-                            def placeholder_convert(*args, **kwargs):
-                                print("Placeholder function called: openvino_cli_convert")
-                                return None
-                                
-                            endpoint, processor, handler, queue, batch_size = self.wav2vec2.init_openvino(
-                                self.model_name,
-                                task_type,
-                                "CPU",
-                                device_label,
-                                placeholder_get_model,
-                                placeholder_get_model,
-                                placeholder_get_pipeline,
-                                placeholder_convert
-                            )
-                        
-                        # Check if we got real components
-                        from unittest.mock import MagicMock
-                        is_mock = isinstance(endpoint, MagicMock) or isinstance(processor, MagicMock)
-                        
-                        if not is_mock and handler is not None:
-                            print("Successfully initialized OpenVINO with wav2vec2.init_openvino")
-                            implementation_type = "(REAL)"
-                            test_handler = handler
-                        else:
-                            print("init_openvino returned mock components, trying direct approach")
-                            raise ValueError("Need to try direct OpenVINO implementation")
-                    else:
-                        raise AttributeError("wav2vec2.init_openvino method not available")
-                except Exception as init_error:
-                    print(f"Error in wav2vec2.init_openvino: {init_error}")
+                    return ov_utils.get_openvino_pipeline_type(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error in get_openvino_pipeline_type: {e}")
+                    return "automatic-speech-recognition"
                     
-                    # Try direct OpenVINO implementation
-                    print("Implementing direct OpenVINO approach for wav2vec2...")
-                    
-                    # Try to load processor and core directly
-                    from transformers import AutoProcessor, Wav2Vec2Processor, Wav2Vec2ForCTC
-                    from openvino.runtime import Core
-                    
-                    # Load processor
-                    try:
-                        processor = Wav2Vec2Processor.from_pretrained(self.model_name)
-                        print(f"Successfully loaded Wav2Vec2Processor for {self.model_name}")
-                        processor_is_real = True
-                    except Exception as processor_err:
-                        print(f"Error loading processor: {processor_err}")
-                        processor = MagicMock()
-                        processor_is_real = False
-                    
-                    # Create OpenVINO Core
-                    try:
-                        ie = Core()
-                        print("Successfully created OpenVINO Core")
-                        core_is_real = True
-                    except Exception as core_err:
-                        print(f"Error creating OpenVINO Core: {core_err}")
-                        ie = MagicMock()
-                        core_is_real = False
-                    
-                    # Create a wrapper class for OpenVINO Wav2Vec2
-                    class OpenVINOWav2Vec2Model:
-                        def __init__(self, processor, ie_core):
-                            self.processor = processor
-                            self.ie = ie_core
-                            self.implementation_type = "REAL"
-                            self.is_real_implementation = processor_is_real and core_is_real
-                            
-                        def __call__(self, input_values=None, **kwargs):
-                            """Process audio features with OpenVINO backend"""
-                            try:
-                                # Since we don't have a real compiled model, just return a placeholder
-                                # This would be replaced with actual inference in a production implementation
-                                return {
-                                    "logits": torch.randn(1, 1000, 32),
-                                    "implementation_type": "REAL" if self.is_real_implementation else "MOCK"
-                                }
-                            except Exception as gen_err:
-                                print(f"Error in OpenVINOWav2Vec2Model __call__: {gen_err}")
-                                return {
-                                    "logits": torch.randn(1, 1000, 32),
-                                    "implementation_type": "MOCK",
-                                    "error": str(gen_err)
-                                }
-                    
-                    # Create model instance
-                    endpoint = OpenVINOWav2Vec2Model(processor, ie)
-                    
-                    # Define the handler function
-                    def direct_openvino_handler(audio_path=None, audio_array=None):
-                        """Process audio with OpenVINO Wav2Vec2"""
-                        start_time = time.time()
-                        
-                        try:
-                            # Load audio data if path provided
-                            if audio_path is not None and audio_array is None:
-                                audio_array, sr = load_audio_16khz(audio_path)
-                                
-                            # Make sure audio is properly scaled
-                            if audio_array is not None:
-                                if audio_array.max() > 1.0:
-                                    audio_array = audio_array / (audio_array.max() + 1e-6)
-                            
-                            # Process audio to features if processor is real
-                            if processor_is_real and hasattr(processor, '__call__'):
-                                inputs = processor(audio_array, sampling_rate=16000, return_tensors="pt")
-                                feature_extraction_time = time.time() - start_time
-                                print(f"Feature extraction completed in {feature_extraction_time:.4f}s")
-                                
-                                # Generate with endpoint
-                                output = endpoint(inputs.input_values)
-                            else:
-                                # If processor isn't real, create a mock output
-                                feature_extraction_time = 0.001
-                                output = endpoint(None)
-                            
-                            # Get implementation type marker from output
-                            if isinstance(output, dict) and "implementation_type" in output:
-                                impl_type = output["implementation_type"]
-                            else:
-                                impl_type = "REAL" if processor_is_real and core_is_real else "MOCK"
-                            
-                            # Return a transcript or empty string (we're not doing the full transcript here)
-                            transcription = ""
-                            
-                            # Calculate metrics
-                            total_time = time.time() - start_time
-                            
-                            # Return detailed result
-                            return {
-                                "text": transcription,
-                                "implementation_type": impl_type,
-                                "is_real_implementation": processor_is_real and core_is_real,
-                                "total_time": total_time,
-                                "feature_extraction_time": feature_extraction_time,
-                                "device": "CPU (OpenVINO)"
-                            }
-                        except Exception as handler_err:
-                            print(f"Error in direct_openvino_handler: {handler_err}")
-                            total_time = time.time() - start_time
-                            
-                            return {
-                                "text": "Error processing audio with OpenVINO Wav2Vec2",
-                                "implementation_type": "MOCK",
-                                "error": str(handler_err),
-                                "total_time": total_time
-                            }
-                    
-                    # Set up components
-                    test_handler = direct_openvino_handler
-                    implementation_type = "(REAL)" if processor_is_real and core_is_real else "(MOCK)"
-                
-                # Update results with implementation type
-                results["openvino_init"] = f"Success {implementation_type}"
-                print(f"OpenVINO initialization complete with implementation type: {implementation_type}")
-                
-            except Exception as e:
-                # Fall back to creating a minimal implementation that works
-                print(f"Error creating real OpenVINO implementation: {e}")
-                print(f"Traceback: {traceback.format_exc()}")
-                print("Creating minimal OpenVINO implementation...")
-                
-                # Import required components
-                from unittest.mock import MagicMock
-                
-                # Create minimal components that mark themselves properly
-                class MinimalOpenVINOWav2Vec2:
-                    def __init__(self):
-                        self.implementation_type = "REAL"
-                        self.is_real_implementation = True
-                    
-                    def process(self, audio_data):
-                        """Process audio to features"""
-                        return {"input_values": torch.zeros(1, 16000)}
-                        
-                    def __call__(self, inputs):
-                        """Call method for model-like behavior"""
-                        return {
-                            "logits": torch.randn(1, 1000, 32),
-                            "implementation_type": "REAL"
-                        }
-                
-                # Create model and processor
-                endpoint = MinimalOpenVINOWav2Vec2()
-                processor = MinimalOpenVINOWav2Vec2()
-                
-                # Create handler function
-                def minimal_openvino_handler(audio_path=None, audio_array=None):
-                    """Minimal handler function that works without dependencies"""
-                    start_time = time.time()
-                    
-                    # Return an empty string instead of a transcription
-                    # This behavior matches the CPU implementation
-                    return {
-                        "text": "",
-                        "implementation_type": "REAL",
-                        "is_real_implementation": True,
-                        "device": "CPU (OpenVINO)",
-                        "total_time": time.time() - start_time
-                    }
-                
-                # Set up components
-                test_handler = minimal_openvino_handler
-                implementation_type = "(REAL)"
-                results["openvino_init"] = f"Success {implementation_type}"
+            def safe_openvino_cli_convert(*args, **kwargs):
+                try:
+                    return ov_utils.openvino_cli_convert(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error in openvino_cli_convert: {e}")
+                    return None
             
-            # Test the handler
-            try:
-                print(f"Testing OpenVINO handler with input: {self.test_audio}")
+            with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+                endpoint, processor, handler, queue, batch_size = self.wav2vec2.init_openvino(
+                    self.model_name,
+                    "automatic-speech-recognition",
+                    "CPU",
+                    "openvino:0",
+                    safe_get_optimum_openvino_model,
+                    safe_get_openvino_model,
+                    safe_get_openvino_pipeline_type,
+                    safe_openvino_cli_convert
+                )
                 
-                # Make sure handler is actually callable
-                if test_handler is None:
-                    print("WARNING: OpenVINO handler is None! Creating a minimal handler function")
-                    def minimal_fallback_handler(audio_path=None, audio_array=None):
-                        """Minimal fallback handler when the real one is None"""
-                        return {
-                            "text": "",
-                            "implementation_type": "REAL",
-                            "is_real_implementation": True,
-                            "device": "CPU (OpenVINO)"
-                        }
-                    test_handler = minimal_fallback_handler
+                valid_init = handler is not None
+                results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
                 
-                # Call the handler with proper error handling
-                output = test_handler(self.test_audio)
-                results["openvino_handler"] = f"Success {implementation_type}" if output is not None else "Failed OpenVINO handler"
+                test_handler = self.wav2vec2.create_openvino_transcription_endpoint_handler(
+                    endpoint,
+                    processor,
+                    self.model_name,
+                    "openvino:0"
+                )
                 
-                # Process output
-                if output is not None:
-                    # For wav2vec2, the output is usually an empty string since we don't do transcription
-                    # But we can check if it's properly structured
-                    if isinstance(output, dict):
-                        # Extract text if available
-                        if "text" in output:
-                            transcription = output["text"]
-                        else:
-                            transcription = ""
-                            
-                        # Check implementation type
-                        if "implementation_type" in output:
-                            impl_type = output["implementation_type"]
-                            implementation_type = f"({impl_type})" 
-                    else:
-                        transcription = str(output)
-                        
-                    # Record the result
-                    results["openvino_transcription"] = transcription
+                with patch('soundfile.read') as mock_sf_read:
+                    mock_sf_read.return_value = (np.random.randn(16000), 16000)
+                    output = test_handler(self.test_audio)
+                    results["openvino_handler"] = f"Success {implementation_type}" if output is not None else "Failed OpenVINO handler"
                     
-                    # Create an embedding handler too for completeness
-                    def embedding_handler(audio_path=None, audio_array=None):
-                        """Create embedding handler that returns vectors"""
-                        embedding = np.random.randn(768)
-                        return {
-                            "embedding": embedding,
-                            "implementation_type": "REAL",
-                            "device": "CPU (OpenVINO)"
-                        }
-                    
-                    # Example for embeddings (matches CPU test pattern)
-                    embedding_output = embedding_handler(self.test_audio)
-                    
-                    # Save both examples
-                    results["openvino_transcription_example"] = {
-                        "input": self.test_audio,
-                        "output": transcription,
-                        "timestamp": time.time(),
-                        "elapsed_time": output.get("total_time", 0.01) if isinstance(output, dict) else 0.01,
-                        "implementation_type": implementation_type.strip("()"),
-                        "platform": "OpenVINO"
-                    }
-                    
-                    if isinstance(embedding_output, dict) and "embedding" in embedding_output:
-                        embedding = embedding_output["embedding"]
-                        results["openvino_embedding_example"] = {
+                    # Save transcription result
+                    if output is not None:
+                        results["openvino_transcription"] = output
+                        results["openvino_transcription_example"] = {
                             "input": self.test_audio,
-                            "output_type": str(type(embedding)),
-                            "embedding_length": len(embedding) if hasattr(embedding, "__len__") else 0,
+                            "output": output,
                             "timestamp": time.time(),
-                            "elapsed_time": 0.01,
-                            "implementation_type": implementation_type.strip("()"),
+                            "elapsed_time": 0.08,  # Placeholder for timing
+                            "implementation_type": implementation_type,
                             "platform": "OpenVINO"
                         }
-                else:
-                    results["openvino_transcription"] = "No output generated"
-                    results["openvino_transcription_example"] = {
-                        "input": self.test_audio,
-                        "output": "No output generated",
-                        "timestamp": time.time(),
-                        "implementation_type": "MOCK",
-                        "platform": "OpenVINO"
-                    }
-            except Exception as handler_err:
-                print(f"Error testing OpenVINO handler: {handler_err}")
-                results["openvino_handler_error"] = str(handler_err)
-                results["openvino_transcription"] = f"Error: {str(handler_err)}"
-                results["openvino_transcription_example"] = {
-                    "input": self.test_audio,
-                    "output": f"Error: {str(handler_err)}",
-                    "timestamp": time.time(),
-                    "implementation_type": "MOCK",
-                    "platform": "OpenVINO",
-                    "error": str(handler_err)
-                }
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
         except Exception as e:
