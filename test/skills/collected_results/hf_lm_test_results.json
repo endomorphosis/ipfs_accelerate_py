@@ -1,25 +1,168 @@
 {
   "status": {
-    "test_error": "[Errno 32] Broken pipe"
+    "init": "Success (REAL)",
+    "cpu_init": "Success (MOCK)",
+    "cpu_standard": "Success (REAL)",
+    "cpu_standard_output": "Once upon a time...",
+    "cpu_standard_output_length": 19,
+    "cpu_config": "Success (REAL)",
+    "cpu_config_output": "Once upon a time in a land far away, there was a magical kingdom...",
+    "cpu_config_output_length": 67,
+    "cpu_batch": "Success (REAL)",
+    "cpu_batch_output_count": 2,
+    "cpu_batch_first_output": "Once upon a time...",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "cuda_output": "(MOCK) Once upon a time... Once upon a time",
+    "cuda_output_length": 43,
+    "cuda_config": "Success (MOCK)",
+    "cuda_config_output": "(MOCK) Once upon a time... Once upon a time",
+    "cuda_config_output_length": 43,
+    "cuda_batch": "Success (MOCK)",
+    "cuda_batch_output_count": 2,
+    "cuda_batch_first_output": "(MOCK) Once upon a time... Once upon a time",
+    "openvino_implementation_capability": "REAL - optimum.intel.openvino available",
+    "openvino_init": "Success (REAL)",
+    "openvino_implementation_type": "(REAL)",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success (MOCK)",
+    "qualcomm_handler": "Success (MOCK)",
+    "qualcomm_output": "Once upon a time... Once upon a time",
+    "qualcomm_output_length": 36,
+    "qualcomm_config": "Success (MOCK)",
+    "qualcomm_config_output": "Once upon a time... Once upon a time",
+    "qualcomm_batch": "Success (MOCK)",
+    "qualcomm_batch_output_count": 2,
+    "qualcomm_batch_first_output": "Once upon a time... Once upon a time"
   },
-  "examples": [],
+  "examples": [
+    {
+      "input": "Once upon a time",
+      "output": "Once upon a time...",
+      "timestamp": "2025-02-28T01:33:47.347133",
+      "elapsed_time": 4.291534423828125e-06,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "standard"
+    },
+    {
+      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
+      "output": "Once upon a time in a land far away, there was a magical kingdom...",
+      "timestamp": "2025-02-28T01:33:47.347158",
+      "elapsed_time": 3.5762786865234375e-06,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "config"
+    },
+    {
+      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
+      "output": {
+        "count": 2,
+        "first_output": "Once upon a time..."
+      },
+      "timestamp": "2025-02-28T01:33:47.347167",
+      "elapsed_time": 4.291534423828125e-06,
+      "implementation_type": "(REAL)",
+      "platform": "CPU",
+      "test_type": "batch"
+    },
+    {
+      "input": "Once upon a time",
+      "output": "(MOCK) Once upon a time... Once upon a time",
+      "timestamp": "2025-02-28T01:33:48.724903",
+      "elapsed_time": 1.7881393432617188e-05,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "standard",
+      "metadata": null
+    },
+    {
+      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
+      "output": "(MOCK) Once upon a time... Once upon a time",
+      "timestamp": "2025-02-28T01:33:48.724951",
+      "elapsed_time": 9.775161743164062e-06,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "config",
+      "metadata": null
+    },
+    {
+      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
+      "output": {
+        "count": 2,
+        "first_output": "(MOCK) Once upon a time... Once upon a time"
+      },
+      "timestamp": "2025-02-28T01:33:48.724967",
+      "elapsed_time": 6.198883056640625e-06,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "batch"
+    },
+    {
+      "input": "Once upon a time",
+      "output": "Once upon a time... Once upon a time",
+      "timestamp": "2025-02-28T01:34:02.869432",
+      "elapsed_time": 1.5974044799804688e-05,
+      "implementation_type": "(MOCK)",
+      "platform": "Qualcomm",
+      "test_type": "standard"
+    },
+    {
+      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
+      "output": "Once upon a time... Once upon a time",
+      "timestamp": "2025-02-28T01:34:02.869582",
+      "elapsed_time": 1.5020370483398438e-05,
+      "implementation_type": "(MOCK)",
+      "platform": "Qualcomm",
+      "test_type": "config"
+    },
+    {
+      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
+      "output": {
+        "count": 2,
+        "first_output": "Once upon a time... Once upon a time"
+      },
+      "timestamp": "2025-02-28T01:34:02.869626",
+      "elapsed_time": 1.239776611328125e-05,
+      "implementation_type": "(MOCK)",
+      "platform": "Qualcomm",
+      "test_type": "batch"
+    }
+  ],
   "metadata": {
-    "error": "[Errno 32] Broken pipe",
-    "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py\", line 406, in hf_raise_for_status\n    response.raise_for_status()\n  File \"/usr/lib/python3/dist-packages/requests/models.py\", line 1021, in raise_for_status\n    raise HTTPError(http_error_msg, response=self)\nrequests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/gpt2/resolve/main/tokenizer_config.json\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/barberb/.local/lib/python3.12/site-packages/transformers/utils/hub.py\", line 342, in cached_file\n    resolved_file = hf_hub_download(\n                    ^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py\", line 114, in _inner_fn\n    return fn(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 860, in hf_hub_download\n    return _hf_hub_download_to_cache_dir(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 967, in _hf_hub_download_to_cache_dir\n    _raise_on_head_call_error(head_call_error, force_download, local_files_only)\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 1482, in _raise_on_head_call_error\n    raise head_call_error\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 1374, in _get_metadata_or_catch_error\n    metadata = get_hf_file_metadata(\n               ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py\", line 114, in _inner_fn\n    return fn(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 1294, in get_hf_file_metadata\n    r = _request_wrapper(\n        ^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 278, in _request_wrapper\n    response = _request_wrapper(\n               ^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/file_download.py\", line 302, in _request_wrapper\n    hf_raise_for_status(response)\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py\", line 454, in hf_raise_for_status\n    raise _format(RepositoryNotFoundError, message, response) from e\nhuggingface_hub.errors.RepositoryNotFoundError: 401 Client Error. (Request ID: Root=1-67c1807f-0e91c21e720139070147b1b1;0083c5f5-6cbf-4ad8-b16d-3a12b1d0d6d8)\n\nRepository Not Found for url: https://huggingface.co/gpt2/resolve/main/tokenizer_config.json.\nPlease make sure you specified the correct `repo_id` and `repo_type`.\nIf you are trying to access a private or gated repo, make sure you are authenticated.\nInvalid credentials in Authorization header\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_lm.py\", line 314, in init_cuda\n    tokenizer = self.transformers.AutoTokenizer.from_pretrained(\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py\", line 881, in from_pretrained\n    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py\", line 713, in get_tokenizer_config\n    resolved_config_file = cached_file(\n                           ^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/transformers/utils/hub.py\", line 365, in cached_file\n    raise EnvironmentError(\nOSError: gpt2 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_lm.py\", line 322, in init_cuda\n    traceback.print_exc()\n  File \"/usr/lib/python3.12/traceback.py\", line 180, in print_exc\n    print_exception(sys.exception(), limit=limit, file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 125, in print_exception\n    te.print(file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 1050, in print\n    print(line, file=file, end=\"\")\nBrokenPipeError: [Errno 32] Broken pipe\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 648, in test\n    endpoint, tokenizer, handler, queue, batch_size = self.lm.init_cuda(\n                                                      ^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/default_lm.py\", line 402, in init_cuda\n    traceback.print_exc()\n  File \"/usr/lib/python3.12/traceback.py\", line 180, in print_exc\n    print_exception(sys.exception(), limit=limit, file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 125, in print_exception\n    te.print(file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 1050, in print\n    print(line, file=file, end=\"\")\nBrokenPipeError: [Errno 32] Broken pipe\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 965, in test\n    print(\"Falling back to mock implementation...\")\nBrokenPipeError: [Errno 32] Broken pipe\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 1827, in __test__\n    best_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 999, in test\n    traceback.print_exc()\n  File \"/usr/lib/python3.12/traceback.py\", line 180, in print_exc\n    print_exception(sys.exception(), limit=limit, file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 125, in print_exception\n    te.print(file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 1050, in print\n    print(line, file=file, end=\"\")\nBrokenPipeError: [Errno 32] Broken pipe\n",
-    "timestamp": 1740734591.5403981,
+    "model_name": "gpt2",
+    "test_timestamp": "2025-02-28T01:34:02.869707",
+    "timestamp": 1740735242.8697104,
+    "torch_version": "2.4.0+cu121",
+    "numpy_version": "1.26.4",
+    "transformers_version": "4.49.0",
+    "cuda_available": true,
+    "cuda_device_count": 1,
+    "mps_available": false,
+    "transformers_mocked": false,
+    "test_prompt": "Once upon a time",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "platform_status": {
+      "cpu": "Ready (MOCK)",
+      "cuda": "Ready (REAL)",
+      "openvino": "Ready (REAL)",
+      "apple": "Apple Silicon not available",
+      "qualcomm": "Ready (MOCK)"
+    },
+    "test_run_id": "lm-test-1740735242",
     "model_testing": {
       "tested_models": [
         "gpt2",
         "distilgpt2",
         "::simple_model::"
       ],
-      "best_model": null,
+      "best_model": "gpt2",
       "model_success_counts": {
-        "gpt2": 0,
-        "distilgpt2": 0,
-        "::simple_model::": 0
+        "gpt2": 14,
+        "distilgpt2": 14,
+        "::simple_model::": 14
       },
-      "test_timestamp": "2025-02-28T01:23:11.540417"
+      "test_timestamp": "2025-02-28T01:34:25.107291"
     }
   }
 }

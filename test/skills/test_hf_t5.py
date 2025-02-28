@@ -261,18 +261,19 @@ class test_hf_t5:
         self.metadata = metadata if metadata else {}
         self.t5 = hf_t5(resources=self.resources, metadata=self.metadata)
         
-        # Try to use the recommended model that's openly accessible
-        # or create a tiny test model for our tests
-        # Use a very small openly accessible model as primary choice
-        # This model is only ~60MB, much smaller than t5-small (240MB)
+        # Use google/t5-efficient-tiny as the primary model - following CLAUDE.md recommendations
+        # This model is very small (~60MB) and has excellent performance across all hardware backends
         self.model_name = "google/t5-efficient-tiny"
         
-        # Alternative models that are also openly accessible
+        # Alternative models in order of preference (most likely to be accessible without auth)
         self.alternative_models = [
-            "t5-small",            # Standard small T5 model (~240MB)
-            "google/flan-t5-small", # Instruction-tuned version
-            "google/byt5-small",    # Byte-level T5 model
-            "google/t5-base"        # Larger model if needed
+            "google/mt5-base",                 # Larger mt5 model, should be accessible like mt5-small
+            "t5-small",                        # Standard huggingface T5 model without organization prefix
+            "sshleifer/tiny-t5",               # Very small T5 model from public user
+            "sshleifer/tiny-mbart",            # Alternative sequence-to-sequence model
+            "Helsinki-NLP/opus-mt-en-fr",      # Public translation model specifically for English-French
+            "MBZUAI/LaMini-T5-738M",           # Alternative public T5 model
+            "t5-11b"                           # Largest T5 model as last resort
         ]
         
         try:
@@ -299,26 +300,37 @@ class test_hf_t5:
                         except Exception as alt_error:
                             print(f"Alternative model validation failed: {alt_error}")
                     
-                    # Check if we're still using the original model (all alternatives failed)
-                    if self.model_name == "google/t5-efficient-tiny":
-                        # Check if we can find any T5 model in cache
-                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
-                        if os.path.exists(cache_dir):
-                            # Try to find any T5 model in cache
-                            t5_models = [name for name in os.listdir(cache_dir) if "t5" in name.lower()]
-                            if t5_models:
-                                # Use the first model found
-                                t5_model_name = t5_models[0].replace("--", "/")
-                                print(f"Using local cached model: {t5_model_name}")
-                                self.model_name = t5_model_name
+                    # Check if all alternatives failed
+                    if not self.model_name in self.alternative_models:
+                        # Try patrickvonplaten's tiny random model as a reliable fallback
+                        fallback_model = "patrickvonplaten/t5-tiny-random"
+                        print(f"All listed models failed, trying reliable fallback: {fallback_model}")
+                        try:
+                            from transformers import AutoConfig
+                            AutoConfig.from_pretrained(fallback_model)
+                            self.model_name = fallback_model
+                            print(f"Successfully validated fallback model: {self.model_name}")
+                        except Exception as fallback_error:
+                            print(f"Fallback model validation failed: {fallback_error}")
+                            
+                            # Check if we can find any T5 model in cache
+                            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+                            if os.path.exists(cache_dir):
+                                # Try to find any T5 model in cache
+                                t5_models = [name for name in os.listdir(cache_dir) if "t5" in name.lower()]
+                                if t5_models:
+                                    # Use the first model found
+                                    t5_model_name = t5_models[0].replace("--", "/")
+                                    print(f"Using local cached model: {t5_model_name}")
+                                    self.model_name = t5_model_name
+                                else:
+                                    # Create a local test model as last resort
+                                    print("No T5 models found in cache, creating local test model")
+                                    self.model_name = self._create_test_model()
                             else:
                                 # Create a local test model as last resort
-                                print("No T5 models found in cache, creating local test model")
+                                print("No cache directory found, creating local test model")
                                 self.model_name = self._create_test_model()
-                        else:
-                            # Create a local test model as last resort
-                            print("No cache directory found, creating local test model")
-                            self.model_name = self._create_test_model()
             
         except Exception as e:
             print(f"Error finding model: {e}")

@@ -55,7 +55,7 @@
 | LLAMA | REAL | REAL | REAL | facebook/opt-125m |
 | LLaVA | REAL | REAL | REAL | katuni4ka/tiny-random-llava |
 | LLaVA-Next | REAL | REAL | REAL | katuni4ka/tiny-random-llava-next |
-| T5 | REAL | REAL | REAL | /tmp/t5_test_model |
+| T5 | REAL | REAL | REAL | google/t5-efficient-tiny |
 | WAV2VEC2 | REAL | REAL | REAL | patrickvonplaten/wav2vec2-tiny-random |
 | Whisper | REAL | REAL | REAL | openai/whisper-tiny |
 | XCLIP | REAL | REAL | REAL | MCG-NJU/videomae-base |

@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-02-28T01:33:41.238909",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter default_lm --timeout 300",
+  "skill_tests": {
+    "test_default_lm.py": {
+      "test_file": "test_default_lm.py",
+      "elapsed_time": 45.86694598197937,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nStarting language model test...\nCreating simulated language model...\nCreated local test model: ::simple_model::\nLoaded expected results from /home/barberb/ipfs_accelerate_py/test/skills/expected_results/hf_lm_test_results.json\nTrying publicly accessible models first (gpt2/distilgpt2), then using local model if needed\nStarting tests with 3 model candidates\n\n[1/3] Testing model: gpt2\nTesting language model on CPU...\nInitializing model gpt2 for CPU...\nStandard initialization failed: hf_lm.init_cpu() got an unexpected keyword argument 'trust_remote_code'\nTrying advanced initialization...\nLoading model and tokenizer from gpt2...\nAdvanced initialization failed with authentication issue\nFalling back to mock implementation...\nMock handler called with text: Once upon a time\nMock handler called with text: Once upon a time\nMock handler called with text: ['Once upon a time', 'Once upon a time']\nTesting language model on CUDA...\nSuccessfully imported CUDA u...",
+      "stderr": "2025-02-28 01:33:47,383 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\nTraceback (most recent call last):\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_http.py\", line 406, in hf_raise_for_status\n    response.raise_for_status()\n  File \"/usr/lib/python3/dist-packages/requests/models.py\", line 1021, in raise_for_status\n    raise HTTPError(http_error_msg, response=self)\nrequests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/gpt2/resolve/main/tokenizer_config.json\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/barberb/.local/lib/python3.12/site-packages/transformers/utils/hub.py\", line 342, in cached_file\n    resolved_file = hf_hub_download(\n                    ^^^^^^^^^^^^^^^^\n  File \"/home/barberb/.local/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py\", line 114, in _inner_fn\n    return fn(*args, **kwargs)\n        ..."
+    }
+  }
+}
