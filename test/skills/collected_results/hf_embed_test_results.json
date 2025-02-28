@@ -51,8 +51,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T01:33:35.077340",
-      "elapsed_time": 0.0005257129669189453,
+      "timestamp": "2025-02-28T01:49:26.185636",
+      "elapsed_time": 0.0003457069396972656,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -66,8 +66,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T01:33:35.077910",
-      "elapsed_time": 0.0005524158477783203,
+      "timestamp": "2025-02-28T01:49:26.185879",
+      "elapsed_time": 0.0002334117889404297,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -75,10 +75,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9853453040122986,
+        "similarity_value": 0.9823696613311768,
         "in_range": true
       },
-      "timestamp": "2025-02-28T01:33:35.078010",
+      "timestamp": "2025-02-28T01:49:26.185964",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
@@ -92,8 +92,8 @@
           384
         ]
       },
-      "timestamp": "2025-02-28T01:33:35.252955",
-      "elapsed_time": 0.0024340152740478516,
+      "timestamp": "2025-02-28T01:49:26.357462",
+      "elapsed_time": 0.0028047561645507812,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "single"
@@ -106,8 +106,8 @@
           384
         ]
       },
-      "timestamp": "2025-02-28T01:33:35.257261",
-      "elapsed_time": 0.004259824752807617,
+      "timestamp": "2025-02-28T01:49:26.360889",
+      "elapsed_time": 0.0033833980560302734,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "batch"
@@ -115,10 +115,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9833842515945435,
+        "similarity_value": 0.9835167527198792,
         "in_range": true
       },
-      "timestamp": "2025-02-28T01:33:35.257797",
+      "timestamp": "2025-02-28T01:49:26.361026",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
@@ -133,8 +133,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T01:33:35.438256",
-      "elapsed_time": 0.001653909683227539,
+      "timestamp": "2025-02-28T01:49:26.538005",
+      "elapsed_time": 0.0011866092681884766,
       "implementation_type": "(REAL)",
       "platform": "OpenVINO",
       "test_type": "single"
@@ -148,8 +148,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T01:33:35.442177",
-      "elapsed_time": 0.003812074661254883,
+      "timestamp": "2025-02-28T01:49:26.538956",
+      "elapsed_time": 0.0009362697601318359,
       "implementation_type": "(REAL)",
       "platform": "OpenVINO",
       "test_type": "batch"
@@ -157,10 +157,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9848897457122803,
+        "similarity_value": 0.9815189242362976,
         "in_range": true
       },
-      "timestamp": "2025-02-28T01:33:35.442533",
+      "timestamp": "2025-02-28T01:49:26.539496",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "OpenVINO",
@@ -171,8 +171,8 @@
       "output": {
         "embedding_shape": null
       },
-      "timestamp": "2025-02-28T01:33:35.532809",
-      "elapsed_time": 0.001607656478881836,
+      "timestamp": "2025-02-28T01:49:26.630758",
+      "elapsed_time": 0.0016074180603027344,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
@@ -180,8 +180,8 @@
   ],
   "metadata": {
     "model_name": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
-    "test_timestamp": "2025-02-28T01:33:35.532830",
-    "timestamp": 1740735215.5328329,
+    "test_timestamp": "2025-02-28T01:49:26.630777",
+    "timestamp": 1740736166.6307802,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -201,7 +201,7 @@
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "embed-test-1740735215",
+    "test_run_id": "embed-test-1740736166",
     "model_testing": {
       "tested_models": [
         "/tmp/embed_test_model",
@@ -224,7 +224,7 @@
         "sentence-transformers/all-mpnet-base-v2": 15,
         "sentence-transformers/multi-qa-mpnet-base-dot-v1": 15
       },
-      "test_timestamp": "2025-02-28T01:33:35.532954"
+      "test_timestamp": "2025-02-28T01:49:26.630893"
     }
   }
 }

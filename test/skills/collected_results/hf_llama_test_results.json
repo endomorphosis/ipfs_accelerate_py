@@ -28,8 +28,8 @@
       "output": {
         "generated_text": "Invalid inputs format or missing input_ids"
       },
-      "timestamp": "2025-02-28T01:31:47.086463",
-      "elapsed_time": 0.0007643699645996094,
+      "timestamp": "2025-02-28T01:46:06.298896",
+      "elapsed_time": 0.0005772113800048828,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
@@ -40,8 +40,8 @@
         "device": "cuda:0 (mock)",
         "gpu_memory_mb": 0.0
       },
-      "timestamp": "2025-02-28T01:31:47.335381",
-      "elapsed_time": 0.10040068626403809,
+      "timestamp": "2025-02-28T01:46:06.544271",
+      "elapsed_time": 0.1009073257446289,
       "implementation_type": "REAL",
       "platform": "CUDA"
     },
@@ -55,8 +55,8 @@
           "top_p": 0.95
         }
       },
-      "timestamp": "2025-02-28T01:31:47.536524",
-      "elapsed_time": 0.10051894187927246,
+      "timestamp": "2025-02-28T01:46:06.745795",
+      "elapsed_time": 0.10040497779846191,
       "implementation_type": "REAL",
       "platform": "CUDA",
       "test_type": "config"
@@ -66,8 +66,8 @@
       "output": {
         "generated_text": "Failed to properly tokenize input: Write a short story about a fo..."
       },
-      "timestamp": "2025-02-28T01:31:47.895488",
-      "elapsed_time": 0.0005083084106445312,
+      "timestamp": "2025-02-28T01:46:07.059854",
+      "elapsed_time": 0.0019867420196533203,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
     },
@@ -76,15 +76,15 @@
       "output": {
         "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
       },
-      "timestamp": "2025-02-28T01:31:47.921458",
-      "elapsed_time": 0.003422260284423828,
+      "timestamp": "2025-02-28T01:46:07.084302",
+      "elapsed_time": 0.002388477325439453,
       "implementation_type": "MOCK",
       "platform": "Qualcomm"
     }
   ],
   "metadata": {
     "model_name": "/tmp/llama_test_model",
-    "test_timestamp": "2025-02-28T01:31:47.921494",
+    "test_timestamp": "2025-02-28T01:46:07.084329",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",

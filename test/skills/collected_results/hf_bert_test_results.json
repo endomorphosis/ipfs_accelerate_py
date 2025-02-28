@@ -10,7 +10,7 @@
     "cpu_embedding_type": "torch.float32",
     "cuda_init": "Success (REAL)",
     "cuda_benchmark": {
-      "average_inference_time": 0.4406857490539551,
+      "average_inference_time": 0.5752387046813965,
       "iterations": 1,
       "cuda_device": "Quadro P4000",
       "cuda_memory_used_mb": 68.41064453125
@@ -40,8 +40,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T01:31:13.184855",
-      "elapsed_time": 0.002069234848022461,
+      "timestamp": "2025-02-28T01:47:47.206792",
+      "elapsed_time": 0.0021157264709472656,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
@@ -54,13 +54,13 @@
         ],
         "embedding_type": null,
         "performance_metrics": {
-          "inference_time": 0.002984285354614258,
+          "inference_time": 0.006137847900390625,
           "gpu_memory_mb": 0.01904296875,
           "is_simulated": true
         }
       },
-      "timestamp": "2025-02-28T01:31:13.974638",
-      "elapsed_time": 0.0030066967010498047,
+      "timestamp": "2025-02-28T01:47:48.204482",
+      "elapsed_time": 0.006166934967041016,
       "implementation_type": "REAL",
       "platform": "CUDA",
       "is_simulated": true
@@ -73,15 +73,15 @@
           768
         ]
       },
-      "timestamp": "2025-02-28T01:31:14.304784",
-      "elapsed_time": 0.0023560523986816406,
+      "timestamp": "2025-02-28T01:47:48.504098",
+      "elapsed_time": 0.003110647201538086,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
     }
   ],
   "metadata": {
     "model_name": "/tmp/bert_test_model",
-    "test_timestamp": "2025-02-28T01:31:14.318461",
+    "test_timestamp": "2025-02-28T01:47:48.521232",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",
