@@ -358,38 +358,80 @@ class test_hf_llama:
         self.metadata = metadata if metadata else {}
         self.llama = hf_llama(resources=self.resources, metadata=self.metadata)
         
-        # Try to use the recommended TinyLlama model or a simpler model that's more likely to be available locally
-        # or create a tiny test model for our tests
+        # Try multiple small, open-access models in order of preference
+        # Start with the smallest, most reliable options first
+        self.primary_model = "facebook/opt-125m"  # Only ~250MB, much smaller than TinyLlama (1.1GB)
+        
+        # Alternative models in increasing size order
+        self.alternative_models = [
+            "EleutherAI/pythia-70m",     # Extremely small (~150MB)
+            "distilgpt2",                # Very small model (~330MB)
+            "gpt2",                      # Standard model (~500MB)
+            "facebook/opt-350m",         # Medium-sized OPT model (~650MB)
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Larger but excellent chat model (~1.1GB)
+        ]
+        
+        # Initialize with primary model
+        self.model_name = self.primary_model
+        
         try:
-            # First try the recommended TinyLlama model which is openly accessible
-            self.model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-            print(f"Using recommended model: {self.model_name}")
+            print(f"Attempting to use primary model: {self.model_name}")
             
-            # Check if it actually exists in cache already
-            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
-            if os.path.exists(cache_dir):
-                # Try to find the TinyLlama model in cache
-                tiny_llama_cached = any("TinyLlama-1.1B-Chat-v1.0" in name for name in os.listdir(cache_dir))
-                if tiny_llama_cached:
-                    print(f"Found TinyLlama in local cache")
-                
-                # As fallback, look for other LLaMA or OPT models in cache
-                llm_models = [name for name in os.listdir(cache_dir) if "llama" in name.lower() or "opt" in name.lower()]
-                if llm_models and not tiny_llama_cached:
-                    # Use the first model found
-                    llm_model_name = llm_models[0].replace("--", "/")
-                    print(f"Using local cached model as fallback: {llm_model_name}")
-                    self.model_name = llm_model_name
-            
-            # If all else fails, create a local test model
-            if "TinyLlama" not in self.model_name and not os.path.exists(cache_dir):
+            # Try to import transformers for validation
+            if not isinstance(self.resources["transformers"], MagicMock):
+                from transformers import AutoConfig
+                try:
+                    # Try to access the config to verify model works
+                    AutoConfig.from_pretrained(self.model_name)
+                    print(f"Successfully validated primary model: {self.model_name}")
+                except Exception as config_error:
+                    print(f"Primary model validation failed: {config_error}")
+                    
+                    # Try alternatives one by one
+                    for alt_model in self.alternative_models:
+                        try:
+                            print(f"Trying alternative model: {alt_model}")
+                            AutoConfig.from_pretrained(alt_model)
+                            self.model_name = alt_model
+                            print(f"Successfully validated alternative model: {self.model_name}")
+                            break
+                        except Exception as alt_error:
+                            print(f"Alternative model validation failed: {alt_error}")
+                    
+                    # If all alternatives failed, check local cache
+                    if self.model_name == self.primary_model:
+                        # Try to find cached models
+                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+                        if os.path.exists(cache_dir):
+                            # Look for any language model in cache
+                            lm_models = [name for name in os.listdir(cache_dir) if any(
+                                x in name.lower() for x in ["llama", "opt", "gpt", "pythia", "bloom"])]
+                            
+                            if lm_models:
+                                # Use the first model found
+                                lm_model_name = lm_models[0].replace("--", "/")
+                                print(f"Found local language model: {lm_model_name}")
+                                self.model_name = lm_model_name
+                            else:
+                                # Create local test model
+                                print("No suitable models found in cache, creating local test model")
+                                self.model_name = self._create_test_model()
+                                print(f"Created local test model: {self.model_name}")
+                        else:
+                            # Create local test model
+                            print("No cache directory found, creating local test model")
+                            self.model_name = self._create_test_model()
+                            print(f"Created local test model: {self.model_name}")
+            else:
+                # If transformers is mocked, use local test model
+                print("Transformers is mocked, using local test model")
                 self.model_name = self._create_test_model()
-                print(f"Created local test model: {self.model_name}")
+                
         except Exception as e:
-            print(f"Error finding or using recommended model: {e}")
-            # Fall back to local test model
+            print(f"Error finding model: {e}")
+            # Fall back to local test model as last resort
             self.model_name = self._create_test_model()
-            print("Falling back to local test model")
+            print("Falling back to local test model due to error")
             
         print(f"Using model: {self.model_name}")
         self.test_prompt = "Write a short story about a fox and a dog."

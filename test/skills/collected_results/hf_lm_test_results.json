@@ -21,7 +21,7 @@
       "performance_metrics": {
         "memory_allocated_mb": 0.0,
         "memory_reserved_mb": 0.0,
-        "processing_time_ms": 0.0045299530029296875
+        "processing_time_ms": 0.00476837158203125
       }
     },
     "cuda_output": "Once upon a time in a CUDA-accelerated world...",
@@ -50,8 +50,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T23:12:16.671501",
-      "elapsed_time": 2.86102294921875e-06,
+      "timestamp": "2025-02-28T00:20:48.816878",
+      "elapsed_time": 2.6226043701171875e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "standard"
@@ -59,7 +59,7 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time in a land far away, there was a magical kingdom...",
-      "timestamp": "2025-02-27T23:12:16.671521",
+      "timestamp": "2025-02-28T00:20:48.816893",
       "elapsed_time": 1.9073486328125e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
@@ -71,8 +71,8 @@
         "count": 2,
         "first_output": "Once upon a time..."
       },
-      "timestamp": "2025-02-27T23:12:16.671530",
-      "elapsed_time": 3.814697265625e-06,
+      "timestamp": "2025-02-28T00:20:48.816902",
+      "elapsed_time": 4.0531158447265625e-06,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -80,8 +80,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time in a CUDA-accelerated world...",
-      "timestamp": "2025-02-27T23:12:16.673125",
-      "elapsed_time": 4.5299530029296875e-06,
+      "timestamp": "2025-02-28T00:20:48.818003",
+      "elapsed_time": 4.76837158203125e-06,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "standard",
@@ -95,15 +95,15 @@
         "performance_metrics": {
           "memory_allocated_mb": 0.0,
           "memory_reserved_mb": 0.0,
-          "processing_time_ms": 0.0045299530029296875
+          "processing_time_ms": 0.00476837158203125
         }
       }
     },
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time in a CUDA-accelerated world... The magical AI brought the kingdom to life with its ...",
-      "timestamp": "2025-02-27T23:12:16.673158",
-      "elapsed_time": 7.867813110351562e-06,
+      "timestamp": "2025-02-28T00:20:48.818019",
+      "elapsed_time": 4.5299530029296875e-06,
       "implementation_type": "REAL",
       "platform": "CUDA",
       "test_type": "config",
@@ -122,8 +122,8 @@
         "count": 2,
         "first_output": "Once upon a time in a CUDA-accelerated world..."
       },
-      "timestamp": "2025-02-27T23:12:16.673178",
-      "elapsed_time": 1.0013580322265625e-05,
+      "timestamp": "2025-02-28T00:20:48.818031",
+      "elapsed_time": 5.7220458984375e-06,
       "implementation_type": "REAL",
       "platform": "CUDA",
       "test_type": "batch"
@@ -131,8 +131,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T23:12:26.726540",
-      "elapsed_time": 5.0067901611328125e-06,
+      "timestamp": "2025-02-28T00:20:57.117860",
+      "elapsed_time": 3.5762786865234375e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "standard"
@@ -140,8 +140,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T23:12:26.726561",
-      "elapsed_time": 1.430511474609375e-06,
+      "timestamp": "2025-02-28T00:20:57.117879",
+      "elapsed_time": 1.1920928955078125e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "config"
@@ -152,8 +152,8 @@
         "count": 2,
         "first_output": "Once upon a time... Once upon a time"
       },
-      "timestamp": "2025-02-27T23:12:26.726568",
-      "elapsed_time": 2.86102294921875e-06,
+      "timestamp": "2025-02-28T00:20:57.117885",
+      "elapsed_time": 2.1457672119140625e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
@@ -161,8 +161,8 @@
   ],
   "metadata": {
     "model_name": "::simple_model::",
-    "test_timestamp": "2025-02-27T23:12:26.726580",
-    "timestamp": 1740726746.7265823,
+    "test_timestamp": "2025-02-28T00:20:57.117895",
+    "timestamp": 1740730857.1178966,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -179,7 +179,7 @@
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "lm-test-1740726746",
+    "test_run_id": "lm-test-1740730857",
     "model_testing": {
       "tested_models": [
         "gpt2",
@@ -192,7 +192,7 @@
         "distilgpt2": 14,
         "::simple_model::": 14
       },
-      "test_timestamp": "2025-02-27T23:12:26.726714"
+      "test_timestamp": "2025-02-28T00:20:57.118015"
     }
   }
 }

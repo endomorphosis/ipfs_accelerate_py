@@ -1,0 +1,215 @@
+{
+  "metadata": {
+    "timestamp": "2025-02-27T23:22:24.198202",
+    "test_file": "skills/test_default_embed.py",
+    "model": "hf_embed",
+    "execution_time": 9.567322492599487
+  },
+  "results": {
+    "status": {
+      "init": "Success (REAL)",
+      "cpu_init": "Success (REAL)",
+      "cpu_single": "Success (REAL)",
+      "cpu_single_shape": [
+        1,
+        384
+      ],
+      "cpu_single_type": "torch.float32",
+      "cpu_batch": "Success (REAL)",
+      "cpu_batch_shape": [
+        2,
+        384
+      ],
+      "cpu_similarity": "Success (REAL)",
+      "cpu_similarity_in_range": true,
+      "cuda_init": "Success (REAL)",
+      "cuda_single": "Success (REAL)",
+      "cuda_batch": "Success (REAL)",
+      "cuda_similarity": "Success (REAL)",
+      "cuda_similarity_in_range": true,
+      "cuda_device": "Quadro P4000",
+      "cuda_memory_allocated_mb": 0.0,
+      "cuda_memory_reserved_mb": 2.0,
+      "openvino_init": "Success (MOCK)",
+      "openvino_single": "Success (MOCK)",
+      "openvino_single_shape": [
+        1,
+        384
+      ],
+      "openvino_single_type": "torch.float32",
+      "openvino_batch": "Success (MOCK)",
+      "openvino_batch_shape": [
+        2,
+        384
+      ],
+      "openvino_similarity": "Success (MOCK)",
+      "openvino_similarity_in_range": true,
+      "apple_tests": "Apple Silicon not available",
+      "qualcomm_init": "Success (MOCK)",
+      "qualcomm_handler": "Success (MOCK)"
+    },
+    "examples": [
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            384
+          ],
+          "embedding_type": "torch.float32"
+        },
+        "timestamp": "2025-02-27T23:22:16.066559",
+        "elapsed_time": 0.0007340908050537109,
+        "implementation_type": "(REAL)",
+        "platform": "CPU",
+        "test_type": "single"
+      },
+      {
+        "input": "Batch of 2 texts",
+        "output": {
+          "embedding_shape": [
+            2,
+            384
+          ],
+          "embedding_type": "torch.float32"
+        },
+        "timestamp": "2025-02-27T23:22:16.066855",
+        "elapsed_time": 0.0002765655517578125,
+        "implementation_type": "(REAL)",
+        "platform": "CPU",
+        "test_type": "batch"
+      },
+      {
+        "input": "Similarity test between single and first batch embedding",
+        "output": {
+          "similarity_value": 0.9845002889633179,
+          "in_range": true
+        },
+        "timestamp": "2025-02-27T23:22:16.067022",
+        "elapsed_time": 0.001,
+        "implementation_type": "(REAL)",
+        "platform": "CPU",
+        "test_type": "similarity"
+      },
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            384
+          ]
+        },
+        "timestamp": "2025-02-27T23:22:16.682159",
+        "elapsed_time": 0.0680079460144043,
+        "implementation_type": "(REAL)",
+        "platform": "CUDA",
+        "test_type": "single"
+      },
+      {
+        "input": "Batch of 2 texts",
+        "output": {
+          "embedding_shape": [
+            2,
+            384
+          ]
+        },
+        "timestamp": "2025-02-27T23:22:16.683873",
+        "elapsed_time": 0.0017004013061523438,
+        "implementation_type": "(REAL)",
+        "platform": "CUDA",
+        "test_type": "batch"
+      },
+      {
+        "input": "Similarity test between single and first batch embedding",
+        "output": {
+          "similarity_value": 0.9676030278205872,
+          "in_range": true
+        },
+        "timestamp": "2025-02-27T23:22:16.683961",
+        "elapsed_time": 0.001,
+        "implementation_type": "(REAL)",
+        "platform": "CUDA",
+        "test_type": "similarity"
+      },
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            384
+          ],
+          "embedding_type": "torch.float32"
+        },
+        "timestamp": "2025-02-27T23:22:24.022989",
+        "elapsed_time": 0.02047872543334961,
+        "implementation_type": "(MOCK)",
+        "platform": "OpenVINO",
+        "test_type": "single"
+      },
+      {
+        "input": "Batch of 2 texts",
+        "output": {
+          "embedding_shape": [
+            2,
+            384
+          ],
+          "embedding_type": "torch.float32"
+        },
+        "timestamp": "2025-02-27T23:22:24.031298",
+        "elapsed_time": 0.008244752883911133,
+        "implementation_type": "(MOCK)",
+        "platform": "OpenVINO",
+        "test_type": "batch"
+      },
+      {
+        "input": "Similarity test between single and first batch embedding",
+        "output": {
+          "similarity_value": 1.0,
+          "in_range": true
+        },
+        "timestamp": "2025-02-27T23:22:24.031637",
+        "elapsed_time": 0.001,
+        "implementation_type": "(MOCK)",
+        "platform": "OpenVINO",
+        "test_type": "similarity"
+      },
+      {
+        "input": "Batch of 2 texts",
+        "output": {
+          "embedding_shape": null
+        },
+        "timestamp": "2025-02-27T23:22:24.163268",
+        "elapsed_time": 0.00634002685546875,
+        "implementation_type": "(MOCK)",
+        "platform": "Qualcomm",
+        "test_type": "batch"
+      }
+    ],
+    "metadata": {
+      "model_name": "/tmp/embed_test_model",
+      "test_timestamp": "2025-02-27T23:22:24.163346",
+      "timestamp": 1740727344.163354,
+      "torch_version": "2.4.0+cu121",
+      "numpy_version": "1.26.4",
+      "transformers_version": "4.49.0",
+      "cuda_available": true,
+      "cuda_device_count": 1,
+      "mps_available": false,
+      "transformers_mocked": false,
+      "test_texts": [
+        "The quick brown fox jumps over the lazy dog",
+        "A fast auburn canine leaps above the sleepy hound"
+      ],
+      "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+      "platform_status": {
+        "cpu": "Ready (REAL)",
+        "cuda": "Ready (REAL)",
+        "openvino": "Ready (MOCK)",
+        "apple": "Apple Silicon not available",
+        "qualcomm": "Ready (MOCK)"
+      },
+      "test_run_id": "embed-test-1740727344"
+    },
+    "total_execution_time": 9.567322492599487
+  }
+}

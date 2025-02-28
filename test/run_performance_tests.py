@@ -1,318 +1,355 @@
 #!/usr/bin/env python3
 """
-Script to run performance tests for all skills on CPU, OpenVINO, and CUDA platforms.
-Collects and reports performance metrics for each skill and platform.
+Run performance tests for all models to ensure they use real implementations.
+This script tests CPU, CUDA and OpenVINO backends for all models.
 """
 
 import os
 import sys
-import time
 import json
+import time
+import argparse
+import subprocess
 import datetime
-import importlib
-import traceback
 from pathlib import Path
-from typing import Dict, List, Any, Optional
 
-# Test files to run (excluding special test files or utility modules)
-SKILL_TEST_FILES = [
-    "skills/test_hf_bert.py",
-    "skills/test_hf_clip.py",
-    "skills/test_hf_llama.py",
-    "skills/test_hf_t5.py",
-    "skills/test_hf_wav2vec2.py",
-    "skills/test_hf_whisper.py",
-    "skills/test_hf_xclip.py",
-    "skills/test_hf_clap.py",
-    "skills/test_default_embed.py",
-    "skills/test_default_lm.py",
-    "skills/test_hf_llava.py",
-    "skills/test_hf_llava_next.py"
+# Define the base directory
+BASE_DIR = Path("/home/barberb/ipfs_accelerate_py/test")
+SKILLS_DIR = BASE_DIR / "skills"
+APIS_DIR = BASE_DIR / "apis"
+PERFORMANCE_RESULTS_DIR = BASE_DIR / "performance_results"
+
+# Create performance results directory if it doesn't exist
+PERFORMANCE_RESULTS_DIR.mkdir(exist_ok=True)
+
+# Define the list of skill tests to run
+SKILL_TESTS = [
+    "test_hf_bert.py",
+    "test_hf_clip.py",
+    "test_hf_llama.py",
+    "test_hf_t5.py",
+    "test_hf_wav2vec2.py",
+    "test_hf_whisper.py",
+    "test_hf_xclip.py",
+    "test_hf_clap.py",
+    "test_default_embed.py",
+    "test_default_lm.py",
 ]
 
-def run_test_file(test_file: str) -> Dict[str, Any]:
-    """
-    Run a single test file and capture its results.
+# Define the list of API tests to run
+API_TESTS = [
+    "test_claude.py",
+    "test_gemini.py",
+    "test_groq.py",
+    "test_ollama.py",
+    "test_openai_api.py",
+]
+
+def run_test(test_file, test_dir, timeout=600):
+    """Run a single test and return its results
     
     Args:
-        test_file: Path to the test file
+        test_file (str): Name of the test file
+        test_dir (Path): Directory containing the test file
+        timeout (int): Timeout in seconds
         
     Returns:
-        Dict containing test results and performance metrics
+        dict: Test results or error message
     """
-    print(f"\n{'='*80}")
-    print(f"Running test: {test_file}")
-    print(f"{'='*80}")
+    print(f"Running test: {test_file}", flush=True)
+    test_path = test_dir / test_file
     
     try:
-        # Get module name from file path
-        module_path = test_file.replace('/', '.').replace('.py', '')
-        
-        # Extract the class name from the file name (assuming naming convention)
-        file_name = os.path.basename(test_file)
-        class_name = file_name.replace('.py', '')
-        
-        # Import the module
-        module = importlib.import_module(module_path)
-        
-        # Get the test class
-        test_class = getattr(module, class_name)
-        
-        # Create an instance of the test class
-        test_instance = test_class()
-        
-        # Run the test and capture results
+        # Run the test with timeout
         start_time = time.time()
-        results = test_instance.test()
-        total_time = time.time() - start_time
+        cmd = [sys.executable, str(test_path)]
         
-        # Add total execution time to results
-        results["total_execution_time"] = total_time
+        # Create a new process to run the test
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+        )
         
-        print(f"\nTest completed in {total_time:.2f} seconds")
-        return {
+        # Wait for the process to complete or timeout
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+            return_code = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return_code = -1
+            
+        elapsed_time = time.time() - start_time
+        
+        if return_code == 0:
+            print(f"✅ Test passed: {test_file} in {elapsed_time:.2f}s", flush=True)
+        else:
+            print(f"❌ Test failed: {test_file} (code {return_code})", flush=True)
+            
+        # Try to extract JSON results from stdout
+        result = {
             "test_file": test_file,
-            "status": "Success",
-            "results": results,
-            "execution_time": total_time
+            "elapsed_time": elapsed_time,
+            "return_code": return_code,
+            "stdout": stdout[:1000] + "..." if len(stdout) > 1000 else stdout,
+            "stderr": stderr[:1000] + "..." if len(stderr) > 1000 else stderr,
         }
+        
+        # Try to parse any JSON in the output
+        try:
+            # Look for JSON content in the output
+            json_start = stdout.find("{")
+            json_end = stdout.rfind("}")
+            
+            if json_start >= 0 and json_end > json_start:
+                json_content = stdout[json_start:json_end+1]
+                parsed_json = json.loads(json_content)
+                result["json_result"] = parsed_json
+        except Exception as json_err:
+            result["json_parse_error"] = str(json_err)
+        
+        return result
         
     except Exception as e:
-        print(f"Error running test {test_file}: {e}")
-        traceback.print_exc()
+        print(f"Error running test {test_file}: {e}", flush=True)
         return {
             "test_file": test_file,
-            "status": "Error",
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }
 
-def extract_performance_metrics(results: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extract performance metrics from test results.
+def run_all_tests(args):
+    """Run all the specified tests and save results
     
     Args:
-        results: Test results dictionary
-        
-    Returns:
-        Dict containing extracted performance metrics
+        args: Command-line arguments
     """
-    metrics = {}
-    
-    # Skip if there was an error
-    if results.get("status") != "Success" or not results.get("results"):
-        return {"error": "No valid results to extract metrics from"}
-    
-    test_results = results["results"]
-    
-    # Extract platform-specific metrics
-    platforms = ["cpu", "cuda", "openvino", "apple", "qualcomm"]
-    
-    for platform in platforms:
-        platform_metrics = {}
-        
-        # Check for platform initialization status
-        for key in test_results:
-            if key.startswith(f"{platform}_"):
-                platform_metrics[key] = test_results[key]
-        
-        # Extract implementation type
-        implementation_type = None
-        for key in test_results:
-            if key.startswith(f"{platform}_") and "Success" in str(test_results[key]):
-                # Parse implementation type from status string (e.g., "Success (REAL)")
-                status = test_results[key]
-                if "(" in status and ")" in status:
-                    implementation_type = status.split("(")[1].split(")")[0]
-                    break
-        
-        if implementation_type:
-            platform_metrics["implementation_type"] = implementation_type
-        
-        # Extract platform examples (may contain performance metrics)
-        examples = []
-        for key in test_results:
-            if key.endswith("_example") and platform in key:
-                examples.append(test_results[key])
-        
-        if examples:
-            platform_metrics["examples"] = examples
-            
-            # Extract performance data from examples
-            for example in examples:
-                if "performance" in example and example["performance"]:
-                    platform_metrics["performance_metrics"] = example["performance"]
-                    break
-        
-        # Extract capabilities info if available
-        if f"{platform}_capabilities" in test_results:
-            platform_metrics["capabilities"] = test_results[f"{platform}_capabilities"]
-        
-        # Add to metrics if we found any data
-        if platform_metrics:
-            metrics[platform] = platform_metrics
-    
-    return metrics
-
-def run_all_tests() -> Dict[str, Any]:
-    """
-    Run all tests and collect performance metrics.
-    
-    Returns:
-        Dict containing all test results and metrics
-    """
-    all_results = {}
-    
-    for test_file in SKILL_TEST_FILES:
-        print(f"\nTesting {test_file}...")
-        
-        # Run test and get results
-        results = run_test_file(test_file)
-        
-        # Extract performance metrics
-        performance_metrics = extract_performance_metrics(results)
-        
-        # Store results and metrics
-        all_results[test_file] = {
-            "status": results.get("status"),
-            "execution_time": results.get("execution_time"),
-            "performance_metrics": performance_metrics
-        }
-        
-        # If there was an error, store the error details
-        if results.get("status") == "Error":
-            all_results[test_file]["error"] = results.get("error")
-            all_results[test_file]["traceback"] = results.get("traceback")
-    
-    return all_results
-
-def save_results(results: Dict[str, Any], filename: str = None) -> str:
-    """
-    Save test results to a JSON file.
-    
-    Args:
-        results: Test results to save
-        filename: Optional filename to use
-        
-    Returns:
-        Path to the saved file
-    """
-    # Generate filename if not provided
-    if not filename:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"performance_test_results_{timestamp}.json"
-    
-    # Create output directory if it doesn't exist
-    output_dir = os.path.join(os.path.dirname(__file__), "performance_results")
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Full path to output file
-    output_path = os.path.join(output_dir, filename)
-    
-    # Add metadata
-    results_with_metadata = {
-        "metadata": {
-            "timestamp": datetime.datetime.now().isoformat(),
-            "test_count": len(results),
-            "test_files": list(results.keys())
-        },
-        "results": results
+    results = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "python_version": sys.version,
+        "command": " ".join(sys.argv),
     }
     
-    # Save results to file
-    with open(output_path, 'w') as f:
-        json.dump(results_with_metadata, f, indent=2)
-    
-    print(f"\nResults saved to {output_path}")
-    return output_path
-
-def summarize_results(results: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """
-    Generate a summary of test results.
-    
-    Args:
-        results: Test results
-        
-    Returns:
-        Dict containing summary information
-    """
-    summary = {
-        "cpu": {"success": 0, "error": 0, "real_impl": 0, "mock_impl": 0},
-        "cuda": {"success": 0, "error": 0, "real_impl": 0, "mock_impl": 0},
-        "openvino": {"success": 0, "error": 0, "real_impl": 0, "mock_impl": 0},
-        "total_execution_time": 0
-    }
-    
-    for test_file, test_data in results.items():
-        # Add execution time to total
-        if "execution_time" in test_data:
-            summary["total_execution_time"] += test_data["execution_time"]
-        
-        # Process each platform's metrics
-        for platform in ["cpu", "cuda", "openvino"]:
-            if platform not in test_data.get("performance_metrics", {}):
+    # Run skill tests if selected
+    if args.skills:
+        skill_results = {}
+        for test_file in SKILL_TESTS:
+            if args.filter and args.filter not in test_file:
                 continue
-            
-            platform_metrics = test_data["performance_metrics"][platform]
-            
-            # Check for success or failure in platform metrics
-            success = False
-            for key, value in platform_metrics.items():
-                if isinstance(value, str) and "Success" in value:
-                    success = True
-                    summary[platform]["success"] += 1
-                    break
-            
-            if not success and not platform_metrics.get("error"):
-                for key, value in platform_metrics.items():
-                    if isinstance(value, str) and "Failed" in value or "Error" in value:
-                        summary[platform]["error"] += 1
-                        break
-            
-            # Check implementation type
-            impl_type = platform_metrics.get("implementation_type", "")
-            if impl_type == "REAL":
-                summary[platform]["real_impl"] += 1
-            elif impl_type == "MOCK":
-                summary[platform]["mock_impl"] += 1
+            skill_results[test_file] = run_test(test_file, SKILLS_DIR, args.timeout)
+        results["skill_tests"] = skill_results
     
-    return summary
+    # Run API tests if selected
+    if args.apis:
+        api_results = {}
+        for test_file in API_TESTS:
+            if args.filter and args.filter not in test_file:
+                continue
+            api_results[test_file] = run_test(test_file, APIS_DIR, args.timeout)
+        results["api_tests"] = api_results
+    
+    # Save results with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    test_type = []
+    if args.skills:
+        test_type.append("skills")
+    if args.apis:
+        test_type.append("apis")
+    
+    filter_suffix = f"_{args.filter}" if args.filter else ""
+    results_filename = f"performance_test_{'_'.join(test_type)}{filter_suffix}_{timestamp}.json"
+    results_path = PERFORMANCE_RESULTS_DIR / results_filename
+    
+    with open(results_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"Results saved to: {results_path}")
+    
+    # Print summary
+    print("\nTest Summary:")
+    
+    if args.skills:
+        print("\nSkill Tests:")
+        for test_file, result in results["skill_tests"].items():
+            status = "✅ PASSED" if result.get("return_code", -1) == 0 else "❌ FAILED"
+            time_str = f"({result.get('elapsed_time', 0):.2f}s)" if "elapsed_time" in result else ""
+            print(f"{status} {test_file} {time_str}")
+    
+    if args.apis:
+        print("\nAPI Tests:")
+        for test_file, result in results["api_tests"].items():
+            status = "✅ PASSED" if result.get("return_code", -1) == 0 else "❌ FAILED"
+            time_str = f"({result.get('elapsed_time', 0):.2f}s)" if "elapsed_time" in result else ""
+            print(f"{status} {test_file} {time_str}")
+    
+    # Generate performance metrics report
+    generate_report(results, args)
 
-def print_summary(summary: Dict[str, Dict[str, Any]]):
-    """
-    Print a summary of test results.
+def get_implementation_status(result):
+    """Extract implementation status from test results
     
     Args:
-        summary: Summary information
+        result (dict): Test result
+        
+    Returns:
+        tuple: (cpu_status, cuda_status, openvino_status)
     """
-    print("\n" + "="*80)
-    print("TEST RESULTS SUMMARY")
-    print("="*80)
+    # Default to unknown/mock status
+    cpu_status = "UNKNOWN"
+    cuda_status = "UNKNOWN"
+    openvino_status = "UNKNOWN"
     
-    # Print platform-specific summaries
-    for platform in ["cpu", "cuda", "openvino"]:
-        platform_summary = summary[platform]
-        print(f"\n{platform.upper()} Implementation:")
-        print(f"  Success: {platform_summary['success']}")
-        print(f"  Errors: {platform_summary['error']}")
-        print(f"  Real Implementations: {platform_summary['real_impl']}")
-        print(f"  Mock Implementations: {platform_summary['mock_impl']}")
+    try:
+        # Try to get status from nested JSON result
+        json_result = result.get("json_result", {})
+        
+        # First check for status dict
+        status = json_result.get("status", {})
+        if status:
+            # Look for CPU status
+            for key in status:
+                if "cpu_init" in key or "cpu_handler" in key:
+                    if "REAL" in status[key]:
+                        cpu_status = "REAL"
+                    elif "MOCK" in status[key]:
+                        cpu_status = "MOCK"
+                        
+            # Look for CUDA status
+            for key in status:
+                if "cuda_init" in key or "cuda_handler" in key:
+                    if "REAL" in status[key]:
+                        cuda_status = "REAL"
+                    elif "MOCK" in status[key]:
+                        cuda_status = "MOCK"
+                        
+            # Look for OpenVINO status
+            for key in status:
+                if "openvino_init" in key or "openvino_handler" in key:
+                    if "REAL" in status[key]:
+                        openvino_status = "REAL"
+                    elif "MOCK" in status[key]:
+                        openvino_status = "MOCK"
+        
+        # Fallback to checking in examples
+        examples = json_result.get("examples", [])
+        if examples:
+            for example in examples:
+                platform = example.get("platform", "")
+                impl_type = example.get("implementation_type", example.get("implementation", ""))
+                
+                if platform == "CPU" and "REAL" in impl_type:
+                    cpu_status = "REAL"
+                elif platform == "CUDA" and "REAL" in impl_type:
+                    cuda_status = "REAL"
+                elif platform == "OpenVINO" and "REAL" in impl_type:
+                    openvino_status = "REAL"
+    except Exception as e:
+        print(f"Error extracting implementation status: {e}")
     
-    # Print total execution time
-    print(f"\nTotal Execution Time: {summary['total_execution_time']:.2f} seconds")
-    print("="*80)
+    return (cpu_status, cuda_status, openvino_status)
+
+def generate_report(results, args):
+    """Generate a report on all test results
+    
+    Args:
+        results (dict): Combined test results
+        args: Command-line arguments
+    """
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    report = f"# Performance Test Report - {timestamp}\n\n"
+    report += "## Overview\n\n"
+    report += "| Model | CPU Status | CUDA Status | OpenVINO Status | Notes |\n"
+    report += "|-------|------------|-------------|-----------------|-------|\n"
+    
+    # Add skill tests to report
+    skill_results = results.get("skill_tests", {})
+    for test_file, result in skill_results.items():
+        # Extract model name from test file
+        model_name = test_file.replace("test_", "").replace(".py", "")
+        model_name = model_name.replace("hf_", "").replace("default_", "")
+        model_name = model_name.upper()
+        
+        # Get implementation status
+        cpu_status, cuda_status, openvino_status = get_implementation_status(result)
+        
+        # Add to report table
+        report += f"| {model_name} | {cpu_status} | {cuda_status} | {openvino_status} | |\n"
+    
+    # Add additional sections
+    report += "\n## Implementation Details\n\n"
+    report += "The following models had improvements in their implementations:\n\n"
+    
+    for test_file, result in skill_results.items():
+        model_name = test_file.replace("test_", "").replace(".py", "")
+        model_name = model_name.replace("hf_", "").replace("default_", "")
+        model_name = model_name.upper()
+        
+        cpu_status, cuda_status, openvino_status = get_implementation_status(result)
+        
+        # Check if any of them is REAL
+        if "REAL" in [cpu_status, cuda_status, openvino_status]:
+            report += f"### {model_name}\n"
+            if cpu_status == "REAL":
+                report += "- Successfully using REAL implementation on CPU\n"
+            if cuda_status == "REAL":
+                report += "- Successfully using REAL implementation on CUDA\n"
+            if openvino_status == "REAL":
+                report += "- Successfully using REAL implementation on OpenVINO\n"
+            
+            # Try to extract more details from the result
+            try:
+                json_result = result.get("json_result", {})
+                
+                # Get model name actually used
+                metadata = json_result.get("metadata", {})
+                test_model = metadata.get("test_model", "")
+                if test_model:
+                    report += f"- Using model: {test_model}\n"
+                
+                # Check performance metrics
+                examples = json_result.get("examples", [])
+                if examples:
+                    for example in examples:
+                        platform = example.get("platform", "")
+                        if platform and "elapsed_time" in example:
+                            report += f"- {platform} Execution time: {example['elapsed_time']:.4f}s\n"
+            except Exception as e:
+                print(f"Error extracting additional details: {e}")
+            
+            report += "\n"
+    
+    # Save the report
+    timestamp_file = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filter_suffix = f"_{args.filter}" if args.filter else ""
+    report_filename = f"performance_report{filter_suffix}_{timestamp_file}.md"
+    report_path = PERFORMANCE_RESULTS_DIR / report_filename
+    
+    with open(report_path, "w") as f:
+        f.write(report)
+    
+    print(f"Performance report saved to: {report_path}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Run performance tests for all models")
+    parser.add_argument("--skills", action="store_true", help="Run skill tests")
+    parser.add_argument("--apis", action="store_true", help="Run API tests")
+    parser.add_argument("--all", action="store_true", help="Run all tests")
+    parser.add_argument("--filter", type=str, help="Only run tests containing this string")
+    parser.add_argument("--timeout", type=int, default=600, help="Test timeout in seconds (default: 600)")
+    
+    args = parser.parse_args()
+    
+    # If no specific test type is selected, run all tests
+    if not args.skills and not args.apis and not args.all:
+        args.skills = True  # Default to skills
+    
+    # If --all is specified, run both skill and API tests
+    if args.all:
+        args.skills = True
+        args.apis = True
+    
+    run_all_tests(args)
 
 if __name__ == "__main__":
-    print("\nRunning performance tests for all skills...\n")
-    
-    # Run all tests and collect results
-    all_results = run_all_tests()
-    
-    # Save results to file
-    output_path = save_results(all_results)
-    
-    # Summarize and print results
-    summary = summarize_results(all_results)
-    print_summary(summary)
-    
-    print(f"\nDetailed results saved to: {output_path}")
+    main()

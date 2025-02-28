@@ -1,94 +1,10 @@
 {
   "status": {
-    "init": "Success",
-    "cpu_init": "Success (REAL)",
-    "cpu_handler": "Success (REAL)",
-    "cpu_embedding_shape": [
-      1,
-      768
-    ],
-    "cpu_embedding_type": "torch.float32",
-    "cuda_init": "Success (REAL)",
-    "cuda_benchmark": {
-      "average_inference_time": 0.3592255115509033,
-      "iterations": 1,
-      "cuda_device": "Quadro P4000",
-      "cuda_memory_used_mb": 68.41064453125
-    },
-    "cuda_handler": "Success (REAL)",
-    "cuda_embedding_shape": [
-      1,
-      768
-    ],
-    "openvino_init": "Success (REAL)",
-    "openvino_handler": "Success (REAL)",
-    "openvino_embedding_shape": [
-      1,
-      768
-    ],
-    "apple_tests": "Apple Silicon not available",
-    "qualcomm_init": "Success (MOCK)",
-    "qualcomm_tests": "Error: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+    "test_error": "[Errno 32] Broken pipe"
   },
-  "examples": [
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          768
-        ],
-        "embedding_type": "torch.float32"
-      },
-      "timestamp": "2025-02-27T20:22:50.041169",
-      "elapsed_time": 0.0010781288146972656,
-      "implementation_type": "REAL",
-      "platform": "CPU"
-    },
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          768
-        ],
-        "embedding_type": null,
-        "performance_metrics": {
-          "inference_time": 0.0016078948974609375,
-          "gpu_memory_mb": 0.01904296875,
-          "is_simulated": true
-        }
-      },
-      "timestamp": "2025-02-27T20:22:50.687622",
-      "elapsed_time": 0.0016222000122070312,
-      "implementation_type": "REAL",
-      "platform": "CUDA",
-      "is_simulated": true
-    },
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          768
-        ]
-      },
-      "timestamp": "2025-02-27T20:22:50.911043",
-      "elapsed_time": 0.0011992454528808594,
-      "implementation_type": "REAL",
-      "platform": "OpenVINO"
-    }
-  ],
+  "examples": [],
   "metadata": {
-    "model_name": "/tmp/bert_test_model",
-    "test_timestamp": "2025-02-27T20:22:50.920653",
-    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "torch_version": "2.4.0+cu121",
-    "transformers_version": "4.49.0",
-    "platform_status": {
-      "cuda": "Ready (REAL)",
-      "apple": "Apple Silicon not available",
-      "qualcomm": "Failed: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
-    }
+    "error": "[Errno 32] Broken pipe",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 1094, in test\n    output = test_handler(self.test_text)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/hf_bert.py\", line 1413, in handler\n    raise e\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/hf_bert.py\", line 1400, in handler\n    last_hidden = hidden_states.masked_fill(~attention_mask.bool().unsqueeze(-1), 0.0)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 1146, in __test__\n    test_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 1116, in test\n    traceback.print_exc()\n  File \"/usr/lib/python3.12/traceback.py\", line 180, in print_exc\n    print_exception(sys.exception(), limit=limit, file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 125, in print_exception\n    te.print(file=file, chain=chain)\n  File \"/usr/lib/python3.12/traceback.py\", line 1050, in print\n    print(line, file=file, end=\"\")\nBrokenPipeError: [Errno 32] Broken pipe\n"
   }
 }

@@ -23,19 +23,19 @@
     "cuda_device": "Quadro P4000",
     "cuda_memory_allocated_mb": 0.0,
     "cuda_memory_reserved_mb": 2.0,
-    "openvino_init": "Success (MOCK)",
-    "openvino_single": "Success (MOCK)",
+    "openvino_init": "Success (REAL)",
+    "openvino_single": "Success (REAL)",
     "openvino_single_shape": [
       1,
       384
     ],
     "openvino_single_type": "torch.float32",
-    "openvino_batch": "Success (MOCK)",
+    "openvino_batch": "Success (REAL)",
     "openvino_batch_shape": [
       2,
       384
     ],
-    "openvino_similarity": "Success (MOCK)",
+    "openvino_similarity": "Success (REAL)",
     "openvino_similarity_in_range": true,
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Success (MOCK)",
@@ -51,8 +51,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T23:06:04.559130",
-      "elapsed_time": 0.0014922618865966797,
+      "timestamp": "2025-02-28T00:14:44.140926",
+      "elapsed_time": 0.0005850791931152344,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -66,8 +66,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T23:06:04.560654",
-      "elapsed_time": 0.0014636516571044922,
+      "timestamp": "2025-02-28T00:14:44.141576",
+      "elapsed_time": 0.0006270408630371094,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -75,10 +75,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9848279356956482,
+        "similarity_value": 0.9838671088218689,
         "in_range": true
       },
-      "timestamp": "2025-02-27T23:06:04.561054",
+      "timestamp": "2025-02-28T00:14:44.141744",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
@@ -92,8 +92,8 @@
           384
         ]
       },
-      "timestamp": "2025-02-27T23:06:05.338076",
-      "elapsed_time": 0.0865473747253418,
+      "timestamp": "2025-02-28T00:14:44.373748",
+      "elapsed_time": 0.002810955047607422,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "single"
@@ -106,8 +106,8 @@
           384
         ]
       },
-      "timestamp": "2025-02-27T23:06:05.340410",
-      "elapsed_time": 0.002317667007446289,
+      "timestamp": "2025-02-28T00:14:44.376734",
+      "elapsed_time": 0.0029594898223876953,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
       "test_type": "batch"
@@ -115,10 +115,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9693778157234192,
+        "similarity_value": 0.9848127961158752,
         "in_range": true
       },
-      "timestamp": "2025-02-27T23:06:05.340510",
+      "timestamp": "2025-02-28T00:14:44.376915",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CUDA",
@@ -133,9 +133,9 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T23:06:13.296084",
-      "elapsed_time": 0.026211261749267578,
-      "implementation_type": "(MOCK)",
+      "timestamp": "2025-02-28T00:14:44.563914",
+      "elapsed_time": 0.0048944950103759766,
+      "implementation_type": "(REAL)",
       "platform": "OpenVINO",
       "test_type": "single"
     },
@@ -148,21 +148,21 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T23:06:13.306528",
-      "elapsed_time": 0.010402679443359375,
-      "implementation_type": "(MOCK)",
+      "timestamp": "2025-02-28T00:14:44.569872",
+      "elapsed_time": 0.005869388580322266,
+      "implementation_type": "(REAL)",
       "platform": "OpenVINO",
       "test_type": "batch"
     },
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 1.0,
+        "similarity_value": 0.9838839769363403,
         "in_range": true
       },
-      "timestamp": "2025-02-27T23:06:13.306804",
+      "timestamp": "2025-02-28T00:14:44.571064",
       "elapsed_time": 0.001,
-      "implementation_type": "(MOCK)",
+      "implementation_type": "(REAL)",
       "platform": "OpenVINO",
       "test_type": "similarity"
     },
@@ -171,17 +171,17 @@
       "output": {
         "embedding_shape": null
       },
-      "timestamp": "2025-02-27T23:06:13.389876",
-      "elapsed_time": 0.003358602523803711,
+      "timestamp": "2025-02-28T00:14:44.894725",
+      "elapsed_time": 0.002877473831176758,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
     }
   ],
   "metadata": {
-    "model_name": "/tmp/embed_test_model",
-    "test_timestamp": "2025-02-27T23:06:13.389898",
-    "timestamp": 1740726373.3899004,
+    "model_name": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+    "test_timestamp": "2025-02-28T00:14:44.894756",
+    "timestamp": 1740730484.8947604,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -197,11 +197,11 @@
     "platform_status": {
       "cpu": "Ready (REAL)",
       "cuda": "Ready (REAL)",
-      "openvino": "Ready (MOCK)",
+      "openvino": "Ready (REAL)",
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "embed-test-1740726373",
+    "test_run_id": "embed-test-1740730484",
     "model_testing": {
       "tested_models": [
         "/tmp/embed_test_model",
@@ -213,7 +213,7 @@
         "sentence-transformers/all-mpnet-base-v2",
         "sentence-transformers/multi-qa-mpnet-base-dot-v1"
       ],
-      "best_model": "/tmp/embed_test_model",
+      "best_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
       "model_success_counts": {
         "/tmp/embed_test_model": 15,
         "sentence-transformers/paraphrase-MiniLM-L3-v2": 15,
@@ -224,7 +224,7 @@
         "sentence-transformers/all-mpnet-base-v2": 15,
         "sentence-transformers/multi-qa-mpnet-base-dot-v1": 15
       },
-      "test_timestamp": "2025-02-27T23:06:16.900473"
+      "test_timestamp": "2025-02-28T00:14:44.894947"
     }
   }
 }

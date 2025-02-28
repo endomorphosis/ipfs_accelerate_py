@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "timestamp": "2025-02-28T00:21:12.360977",
+    "test_file": "skills/test_hf_xclip.py",
+    "model": "hf_xclip",
+    "execution_time": 3.6676464080810547
+  },
+  "results": {
+    "init": "Success",
+    "load_video": "Success (MOCK)",
+    "load_video_timestamp": 1740730868.6990066,
+    "load_video_frame_count": 8,
+    "cpu_init": "Success (REAL)",
+    "cpu_text_embedding": "Success (REAL)",
+    "cpu_text_embedding_shape": [
+      1,
+      512
+    ],
+    "cpu_text_embedding_timestamp": 1740730870.336293,
+    "cpu_video_embedding": "Success (REAL)",
+    "cpu_video_embedding_shape": [
+      1,
+      512
+    ],
+    "cpu_video_embedding_timestamp": 1740730870.3364227,
+    "cpu_similarity": "Success (REAL)",
+    "cpu_similarity_score": 0.044316694140434265,
+    "cpu_similarity_timestamp": 1740730870.3372562,
+    "cpu_similarity_example": {
+      "input": {
+        "text": "A person dancing",
+        "video": "Video frames (array data)"
+      },
+      "output": {
+        "similarity_value": 0.044316694140434265
+      },
+      "implementation_type": "(REAL)",
+      "platform": "CPU"
+    },
+    "cuda_init": "Success (MOCK)",
+    "cuda_text": "Success (MOCK)",
+    "cuda_text_embedding_shape": [
+      1,
+      512
+    ],
+    "cuda_text_timestamp": 1740730870.3584402,
+    "cuda_video": "Success (MOCK)",
+    "cuda_video_embedding_shape": [
+      1,
+      512
+    ],
+    "cuda_video_timestamp": 1740730870.3585186,
+    "cuda_similarity": "Success (MOCK)",
+    "cuda_similarity_score": -0.03263310715556145,
+    "cuda_similarity_timestamp": 1740730870.3588068,
+    "openvino_init": "Success (REAL)",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Failed Qualcomm initialization",
+    "qualcomm_handler": "Success (MOCK)",
+    "qualcomm_output_timestamp": 1740730872.3607886,
+    "qualcomm_output_keys": [
+      "text_embedding",
+      "video_embedding",
+      "similarity",
+      "implementation_type"
+    ],
+    "qualcomm_text_embedding_shape": [
+      1,
+      512
+    ],
+    "qualcomm_video_embedding_shape": [
+      1,
+      512
+    ],
+    "qualcomm_similarity_score": 0.800000011920929,
+    "total_execution_time": 3.6676464080810547
+  }
+}

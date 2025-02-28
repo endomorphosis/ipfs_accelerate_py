@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "timestamp": "2025-02-28T00:12:55.721872",
+    "test_file": "skills/test_hf_bert.py",
+    "model": "hf_bert",
+    "execution_time": 2.9497878551483154
+  },
+  "results": {
+    "status": {
+      "init": "Success",
+      "cpu_init": "Success (REAL)",
+      "cpu_handler": "Success (REAL)",
+      "cpu_embedding_shape": [
+        1,
+        768
+      ],
+      "cpu_embedding_type": "torch.float32",
+      "cuda_init": "Success (REAL)",
+      "cuda_benchmark": {
+        "average_inference_time": 0.4900505542755127,
+        "iterations": 1,
+        "cuda_device": "Quadro P4000",
+        "cuda_memory_used_mb": 68.41064453125
+      },
+      "cuda_handler": "Success (REAL)",
+      "cuda_embedding_shape": [
+        1,
+        768
+      ],
+      "openvino_init": "Success (REAL)",
+      "openvino_handler": "Success (REAL)",
+      "openvino_embedding_shape": [
+        1,
+        768
+      ],
+      "apple_tests": "Apple Silicon not available",
+      "qualcomm_init": "Success (MOCK)",
+      "qualcomm_tests": "Error: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+    },
+    "examples": [
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            768
+          ],
+          "embedding_type": "torch.float32"
+        },
+        "timestamp": "2025-02-28T00:12:54.604880",
+        "elapsed_time": 0.0009186267852783203,
+        "implementation_type": "REAL",
+        "platform": "CPU"
+      },
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            768
+          ],
+          "embedding_type": null,
+          "performance_metrics": {
+            "inference_time": 0.0059244632720947266,
+            "gpu_memory_mb": 0.01904296875,
+            "is_simulated": true
+          }
+        },
+        "timestamp": "2025-02-28T00:12:55.447784",
+        "elapsed_time": 0.005959272384643555,
+        "implementation_type": "REAL",
+        "platform": "CUDA",
+        "is_simulated": true
+      },
+      {
+        "input": "The quick brown fox jumps over the lazy dog",
+        "output": {
+          "embedding_shape": [
+            1,
+            768
+          ]
+        },
+        "timestamp": "2025-02-28T00:12:55.713849",
+        "elapsed_time": 0.0017077922821044922,
+        "implementation_type": "REAL",
+        "platform": "OpenVINO"
+      }
+    ],
+    "metadata": {
+      "model_name": "/tmp/bert_test_model",
+      "test_timestamp": "2025-02-28T00:12:55.721279",
+      "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+      "torch_version": "2.4.0+cu121",
+      "transformers_version": "4.49.0",
+      "platform_status": {
+        "cuda": "Ready (REAL)",
+        "apple": "Apple Silicon not available",
+        "qualcomm": "Failed: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+      }
+    },
+    "total_execution_time": 2.9497878551483154
+  }
+}
