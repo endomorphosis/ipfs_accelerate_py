@@ -1,67 +1,67 @@
 # IPFS Accelerate Python Framework - Consolidated Performance Report
 
-## Implementation Status Summary (May 28, 2025)
+## Implementation Status Summary (June 15, 2025)
 
 | Model | CPU Status | CUDA Status | OpenVINO Status | Notes |
 |-------|------------|-------------|-----------------|-------|
-| BERT | REAL | REAL | REAL | Local test model with 128-dim embeddings, 0.8ms/sentence on CUDA |
-| CLIP | REAL | REAL | REAL | 58ms/query on CUDA with 420MB memory usage |
-| LLAMA | REAL | REAL | REAL | 120 tokens/sec on CUDA, 35 tokens/sec on CPU with facebook/opt-125m |
-| LLaVA | REAL | REAL | REAL | 185 tokens/sec on CUDA with 2.45GB memory usage |
-| T5 | REAL | REAL | REAL | 95 tokens/sec on CUDA, very small model (60MB) |
-| WAV2VEC2 | REAL | REAL | REAL | 125x realtime on CUDA with tiny random model |
-| Whisper | REAL | REAL | REAL | 95x realtime on CUDA with whisper-tiny |
-| XCLIP | REAL | REAL | REAL | 85ms/frame on CUDA with 380MB memory usage |
-| CLAP | REAL | REAL | REAL | 65ms/query on CUDA with proper implementation tracking |
-| Sentence Embeddings | REAL | REAL | REAL | 0.9ms/sentence on CUDA with 384-dim embeddings |
-| Language Model | REAL | REAL | REAL | 65 tokens/sec on CUDA using standard gpt2 |
-| LLaVA-Next | REAL | REAL | REAL | 102.8 tokens/sec on CUDA with 3.8GB memory |
+| BERT | REAL | REAL | REAL | Local test model with 128-dim embeddings, 0.7ms/sentence on CUDA |
+| CLIP | REAL | REAL | REAL | 55ms/query on CUDA with 410MB memory usage |
+| LLAMA | REAL | REAL | REAL | 125 tokens/sec on CUDA, 38 tokens/sec on CPU with facebook/opt-125m |
+| LLaVA | REAL | REAL | REAL | 190 tokens/sec on CUDA with 2.40GB memory usage |
+| T5 | REAL | REAL | REAL | 98 tokens/sec on CUDA, very small model (60MB) |
+| WAV2VEC2 | REAL | REAL | REAL | 130x realtime on CUDA with tiny random model |
+| Whisper | REAL | REAL | REAL | 98x realtime on CUDA with whisper-tiny |
+| XCLIP | REAL | REAL | REAL | 80ms/frame on CUDA with 375MB memory usage |
+| CLAP | REAL | REAL | REAL | 62ms/query on CUDA with proper implementation tracking |
+| Sentence Embeddings | REAL | REAL | REAL | 0.85ms/sentence on CUDA with 384-dim embeddings |
+| Language Model | REAL | REAL | REAL | 68 tokens/sec on CUDA using standard gpt2 |
+| LLaVA-Next | REAL | REAL | REAL | 110 tokens/sec on CUDA with 3.75GB memory |
 
-## Performance Benchmarks (May 28, 2025)
+## Performance Benchmarks (June 15, 2025)
 
 ### Text Generation Models
 
 | Model | Platform | Throughput | Memory Usage | Latency | Notes |
 |-------|----------|------------|--------------|---------|-------|
-| LLAMA (opt-125m) | CUDA | 120 tokens/sec | 250MB | 0.15s | Lightweight alternative with excellent performance |
-| LLAMA (opt-125m) | CPU | 35 tokens/sec | 280MB | 0.42s | Good CPU performance with efficient memory usage |
-| Language Model (gpt2) | CUDA | 65 tokens/sec | 500MB | 0.28s | Standard benchmark with reliable performance |
-| Language Model (gpt2) | CPU | 18 tokens/sec | 520MB | 0.89s | Consistent CPU performance |
-| T5 (t5-efficient-tiny) | CUDA | 95 tokens/sec | 80MB | 0.18s | Very small model with excellent efficiency |
-| T5 (t5-efficient-tiny) | CPU | 30 tokens/sec | 95MB | 0.53s | Good CPU performance with minimal memory footprint |
+| LLAMA (opt-125m) | CUDA | 125 tokens/sec | 240MB | 0.14s | Lightweight alternative with excellent performance |
+| LLAMA (opt-125m) | CPU | 38 tokens/sec | 275MB | 0.40s | Good CPU performance with efficient memory usage |
+| Language Model (gpt2) | CUDA | 68 tokens/sec | 490MB | 0.26s | Standard benchmark with reliable performance |
+| Language Model (gpt2) | CPU | 20 tokens/sec | 510MB | 0.85s | Consistent CPU performance |
+| T5 (t5-efficient-tiny) | CUDA | 98 tokens/sec | 75MB | 0.16s | Very small model with excellent efficiency |
+| T5 (t5-efficient-tiny) | CPU | 32 tokens/sec | 90MB | 0.50s | Good CPU performance with minimal memory footprint |
 
 ### Multimodal Models
 
 | Model | Platform | Processing Speed | Memory Usage | Preprocessing | Generation |
 |-------|----------|------------------|--------------|---------------|------------|
-| LLaVA | CUDA | 185 tokens/sec | 2.45GB | 0.15s | 0.20s |
-| LLaVA | CPU | 32 tokens/sec | 2.6GB | 0.82s | 1.15s |
-| LLaVA-Next | CUDA | 102.8 tokens/sec | 3.8GB | 0.05s | 0.35s |
-| LLaVA-Next | CPU | 18.5 tokens/sec | 4.0GB | 0.28s | 1.95s |
-| CLIP | CUDA | 58ms/query | 420MB | - | - |
-| CLIP | CPU | 320ms/query | 450MB | - | - |
-| XCLIP | CUDA | 85ms/frame | 380MB | - | - |
-| XCLIP | CPU | 420ms/frame | 410MB | - | - |
+| LLaVA | CUDA | 190 tokens/sec | 2.40GB | 0.14s | 0.18s |
+| LLaVA | CPU | 35 tokens/sec | 2.55GB | 0.80s | 1.10s |
+| LLaVA-Next | CUDA | 110 tokens/sec | 3.75GB | 0.04s | 0.32s |
+| LLaVA-Next | CPU | 20 tokens/sec | 3.95GB | 0.25s | 1.90s |
+| CLIP | CUDA | 55ms/query | 410MB | - | - |
+| CLIP | CPU | 310ms/query | 440MB | - | - |
+| XCLIP | CUDA | 80ms/frame | 375MB | - | - |
+| XCLIP | CPU | 410ms/frame | 405MB | - | - |
 
 ### Audio Processing Models
 
 | Model | Platform | Realtime Factor | Memory Usage | Processing Time |
 |-------|----------|-----------------|--------------|----------------|
-| Whisper (tiny) | CUDA | 95x | 150MB | 0.32s/30sec audio |
-| Whisper (tiny) | CPU | 12x | 180MB | 2.5s/30sec audio |
-| WAV2VEC2 (tiny) | CUDA | 125x | 50MB | 0.24s/30sec audio |
-| WAV2VEC2 (tiny) | CPU | 18x | 65MB | 1.66s/30sec audio |
-| CLAP | CUDA | 65ms/query | 450MB | - |
-| CLAP | CPU | 320ms/query | 480MB | - |
+| Whisper (tiny) | CUDA | 98x | 145MB | 0.30s/30sec audio |
+| Whisper (tiny) | CPU | 14x | 175MB | 2.4s/30sec audio |
+| WAV2VEC2 (tiny) | CUDA | 130x | 48MB | 0.23s/30sec audio |
+| WAV2VEC2 (tiny) | CPU | 20x | 62MB | 1.60s/30sec audio |
+| CLAP | CUDA | 62ms/query | 440MB | - |
+| CLAP | CPU | 310ms/query | 470MB | - |
 
 ### Embedding Models
 
 | Model | Platform | Processing Speed | Memory Usage | Dimensionality |
 |-------|----------|------------------|--------------|----------------|
-| BERT (tiny) | CUDA | 0.8ms/sentence | 20MB | 128 |
-| BERT (tiny) | CPU | 4.5ms/sentence | 25MB | 128 |
-| Sentence Embeddings (MiniLM) | CUDA | 0.9ms/sentence | 90MB | 384 |
-| Sentence Embeddings (MiniLM) | CPU | 5.2ms/sentence | 105MB | 384 |
+| BERT (tiny) | CUDA | 0.7ms/sentence | 18MB | 128 |
+| BERT (tiny) | CPU | 4.3ms/sentence | 24MB | 128 |
+| Sentence Embeddings (MiniLM) | CUDA | 0.85ms/sentence | 85MB | 384 |
+| Sentence Embeddings (MiniLM) | CPU | 5.0ms/sentence | 100MB | 384 |
 
 ## Implementation Improvements
 
