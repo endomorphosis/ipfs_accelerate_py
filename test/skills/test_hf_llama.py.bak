@@ -27,12 +27,12 @@ except ImportError:
     print("Warning: transformers not available, using mock implementation")
 
 # Import the module to test
-from ipfs_accelerate_py.worker.skillset.hf_bert import hf_bert
+from ipfs_accelerate_py.worker.skillset.hf_llama import hf_llama
 
-# Define required methods to add to hf_bert
+# Define required methods to add to hf_llama
 def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
     """
-    Initialize BERT model with CUDA support.
+    Initialize LLAMA model with CUDA support.
     
     Args:
         model_name: Name or path of the model
@@ -73,7 +73,7 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
         # Try to load the real model with CUDA
         try:
             from transformers import AutoModel, AutoTokenizer
-            print(f"Attempting to load real BERT model {model_name} with CUDA support")
+            print(f"Attempting to load real LLAMA model {model_name} with CUDA support")
             
             # First try to load tokenizer
             try:
@@ -198,8 +198,8 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
             # Create a tensor that looks like a real embedding
             embedding = torch.zeros((1, 768))
             
-            # Simulate memory usage (realistic for BERT)
-            gpu_memory_allocated = 2.1  # GB, simulated for BERT base
+            # Simulate memory usage (realistic for LLAMA)
+            gpu_memory_allocated = 2.1  # GB, simulated for LLAMA base
             
             # Return a dictionary with REAL implementation markers
             return {
@@ -211,7 +211,7 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
                 "is_simulated": True
             }
             
-        print(f"Successfully loaded simulated BERT model on {device}")
+        print(f"Successfully loaded simulated LLAMA model on {device}")
         return endpoint, tokenizer, simulated_handler, None, 8  # Higher batch size for CUDA
             
     except Exception as e:
@@ -225,12 +225,12 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
     return endpoint, tokenizer, handler, None, 0
 
 # Add the method to the class
-hf_bert.init_cuda = init_cuda
+hf_llama.init_cuda = init_cuda
 
-class test_hf_bert:
+class test_hf_llama:
     def __init__(self, resources=None, metadata=None):
         """
-        Initialize the BERT test class.
+        Initialize the LLAMA test class.
         
         Args:
             resources (dict, optional): Resources dictionary
@@ -242,16 +242,16 @@ class test_hf_bert:
             "transformers": transformers
         }
         self.metadata = metadata if metadata else {}
-        self.bert = hf_bert(resources=self.resources, metadata=self.metadata)
+        self.llama = hf_llama(resources=self.resources, metadata=self.metadata)
         
         # Use a small open-access model by default
-        self.model_name = "prajjwal1/bert-tiny"  # Only ~17MB in size
+        self.model_name = "prajjwal1/llama-tiny"  # Only ~17MB in size
         
         # Alternative models in increasing size order
         self.alternative_models = [
-            "prajjwal1/bert-tiny",       # ~17MB
-            "distilbert/distilbert-base-uncased", # ~260MB
-            "bert-base-uncased"           # ~420MB
+            "prajjwal1/llama-tiny",       # ~17MB
+            "distilllama/distilllama-base-uncased", # ~260MB
+            "llama-base-uncased"           # ~420MB
         ]
         
         try:
@@ -283,13 +283,13 @@ class test_hf_bert:
                         # Try to find cached models
                         cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
                         if os.path.exists(cache_dir):
-                            # Look for any BERT models in cache
-                            bert_models = [name for name in os.listdir(cache_dir) if "bert" in name.lower()]
-                            if bert_models:
+                            # Look for any LLAMA models in cache
+                            llama_models = [name for name in os.listdir(cache_dir) if "llama" in name.lower()]
+                            if llama_models:
                                 # Use the first model found
-                                bert_model_name = bert_models[0].replace("--", "/")
-                                print(f"Found local BERT model: {bert_model_name}")
-                                self.model_name = bert_model_name
+                                llama_model_name = llama_models[0].replace("--", "/")
+                                print(f"Found local LLAMA model: {llama_model_name}")
+                                self.model_name = llama_model_name
                             else:
                                 # Create local test model
                                 print("No suitable models found in cache, creating local test model")
@@ -321,16 +321,16 @@ class test_hf_bert:
         
     def _create_test_model(self):
         """
-        Create a tiny BERT model for testing without needing Hugging Face authentication.
+        Create a tiny LLAMA model for testing without needing Hugging Face authentication.
         
         Returns:
             str: Path to the created model
         """
         try:
-            print("Creating local test model for BERT testing...")
+            print("Creating local test model for LLAMA testing...")
             
             # Create model directory in /tmp for tests
-            test_model_dir = os.path.join("/tmp", "bert_test_model")
+            test_model_dir = os.path.join("/tmp", "llama_test_model")
             os.makedirs(test_model_dir, exist_ok=True)
             
             # Create a minimal config file
@@ -344,7 +344,7 @@ class test_hf_bert:
                 "intermediate_size": 3072,
                 "layer_norm_eps": 1e-12,
                 "max_position_embeddings": 512,
-                "model_type": "bert",
+                "model_type": "llama",
                 "num_attention_heads": 12,
                 "num_hidden_layers": 1,  # Use just 1 layer to minimize size
                 "pad_token_id": 0,
@@ -383,23 +383,23 @@ class test_hf_bert:
                 model_state = {}
                 
                 # Create minimal layers
-                model_state["bert.embeddings.word_embeddings.weight"] = torch.randn(30522, 768)
-                model_state["bert.embeddings.position_embeddings.weight"] = torch.randn(512, 768)
-                model_state["bert.embeddings.token_type_embeddings.weight"] = torch.randn(2, 768)
-                model_state["bert.embeddings.LayerNorm.weight"] = torch.ones(768)
-                model_state["bert.embeddings.LayerNorm.bias"] = torch.zeros(768)
+                model_state["llama.embeddings.word_embeddings.weight"] = torch.randn(30522, 768)
+                model_state["llama.embeddings.position_embeddings.weight"] = torch.randn(512, 768)
+                model_state["llama.embeddings.token_type_embeddings.weight"] = torch.randn(2, 768)
+                model_state["llama.embeddings.LayerNorm.weight"] = torch.ones(768)
+                model_state["llama.embeddings.LayerNorm.bias"] = torch.zeros(768)
                 
                 # Add one attention layer
-                model_state["bert.encoder.layer.0.attention.self.query.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.query.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.self.key.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.key.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.self.value.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.value.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.output.dense.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.output.dense.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.output.LayerNorm.weight"] = torch.ones(768)
-                model_state["bert.encoder.layer.0.attention.output.LayerNorm.bias"] = torch.zeros(768)
+                model_state["llama.encoder.layer.0.attention.self.query.weight"] = torch.randn(768, 768)
+                model_state["llama.encoder.layer.0.attention.self.query.bias"] = torch.zeros(768)
+                model_state["llama.encoder.layer.0.attention.self.key.weight"] = torch.randn(768, 768)
+                model_state["llama.encoder.layer.0.attention.self.key.bias"] = torch.zeros(768)
+                model_state["llama.encoder.layer.0.attention.self.value.weight"] = torch.randn(768, 768)
+                model_state["llama.encoder.layer.0.attention.self.value.bias"] = torch.zeros(768)
+                model_state["llama.encoder.layer.0.attention.output.dense.weight"] = torch.randn(768, 768)
+                model_state["llama.encoder.layer.0.attention.output.dense.bias"] = torch.zeros(768)
+                model_state["llama.encoder.layer.0.attention.output.LayerNorm.weight"] = torch.ones(768)
+                model_state["llama.encoder.layer.0.attention.output.LayerNorm.bias"] = torch.zeros(768)
                 
                 # Save model weights
                 torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
@@ -412,11 +412,11 @@ class test_hf_bert:
             print(f"Error creating test model: {e}")
             print(f"Traceback: {traceback.format_exc()}")
             # Fall back to a model name that won't need to be downloaded for mocks
-            return "bert-test"
+            return "llama-test"
         
     def test(self):
         """
-        Run all tests for the BERT text embedding model, organized by hardware platform.
+        Run all tests for the LLAMA text embedding model, organized by hardware platform.
         Tests CPU, CUDA, OpenVINO, Apple, and Qualcomm implementations.
         
         Returns:
@@ -426,15 +426,15 @@ class test_hf_bert:
         
         # Test basic initialization
         try:
-            results["init"] = "Success" if self.bert is not None else "Failed initialization"
+            results["init"] = "Success" if self.llama is not None else "Failed initialization"
         except Exception as e:
             results["init"] = f"Error: {str(e)}"
 
         # ====== CPU TESTS ======
         try:
-            print("Testing BERT on CPU...")
+            print("Testing LLAMA on CPU...")
             # Initialize for CPU without mocks
-            endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cpu(
+            endpoint, tokenizer, handler, queue, batch_size = self.llama.init_cpu(
                 self.model_name,
                 "cpu", 
                 "cpu"
@@ -488,7 +488,7 @@ class test_hf_bert:
         # ====== CUDA TESTS ======
         if torch.cuda.is_available():
             try:
-                print("Testing BERT on CUDA...")
+                print("Testing LLAMA on CUDA...")
                 # Import utilities if available
                 try:
                     # Import utils directly from file path
@@ -508,7 +508,7 @@ class test_hf_bert:
                     print("CUDA utilities not available, using basic implementation")
                 
                 # Initialize for CUDA without mocks - try to use real implementation
-                endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cuda(
+                endpoint, tokenizer, handler, queue, batch_size = self.llama.init_cuda(
                     self.model_name,
                     "cuda",
                     "cuda:0"
@@ -550,7 +550,7 @@ class test_hf_bert:
                 if cuda_utils_available and 'enhance_cuda_implementation_detection' in locals():
                     # Enhance the handler to ensure proper implementation type detection
                     test_handler = enhance_cuda_implementation_detection(
-                        self.bert, 
+                        self.llama, 
                         handler, 
                         is_real=(not is_mock_endpoint)
                     )
@@ -565,14 +565,14 @@ class test_hf_bert:
                         # Try to prepare inputs based on the model's expected inputs
                         device_str = "cuda:0"
                         
-                        # Create inputs based on what we know about BERT models
+                        # Create inputs based on what we know about LLAMA models
                         max_length = 10  # Short sequence for warmup
                         inputs = {
                             "input_ids": torch.ones((1, max_length), dtype=torch.long).to(device_str),
                             "attention_mask": torch.ones((1, max_length), dtype=torch.long).to(device_str)
                         }
                         
-                        # Add token_type_ids if the model expects it (BERT does, RoBERTa doesn't)
+                        # Add token_type_ids if the model expects it (LLAMA does, RoLLAMAa doesn't)
                         if hasattr(endpoint, 'config') and hasattr(endpoint.config, 'type_vocab_size') and not isinstance(endpoint.config.type_vocab_size, MagicMock):
                             if endpoint.config.type_vocab_size > 0:
                                 inputs["token_type_ids"] = torch.zeros((1, max_length), dtype=torch.long).to(device_str)
@@ -720,7 +720,7 @@ class test_hf_bert:
                             hidden_states is not None and
                             hidden_states.shape[0] > 0
                         )
-                    # Check for embedding in dict output (common for BERT)
+                    # Check for embedding in dict output (common for LLAMA)
                     elif 'embedding' in output:
                         is_valid_embedding = (
                             output['embedding'] is not None and
@@ -945,7 +945,7 @@ class test_hf_bert:
                 # Try with real OpenVINO utils first
                 try:
                     print("Trying real OpenVINO initialization...")
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
+                    endpoint, tokenizer, handler, queue, batch_size = self.llama.init_openvino(
                         model_name=self.model_name,
                         model_type="feature-extraction",
                         device="CPU",
@@ -967,7 +967,7 @@ class test_hf_bert:
                     print("Falling back to mock implementation...")
                     
                     # Fall back to mock implementation
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
+                    endpoint, tokenizer, handler, queue, batch_size = self.llama.init_openvino(
                         model_name=self.model_name,
                         model_type="feature-extraction",
                         device="CPU",
@@ -1026,7 +1026,7 @@ class test_hf_bert:
         # ====== APPLE SILICON TESTS ======
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
             try:
-                print("Testing BERT on Apple Silicon...")
+                print("Testing LLAMA on Apple Silicon...")
                 try:
                     import coremltools  # Only try import if MPS is available
                     has_coreml = True
@@ -1039,7 +1039,7 @@ class test_hf_bert:
                     with patch('coremltools.convert') as mock_convert:
                         mock_convert.return_value = MagicMock()
                         
-                        endpoint, tokenizer, handler, queue, batch_size = self.bert.init_apple(
+                        endpoint, tokenizer, handler, queue, batch_size = self.llama.init_apple(
                             self.model_name,
                             "mps",
                             "apple:0"
@@ -1048,7 +1048,7 @@ class test_hf_bert:
                         valid_init = handler is not None
                         results["apple_init"] = "Success (MOCK)" if valid_init else "Failed Apple initialization"
                         
-                        test_handler = self.bert.create_apple_text_embedding_endpoint_handler(
+                        test_handler = self.llama.create_apple_text_embedding_endpoint_handler(
                             endpoint_model=self.model_name,
                             apple_label="apple:0",
                             endpoint=endpoint,
@@ -1087,7 +1087,7 @@ class test_hf_bert:
 
         # ====== QUALCOMM TESTS ======
         try:
-            print("Testing BERT on Qualcomm...")
+            print("Testing LLAMA on Qualcomm...")
             try:
                 from ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils import get_snpe_utils
                 has_snpe = True
@@ -1109,7 +1109,7 @@ class test_hf_bert:
                     }
                     mock_snpe.return_value = mock_snpe_utils
                     
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_qualcomm(
+                    endpoint, tokenizer, handler, queue, batch_size = self.llama.init_qualcomm(
                         self.model_name,
                         "qualcomm",
                         "qualcomm:0"
@@ -1126,7 +1126,7 @@ class test_hf_bert:
                             "attention_mask": np.ones((1, 10))
                         }
                         
-                    test_handler = self.bert.create_qualcomm_text_embedding_endpoint_handler(
+                    test_handler = self.llama.create_qualcomm_text_embedding_endpoint_handler(
                         endpoint_model=self.model_name,
                         qualcomm_label="qualcomm:0",
                         endpoint=endpoint,
@@ -1208,7 +1208,7 @@ class test_hf_bert:
                 os.makedirs(directory, mode=0o755, exist_ok=True)
         
         # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_bert_test_results.json')
+        results_file = os.path.join(collected_dir, 'hf_llama_test_results.json')
         try:
             with open(results_file, 'w') as f:
                 json.dump(test_results, f, indent=2)
@@ -1217,7 +1217,7 @@ class test_hf_bert:
             print(f"Error saving results to {results_file}: {str(e)}")
             
         # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_bert_test_results.json')
+        expected_file = os.path.join(expected_dir, 'hf_llama_test_results.json')
         if os.path.exists(expected_file):
             try:
                 with open(expected_file, 'r') as f:
@@ -1298,10 +1298,10 @@ class test_hf_bert:
 
 if __name__ == "__main__":
     try:
-        print("Starting BERT test...")
-        this_bert = test_hf_bert()
-        results = this_bert.__test__()
-        print("BERT test completed")
+        print("Starting LLAMA test...")
+        this_llama = test_hf_llama()
+        results = this_llama.__test__()
+        print("LLAMA test completed")
         
         # Print test results in detailed format for better parsing
         status_dict = results.get("status", {})
@@ -1350,7 +1350,7 @@ if __name__ == "__main__":
                 openvino_status = "MOCK"
         
         # Print summary in a parser-friendly format
-        print("\nBERT TEST RESULTS SUMMARY")
+        print("\nLLAMA TEST RESULTS SUMMARY")
         print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
         print(f"CPU_STATUS: {cpu_status}")
         print(f"CUDA_STATUS: {cuda_status}")

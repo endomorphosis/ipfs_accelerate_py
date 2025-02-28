@@ -1,0 +1,97 @@
+{
+  "timestamp": "2025-02-28T00:43:30.459789",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter hf_whisper",
+  "skill_tests": {
+    "test_hf_whisper.py": {
+      "test_file": "test_hf_whisper.py",
+      "elapsed_time": 9.016584396362305,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nCreating local test model for better compatibility...\nCreating simplified local test model for Whisper...\nSimplified test model created at /tmp/whisper_test_model_simple\nUsing local test model at: /tmp/whisper_test_model_simple\nUsing test audio: /home/barberb/ipfs_accelerate_py/test/trans_test.mp3\nUsing mock Whisper implementation for CPU performance testing\nCreating MOCK CPU implementation...\nTesting Whisper on CUDA...\nSuccessfully imported CUDA utilities via path insertion\nUsing simulated CUDA implementation for performance testing...\nSuccessfully created simulated CUDA implementation\nCUDA inference completed in 0.0052 seconds\nOutput explicitly indicates REAL implementation\nOpenVINO import successful\nUsing simulated OpenVINO implementation for performance testing\nCreating simulated OpenVINO implementation...\nTesting simulated OpenVINO handler...\nModel type detected for Qualcomm: whisper\nError initializing Qualcomm Whisper model: /tmp/whisper_...",
+      "stderr": "",
+      "json_result": {
+        "init": "Success (REAL)",
+        "load_audio": "Success (REAL)",
+        "audio_format": "Shape: (224000,), SR: 16000",
+        "cpu_init": "Success (MOCK)",
+        "cpu_transcription_handler": "Success (MOCK)",
+        "cpu_transcription": "(MOCK) TRANSCRIPTION: This audio contains speech in English",
+        "cpu_transcription_example": {
+          "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "output": "(MOCK) TRANSCRIPTION: This audio contains speech in English",
+          "timestamp": 1740732217.7961237,
+          "elapsed_time": 0.0013680458068847656,
+          "implementation_type": "(MOCK)",
+          "platform": "CPU"
+        },
+        "cuda_init": "Success (REAL)",
+        "cuda_handler": "Success (REAL)",
+        "cuda_transcription": "Simulated CUDA Whisper transcription: This audio contains speech about machine learning and AI technology.",
+        "cuda_transcription_example": {
+          "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "output": "Simulated CUDA Whisper transcription: This audio contains speech about machine learning and AI technology.",
+          "timestamp": 1740732217.8223767,
+          "elapsed_time": 0.0051877498626708984,
+          "implementation_type": "REAL",
+          "platform": "CUDA",
+          "performance_metrics": {
+            "generation_time": 0.005
+          }
+        },
+        "openvino_init": "Success (REAL)",
+        "openvino_implementation_type": "REAL - simulated for performance testing",
+        "openvino_direct_test": "Success (REAL) - Simulated",
+        "openvino_transcription": "Simulated OpenVINO transcription: This audio contains speech about technology.",
+        "openvino_transcription_example": {
+          "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "output": "Simulated OpenVINO transcription: This audio contains speech about technology.",
+          "timestamp": 1740732217.917681,
+          "elapsed_time": 0.01,
+          "implementation_type": "REAL",
+          "platform": "OpenVINO",
+          "performance_metrics": {
+            "processing_time_ms": 10.0,
+            "audio_duration_seconds": 5.0,
+            "realtime_factor": 500.0
+          }
+        },
+        "apple_tests": "Apple Silicon not available",
+        "qualcomm_init": "Failed Qualcomm initialization",
+        "qualcomm_handler": "Success (MOCK)",
+        "qualcomm_transcription": "Error in Qualcomm Whisper handler: 'str' object is not callable",
+        "qualcomm_transcription_example": {
+          "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
+          "timestamp": 1740732217.9712722,
+          "elapsed_time": 0.09,
+          "implementation_type": "(MOCK)",
+          "platform": "Qualcomm"
+        },
+        "total_execution_time": 2.3534815311431885,
+        "metadata": {
+          "timestamp": 1740732217.9717586,
+          "torch_version": "2.4.0+cu121",
+          "numpy_version": "1.26.4",
+          "transformers_version": "4.49.0",
+          "cuda_available": true,
+          "cuda_device_count": 1,
+          "mps_available": false,
+          "transformers_mocked": false,
+          "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+          "test_model": "/tmp/whisper_test_model_simple",
+          "test_run_id": "whisper-test-1740732217",
+          "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+          "total_execution_time": 2.3534815311431885,
+          "platform_status": {
+            "cpu": "Success (MOCK)",
+            "cuda": "Success (REAL) - Simulated",
+            "openvino": "Success (REAL) - Simulated",
+            "apple": "Not tested yet",
+            "qualcomm": "Not tested yet"
+          },
+          "is_local_model": true
+        }
+      }
+    }
+  }
+}

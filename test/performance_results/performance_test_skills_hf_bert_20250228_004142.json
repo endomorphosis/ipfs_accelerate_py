@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-02-28T00:41:32.722003",
+  "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+  "command": "run_performance_tests.py --skills --filter hf_bert",
+  "skill_tests": {
+    "test_hf_bert.py": {
+      "test_file": "test_hf_bert.py",
+      "elapsed_time": 9.734678506851196,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nStarting BERT test...\nCreating local test model for BERT testing...\nCreated PyTorch model weights in /tmp/bert_test_model/pytorch_model.bin\nTest model created at /tmp/bert_test_model\nUsing model: /tmp/bert_test_model\nTesting BERT on CPU...\nLoading /tmp/bert_test_model for CPU inference...\nError loading model: Using `low_cpu_mem_usage=True` or a `device_map` requires Accelerate: `pip install 'accelerate>=0.26.0'`\nFalling back to mock implementation\n(MOCK) Created mock BERT tokenizer\n(MOCK) Created mock BERT endpoint for /tmp/bert_test_model on cpu\nTesting BERT on CUDA...\nSuccessfully imported CUDA utilities from direct path\nAttempting to load real BERT model /tmp/bert_test_model with CUDA support\nSuccessfully loaded tokenizer for /tmp/bert_test_model\nSuccessfully loaded model /tmp/bert_test_model\nModel loaded to cuda:0 and optimized for inference\nFound real model with config.hidden_size, confirming REAL implementation\nCUDA initialization: Succes...",
+      "stderr": "2025-02-28 00:41:39,932 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\nSome weights of BertModel were not initialized from the model checkpoint at /tmp/bert_test_model and are newly initialized: ['bert.encoder.layer.0.intermediate.dense.bias', 'bert.encoder.layer.0.intermediate.dense.weight', 'bert.encoder.layer.0.output.LayerNorm.bias', 'bert.encoder.layer.0.output.LayerNorm.weight', 'bert.encoder.layer.0.output.dense.bias', 'bert.encoder.layer.0.output.dense.weight', 'bert.pooler.dense.bias', 'bert.pooler.dense.weight']\nYou should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.\n2025-02-28 00:41:40,125 - utils - INFO - Auto-detected 6.99GB of available CUDA memory\n2025-02-28 00:41:40,125 - utils - INFO - Optimizing model for CUDA memory usage\n2025-02-28 00:41:40,221 - utils - INFO - Using half precision (FP16) for faster inference\n2025-02-28 00:41:40,241 - utils - INFO - Cleared CUDA cache for optimal memory usage\n2025-02...",
+      "json_parse_error": "Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+    }
+  }
+}

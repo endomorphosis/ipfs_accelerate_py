@@ -1414,94 +1414,19 @@ class test_hf_llama:
         Returns:
             dict: Test results
         """
-        # For LLaMA, we use predefined results to ensure consistency
-        print("Using predefined results that match expected values")
-        
-        # Pre-define expected test results to ensure consistency
-        test_results = {
-            "status": {
-              "init": "Success",
-              "cpu_init": "Success (REAL)",
-              "cpu_handler": "Success (REAL)",
-              "cpu_output": "Valid (REAL)",
-              "cpu_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a clever fox named Finn who lived in the f...",
-              "cuda_init": "Success (REAL)",
-              "cuda_handler": "Success (REAL)",
-              "cuda_output": "Valid (REAL)",
-              "cuda_sample_text": "Write a short story about a fox and a dog. Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together...",
-              "openvino_init": "Success (REAL)",
-              "openvino_handler": "Success (REAL)",
-              "openvino_output": "Valid (REAL)",
-              "openvino_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a fox named Rusty and a dog named Max...",
-              "apple_tests": "Apple Silicon not available",
-              "qualcomm_init": "Success (MOCK)",
-              "qualcomm_handler": "Success (MOCK)",
-              "qualcomm_output": "Valid (MOCK)",
-              "qualcomm_sample_text": "(MOCK) Qualcomm SNPE output: Once upon a time in the forest, there liv"
-            },
-            "examples": [
-                {
-                    "input": self.test_prompt,
-                    "output": {
-                        "generated_text": "Once upon a time, there was a clever fox named Finn who lived in the forest. One day, he met a friendly dog named Max who had gotten lost while on a walk with his owner."
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": 1.5,
-                    "implementation_type": "REAL",
-                    "platform": "CPU"
-                },
-                {
-                    "input": self.test_prompt,
-                    "output": {
-                        "generated_text": "Once upon a time, there was a fox named Rusty and a dog named Max. They lived on opposite sides of a large forest but would often meet in the clearing by the river."
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": 0.8,
-                    "implementation_type": "REAL",
-                    "platform": "OpenVINO"
-                },
-                {
-                    "input": self.test_prompt,
-                    "output": {
-                        "generated_text": "Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together.",
-                        "implementation_type": "REAL",
-                        "memory_allocated_mb": 450.0,
-                        "generation_time_seconds": 0.32,
-                        "device": "cuda:0"
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": 0.32,
-                    "implementation_type": "REAL",
-                    "is_simulated": True,
-                    "platform": "CUDA"
-                },
-                {
-                    "input": self.test_prompt,
-                    "output": {
-                        "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": 0.5,
-                    "implementation_type": "MOCK",
-                    "platform": "Qualcomm"
+        # Run actual tests instead of using predefined results
+        test_results = {}
+        try:
+            test_results = self.test()
+        except Exception as e:
+            test_results = {
+                "status": {"test_error": str(e)},
+                "examples": [],
+                "metadata": {
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
                 }
-            ],
-            "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": {
-                    "cuda": "CUDA not available",
-                    "apple": "Apple Silicon not available",
-                },
-                "cuda_available": torch.cuda.is_available(),
-                "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
-                "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
-                "transformers_mocked": isinstance(self.resources["transformers"], MagicMock)
             }
-        }
         
         # Create directories if they don't exist
         expected_dir = os.path.join(os.path.dirname(__file__), 'expected_results')
@@ -1558,6 +1483,105 @@ class test_hf_llama:
 
 if __name__ == "__main__":
     try:
+        print("Starting LLaMA test...")
+        this_llama = test_hf_llama()
+        results = this_llama.__test__()
+        print("LLaMA test completed")
+        
+        # Print test results in detailed format for better parsing
+        status_dict = results.get("status", {})
+        examples = results.get("examples", [])
+        metadata = results.get("metadata", {})
+        
+        # Extract implementation status
+        cpu_status = "UNKNOWN"
+        cuda_status = "UNKNOWN"
+        openvino_status = "UNKNOWN"
+        
+        for key, value in status_dict.items():
+            if "cpu_" in key and "REAL" in value:
+                cpu_status = "REAL"
+            elif "cpu_" in key and "MOCK" in value:
+                cpu_status = "MOCK"
+                
+            if "cuda_" in key and "REAL" in value:
+                cuda_status = "REAL"
+            elif "cuda_" in key and "MOCK" in value:
+                cuda_status = "MOCK"
+                
+            if "openvino_" in key and "REAL" in value:
+                openvino_status = "REAL"
+            elif "openvino_" in key and "MOCK" in value:
+                openvino_status = "MOCK"
+                
+        # Also look in examples
+        for example in examples:
+            platform = example.get("platform", "")
+            impl_type = example.get("implementation_type", "")
+            
+            if platform == "CPU" and "REAL" in impl_type:
+                cpu_status = "REAL"
+            elif platform == "CPU" and "MOCK" in impl_type:
+                cpu_status = "MOCK"
+                
+            if platform == "CUDA" and "REAL" in impl_type:
+                cuda_status = "REAL"
+            elif platform == "CUDA" and "MOCK" in impl_type:
+                cuda_status = "MOCK"
+                
+            if platform == "OpenVINO" and "REAL" in impl_type:
+                openvino_status = "REAL"
+            elif platform == "OpenVINO" and "MOCK" in impl_type:
+                openvino_status = "MOCK"
+        
+        # Print summary in a parser-friendly format
+        print("
+LLAMA TEST RESULTS SUMMARY")
+        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
+        print(f"CPU_STATUS: {cpu_status}")
+        print(f"CUDA_STATUS: {cuda_status}")
+        print(f"OPENVINO_STATUS: {openvino_status}")
+        
+        # Print performance information if available
+        for example in examples:
+            platform = example.get("platform", "")
+            output = example.get("output", {})
+            elapsed_time = example.get("elapsed_time", 0)
+            
+            print(f"
+{platform} PERFORMANCE METRICS:")
+            print(f"  Elapsed time: {elapsed_time:.4f}s")
+            
+            if "generated_text" in output:
+                text = output["generated_text"]
+                print(f"  Generated text sample: {text[:50]}...")
+                
+            # Check for detailed metrics
+            if "performance_metrics" in output:
+                metrics = output["performance_metrics"]
+                for k, v in metrics.items():
+                    print(f"  {k}: {v}")
+        
+        # Print a JSON representation to make it easier to parse
+        print("
+structured_results")
+        print(json.dumps({
+            "status": {
+                "cpu": cpu_status,
+                "cuda": cuda_status,
+                "openvino": openvino_status
+            },
+            "model_name": metadata.get("model_name", "Unknown"),
+            "examples": examples
+        }))
+        
+    except KeyboardInterrupt:
+        print("Tests stopped by user.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error during testing: {str(e)}")
+        traceback.print_exc()
+        sys.exit(1)
         print("Starting LLaMA test...")
         this_llama = test_hf_llama()
         results = this_llama.__test__()
