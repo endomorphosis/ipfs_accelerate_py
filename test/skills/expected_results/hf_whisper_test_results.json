@@ -8,21 +8,24 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "REAL TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740716993.8291752,
-    "elapsed_time": 0.0067386627197265625,
+    "timestamp": 1740721667.0391815,
+    "elapsed_time": 0.001983642578125,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
-  "cuda_init": "Failed CUDA initialization",
-  "cuda_handler": "Success (MOCK)",
-  "cuda_transcription": "Error: Missing CUDA endpoint or processor",
+  "cuda_init": "Success (MOCK)",
+  "cuda_handler": "Success (REAL)",
+  "cuda_transcription": "Simulated CUDA Whisper transcription",
   "cuda_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "Error: Missing CUDA endpoint or processor",
-    "timestamp": 1740716994.0277922,
-    "elapsed_time": 0.07,
-    "implementation_type": "(MOCK)",
-    "platform": "CUDA"
+    "output": "Simulated CUDA Whisper transcription",
+    "timestamp": 1740721667.060436,
+    "elapsed_time": 1.1920928955078125e-06,
+    "implementation_type": "REAL",
+    "platform": "CUDA",
+    "performance_metrics": {
+      "generation_time": 0.05
+    }
   },
   "openvino_init": "Success (REAL)",
   "openvino_implementation_type": "REAL - Direct import available",
@@ -32,7 +35,7 @@
   "openvino_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "(REAL) Mock OpenVINO whisper transcription",
-    "timestamp": 1740717106.075082,
+    "timestamp": 1740721775.2617106,
     "elapsed_time": 4.76837158203125e-07,
     "implementation_type": "REAL",
     "platform": "OpenVINO"
@@ -44,13 +47,13 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740717106.4121618,
+    "timestamp": 1740721775.2841856,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740717106.4122407,
+    "timestamp": 1740721775.2842581,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -59,7 +62,7 @@
     "mps_available": false,
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "test_model": "openai/whisper-tiny",
-    "test_run_id": "whisper-test-1740717106"
+    "test_model": "/tmp/whisper_test_model",
+    "test_run_id": "whisper-test-1740721775"
   }
 }

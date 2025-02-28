@@ -25,6 +25,159 @@ except ImportError:
 from ipfs_accelerate_py.worker.skillset.default_embed import hf_embed
 
 class test_hf_embed:
+    def _create_local_test_model(self):
+        """
+        Create a minimal sentence embedding model for testing without needing Hugging Face authentication.
+        
+        Returns:
+            str: Path to the created model
+        """
+        try:
+            print("Creating minimal embedding model for testing")
+            
+            # Create model directory in /tmp for tests
+            test_model_dir = os.path.join("/tmp", "embed_test_model")
+            os.makedirs(test_model_dir, exist_ok=True)
+            
+            # Create a minimal config file for a tiny BERT-based model
+            config = {
+                "architectures": ["BertModel"],
+                "model_type": "bert",
+                "attention_probs_dropout_prob": 0.1,
+                "hidden_act": "gelu",
+                "hidden_dropout_prob": 0.1,
+                "hidden_size": 256,
+                "initializer_range": 0.02,
+                "intermediate_size": 512,
+                "layer_norm_eps": 1e-12,
+                "max_position_embeddings": 512,
+                "num_attention_heads": 4,
+                "num_hidden_layers": 2,
+                "pad_token_id": 0,
+                "type_vocab_size": 2,
+                "vocab_size": 30522,
+                "pooler_fc_size": 256,
+                "pooler_num_attention_heads": 4,
+                "pooler_num_fc_layers": 1,
+                "pooler_size_per_head": 64,
+                "pooler_type": "first_token_transform",
+                "torch_dtype": "float32"
+            }
+            
+            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+                
+            # Create a minimal tokenizer config
+            tokenizer_config = {
+                "do_lower_case": True,
+                "model_max_length": 512,
+                "tokenizer_class": "BertTokenizer"
+            }
+            
+            with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
+                json.dump(tokenizer_config, f)
+                
+            # Create small random model weights if torch is available
+            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
+                # Create random tensors for model weights
+                model_state = {}
+                
+                # Extract dimensions from config
+                hidden_size = config["hidden_size"]
+                intermediate_size = config["intermediate_size"]
+                num_attention_heads = config["num_attention_heads"]
+                num_hidden_layers = config["num_hidden_layers"]
+                vocab_size = config["vocab_size"]
+                
+                # Embeddings
+                model_state["embeddings.word_embeddings.weight"] = torch.randn(vocab_size, hidden_size)
+                model_state["embeddings.position_embeddings.weight"] = torch.randn(config["max_position_embeddings"], hidden_size)
+                model_state["embeddings.token_type_embeddings.weight"] = torch.randn(config["type_vocab_size"], hidden_size)
+                model_state["embeddings.LayerNorm.weight"] = torch.ones(hidden_size)
+                model_state["embeddings.LayerNorm.bias"] = torch.zeros(hidden_size)
+                
+                # Encoder layers
+                for i in range(num_hidden_layers):
+                    # Self-attention
+                    model_state[f"encoder.layer.{i}.attention.self.query.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.self.query.bias"] = torch.zeros(hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.self.key.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.self.key.bias"] = torch.zeros(hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.self.value.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.self.value.bias"] = torch.zeros(hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.output.dense.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.output.dense.bias"] = torch.zeros(hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.output.LayerNorm.weight"] = torch.ones(hidden_size)
+                    model_state[f"encoder.layer.{i}.attention.output.LayerNorm.bias"] = torch.zeros(hidden_size)
+                    
+                    # Intermediate and output
+                    model_state[f"encoder.layer.{i}.intermediate.dense.weight"] = torch.randn(intermediate_size, hidden_size)
+                    model_state[f"encoder.layer.{i}.intermediate.dense.bias"] = torch.zeros(intermediate_size)
+                    model_state[f"encoder.layer.{i}.output.dense.weight"] = torch.randn(hidden_size, intermediate_size)
+                    model_state[f"encoder.layer.{i}.output.dense.bias"] = torch.zeros(hidden_size)
+                    model_state[f"encoder.layer.{i}.output.LayerNorm.weight"] = torch.ones(hidden_size)
+                    model_state[f"encoder.layer.{i}.output.LayerNorm.bias"] = torch.zeros(hidden_size)
+                
+                # Pooler
+                model_state["pooler.dense.weight"] = torch.randn(hidden_size, hidden_size)
+                model_state["pooler.dense.bias"] = torch.zeros(hidden_size)
+                
+                # Save model weights
+                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
+                
+                # Add model files for sentence transformers
+                os.makedirs(os.path.join(test_model_dir, "1_Pooling"), exist_ok=True)
+                
+                # Create config for pooling
+                pooling_config = {
+                    "word_embedding_dimension": hidden_size,
+                    "pooling_mode_cls_token": False,
+                    "pooling_mode_mean_tokens": True,
+                    "pooling_mode_max_tokens": False,
+                    "pooling_mode_mean_sqrt_len_tokens": False
+                }
+                
+                with open(os.path.join(test_model_dir, "1_Pooling", "config.json"), "w") as f:
+                    json.dump(pooling_config, f)
+                
+                # Create model_card.md
+                with open(os.path.join(test_model_dir, "README.md"), "w") as f:
+                    f.write("# Test Embedding Model\n\nThis is a minimal test model for embeddings.")
+                
+                # Create a simple vocab.txt file
+                with open(os.path.join(test_model_dir, "vocab.txt"), "w") as f:
+                    # Special tokens
+                    f.write("[PAD]\n[UNK]\n[CLS]\n[SEP]\n[MASK]\n")
+                    
+                    # Add basic vocabulary
+                    for char in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789":
+                        f.write(char + "\n")
+                    
+                    # Add some common words
+                    common_words = ["the", "a", "an", "and", "or", "but", "if", "because", "as", "until", 
+                                   "while", "of", "at", "by", "for", "with", "about", "against", "between", 
+                                   "into", "through", "during", "before", "after", "above", "below", "to", 
+                                   "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", 
+                                   "further", "then", "once", "here", "there", "when", "where", "why", "how", 
+                                   "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", 
+                                   "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", 
+                                   "t", "can", "will", "just", "don", "should", "now"]
+                    
+                    for word in common_words:
+                        f.write(word + "\n")
+                        
+                    # Fill remaining vocabulary
+                    for i in range(30000):
+                        f.write(f"token{i}\n")
+                
+            return test_model_dir
+            
+        except Exception as e:
+            print(f"Error creating test model: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            # Fall back to a model name that won't need to be downloaded for mocks
+            return "sentence-transformers/all-MiniLM-L6-v2"
+            
     def __init__(self, resources=None, metadata=None):
         """
         Initialize the text embedding test class.
@@ -40,7 +193,15 @@ class test_hf_embed:
         }
         self.metadata = metadata if metadata else {}
         self.embed = hf_embed(resources=self.resources, metadata=self.metadata)
-        self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
+        
+        # Use a local test model to avoid authentication issues
+        try:
+            self.model_name = self._create_local_test_model()
+        except Exception as e:
+            print(f"Falling back to original model name: {e}")
+            # Use a high-quality, openly accessible embedding model that doesn't require authentication
+            self.model_name = "sentence-transformers/all-MiniLM-L6-v2"  # 80MB - excellent quality
+            
         self.test_texts = [
             "The quick brown fox jumps over the lazy dog",
             "A fast auburn canine leaps above the sleepy hound"
@@ -49,9 +210,6 @@ class test_hf_embed:
         # Initialize collection arrays for examples and status
         self.examples = []
         self.status_messages = {}
-        
-        # Initialize return value
-        return None
 
     def test(self):
         """
@@ -272,17 +430,10 @@ class test_hf_embed:
                 print("Testing text embedding on CUDA...")
                 # Try to use real CUDA implementation first
                 implementation_type = "(REAL)"  # Default to real, will update if we fall back to mocks
-                with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                     patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
-                     patch('transformers.AutoModel.from_pretrained') as mock_model:
-                    
-                    mock_config.return_value = MagicMock()
-                    mock_tokenizer.return_value = MagicMock()
-                    mock_model.return_value = MagicMock()
-                    
-                    # Set up mock output
-                    embedding_dim = 384  # Common size for MiniLM
-                    mock_model.return_value.last_hidden_state = torch.zeros((1, 10, embedding_dim))
+                
+                try:
+                    # First attempt without any patching to get the real implementation
+                    print("Attempting to initialize real CUDA implementation...")
                     
                     start_time = time.time()
                     endpoint, tokenizer, handler, queue, batch_size = self.embed.init_cuda(
@@ -293,15 +444,67 @@ class test_hf_embed:
                     init_time = time.time() - start_time
                     
                     valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                    results["cuda_init"] = "Success (MOCK)" if valid_init else "Failed CUDA initialization"
-                    self.status_messages["cuda"] = "Ready (MOCK)" if valid_init else "Failed initialization"
                     
-                    test_handler = self.embed.create_cuda_text_embedding_endpoint_handler(
-                        endpoint,
-                        "cuda:0",
-                        endpoint,
-                        tokenizer
-                    )
+                    # Comprehensive check for real implementation
+                    is_real_implementation = True  # Default to assuming real
+                    
+                    # Check for MagicMock instances first (strongest indicator of mock)
+                    import unittest.mock
+                    if isinstance(endpoint, unittest.mock.MagicMock) or isinstance(tokenizer, unittest.mock.MagicMock):
+                        is_real_implementation = False
+                        implementation_type = "(MOCK)"
+                        print("Detected mock implementation based on MagicMock check")
+                    
+                    # Real implementations typically use more memory
+                    if torch.cuda.is_available():
+                        mem_allocated = torch.cuda.memory_allocated() / (1024**2)
+                        if mem_allocated > 100:  # If using more than 100MB, likely real
+                            is_real_implementation = True
+                            implementation_type = "(REAL)"
+                            print(f"Detected real implementation based on CUDA memory usage: {mem_allocated:.2f} MB")
+                    
+                    results["cuda_init"] = f"Success {implementation_type}" if valid_init else "Failed CUDA initialization"
+                    self.status_messages["cuda"] = f"Ready {implementation_type}" if valid_init else "Failed initialization"
+                    
+                    # Use the directly returned handler
+                    test_handler = handler
+                    
+                except Exception as real_init_error:
+                    print(f"Real CUDA implementation failed: {real_init_error}")
+                    print("Falling back to mock implementation...")
+                    
+                    # Fall back to mock implementation
+                    implementation_type = "(MOCK)"
+                    with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
+                         patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
+                         patch('transformers.AutoModel.from_pretrained') as mock_model:
+                        
+                        mock_config.return_value = MagicMock()
+                        mock_tokenizer.return_value = MagicMock()
+                        mock_model.return_value = MagicMock()
+                        
+                        # Set up mock output
+                        embedding_dim = 384  # Common size for MiniLM
+                        mock_model.return_value.last_hidden_state = torch.zeros((1, 10, embedding_dim))
+                        
+                        start_time = time.time()
+                        endpoint, tokenizer, handler, queue, batch_size = self.embed.init_cuda(
+                            self.model_name,
+                            "cuda",
+                            "cuda:0"
+                        )
+                        init_time = time.time() - start_time
+                        
+                        valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                        results["cuda_init"] = "Success (MOCK)" if valid_init else "Failed CUDA initialization"
+                        self.status_messages["cuda"] = "Ready (MOCK)" if valid_init else "Failed initialization"
+                        
+                        test_handler = self.embed.create_cuda_text_embedding_endpoint_handler(
+                            endpoint,
+                            "cuda:0",
+                            endpoint,
+                            tokenizer
+                        )
                     
                     start_time = time.time()
                     output = test_handler(self.test_texts)

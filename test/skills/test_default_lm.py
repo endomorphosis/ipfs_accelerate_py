@@ -25,32 +25,7 @@ except ImportError:
 from ipfs_accelerate_py.worker.skillset.default_lm import hf_lm
 
 class test_hf_lm:
-    def __init__(self, resources=None, metadata=None):
-        """
-        Initialize the language model test class.
-        
-        Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers  # Use real transformers if available
-        }
-        self.metadata = metadata if metadata else {}
-        self.lm = hf_lm(resources=self.resources, metadata=self.metadata)
-        
-        # Create or use local test model for testing
-        try:
-            self.model_name = self._create_test_model()
-        except Exception as e:
-            print(f"Error creating test model: {e}")
-            self.model_name = "facebook/opt-125m"
-            
-        self.test_prompt = "Once upon a time"
-        
-    def _create_test_model(self):
+    def _create_local_test_model(self):
         """
         Create a tiny language model for testing without needing Hugging Face authentication.
         
@@ -79,7 +54,7 @@ class test_hf_lm:
                 "max_position_embeddings": 1024,
                 "num_attention_heads": 4,
                 "num_hidden_layers": 2,
-                "pad_token_id": null,
+                "pad_token_id": None,
                 "vocab_size": 50257,
                 "torch_dtype": "float32",
                 "transformers_version": "4.35.2"
@@ -147,22 +122,49 @@ class test_hf_lm:
                 torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
                 print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
                 
-            # Create basic vocabulary files for tokenizer
-            merges_txt = "# \n"
-            for i in range(1, 1000):
-                merges_txt += f"a b\n"
-                merges_txt += f"c d\n"
-                merges_txt += f"e f\n"
-                
-            with open(os.path.join(test_model_dir, "merges.txt"), "w") as f:
-                f.write(merges_txt)
-                
-            vocab_json = {}
-            for i in range(50257):
-                vocab_json[f"token{i}"] = i
-                
+            # Create realistic vocabulary files for the tokenizer
+            # Create a simple but valid vocabulary and merges file
             with open(os.path.join(test_model_dir, "vocab.json"), "w") as f:
-                json.dump(vocab_json, f)
+                # Create a small but valid vocabulary
+                vocab = {
+                    "<|endoftext|>": 50256,
+                }
+                
+                # Add single characters
+                for i, char in enumerate(" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.!?-_"):
+                    vocab[char] = i
+                
+                # Add some common tokens to make it usable
+                for i, word in enumerate(["the", "and", "that", "is", "was", "for", "with", "this", "The", "I", "you", "not"]):
+                    vocab[word] = i + 100
+                
+                json.dump(vocab, f)
+            
+            # Create a simple merges file
+            with open(os.path.join(test_model_dir, "merges.txt"), "w") as f:
+                # Header for BPE merges file
+                f.write("#version: 0.2\n")
+                
+                # Add some basic merges - enough to be valid
+                merges = [
+                    "t h", "t he", "th e", "a n", "a nd", "an d",
+                    "i s", "w a", "w as", "wa s", "f o", "f or", "fo r",
+                    "w i", "w it", "w ith", "wi t", "wi th", "wit h",
+                    "T h", "T he", "Th e", 
+                ]
+                
+                for merge in merges:
+                    f.write(merge + "\n")
+                
+            # Create a special_tokens_map.json file
+            special_tokens = {
+                "eos_token": "<|endoftext|>",
+                "bos_token": "<|endoftext|>",
+                "unk_token": "<|endoftext|>"
+            }
+            
+            with open(os.path.join(test_model_dir, "special_tokens_map.json"), "w") as f:
+                json.dump(special_tokens, f)
                 
             print(f"Test model created at {test_model_dir}")
             return test_model_dir
@@ -171,7 +173,7 @@ class test_hf_lm:
             print(f"Error creating test model: {e}")
             print(f"Traceback: {traceback.format_exc()}")
             # Fall back to a model name that won't need to be downloaded for mocks
-            return "facebook/opt-125m"
+            return "gpt2"
             
     def __init__(self, resources=None, metadata=None):
         """
@@ -189,12 +191,21 @@ class test_hf_lm:
         self.metadata = metadata if metadata else {}
         self.lm = hf_lm(resources=self.resources, metadata=self.metadata)
         
-        # Try to create a local test model or use a default model
+        # Define fallback models
+        self.model_alternatives = [
+            "gpt2",               # 500MB - classic small language model
+            "distilgpt2",         # 330MB - smaller distilled version of GPT-2
+            "EleutherAI/pythia-70m"  # 150MB - tiny model for testing
+        ]
+        
+        # Try to create a local test model first
         try:
-            self.model_name = self._create_test_model()
+            # Always create a local test model to avoid authentication issues
+            self.model_name = self._create_local_test_model()
         except Exception as e:
-            print(f"Error creating test model: {e}")
-            self.model_name = "facebook/opt-125m"
+            print(f"Error creating local test model: {e}")
+            # Fall back to a public model as a last resort
+            self.model_name = self.model_alternatives[0]  # gpt2
             
         self.test_prompt = "Once upon a time"
         self.test_generation_config = {

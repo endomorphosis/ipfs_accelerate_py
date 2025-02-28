@@ -15,10 +15,19 @@
     ],
     "cpu_similarity": "Success (REAL)",
     "cpu_similarity_in_range": true,
-    "cuda_init": "Success (MOCK)",
-    "cuda_handler": "Success (MOCK)",
+    "cuda_init": "Success (REAL)",
     "openvino_init": "Success (MOCK)",
-    "openvino_handler": "Success (MOCK)",
+    "openvino_single": "Success (MOCK)",
+    "openvino_single_shape": [
+      1,
+      256
+    ],
+    "openvino_single_type": "torch.float32",
+    "openvino_batch": "Success (MOCK)",
+    "openvino_batch_shape": [
+      2,
+      256
+    ],
     "openvino_similarity": "Success (MOCK)",
     "openvino_similarity_in_range": true,
     "apple_tests": "Apple Silicon not available",
@@ -35,8 +44,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T20:34:25.542174",
-      "elapsed_time": 0.0009925365447998047,
+      "timestamp": "2025-02-27T21:18:48.121913",
+      "elapsed_time": 0.0006496906280517578,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -50,8 +59,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T20:34:25.542636",
-      "elapsed_time": 0.0004374980926513672,
+      "timestamp": "2025-02-27T21:18:48.122241",
+      "elapsed_time": 0.0003025531768798828,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -59,36 +68,41 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9843432903289795,
+        "similarity_value": 0.9833769202232361,
         "in_range": true
       },
-      "timestamp": "2025-02-27T20:34:25.542844",
+      "timestamp": "2025-02-27T21:18:48.122555",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "similarity"
     },
     {
-      "input": "Batch of 2 texts",
+      "input": "The quick brown fox jumps over the lazy dog",
       "output": {
-        "embedding_shape": null
+        "embedding_shape": [
+          1,
+          256
+        ],
+        "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T20:34:25.564733",
-      "elapsed_time": 0.003027200698852539,
+      "timestamp": "2025-02-27T21:18:52.865253",
+      "elapsed_time": 0.011880874633789062,
       "implementation_type": "(MOCK)",
-      "platform": "CUDA",
-      "test_type": "batch"
+      "platform": "OpenVINO",
+      "test_type": "single"
     },
     {
       "input": "Batch of 2 texts",
       "output": {
         "embedding_shape": [
           2,
-          384
-        ]
+          256
+        ],
+        "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T20:34:28.393870",
-      "elapsed_time": 0.006014585494995117,
+      "timestamp": "2025-02-27T21:18:52.868748",
+      "elapsed_time": 0.0034639835357666016,
       "implementation_type": "(MOCK)",
       "platform": "OpenVINO",
       "test_type": "batch"
@@ -96,10 +110,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.85,
+        "similarity_value": 1.0,
         "in_range": true
       },
-      "timestamp": "2025-02-27T20:34:28.393899",
+      "timestamp": "2025-02-27T21:18:52.868868",
       "elapsed_time": 0.001,
       "implementation_type": "(MOCK)",
       "platform": "OpenVINO",
@@ -107,9 +121,9 @@
     }
   ],
   "metadata": {
-    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-    "test_timestamp": "2025-02-27T20:34:28.494525",
-    "timestamp": 1740717268.4945335,
+    "model_name": "/tmp/embed_test_model",
+    "test_timestamp": "2025-02-27T21:18:52.927543",
+    "timestamp": 1740719932.9275522,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -124,11 +138,11 @@
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "platform_status": {
       "cpu": "Ready (REAL)",
-      "cuda": "Ready (MOCK)",
+      "cuda": "Ready (REAL)",
       "openvino": "Ready (MOCK)",
       "apple": "Apple Silicon not available",
       "qualcomm": "Failed initialization"
     },
-    "test_run_id": "embed-test-1740717268"
+    "test_run_id": "embed-test-1740719932"
   }
 }

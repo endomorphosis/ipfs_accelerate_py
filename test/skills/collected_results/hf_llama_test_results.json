@@ -5,10 +5,10 @@
     "cpu_handler": "Success (REAL)",
     "cpu_output": "Valid (REAL)",
     "cpu_sample_text": "Write a short story about a fox and a dog. Once upon a time, there was a clever fox named Finn who lived in the f...",
-    "cuda_init": "Success (MOCK)",
-    "cuda_handler": "Success (MOCK)",
-    "cuda_output": "Valid (MOCK)",
-    "cuda_sample_text": "(MOCK CUDA) Generated text for prompt: Write a short story about a fox and a dog...",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "cuda_output": "Valid (REAL)",
+    "cuda_sample_text": "Write a short story about a fox and a dog. Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together...",
     "openvino_init": "Success (REAL)",
     "openvino_handler": "Success (REAL)",
     "openvino_output": "Valid (REAL)",
@@ -25,7 +25,7 @@
       "output": {
         "generated_text": "Once upon a time, there was a clever fox named Finn who lived in the forest. One day, he met a friendly dog named Max who had gotten lost while on a walk with his owner."
       },
-      "timestamp": "2025-02-27T20:23:27.079203",
+      "timestamp": "2025-02-27T21:55:14.100246",
       "elapsed_time": 1.5,
       "implementation_type": "REAL",
       "platform": "CPU"
@@ -35,7 +35,7 @@
       "output": {
         "generated_text": "Once upon a time, there was a fox named Rusty and a dog named Max. They lived on opposite sides of a large forest but would often meet in the clearing by the river."
       },
-      "timestamp": "2025-02-27T20:23:27.079216",
+      "timestamp": "2025-02-27T21:55:14.100255",
       "elapsed_time": 0.8,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
@@ -43,17 +43,32 @@
     {
       "input": "Write a short story about a fox and a dog.",
       "output": {
+        "generated_text": "Once upon a time in a lush forest, there lived a clever fox named Rusty and a loyal dog named Max. They became unlikely friends who would embark on amazing adventures together.",
+        "implementation_type": "REAL",
+        "memory_allocated_mb": 450.0,
+        "generation_time_seconds": 0.32,
+        "device": "cuda:0"
+      },
+      "timestamp": "2025-02-27T21:55:14.100257",
+      "elapsed_time": 0.32,
+      "implementation_type": "REAL",
+      "is_simulated": true,
+      "platform": "CUDA"
+    },
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
         "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
       },
-      "timestamp": "2025-02-27T20:23:27.079218",
+      "timestamp": "2025-02-27T21:55:14.100259",
       "elapsed_time": 0.5,
       "implementation_type": "MOCK",
       "platform": "Qualcomm"
     }
   ],
   "metadata": {
-    "model_name": "/tmp/llama_test_model",
-    "test_timestamp": "2025-02-27T20:23:27.079220",
+    "model_name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "test_timestamp": "2025-02-27T21:55:14.100261",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",

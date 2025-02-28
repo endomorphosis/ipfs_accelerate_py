@@ -8,19 +8,19 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "",
-    "timestamp": 1740717796.2632208,
+    "timestamp": 1740719833.540998,
     "elapsed_time": 0.1,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
   "cpu_embedding_handler": "Success (REAL)",
   "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "[1.7563954591751099, -0.1798221468925476, -0.5570529103279114, 0.45440366864204407, -1.1108871698379517]...",
+  "cpu_embedding_sample": "[0.9573027491569519, -0.7943377494812012, 0.39808809757232666, -0.6703171133995056, -2.293583393096924]...",
   "cpu_embedding_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output_type": "<class 'dict'>",
     "embedding_length": 768,
-    "timestamp": 1740717796.3042188,
+    "timestamp": 1740719833.582458,
     "elapsed_time": 0.2,
     "implementation_type": "(REAL)",
     "platform": "CPU"
@@ -31,15 +31,15 @@
     "text": "(MOCK CUDA) Transcribed audio from /home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "implementation_type": "MOCK",
     "device": "cuda:0 (mock)",
-    "total_time": 0.10009980201721191,
+    "total_time": 0.10007643699645996,
     "is_simulated": true,
     "gpu_memory_mb": 0.0
   },
   "cuda_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "(MOCK CUDA) Transcribed audio from /home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "timestamp": 1740717796.4678707,
-    "elapsed_time": 0.10030007362365723,
+    "timestamp": 1740719833.7391753,
+    "elapsed_time": 0.100433349609375,
     "implementation_type": "(MOCK)",
     "platform": "CUDA",
     "performance_metrics": {}
@@ -53,13 +53,13 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "(MOCK) This is a mock Qualcomm transcription output",
-    "timestamp": 1740717796.7307463,
+    "timestamp": 1740719834.0103903,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740717796.730958,
+    "timestamp": 1740719834.010714,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -69,10 +69,10 @@
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "/tmp/wav2vec2_test_model",
-    "test_run_id": "wav2vec2-test-1740717796",
+    "test_run_id": "wav2vec2-test-1740719834",
     "implementation_type": "(REAL)",
     "os_platform": "linux",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "test_date": "2025-02-27 20:43:16"
+    "test_date": "2025-02-27 21:17:14"
   }
 }

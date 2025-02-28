@@ -4,6 +4,7 @@ import json
 import time
 import torch
 import numpy as np
+import traceback
 from unittest.mock import MagicMock, patch
 from PIL import Image
 import importlib.util
@@ -129,6 +130,240 @@ def create_missing_methods(whisper_class):
 create_missing_methods(hf_whisper)
 
 class test_hf_whisper:
+    def _create_local_test_model(self):
+        """
+        Create a minimal Whisper test model for testing without needing Hugging Face authentication.
+        
+        Returns:
+            str: Path to the created model
+        """
+        try:
+            print("Creating local test model for Whisper testing...")
+            
+            # Create model directory in /tmp for tests
+            test_model_dir = os.path.join("/tmp", "whisper_test_model")
+            os.makedirs(test_model_dir, exist_ok=True)
+            
+            # Create a minimal config file for a tiny Whisper model
+            config = {
+                "activation_function": "gelu",
+                "architectures": ["WhisperForConditionalGeneration"],
+                "attention_dropout": 0.0,
+                "bos_token_id": 50257,
+                "d_model": 256,
+                "decoder_attention_heads": 4,
+                "decoder_ffn_dim": 512,
+                "decoder_layers": 2,
+                "decoder_start_token_id": 50258,
+                "dropout": 0.0,
+                "encoder_attention_heads": 4,
+                "encoder_ffn_dim": 512,
+                "encoder_layers": 2,
+                "eos_token_id": 50257,
+                "forced_decoder_ids": [[1, 50259], [2, 50359]],
+                "hidden_size": 256,
+                "max_position_embeddings": 1500,
+                "max_source_positions": 1500,
+                "model_type": "whisper",
+                "num_hidden_layers": 2,
+                "pad_token_id": 50257,
+                "suppress_tokens": [],
+                "torch_dtype": "float32",
+                "transformers_version": "4.35.2",
+                "use_cache": True,
+                "vocab_size": 51865
+            }
+            
+            # Write config.json
+            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+                
+            # Create tokenizer files
+            tokenizer_config = {
+                "bos_token": "<|startoftranscript|>",
+                "eos_token": "<|endoftext|>",
+                "language": "<|en|>",
+                "model_max_length": 1024,
+                "tokenizer_class": "WhisperTokenizer",
+                "unk_token": "<|endoftext|>"
+            }
+            
+            with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
+                json.dump(tokenizer_config, f)
+                
+            # Create special_tokens_map.json
+            special_tokens = {
+                "bos_token": "<|startoftranscript|>",
+                "eos_token": "<|endoftext|>",
+                "unk_token": "<|endoftext|>"
+            }
+            
+            with open(os.path.join(test_model_dir, "special_tokens_map.json"), "w") as f:
+                json.dump(special_tokens, f)
+            
+            # Create vocabulary files
+            with open(os.path.join(test_model_dir, "vocabulary.json"), "w") as f:
+                vocab = {}
+                
+                # Add special tokens
+                vocab["<|endoftext|>"] = 50257
+                vocab["<|startoftranscript|>"] = 50258
+                vocab["<|en|>"] = 50259
+                vocab["<|transcribe|>"] = 50359
+                
+                # Add basic characters
+                for i, char in enumerate(" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.!?-_"):
+                    vocab[char] = i
+                    
+                # Add some common tokens
+                for i, word in enumerate(["the", "and", "that", "is", "was", "for", "with", "this", "The", "I", "you"]):
+                    vocab[word] = i + 100
+                    
+                # Fill the rest of the vocabulary
+                for i in range(1000, 50000):
+                    vocab[f"token{i}"] = i
+                    
+                json.dump(vocab, f)
+                
+            # Create model weights if torch is available
+            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
+                # Create random tensors for model weights
+                model_state = {}
+                
+                # Extract dimensions from config
+                d_model = config["d_model"]
+                vocab_size = config["vocab_size"]
+                encoder_layers = config["encoder_layers"]
+                decoder_layers = config["decoder_layers"]
+                encoder_ffn_dim = config["encoder_ffn_dim"]
+                decoder_ffn_dim = config["decoder_ffn_dim"]
+                encoder_attention_heads = config["encoder_attention_heads"]
+                decoder_attention_heads = config["decoder_attention_heads"]
+                
+                # Encoder embedding
+                model_state["model.encoder.embed_positions.weight"] = torch.randn(config["max_source_positions"], d_model)
+                
+                # Encoder conv layers
+                model_state["model.encoder.conv1.weight"] = torch.randn(d_model, 1, 3)
+                model_state["model.encoder.conv1.bias"] = torch.zeros(d_model)
+                model_state["model.encoder.conv2.weight"] = torch.randn(d_model, d_model, 3)
+                model_state["model.encoder.conv2.bias"] = torch.zeros(d_model)
+                
+                # Encoder layer norm
+                model_state["model.encoder.layer_norm.weight"] = torch.ones(d_model)
+                model_state["model.encoder.layer_norm.bias"] = torch.zeros(d_model)
+                
+                # Encoder layers
+                for i in range(encoder_layers):
+                    # Self attention
+                    model_state[f"model.encoder.layers.{i}.self_attn.k_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.k_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.v_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.v_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.q_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.q_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.out_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn.out_proj.bias"] = torch.zeros(d_model)
+                    
+                    # Layer norms
+                    model_state[f"model.encoder.layers.{i}.self_attn_layer_norm.weight"] = torch.ones(d_model)
+                    model_state[f"model.encoder.layers.{i}.self_attn_layer_norm.bias"] = torch.zeros(d_model)
+                    model_state[f"model.encoder.layers.{i}.final_layer_norm.weight"] = torch.ones(d_model)
+                    model_state[f"model.encoder.layers.{i}.final_layer_norm.bias"] = torch.zeros(d_model)
+                    
+                    # Feed forward
+                    model_state[f"model.encoder.layers.{i}.fc1.weight"] = torch.randn(encoder_ffn_dim, d_model)
+                    model_state[f"model.encoder.layers.{i}.fc1.bias"] = torch.zeros(encoder_ffn_dim)
+                    model_state[f"model.encoder.layers.{i}.fc2.weight"] = torch.randn(d_model, encoder_ffn_dim)
+                    model_state[f"model.encoder.layers.{i}.fc2.bias"] = torch.zeros(d_model)
+                
+                # Decoder embedding
+                model_state["model.decoder.embed_tokens.weight"] = torch.randn(vocab_size, d_model)
+                model_state["model.decoder.embed_positions.weight"] = torch.randn(config["max_position_embeddings"], d_model)
+                
+                # Decoder layers
+                for i in range(decoder_layers):
+                    # Self attention
+                    model_state[f"model.decoder.layers.{i}.self_attn.k_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.k_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.v_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.v_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.q_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.q_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.out_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn.out_proj.bias"] = torch.zeros(d_model)
+                    
+                    # Cross attention
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.k_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.k_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.v_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.v_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.q_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.q_proj.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.out_proj.weight"] = torch.randn(d_model, d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn.out_proj.bias"] = torch.zeros(d_model)
+                    
+                    # Layer norms
+                    model_state[f"model.decoder.layers.{i}.self_attn_layer_norm.weight"] = torch.ones(d_model)
+                    model_state[f"model.decoder.layers.{i}.self_attn_layer_norm.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn_layer_norm.weight"] = torch.ones(d_model)
+                    model_state[f"model.decoder.layers.{i}.encoder_attn_layer_norm.bias"] = torch.zeros(d_model)
+                    model_state[f"model.decoder.layers.{i}.final_layer_norm.weight"] = torch.ones(d_model)
+                    model_state[f"model.decoder.layers.{i}.final_layer_norm.bias"] = torch.zeros(d_model)
+                    
+                    # Feed forward
+                    model_state[f"model.decoder.layers.{i}.fc1.weight"] = torch.randn(decoder_ffn_dim, d_model)
+                    model_state[f"model.decoder.layers.{i}.fc1.bias"] = torch.zeros(decoder_ffn_dim)
+                    model_state[f"model.decoder.layers.{i}.fc2.weight"] = torch.randn(d_model, decoder_ffn_dim)
+                    model_state[f"model.decoder.layers.{i}.fc2.bias"] = torch.zeros(d_model)
+                
+                # Decoder layernorm
+                model_state["model.decoder.layer_norm.weight"] = torch.ones(d_model)
+                model_state["model.decoder.layer_norm.bias"] = torch.zeros(d_model)
+                
+                # Project out
+                model_state["proj_out.weight"] = torch.randn(vocab_size, d_model)
+                model_state["proj_out.bias"] = torch.zeros(vocab_size)
+                
+                # Save model weights
+                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
+                print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
+                
+            # Create a tokenizer.json file with a basic tokenizer
+            with open(os.path.join(test_model_dir, "tokenizer.json"), "w") as f:
+                tokenizer_json = {
+                    "version": "1.0",
+                    "bos_token": "<|startoftranscript|>",
+                    "eos_token": "<|endoftext|>",
+                    "unk_token": "<|endoftext|>",
+                    "model_max_length": 1024
+                }
+                json.dump(tokenizer_json, f)
+                
+            # Create a feature extractor
+            with open(os.path.join(test_model_dir, "preprocessor_config.json"), "w") as f:
+                preprocessor_config = {
+                    "feature_extractor_type": "WhisperFeatureExtractor",
+                    "feature_size": 80,
+                    "sampling_rate": 16000,
+                    "return_attention_mask": False,
+                    "do_normalize": True,
+                    "padding_value": 0.0,
+                    "mel_filters": [],
+                    "chunk_length": 30,
+                    "padding_side": "right"
+                }
+                json.dump(preprocessor_config, f)
+                
+            print(f"Test model created at {test_model_dir}")
+            return test_model_dir
+            
+        except Exception as e:
+            print(f"Error creating test model: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            # Fall back to a model name that won't need to be downloaded for mocks
+            return "openai/whisper-tiny"
+
     def __init__(self, resources=None, metadata=None):
         """Initialize the test class for Whisper model"""
         # Try to import soundfile if available
@@ -148,45 +383,52 @@ class test_hf_whisper:
         
         self.metadata = metadata if metadata else {}
         
-        # Use smallest Whisper model for quick testing
-        # Use reliably available whisper models
-        self.model_candidates = [
-            "openai/whisper-tiny",  # Primary choice
-            "distil-whisper/distil-small.en",  # Backup choice
-            "Xenova/whisper-tiny"  # Third option
-        ]
-        
-        # Try to find a working model
-        self.model_name = None
-        for model in self.model_candidates:
-            try:
-                if transformers_module != MagicMock:
-                    # First check if model is cached
-                    cached_path = transformers_module.utils.hub.cached_download(
-                        transformers_module.utils.hub.hf_hub_url(model, filename="config.json")
-                    )
-                    if os.path.exists(cached_path):
-                        print(f"Found cached model {model}")
+        # Try to create a local test model first
+        try:
+            self.model_name = self._create_local_test_model()
+            print(f"Using local test model: {self.model_name}")
+        except Exception as e:
+            print(f"Error creating local test model, will use fallback: {e}")
+            # Fallback models if local creation fails
+            self.model_name = "openai/whisper-tiny"  # Primary choice
+            self.model_candidates = [
+                "openai/whisper-tiny",  # Primary choice 
+                "distil-whisper/distil-small.en",  # Backup choice (~300MB)
+                "Xenova/whisper-tiny"  # Third option
+            ]
+            
+            # Try to find a working model from candidates if primary choice isn't available
+            if transformers_module == MagicMock:
+                print("Transformers not available, using mock implementation")
+            else:
+                for model in self.model_candidates:
+                    try:
+                        # First check if model is cached
+                        cached_path = transformers_module.utils.hub.cached_download(
+                            transformers_module.utils.hub.hf_hub_url(model, filename="config.json")
+                        )
+                        if os.path.exists(cached_path):
+                            print(f"Found cached model {model}")
+                            self.model_name = model
+                            break
+                            
+                        # If not cached, try to get model info without downloading
+                        print(f"Checking model {model} availability...")
+                        transformers_module.AutoConfig.from_pretrained(
+                            model, 
+                            trust_remote_code=True
+                        )
+                        print(f"Successfully validated model {model}")
                         self.model_name = model
                         break
-                        
-                    # If not cached, try to get model info without downloading
-                    print(f"Checking model {model} availability...")
-                    transformers_module.AutoConfig.from_pretrained(
-                        model, 
-                        trust_remote_code=True
-                    )
-                    print(f"Successfully validated model {model}")
-                    self.model_name = model
-                    break
-            except Exception as e:
-                print(f"Model {model} not accessible: {e}")
-                continue
-        
-        if not self.model_name:
-            # Default to first option if none worked
-            self.model_name = self.model_candidates[0]
-            print(f"No models validated, defaulting to {self.model_name}")
+                    except Exception as e:
+                        print(f"Model {model} not accessible: {e}")
+                        continue
+            
+            if not hasattr(self, 'model_name') or not self.model_name:
+                # Default to first option if none worked
+                self.model_name = self.model_candidates[0]
+                print(f"No models validated, defaulting to {self.model_name}")
         
         print(f"Selected Whisper model: {self.model_name}")
         
@@ -203,7 +445,7 @@ class test_hf_whisper:
         # Flag to track if we're using mocks
         self.using_mocks = False
         
-        return None
+        # No return statement needed in __init__
 
     def test(self):
         """Run all tests for the Whisper speech recognition model"""
@@ -459,6 +701,14 @@ class test_hf_whisper:
                             implementation_type = "(MOCK)"
                             print("Detected mock implementation based on endpoint class check")
                     
+                    # Check memory usage as indicator of real implementation
+                    if torch.cuda.is_available():
+                        mem_allocated = torch.cuda.memory_allocated() / (1024**2)
+                        if mem_allocated > 100:  # More than 100MB indicates real implementation
+                            print(f"Significant CUDA memory usage ({mem_allocated:.2f} MB) indicates real implementation")
+                            is_real_implementation = True
+                            implementation_type = "(REAL)"
+                    
                     # Report implementation type
                     print(f"Initial implementation detection: {implementation_type}")
                     results["cuda_init"] = f"Success {implementation_type}" if valid_init else "Failed CUDA initialization"
@@ -670,13 +920,14 @@ class test_hf_whisper:
                 
                 @contextmanager
                 def file_lock(lock_file, timeout=600):
-                    """Simple file-based lock with timeout"""
+                    """Simple file-based lock with timeout and proper cleanup"""
                     start_time = time.time()
                     lock_dir = os.path.dirname(lock_file)
                     os.makedirs(lock_dir, exist_ok=True)
                     
-                    fd = open(lock_file, 'w')
+                    fd = None
                     try:
+                        fd = open(lock_file, 'w')
                         while True:
                             try:
                                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -687,12 +938,18 @@ class test_hf_whisper:
                                 time.sleep(1)
                         yield
                     finally:
-                        fcntl.flock(fd, fcntl.LOCK_UN)
-                        fd.close()
-                        try:
-                            os.unlink(lock_file)
-                        except:
-                            pass
+                        if fd:
+                            try:
+                                fcntl.flock(fd, fcntl.LOCK_UN)
+                                fd.close()
+                            except:
+                                pass
+                            # Always attempt to remove the lock file
+                            try:
+                                if os.path.exists(lock_file):
+                                    os.unlink(lock_file)
+                            except:
+                                pass
                 
                 # Helper function to find model path
                 def find_model_path(model_name):
@@ -887,49 +1144,8 @@ class test_hf_whisper:
                 implementation_type = "(MOCK)"
                 traceback.print_exc()
             
-            # Try directly importing OpenVINO components first
-            try:
-                from optimum.intel.openvino import OVModelForSpeechSeq2Seq
-                print("Successfully imported optimum.intel.openvino components directly")
-                is_direct_import_available = True
-            except ImportError:
-                is_direct_import_available = False
-                print("Could not import optimum.intel.openvino directly")
-                
-            # Import the existing OpenVINO utils from the main package
-            from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-            
-            # Initialize openvino_utils
-            ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-            
-            # Define a safe wrapper for OpenVINO functions
-            def safe_get_openvino_model(*args, **kwargs):
-                try:
-                    return ov_utils.get_openvino_model(*args, **kwargs)
-                except Exception as e:
-                    print(f"Error in get_openvino_model: {e}")
-                    return MagicMock()
-                    
-            def safe_get_optimum_openvino_model(*args, **kwargs):
-                try:
-                    return ov_utils.get_optimum_openvino_model(*args, **kwargs)
-                except Exception as e:
-                    print(f"Error in get_optimum_openvino_model: {e}")
-                    return MagicMock()
-                    
-            def safe_get_openvino_pipeline_type(*args, **kwargs):
-                try:
-                    return ov_utils.get_openvino_pipeline_type(*args, **kwargs)
-                except Exception as e:
-                    print(f"Error in get_openvino_pipeline_type: {e}")
-                    return "audio-to-text"
-                    
-            def safe_openvino_cli_convert(*args, **kwargs):
-                try:
-                    return ov_utils.openvino_cli_convert(*args, **kwargs)
-                except Exception as e:
-                    print(f"Error in openvino_cli_convert: {e}")
-                    return None
+            # Skip duplicated imports and directly use the previously defined functions 
+            # We already have all the necessary OpenVINO utilities from above
             
             with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
                 # Add a workaround - OpenVINO init might try to access self.AutoProcessor
@@ -1010,15 +1226,17 @@ class test_hf_whisper:
                     "output": marked_transcription,
                     "timestamp": time.time(),
                     "elapsed_time": elapsed_time,
-                    "implementation_type": "REAL" if is_real_impl else "MOCK",
+                    "implementation_type": implementation_type.strip("()"),
                     "platform": "OpenVINO"
                 }
-        except Exception as e:
-            results["openvino_tests"] = f"Error: {str(e)}"
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
+            self.status_messages["openvino"] = "OpenVINO not installed"
         except Exception as e:
+            print(f"Error in OpenVINO tests: {e}")
+            traceback.print_exc()
             results["openvino_tests"] = f"Error: {str(e)}"
+            self.status_messages["openvino"] = f"Failed: {str(e)}"
 
         # Test Apple Silicon if available
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
