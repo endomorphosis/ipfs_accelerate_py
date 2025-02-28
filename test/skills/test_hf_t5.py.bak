@@ -23,34 +23,67 @@ class test_hf_t5:
         
         # Try to use the recommended model that's openly accessible
         # or create a tiny test model for our tests
+        # Use a very small openly accessible model as primary choice
+        # This model is only ~60MB, much smaller than t5-small (240MB)
+        self.model_name = "google/t5-efficient-tiny"
+        
+        # Alternative models that are also openly accessible
+        self.alternative_models = [
+            "t5-small",            # Standard small T5 model (~240MB)
+            "google/flan-t5-small", # Instruction-tuned version
+            "google/byt5-small",    # Byte-level T5 model
+            "google/t5-base"        # Larger model if needed
+        ]
+        
         try:
-            # First try the recommended T5 model which is openly accessible
-            self.model_name = "google/t5-small"  # 240MB - excellent seq2seq performance
-            print(f"Using recommended model: {self.model_name}")
+            print(f"Attempting to use primary model: {self.model_name}")
             
-            # Check if it actually exists in cache already
-            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
-            if os.path.exists(cache_dir):
-                # Try to find the recommended model in cache
-                t5_small_cached = any("t5-small" in name for name in os.listdir(cache_dir))
-                if t5_small_cached:
-                    print(f"Found t5-small in local cache")
-                
-                # As fallback, look for any other T5 model in cache
-                t5_models = [name for name in os.listdir(cache_dir) if "t5" in name.lower()]
-                if t5_models and not t5_small_cached:
-                    # Use the first model found
-                    t5_model_name = t5_models[0].replace("--", "/")
-                    print(f"Using local cached model as fallback: {t5_model_name}")
-                    self.model_name = t5_model_name
+            # Try to import transformers for validation
+            if not isinstance(self.resources["transformers"], MagicMock):
+                from transformers import AutoConfig
+                try:
+                    # Try to access the config to verify model works
+                    AutoConfig.from_pretrained(self.model_name)
+                    print(f"Successfully validated primary model: {self.model_name}")
+                except Exception as config_error:
+                    print(f"Primary model validation failed: {config_error}")
+                    
+                    # Try alternatives one by one
+                    for alt_model in self.alternative_models:
+                        try:
+                            print(f"Trying alternative model: {alt_model}")
+                            AutoConfig.from_pretrained(alt_model)
+                            self.model_name = alt_model
+                            print(f"Successfully validated alternative model: {self.model_name}")
+                            break
+                        except Exception as alt_error:
+                            print(f"Alternative model validation failed: {alt_error}")
+                    
+                    # Check if we're still using the original model (all alternatives failed)
+                    if self.model_name == "google/t5-efficient-tiny":
+                        # Check if we can find any T5 model in cache
+                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+                        if os.path.exists(cache_dir):
+                            # Try to find any T5 model in cache
+                            t5_models = [name for name in os.listdir(cache_dir) if "t5" in name.lower()]
+                            if t5_models:
+                                # Use the first model found
+                                t5_model_name = t5_models[0].replace("--", "/")
+                                print(f"Using local cached model: {t5_model_name}")
+                                self.model_name = t5_model_name
+                            else:
+                                # Create a local test model as last resort
+                                print("No T5 models found in cache, creating local test model")
+                                self.model_name = self._create_test_model()
+                        else:
+                            # Create a local test model as last resort
+                            print("No cache directory found, creating local test model")
+                            self.model_name = self._create_test_model()
             
-            # If all else fails, create a local test model
-            if "t5-small" not in self.model_name and not os.path.exists(cache_dir):
-                self.model_name = self._create_test_model()
-                print(f"Created local test model: {self.model_name}")
         except Exception as e:
-            print(f"Error finding or using recommended model: {e}")
-            # Fall back to local test model
+            print(f"Error finding model: {e}")
+            # Create a local test model as final fallback
+            print("Creating local test model due to error")
             self.model_name = self._create_test_model()
             print("Falling back to local test model")
             

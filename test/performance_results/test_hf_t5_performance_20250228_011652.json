@@ -1,0 +1,16 @@
+{
+  "test_file": "test_hf_t5.py",
+  "elapsed_time": 8.124642372131348,
+  "return_code": 0,
+  "stdout": "connecting to master\nconnecting to master\nAttempting to use primary model: google/t5-efficient-tiny\nPrimary model validation failed: google/t5-efficient-tiny is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: t5-small\nAlternative model validation failed: t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`\nTrying alternative model: google/flan-t5-small\nAlternative model validation failed: google/flan-t5-small is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf thi...",
+  "stderr": "2025-02-28 01:16:49,803 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\n2025-02-28 01:16:50,971 - utils - INFO - Enhanced CUDA handler with implementation detection markers: False\n",
+  "json_result": {
+    "status": {
+      "cpu": "UNKNOWN",
+      "cuda": "UNKNOWN",
+      "openvino": "UNKNOWN"
+    },
+    "model_name": "Unknown"
+  },
+  "status_extracted_from_text": true
+}

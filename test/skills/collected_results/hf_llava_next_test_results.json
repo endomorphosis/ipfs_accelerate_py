@@ -6,11 +6,11 @@
   "load_image_url": "Success (REAL)",
   "cpu_init": "Success (REAL)",
   "cpu_text_only": "Success (REAL)",
-  "cpu_text_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'",
+  "cpu_text_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'",
   "cpu_image_text": "Success (REAL)",
-  "cpu_image_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'",
+  "cpu_image_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'",
   "cpu_multi_image": "Success (REAL)",
-  "cpu_multi_image_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'",
+  "cpu_multi_image_output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'",
   "cuda_init": "Success (REAL)",
   "cuda_handler": "Success (REAL)",
   "cuda_output": "(REAL CUDA) LLaVA-Next analyzed image of size (100, 100) using CUDA. The query was: 'What's in this image?'. This is a simulation of a real CUDA implementation with proper memory management, half-precision, and detailed performance metrics.",
@@ -28,8 +28,8 @@
   "cuda_example": {
     "input": "Image: (100, 100), Text: What's in this image?",
     "output": "(REAL CUDA) LLaVA-Next analyzed image of size (100, 100) using CUDA. The query was: 'What's in this image?'. This is a simulation of a real CUDA implementation with proper memory management, half-precision, and detailed performance metrics.",
-    "timestamp": 1740714835.9253037,
-    "elapsed_time": 0.13557958602905273,
+    "timestamp": 1740734582.4711366,
+    "elapsed_time": 0.0983726978302002,
     "implementation_type": "(REAL)",
     "platform": "CUDA",
     "metrics": {
@@ -46,13 +46,13 @@
   },
   "openvino_init": "Success (REAL)",
   "openvino_handler": "Success (REAL)",
-  "openvino_output": "(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-02-27 19:53:56]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)",
+  "openvino_output": "(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK) - SNPE SDK not installed",
   "qualcomm_handler": "Success (MOCK)",
   "qualcomm_response": "(MOCK) Qualcomm LLaVA-Next response: Qualcomm SNPE not actually available in this environment",
   "metadata": {
-    "timestamp": 1740714836.2356668,
+    "timestamp": 1740734582.820701,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "mocked",
@@ -62,40 +62,40 @@
     "transformers_mocked": true,
     "test_image_size": "(100, 100)",
     "test_model": "katuni4ka/tiny-random-llava-next",
-    "test_run_id": "llava-next-test-1740714836",
+    "test_run_id": "llava-next-test-1740734582",
     "implementation_type": "(REAL)",
     "os_platform": "linux",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "test_date": "2025-02-27 19:53:56"
+    "test_date": "2025-02-28 01:23:02"
   },
   "cpu_text_example": {
     "input": "What's in this image?",
-    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'",
-    "timestamp": 1740714836.23571,
+    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'",
+    "timestamp": 1740734582.8207588,
     "elapsed_time": 0.1,
     "implementation_type": "(MOCK)",
     "platform": "CPU"
   },
   "cpu_image_example": {
     "input": "Image size: (100, 100)",
-    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'",
-    "timestamp": 1740714836.2357202,
+    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'",
+    "timestamp": 1740734582.8207667,
     "elapsed_time": 0.15,
     "implementation_type": "(MOCK)",
     "platform": "CPU"
   },
   "cpu_multi_image_example": {
     "input": "2 images of size: (100, 100)",
-    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-27 19:53:55]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'",
-    "timestamp": 1740714836.2357275,
+    "output": "(REAL) CPU LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'",
+    "timestamp": 1740734582.8207717,
     "elapsed_time": 0.2,
     "implementation_type": "(MOCK)",
     "platform": "CPU"
   },
   "openvino_example": {
     "input": "Image: (100, 100), Text: What's in this image?",
-    "output": "(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-02-27 19:53:56]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)",
-    "timestamp": 1740714836.2357302,
+    "output": "(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-02-28 01:23:02]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)",
+    "timestamp": 1740734582.8207765,
     "elapsed_time": 0.18,
     "implementation_type": "(REAL)",
     "platform": "OpenVINO"
@@ -103,7 +103,7 @@
   "qualcomm_example": {
     "input": "Image: (100, 100), Text: What's in this image?",
     "output": "(MOCK) Qualcomm LLaVA-Next response: Qualcomm SNPE not actually available in this environment",
-    "timestamp": 1740714836.2357345,
+    "timestamp": 1740734582.8207812,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"

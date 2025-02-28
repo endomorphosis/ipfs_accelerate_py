@@ -8,8 +8,8 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "(MOCK) TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740732307.407194,
-    "elapsed_time": 0.0009775161743164062,
+    "timestamp": 1740734498.5579371,
+    "elapsed_time": 0.0012087821960449219,
     "implementation_type": "(MOCK)",
     "platform": "CPU"
   },
@@ -19,8 +19,8 @@
   "cuda_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Simulated CUDA Whisper transcription: This audio contains speech about machine learning and AI technology.",
-    "timestamp": 1740732307.43238,
-    "elapsed_time": 0.0050852298736572266,
+    "timestamp": 1740734498.5845666,
+    "elapsed_time": 0.00510406494140625,
     "implementation_type": "REAL",
     "platform": "CUDA",
     "performance_metrics": {
@@ -34,7 +34,7 @@
   "openvino_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Simulated OpenVINO transcription: This audio contains speech about technology.",
-    "timestamp": 1740732307.5259006,
+    "timestamp": 1740734498.6750898,
     "elapsed_time": 0.01,
     "implementation_type": "REAL",
     "platform": "OpenVINO",
@@ -51,14 +51,14 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740732307.579678,
+    "timestamp": 1740734498.7276192,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
-  "total_execution_time": 2.308073043823242,
+  "total_execution_time": 2.4149885177612305,
   "metadata": {
-    "timestamp": 1740732307.5799017,
+    "timestamp": 1740734498.727774,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -68,9 +68,9 @@
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "/tmp/whisper_test_model_simple",
-    "test_run_id": "whisper-test-1740732307",
+    "test_run_id": "whisper-test-1740734498",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "total_execution_time": 2.308073043823242,
+    "total_execution_time": 2.4149885177612305,
     "platform_status": {
       "cpu": "Success (MOCK)",
       "cuda": "Success (REAL) - Simulated",
