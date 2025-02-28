@@ -32,8 +32,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T15:28:44.766014",
-      "elapsed_time": 0.0018775463104248047,
+      "timestamp": "2025-02-27T15:48:59.622189",
+      "elapsed_time": 0.02532029151916504,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -47,8 +47,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T15:28:44.766803",
-      "elapsed_time": 0.0007262229919433594,
+      "timestamp": "2025-02-27T15:48:59.622707",
+      "elapsed_time": 0.0004737377166748047,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -56,10 +56,10 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9841361045837402,
+        "similarity_value": 0.9849632382392883,
         "in_range": true
       },
-      "timestamp": "2025-02-27T15:28:44.767222",
+      "timestamp": "2025-02-27T15:48:59.630263",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
@@ -73,16 +73,17 @@
           384
         ]
       },
-      "timestamp": "2025-02-27T15:28:52.775282",
-      "elapsed_time": 0.0020728111267089844,
+      "timestamp": "2025-02-27T15:49:09.063680",
+      "elapsed_time": 0.02196025848388672,
       "implementation_type": "(MOCK)",
-      "platform": "OpenVINO"
+      "platform": "OpenVINO",
+      "test_type": "batch"
     }
   ],
   "metadata": {
     "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-    "test_timestamp": "2025-02-27T15:28:52.875869",
-    "timestamp": 1740698932.8758876,
+    "test_timestamp": "2025-02-27T15:49:09.167816",
+    "timestamp": 1740700149.167833,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -102,6 +103,6 @@
       "apple": "Apple Silicon not available",
       "qualcomm": "Failed initialization"
     },
-    "test_run_id": "embed-test-1740698932"
+    "test_run_id": "embed-test-1740700149"
   }
 }

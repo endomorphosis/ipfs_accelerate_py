@@ -114,23 +114,47 @@ hf_clap.create_qualcomm_audio_embedding_endpoint_handler = create_qualcomm_audio
 sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio = load_audio
 sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio_tensor = load_audio_tensor
 
+# Try importing transformers for real
+try:
+    import transformers
+    transformers_available = True
+    print("Successfully imported transformers module")
+except ImportError:
+    transformers_available = False
+    print("Could not import transformers module, will use mock implementation")
+
+# Try importing soundfile for real
+try:
+    import soundfile as sf
+    soundfile_available = True
+    print("Successfully imported soundfile module")
+except ImportError:
+    soundfile_available = False
+    print("Could not import soundfile module, will use mock implementation")
+
 class test_hf_clap:
     def __init__(self, resources=None, metadata=None):
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": MagicMock(),
-            "soundfile": MagicMock()
-        }
+        # Initialize resources with real or mock components based on what's available
+        if resources:
+            self.resources = resources
+        else:
+            self.resources = {
+                "torch": torch,
+                "numpy": np,
+                "transformers": transformers if transformers_available else MagicMock(),
+                "soundfile": sf if soundfile_available else MagicMock()
+            }
+            
         self.metadata = metadata if metadata else {}
         self.clap = hf_clap(resources=self.resources, metadata=self.metadata)
         self.model_name = "laion/clap-htsat-unfused"
         self.test_audio_url = "https://calamitymod.wiki.gg/images/2/29/Bees3.wav"
         self.test_text = "buzzing bees"
         
-        # Mark all tests as mocks since we're using MagicMock for transformers
-        self.is_mock = True
-        self.implementation_type = "(MOCK)"
+        # Automatically detect if we're using real or mock implementations
+        self.is_mock = not transformers_available or isinstance(self.resources["transformers"], MagicMock)
+        self.implementation_type = "(MOCK)" if self.is_mock else "(REAL)"
+        print(f"CLAP test initialized with implementation type: {self.implementation_type}")
         return None
 
     def test(self):
@@ -173,85 +197,242 @@ class test_hf_clap:
 
         # Test CPU initialization and handler
         try:
-            with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                 patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
-                 patch('transformers.ClapProcessor.from_pretrained') as mock_processor, \
-                 patch('transformers.ClapModel.from_pretrained') as mock_model:
-                
-                mock_config.return_value = MagicMock()
-                mock_tokenizer.return_value = MagicMock()
-                mock_processor.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
-                
-                # Create a mock tokenizer
-                tokenizer = MagicMock()
-                tokenizer.batch_encode_plus = MagicMock(return_value={"input_ids": torch.ones((1, 10)), "attention_mask": torch.ones((1, 10))})
-                tokenizer.decode = MagicMock(return_value="Test output")
-                
-                endpoint, processor, handler, queue, batch_size = self.clap.init_cpu(
-                    self.model_name,
-                    "cpu",
-                    "cpu"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cpu_init"] = f"Success {self.implementation_type}" if valid_init else "Failed CPU initialization"
-                
-                test_handler = self.clap.create_cpu_audio_embedding_endpoint_handler(
-                    endpoint,
-                    tokenizer,
-                    self.model_name,
-                    "cpu"
-                )
-                
-                # Test with mock audio input
-                with patch('soundfile.read') as mock_sf_read:
-                    mock_sf_read.return_value = (np.random.randn(16000), 16000)
+            # This is where we make the key change - use real implementations when available
+            # or fall back to mocks when needed
+            implementation_type = self.implementation_type  # Will be updated based on actual implementation
+            
+            if not self.is_mock and transformers_available:
+                print("Testing CPU with real Transformers implementation")
+                # Use real implementation without patching
+                try:
+                    # Initialize with real components
+                    endpoint, processor, handler, queue, batch_size = self.clap.init_cpu(
+                        self.model_name,
+                        "cpu",
+                        "cpu"
+                    )
                     
-                    # Test audio embedding
-                    audio_embedding = test_handler(self.test_audio_url)
-                    results["cpu_audio_embedding"] = f"Success {self.implementation_type}" if audio_embedding is not None else "Failed audio embedding"
+                    # Check if we actually got real implementations or mocks
+                    # The init_cpu method might fall back to mocks internally
+                    from unittest.mock import MagicMock
+                    if isinstance(endpoint, MagicMock) or isinstance(processor, MagicMock):
+                        print("Warning: Got mock components from init_cpu")
+                        implementation_type = "(MOCK)"
+                    else:
+                        print("Successfully initialized real CLAP components")
+                        implementation_type = "(REAL)"
+                        
+                    tokenizer = processor  # For real implementation, processor = tokenizer
+                except Exception as e:
+                    print(f"Error initializing with real components: {e}")
+                    print("Falling back to mock implementation")
                     
-                    # Include embedding details if available
-                    if audio_embedding is not None and isinstance(audio_embedding, dict) and "audio_embedding" in audio_embedding:
-                        audio_emb = audio_embedding["audio_embedding"]
-                        results["cpu_audio_embedding_shape"] = list(audio_emb.shape) if hasattr(audio_emb, "shape") else "unknown shape"
-                        results["cpu_audio_embedding_timestamp"] = time.time()
+                    # Create mock components
+                    mock_endpoint = MagicMock()
+                    mock_processor = MagicMock()
+                    mock_tokenizer = MagicMock()
+                    mock_tokenizer.batch_encode_plus = MagicMock(return_value={"input_ids": torch.ones((1, 10)), "attention_mask": torch.ones((1, 10))})
                     
-                    # Test text embedding
-                    text_embedding = test_handler(text=self.test_text)
-                    results["cpu_text_embedding"] = f"Success {self.implementation_type}" if text_embedding is not None else "Failed text embedding"
+                    endpoint = mock_endpoint
+                    processor = mock_processor
+                    tokenizer = mock_tokenizer
+                    implementation_type = "(MOCK)"
+            else:
+                print("Using mock implementation for CPU tests")
+                # Use mocks when transformers is not available
+                with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
+                     patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
+                     patch('transformers.ClapProcessor.from_pretrained') as mock_processor, \
+                     patch('transformers.ClapModel.from_pretrained') as mock_model:
                     
-                    # Include embedding details if available
-                    if text_embedding is not None and isinstance(text_embedding, dict) and "text_embedding" in text_embedding:
-                        text_emb = text_embedding["text_embedding"]
-                        results["cpu_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
-                        results["cpu_text_embedding_timestamp"] = time.time()
+                    mock_config.return_value = MagicMock()
+                    mock_tokenizer.return_value = MagicMock()
+                    mock_processor.return_value = MagicMock()
+                    mock_model.return_value = MagicMock()
                     
-                    # Test audio-text similarity
-                    similarity = test_handler(self.test_audio_url, self.test_text)
-                    results["cpu_similarity"] = f"Success {self.implementation_type}" if similarity is not None else "Failed similarity computation"
+                    # Create a mock tokenizer
+                    tokenizer = MagicMock()
+                    tokenizer.batch_encode_plus = MagicMock(return_value={"input_ids": torch.ones((1, 10)), "attention_mask": torch.ones((1, 10))})
+                    tokenizer.decode = MagicMock(return_value="Test output")
                     
-                    # Include similarity score if available
-                    if similarity is not None and isinstance(similarity, dict) and "similarity" in similarity:
-                        sim_score = similarity["similarity"]
-                        if hasattr(sim_score, "item") and callable(sim_score.item):
-                            results["cpu_similarity_score"] = float(sim_score.item())
-                        elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
-                            results["cpu_similarity_score"] = sim_score.tolist()
+                    endpoint, processor, handler, queue, batch_size = self.clap.init_cpu(
+                        self.model_name,
+                        "cpu",
+                        "cpu"
+                    )
+                    
+                    implementation_type = "(MOCK)"
+            
+            # From here, the test is the same regardless of real or mock implementation
+            valid_init = endpoint is not None and processor is not None and handler is not None
+            results["cpu_init"] = f"Success {implementation_type}" if valid_init else "Failed CPU initialization"
+            
+            # Get the handler using the components we have
+            test_handler = handler if handler is not None else self.clap.create_cpu_audio_embedding_endpoint_handler(
+                endpoint,
+                tokenizer,
+                self.model_name,
+                "cpu"
+            )
+            
+            # Define a test function that wraps the sound file patching
+            def run_tests_with_audio_patching():
+                # For soundfile patching, only patch if we're using mocks
+                if implementation_type == "(MOCK)" or not soundfile_available:
+                    with patch('soundfile.read') as mock_sf_read:
+                        mock_sf_read.return_value = (np.random.randn(16000), 16000)
+                        return run_actual_tests()
+                else:
+                    # Use real soundfile
+                    return run_actual_tests()
+            
+            # Create a container to track implementation type through closures
+            class SharedState:
+                def __init__(self, initial_type):
+                    self.implementation_type = initial_type
+            
+            # Initialize shared state
+            shared_state = SharedState(implementation_type)
+                
+            # Define the actual test function so we can reuse it
+            def run_actual_tests():
+                test_results = {}
+                
+                # Test audio embedding with timing
+                start_time = time.time()
+                audio_embedding = test_handler(self.test_audio_url)
+                audio_embedding_time = time.time() - start_time
+                
+                test_results["cpu_audio_embedding"] = f"Success {shared_state.implementation_type}" if audio_embedding is not None else "Failed audio embedding"
+                
+                # Include embedding details if available
+                if audio_embedding is not None:
+                    # Check different possible return structures
+                    if isinstance(audio_embedding, dict):
+                        if "audio_embedding" in audio_embedding:
+                            audio_emb = audio_embedding["audio_embedding"]
+                        elif "embedding" in audio_embedding:
+                            audio_emb = audio_embedding["embedding"]
                         else:
-                            results["cpu_similarity_score"] = "unknown format"
-                        results["cpu_similarity_timestamp"] = time.time()
+                            # Try to find any embedding key
+                            embedding_keys = [k for k in audio_embedding.keys() if 'embedding' in k.lower()]
+                            if embedding_keys:
+                                audio_emb = audio_embedding[embedding_keys[0]]
+                            else:
+                                audio_emb = None
+                    else:
+                        # If it's not a dict, use it directly
+                        audio_emb = audio_embedding
                     
-                    # Include a complete example
-                    results["cpu_example"] = {
-                        "input_audio": self.test_audio_url,
-                        "input_text": self.test_text,
-                        "timestamp": time.time(),
-                        "implementation": self.implementation_type
-                    }
+                    # Store shape and timestamp
+                    if audio_emb is not None:
+                        test_results["cpu_audio_embedding_shape"] = list(audio_emb.shape) if hasattr(audio_emb, "shape") else "unknown shape"
+                        test_results["cpu_audio_embedding_timestamp"] = time.time()
+                        test_results["cpu_audio_embedding_time"] = audio_embedding_time
+                
+                # Test text embedding with timing
+                start_time = time.time()
+                text_embedding = test_handler(text=self.test_text)
+                text_embedding_time = time.time() - start_time
+                
+                test_results["cpu_text_embedding"] = f"Success {shared_state.implementation_type}" if text_embedding is not None else "Failed text embedding"
+                
+                # Include embedding details if available
+                if text_embedding is not None:
+                    # Check different possible return structures
+                    if isinstance(text_embedding, dict):
+                        if "text_embedding" in text_embedding:
+                            text_emb = text_embedding["text_embedding"]
+                        elif "embedding" in text_embedding:
+                            text_emb = text_embedding["embedding"]
+                        else:
+                            # Try to find any embedding key
+                            embedding_keys = [k for k in text_embedding.keys() if 'embedding' in k.lower()]
+                            if embedding_keys:
+                                text_emb = text_embedding[embedding_keys[0]]
+                            else:
+                                text_emb = None
+                    else:
+                        # If it's not a dict, use it directly
+                        text_emb = text_embedding
+                    
+                    # Store shape and timestamp
+                    if text_emb is not None:
+                        test_results["cpu_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                        test_results["cpu_text_embedding_timestamp"] = time.time()
+                        test_results["cpu_text_embedding_time"] = text_embedding_time
+                
+                # Test audio-text similarity with timing
+                start_time = time.time()
+                similarity = test_handler(self.test_audio_url, self.test_text)
+                similarity_time = time.time() - start_time
+                
+                test_results["cpu_similarity"] = f"Success {shared_state.implementation_type}" if similarity is not None else "Failed similarity computation"
+                
+                # Include similarity score if available
+                if similarity is not None and isinstance(similarity, dict):
+                    # Check for different possible keys
+                    if "similarity" in similarity:
+                        sim_score = similarity["similarity"]
+                    else:
+                        # Try to find any similarity key
+                        similarity_keys = [k for k in similarity.keys() if 'similarity' in k.lower() or 'score' in k.lower()]
+                        if similarity_keys:
+                            sim_score = similarity[similarity_keys[0]]
+                        else:
+                            sim_score = None
+                    
+                    # Store score and timestamp if available
+                    if sim_score is not None:
+                        if hasattr(sim_score, "item") and callable(sim_score.item):
+                            test_results["cpu_similarity_score"] = float(sim_score.item())
+                        elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                            test_results["cpu_similarity_score"] = sim_score.tolist()
+                        else:
+                            test_results["cpu_similarity_score"] = "unknown format"
+                        test_results["cpu_similarity_timestamp"] = time.time()
+                        test_results["cpu_similarity_time"] = similarity_time
+                
+                # Check for implementation_type in results
+                if similarity is not None and isinstance(similarity, dict) and "implementation_status" in similarity:
+                    # Update shared state's implementation type based on what the handler reported
+                    if similarity["implementation_status"] == "MOCK":
+                        shared_state.implementation_type = "(MOCK)"
+                    elif similarity["implementation_status"] == "REAL":
+                        shared_state.implementation_type = "(REAL)"
+                
+                # Include a complete example
+                test_results["cpu_example"] = {
+                    "input_audio": self.test_audio_url,
+                    "input_text": self.test_text,
+                    "timestamp": time.time(),
+                    "implementation": shared_state.implementation_type
+                }
+                
+                return test_results
+            
+            # Run the tests
+            test_results = run_tests_with_audio_patching()
+            
+            # Update our main results
+            results.update(test_results)
+            
+            # Make sure implementation type is consistent
+            for key in list(results.keys()):
+                if key.startswith("cpu_") and "Success" in str(results[key]):
+                    results[key] = f"Success {shared_state.implementation_type}"
+            
+            # Make sure cpu_example has the right implementation type
+            if "cpu_example" in results:
+                results["cpu_example"]["implementation"] = shared_state.implementation_type
+                
+            # Update our parent variable to reflect what we actually used
+            implementation_type = shared_state.implementation_type
+            
         except Exception as e:
+            print(f"Error in CPU tests: {e}")
             results["cpu_tests"] = f"Error: {str(e)}"
+            implementation_type = "(MOCK)"  # Fallback to mock on error
 
         # Test CUDA if available
         if torch.cuda.is_available():
@@ -568,6 +749,16 @@ class test_hf_clap:
         os.makedirs(expected_dir, exist_ok=True)
         os.makedirs(collected_dir, exist_ok=True)
         
+        # Check if CPU tests actually used a real implementation
+        # This can differ from our initial guess
+        actual_implementation_type = self.implementation_type
+        if "cpu_example" in test_results and "implementation" in test_results["cpu_example"]:
+            actual_implementation_type = test_results["cpu_example"]["implementation"]
+            print(f"Using actual implementation type from tests: {actual_implementation_type}")
+        
+        # Update is_mock flag based on actual implementation
+        actual_is_mock = actual_implementation_type == "(MOCK)"
+        
         # Add metadata about the environment to the results
         test_results["metadata"] = {
             "timestamp": time.time(),
@@ -578,8 +769,10 @@ class test_hf_clap:
             "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
             "test_model": self.model_name,
             "test_run_id": f"clap-test-{int(time.time())}",
-            "mock_implementation": self.is_mock,
-            "implementation_type": self.implementation_type
+            "mock_implementation": actual_is_mock,
+            "implementation_type": actual_implementation_type,
+            "transformers_available": transformers_available,
+            "soundfile_available": soundfile_available
         }
         
         # Save collected results

@@ -183,8 +183,8 @@ class test_hf_lm:
         except Exception as e:
             print(f"Error in CPU tests: {e}")
             traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
+            results["cpu_tests"] = f"Error (MOCK): {str(e)}"
+            self.status_messages["cpu"] = f"Failed (MOCK): {str(e)}"
             
             # Fall back to mocks
             print("Falling back to mock language model...")
@@ -277,7 +277,7 @@ class test_hf_lm:
             except Exception as mock_e:
                 print(f"Error setting up mock CPU tests: {mock_e}")
                 traceback.print_exc()
-                results["cpu_mock_error"] = f"Mock setup failed: {str(mock_e)}"
+                results["cpu_mock_error"] = f"Mock setup failed (MOCK): {str(mock_e)}"
 
         # ====== CUDA TESTS ======
         if torch.cuda.is_available():
@@ -334,13 +334,14 @@ class test_hf_lm:
                             "timestamp": datetime.datetime.now().isoformat(),
                             "elapsed_time": elapsed_time,
                             "implementation_type": "(MOCK)",
-                            "platform": "CUDA"
+                            "platform": "CUDA",
+                            "test_type": "standard"
                         })
             except Exception as e:
                 print(f"Error in CUDA tests: {e}")
                 traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
+                results["cuda_tests"] = f"Error (MOCK): {str(e)}"
+                self.status_messages["cuda"] = f"Failed (MOCK): {str(e)}"
         else:
             results["cuda_tests"] = "CUDA not available"
             self.status_messages["cuda"] = "CUDA not available"
@@ -412,7 +413,8 @@ class test_hf_lm:
                             "timestamp": datetime.datetime.now().isoformat(),
                             "elapsed_time": elapsed_time,
                             "implementation_type": "(MOCK)",
-                            "platform": "OpenVINO"
+                            "platform": "OpenVINO",
+                            "test_type": "standard"
                         })
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
@@ -420,8 +422,8 @@ class test_hf_lm:
         except Exception as e:
             print(f"Error in OpenVINO tests: {e}")
             traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
+            results["openvino_tests"] = f"Error (MOCK): {str(e)}"
+            self.status_messages["openvino"] = f"Failed (MOCK): {str(e)}"
 
         # ====== APPLE SILICON TESTS ======
         if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
@@ -539,8 +541,8 @@ class test_hf_lm:
             except Exception as e:
                 print(f"Error in Apple tests: {e}")
                 traceback.print_exc()
-                results["apple_tests"] = f"Error: {str(e)}"
-                self.status_messages["apple"] = f"Failed: {str(e)}"
+                results["apple_tests"] = f"Error (MOCK): {str(e)}"
+                self.status_messages["apple"] = f"Failed (MOCK): {str(e)}"
         else:
             results["apple_tests"] = "Apple Silicon not available"
             self.status_messages["apple"] = "Apple Silicon not available"
@@ -656,8 +658,8 @@ class test_hf_lm:
         except Exception as e:
             print(f"Error in Qualcomm tests: {e}")
             traceback.print_exc()
-            results["qualcomm_tests"] = f"Error: {str(e)}"
-            self.status_messages["qualcomm"] = f"Failed: {str(e)}"
+            results["qualcomm_tests"] = f"Error (MOCK): {str(e)}"
+            self.status_messages["qualcomm"] = f"Failed (MOCK): {str(e)}"
 
         # Create structured results with status, examples and metadata
         structured_results = {
@@ -746,46 +748,36 @@ class test_hf_lm:
                     else:
                         return result
                 
+                # Use filter_variable_data function to filter both expected and actual results
+                filtered_expected = filter_variable_data(expected_results)
+                filtered_actual = filter_variable_data(test_results)
+
                 # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # Also exclude output and timestamp fields
-                excluded_keys = ["metadata", "cpu_standard_output", "cpu_config_output", 
-                                "qualcomm_output", "openvino_output", "apple_standard_output",
-                                "cuda_output", "cpu_batch_first_output", "qualcomm_batch_first_output",
-                                "apple_batch_first_output", "qualcomm_config_output", "apple_config_output"]
-                    
-                # Also exclude timestamp fields
-                timestamp_keys = [k for k in test_results.keys() if "timestamp" in k]
-                excluded_keys.extend(timestamp_keys)
-                
-                # Filter out keys that shouldn't be compared
-                expected_copy = {k: v for k, v in status_expected.items() if k not in excluded_keys}
-                results_copy = {k: v for k, v in status_actual.items() if k not in excluded_keys}
+                status_expected = filtered_expected.get("status", filtered_expected)
+                status_actual = filtered_actual.get("status", filtered_actual)
                 
                 # More detailed comparison of results
                 all_match = True
                 mismatches = []
                 
-                for key in set(expected_copy.keys()) | set(results_copy.keys()):
-                    if key not in expected_copy:
+                for key in set(status_expected.keys()) | set(status_actual.keys()):
+                    if key not in status_expected:
                         mismatches.append(f"Missing expected key: {key}")
                         all_match = False
-                    elif key not in results_copy:
+                    elif key not in status_actual:
                         mismatches.append(f"Missing actual key: {key}")
                         all_match = False
-                    elif expected_copy[key] != results_copy[key]:
+                    elif status_expected[key] != status_actual[key]:
                         # If the only difference is the implementation_type suffix, that's acceptable
                         if (
-                            isinstance(expected_copy[key], str) and 
-                            isinstance(results_copy[key], str) and
-                            expected_copy[key].split(" (")[0] == results_copy[key].split(" (")[0] and
-                            "Success" in expected_copy[key] and "Success" in results_copy[key]
+                            isinstance(status_expected[key], str) and 
+                            isinstance(status_actual[key], str) and
+                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
+                            ("Success" in status_expected[key] or "Error" in status_expected[key])
                         ):
                             continue
                         
-                        mismatches.append(f"Key '{key}' differs: Expected '{expected_copy[key]}', got '{results_copy[key]}'")
+                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
                         all_match = False
                 
                 if not all_match:

@@ -9,8 +9,8 @@
     ],
     "cpu_embedding_type": "torch.float32",
     "cuda_tests": "CUDA not available",
-    "openvino_init": "Success (MOCK)",
-    "openvino_handler": "Success (MOCK)",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)",
     "openvino_embedding_shape": [
       1,
       768
@@ -29,8 +29,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T15:29:27.022072",
-      "elapsed_time": 0.009015798568725586,
+      "timestamp": "2025-02-27T16:08:18.018252",
+      "elapsed_time": 0.0032444000244140625,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
@@ -42,9 +42,9 @@
           768
         ]
       },
-      "timestamp": "2025-02-27T15:29:35.646833",
-      "elapsed_time": 0.013153076171875,
-      "implementation_type": "MOCK",
+      "timestamp": "2025-02-27T16:08:46.937260",
+      "elapsed_time": 0.01644444465637207,
+      "implementation_type": "REAL",
       "platform": "OpenVINO"
     },
     {
@@ -55,15 +55,15 @@
           768
         ]
       },
-      "timestamp": "2025-02-27T15:29:35.763829",
-      "elapsed_time": 0.0014834403991699219,
+      "timestamp": "2025-02-27T16:08:47.043490",
+      "elapsed_time": 0.008203983306884766,
       "implementation_type": "MOCK",
       "platform": "Qualcomm"
     }
   ],
   "metadata": {
     "model_name": "bert-base-uncased",
-    "test_timestamp": "2025-02-27T15:29:35.763937",
+    "test_timestamp": "2025-02-27T16:08:47.043581",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",

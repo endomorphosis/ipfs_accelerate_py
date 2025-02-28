@@ -450,7 +450,31 @@ class test_hf_whisper:
                 results["openvino_tests"] = "OpenVINO not installed"
                 return results
             
-            implementation_type = "(MOCK)"  # Always use mocks for OpenVINO tests
+            # Try real OpenVINO implementation first
+            try:
+                print("Trying real OpenVINO initialization for Whisper...")
+                endpoint, processor, handler, queue, batch_size = self.whisper.init_openvino(
+                    self.model_name,
+                    "automatic-speech-recognition",  # Correct task type
+                    "CPU",
+                    "openvino:0",
+                    safe_get_optimum_openvino_model,
+                    safe_get_openvino_model,
+                    safe_get_openvino_pipeline_type,
+                    safe_openvino_cli_convert
+                )
+                
+                # If we got a handler back, we succeeded with real implementation
+                valid_init = handler is not None
+                is_real_impl = True
+                implementation_type = "(REAL)"
+                results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
+                
+            except Exception as real_init_error:
+                print(f"Real OpenVINO initialization failed: {real_init_error}")
+                print("Falling back to mock implementation...")
+                is_real_impl = False
+                implementation_type = "(MOCK)"
             
             # Import the existing OpenVINO utils from the main package
             from ipfs_accelerate_py.worker.openvino_utils import openvino_utils

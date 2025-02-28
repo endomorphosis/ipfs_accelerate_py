@@ -321,21 +321,112 @@ class hf_t5:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        """Initialize T5 model for OpenVINO.
+        
+        Args:
+            model: Model name or path
+            model_type: Model task type (e.g. 'text2text-generation-with-past')
+            device: OpenVINO device ("CPU", "GPU", etc.)
+            openvino_label: Label for the device ("openvino:0", etc.)
+            get_optimum_openvino_model: Function to get optimum model
+            get_openvino_model: Function to get OpenVINO model
+            get_openvino_pipeline_type: Function to get pipeline type
+            openvino_cli_convert: Function to convert model with CLI
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
-        if "openvino" not in list(self.resources.keys()):
-            import openvino as ov
-            self.ov = ov
-        else:
-            self.ov = self.resources["openvino"]
+        
+        # Import OpenVINO if needed
+        try:
+            if "openvino" not in list(self.resources.keys()):
+                import openvino as ov
+                self.ov = ov
+            else:
+                self.ov = self.resources["openvino"]
+        except ImportError as e:
+            print(f"Failed to import OpenVINO: {e}")
+            return None, None, None, None, 0
+        
+        # Initialize return values
         endpoint = None
         tokenizer = None
         endpoint_handler = None
-        batch_size = 0                
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model, use_fast=True, trust_remote_code=True)
-        endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
-        endpoint_handler = self.create_openvino_t5_endpoint_handler( endpoint, tokenizer, model, openvino_label)
         batch_size = 0
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size          
+        
+        try:
+            # Verify model_type
+            if model_type != "text2text-generation-with-past":
+                # Try to get the correct model type
+                model_type = get_openvino_pipeline_type(model, "t5")
+                if model_type is None:
+                    model_type = "text2text-generation-with-past"
+                print(f"Using model_type: {model_type}")
+            
+            # Load tokenizer
+            tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                model, 
+                use_fast=True, 
+                trust_remote_code=True
+            )
+            
+            # Check if OpenVINO model conversion is needed
+            homedir = os.path.expanduser("~")
+            model_name_convert = model.replace("/", "--")
+            model_dst_path = os.path.join(homedir, "openvino_models", model_name_convert, f"openvino_int8")
+            
+            # Create model path if needed
+            os.makedirs(model_dst_path, exist_ok=True)
+            
+            # Check if model needs to be converted
+            xml_path = os.path.join(model_dst_path, "openvino_decoder_with_past_model.xml")
+            if not os.path.exists(xml_path):
+                print(f"Converting {model} to OpenVINO format...")
+                try:
+                    openvino_cli_convert(
+                        model, 
+                        model_dst_path=model_dst_path, 
+                        task=model_type, 
+                        weight_format="int8",
+                        ratio="1.0", 
+                        group_size=128, 
+                        sym=True
+                    )
+                    print(f"Model converted successfully, saved to {model_dst_path}")
+                except Exception as convert_err:
+                    print(f"Error converting model: {convert_err}")
+            else:
+                print(f"Using existing OpenVINO model at {model_dst_path}")
+            
+            # Load the model with optimum
+            try:
+                endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
+                print(f"Model loaded successfully with optimum")
+            except Exception as load_err:
+                print(f"Error loading model with optimum: {load_err}")
+                try:
+                    # Try loading with direct OpenVINO API
+                    endpoint = get_openvino_model(model, model_type, openvino_label)
+                    print("Loaded model with direct OpenVINO API")
+                except Exception as direct_err:
+                    print(f"Error loading model with direct API: {direct_err}")
+                    return None, None, None, None, 0
+            
+            # Create handler function
+            endpoint_handler = self.create_openvino_t5_endpoint_handler(
+                endpoint, 
+                tokenizer, 
+                model, 
+                openvino_label
+            )
+            
+            batch_size = 0
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+        
+        except Exception as e:
+            print(f"Error initializing T5 for OpenVINO: {e}")
+            return None, None, None, None, 0
     
     def create_cuda_t5_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint):
         """Creates a CUDA handler for T5 text generation.

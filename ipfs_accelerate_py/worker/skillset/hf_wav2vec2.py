@@ -1227,62 +1227,271 @@ class hf_wav2vec2:
         return handler
     
     def create_openvino_wav2vec2_endpoint_handler(self, endpoint, processor, openvino_label, endpoint_model=None):
-        def handler(x, processor=processor, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=None):
-            results = []
-            if x is not None:            
-                if type(x) == str:
-                    try:
-                        audio_data, audio_sampling_rate = load_audio_16khz(x)                    
-                        preprocessed_signal = processor(
-                            audio_data,
-                            return_tensors="pt",
-                            padding="longest",
-                            sampling_rate=audio_sampling_rate,
-                        )
-                        audio_inputs = preprocessed_signal.input_values
-                        MAX_SEQ_LENGTH = 30480
-                        if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
-                            audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
-                        
-                        # Check if endpoint_model is available
-                        if endpoint_model is not None and callable(endpoint_model):
-                            image_features = endpoint_model({'input_values': audio_inputs})
-                            image_embeddings = list(image_features.values())[0]
-                            image_embeddings = self.torch.tensor(image_embeddings)
-                            image_embeddings = self.torch.mean(image_embeddings, dim=(1,))
-                            results.append(image_embeddings)
-                    except Exception as e:
-                        print(f"OpenVINO audio embedding error: {e}")
-                        # Create a mock embedding as fallback
-                        image_embeddings = self.torch.randn(1, 768)
-                        results.append(image_embeddings)
-                elif type(x) == list:
-                    try:
-                        inputs = processor(images=[load_audio_16khz(image) for image in x], return_tensors='pt')
-                        # Check if endpoint_model is available and input_values is available
-                        if endpoint_model is not None and callable(endpoint_model) and 'input_values' in inputs:
-                            image_features = endpoint_model({'input_values': inputs['input_values']})
-                            image_embeddings = list(image_features.values())[0]
-                            image_embeddings = self.torch.tensor(image_embeddings)
-                            image_embeddings = self.torch.mean(image_embeddings, dim=1)
-                            results.append(image_embeddings)
-                        else:
-                            # Create a mock embedding as fallback
-                            image_embeddings = self.torch.randn(len(x), 768)
-                            results.append(image_embeddings)
-                    except Exception as e:
-                        print(f"OpenVINO audio batch embedding error: {e}")
-                        # Create a mock embedding as fallback
-                        image_embeddings = self.torch.randn(len(x) if isinstance(x, list) else 1, 768)
-                        results.append(image_embeddings)
-                pass            
-
-                if results is not None and len(results) > 0:
-                    if x is not None:
-                        return {
-                            'embedding': results[0][0] if results[0].dim() > 1 else results[0]
-                        }            
-            return None
+        """Creates an OpenVINO handler for Wav2Vec2 embeddings.
+        
+        Args:
+            endpoint: Primary OpenVINO model endpoint
+            processor: The audio processor
+            openvino_label: Label to identify this endpoint
+            endpoint_model: Optional secondary model endpoint
+            
+        Returns:
+            A handler function for the OpenVINO embedding endpoint
+        """
+        # Import torch directly to ensure it's available
+        import torch
+        import numpy as np
+        import os
+        import time
+        import fcntl
+        from pathlib import Path
+        
+        # Create lock path for thread safety
+        lock_dir = Path(os.path.expanduser("~")) / ".cache" / "ipfs_accelerate" / "locks"
+        os.makedirs(lock_dir, exist_ok=True)
+        lock_file_path = lock_dir / f"wav2vec2_openvino_{openvino_label.replace(':', '_')}.lock"
+        
+        # Determine if we have a real endpoint or need to use mocks
+        using_mock = False
+        if endpoint is None and endpoint_model is None:
+            print("No valid OpenVINO endpoints provided - will use mock implementation")
+            using_mock = True
+        elif hasattr(endpoint, "mock") or hasattr(endpoint_model, "mock"):
+            print("Mock endpoint detected - will use mock implementation")
+            using_mock = True
+            
+        def handler(x, processor=processor, endpoint_model=endpoint_model, openvino_label=openvino_label, endpoint=endpoint):
+            """Process audio data with OpenVINO for Wav2Vec2 embeddings.
+            
+            Args:
+                x: Audio input (string path to file or list of paths)
+                
+            Returns:
+                Embedding tensor or batch of tensors
+            """
+            # Track if we're using real or mock implementation
+            nonlocal using_mock
+            
+            # Start time for performance tracking
+            start_time = time.time()
+            
+            # Initialize result dictionary with metadata
+            result = {
+                "timestamp": time.time(),
+                "implementation_type": "REAL" if not using_mock else "MOCK",
+                "platform": "OpenVINO"
+            }
+            
+            try:
+                # Process audio input
+                if x is not None:
+                    # Lock access to shared OpenVINO resources
+                    with open(lock_file_path, 'w') as lock_file:
+                        try:
+                            # Try to acquire lock with timeout
+                            for attempt in range(10):
+                                try:
+                                    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                    break
+                                except IOError:
+                                    if attempt == 9:
+                                        print(f"Could not acquire lock on {lock_file_path} after 10 attempts")
+                                        break
+                                    print(f"Waiting for lock on {lock_file_path}, attempt {attempt+1}/10")
+                                    time.sleep(1)
+                                    
+                            # Single audio file
+                            if isinstance(x, str):
+                                try:
+                                    # Load audio
+                                    audio_data, audio_sampling_rate = load_audio_16khz(x)                    
+                                    
+                                    # Process audio with processor
+                                    preprocessed_signal = processor(
+                                        audio_data,
+                                        return_tensors="pt",
+                                        padding="longest",
+                                        sampling_rate=audio_sampling_rate,
+                                    )
+                                    
+                                    # Check if we have valid input_values and set up appropriate input
+                                    if hasattr(preprocessed_signal, 'input_values'):
+                                        audio_inputs = preprocessed_signal.input_values
+                                        
+                                        # Limit sequence length for efficient processing
+                                        MAX_SEQ_LENGTH = 30480  # ~1.9 seconds at 16kHz
+                                        if audio_inputs.shape[1] > MAX_SEQ_LENGTH:
+                                            audio_inputs = audio_inputs[:, :MAX_SEQ_LENGTH]
+                                        
+                                        # Set up the active model to use
+                                        active_model = endpoint_model if endpoint_model is not None else endpoint
+                                        
+                                        # Check if we have a valid model
+                                        if active_model is not None and (hasattr(active_model, 'infer') or callable(active_model)):
+                                            # Convert input to numpy for OpenVINO
+                                            audio_inputs_np = audio_inputs.numpy()
+                                            
+                                            # Run inference through appropriate interface
+                                            if hasattr(active_model, 'infer'):
+                                                # OpenVINO compiled model interface
+                                                output_features = active_model.infer({'input_values': audio_inputs_np})
+                                            else:
+                                                # Direct callable interface
+                                                output_features = active_model({'input_values': audio_inputs_np})
+                                            
+                                            # Process model outputs
+                                            if output_features:
+                                                # Extract first output tensor
+                                                output_list = list(output_features.values())
+                                                
+                                                if output_list and len(output_list) > 0:
+                                                    # Convert to torch tensor for easier processing
+                                                    embeddings = torch.tensor(output_list[0])
+                                                    
+                                                    # For sequence output (hidden states), average across time dimension
+                                                    if embeddings.dim() > 2:
+                                                        # Average across sequence dimension (dim=1)
+                                                        embeddings = torch.mean(embeddings, dim=1)
+                                                    
+                                                    # Store in result
+                                                    result["embedding"] = embeddings[0].tolist()
+                                                    result["shape"] = list(embeddings.shape)
+                                                    result["elapsed_time"] = time.time() - start_time
+                                                    return result
+                                                else:
+                                                    print("Empty output list from model")
+                                                    using_mock = True
+                                            else:
+                                                print("Empty output features from model")
+                                                using_mock = True
+                                        else:
+                                            print("No valid OpenVINO endpoint available")
+                                            using_mock = True
+                                    else:
+                                        print("No input_values in preprocessed signal")
+                                        using_mock = True
+                                except Exception as e:
+                                    print(f"OpenVINO audio embedding error: {e}")
+                                    using_mock = True
+                                    
+                                # If we failed or need to use mock
+                                if using_mock:
+                                    # Create a mock embedding matching BERT dimensions
+                                    result["implementation_type"] = "MOCK"
+                                    result["embedding"] = torch.randn(768).tolist()
+                                    result["shape"] = [1, 768]
+                                    result["elapsed_time"] = time.time() - start_time
+                                    return result
+                                    
+                            # Batch of audio files
+                            elif isinstance(x, list):
+                                try:
+                                    batch_results = []
+                                    # Process each audio file
+                                    audio_batch = []
+                                    for audio_file in x:
+                                        try:
+                                            audio_data, sr = load_audio_16khz(audio_file)
+                                            audio_batch.append(audio_data)
+                                        except Exception as e:
+                                            print(f"Error loading audio {audio_file}: {e}")
+                                            # Add zero audio as placeholder
+                                            audio_batch.append(np.zeros(16000, dtype=np.float32))
+                                    
+                                    # Process all audio files together
+                                    try:
+                                        # Batch process with processor
+                                        inputs = processor(
+                                            audio_batch, 
+                                            return_tensors="pt",
+                                            padding="longest",
+                                            sampling_rate=16000
+                                        )
+                                        
+                                        # Check if we have valid inputs and model
+                                        active_model = endpoint_model if endpoint_model is not None else endpoint
+                                        if active_model is not None and 'input_values' in inputs:
+                                            # Convert to numpy for OpenVINO
+                                            input_values_np = inputs['input_values'].numpy()
+                                            
+                                            # Run inference
+                                            if hasattr(active_model, 'infer'):
+                                                output_features = active_model.infer({'input_values': input_values_np})
+                                            else:
+                                                output_features = active_model({'input_values': input_values_np})
+                                            
+                                            # Process results
+                                            if output_features:
+                                                # Get first output tensor
+                                                output_list = list(output_features.values())
+                                                
+                                                if output_list and len(output_list) > 0:
+                                                    # Convert to torch tensor
+                                                    embeddings = torch.tensor(output_list[0])
+                                                    
+                                                    # For sequence output, mean pool across sequence dimension
+                                                    if embeddings.dim() > 2:
+                                                        embeddings = torch.mean(embeddings, dim=1)
+                                                    
+                                                    # Store in result
+                                                    result["embeddings"] = [emb.tolist() for emb in embeddings]
+                                                    result["batch_size"] = len(result["embeddings"])
+                                                    result["shape"] = list(embeddings.shape)
+                                                    result["elapsed_time"] = time.time() - start_time
+                                                    return result
+                                                else:
+                                                    print("Empty output list from batch inference")
+                                                    using_mock = True
+                                            else:
+                                                print("Empty output features from batch inference")
+                                                using_mock = True
+                                        else:
+                                            print("No valid OpenVINO endpoint or inputs for batch")
+                                            using_mock = True
+                                    except Exception as e:
+                                        print(f"Error in batch processing: {e}")
+                                        using_mock = True
+                                except Exception as e:
+                                    print(f"OpenVINO audio batch embedding error: {e}")
+                                    using_mock = True
+                                
+                                # If we need to use mock for batch
+                                if using_mock:
+                                    # Create mock batch embeddings
+                                    batch_size = len(x)
+                                    result["implementation_type"] = "MOCK"
+                                    result["embeddings"] = [torch.randn(768).tolist() for _ in range(batch_size)]
+                                    result["batch_size"] = batch_size
+                                    result["shape"] = [batch_size, 768]
+                                    result["elapsed_time"] = time.time() - start_time
+                                    return result
+                        finally:
+                            # Always release the lock
+                            try:
+                                fcntl.flock(lock_file, fcntl.LOCK_UN)
+                            except Exception as e:
+                                print(f"Error releasing lock: {e}")
+                                
+                # Return empty result for no input
+                return {"error": "No valid input provided", "implementation_type": "MOCK"}
+                
+            except Exception as e:
+                # Catch-all for any unexpected errors
+                print(f"Unexpected error in OpenVINO handler: {e}")
+                result["implementation_type"] = "MOCK"
+                result["error"] = str(e)
+                result["elapsed_time"] = time.time() - start_time
+                
+                # Return appropriate mock output
+                if isinstance(x, list):
+                    batch_size = len(x)
+                    result["embeddings"] = [torch.randn(768).tolist() for _ in range(batch_size)]
+                    result["batch_size"] = batch_size
+                else:
+                    result["embedding"] = torch.randn(768).tolist()
+                
+                return result
+                
         return handler
         
     def create_openvino_transcription_endpoint_handler(self, endpoint, processor, model_name, openvino_label):

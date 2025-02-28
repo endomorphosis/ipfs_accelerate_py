@@ -322,21 +322,47 @@ class test_hf_clip:
                         print(f"Error in openvino_cli_convert: {e}")
                         return None
                 
-                # Use a patched version for testing
-                with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+                # First try without patching - attempt to use real OpenVINO
+                try:
+                    print("Trying real OpenVINO initialization for CLIP...")
                     endpoint, tokenizer, handler, queue, batch_size = self.clip.init_openvino(
                         self.model_name,
                         "feature-extraction",
                         "CPU",
                         "openvino:0",
-                        safe_get_optimum_openvino_model,
-                        safe_get_openvino_model,
-                        safe_get_openvino_pipeline_type,
-                        safe_openvino_cli_convert
+                        ov_utils.get_optimum_openvino_model,
+                        ov_utils.get_openvino_model,
+                        ov_utils.get_openvino_pipeline_type,
+                        ov_utils.openvino_cli_convert
                     )
                     
+                    # If we got a handler back, we succeeded with real implementation
                     valid_init = handler is not None
-                    results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization (MOCK)"
+                    is_real_impl = True
+                    results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
+                    print(f"Real OpenVINO initialization: {results['openvino_init']}")
+                    
+                except Exception as real_init_error:
+                    print(f"Real OpenVINO initialization failed: {real_init_error}")
+                    print("Falling back to mock implementation...")
+                    
+                    # If real implementation failed, try with mocks
+                    with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+                        endpoint, tokenizer, handler, queue, batch_size = self.clip.init_openvino(
+                            self.model_name,
+                            "feature-extraction",
+                            "CPU",
+                            "openvino:0",
+                            safe_get_optimum_openvino_model,
+                            safe_get_openvino_model,
+                            safe_get_openvino_pipeline_type,
+                            safe_openvino_cli_convert
+                        )
+                        
+                        # If we got a handler back, the mock succeeded
+                        valid_init = handler is not None
+                        is_real_impl = False
+                        results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization (MOCK)"
                     
                     test_handler = self.clip.create_openvino_image_embedding_endpoint_handler(
                         endpoint,
@@ -346,33 +372,53 @@ class test_hf_clip:
                     )
                     
                     output = test_handler(self.test_image, self.test_text)
-                    results["openvino_handler"] = "Success (MOCK)" if output is not None else "Failed OpenVINO handler (MOCK)"
                     
-                    # Include sample output examples for verification
+                    # Set implementation type marker based on initialization
+                    implementation_type = "(REAL)" if is_real_impl else "(MOCK)"
+                    results["openvino_handler"] = f"Success {implementation_type}" if output is not None else f"Failed OpenVINO handler {implementation_type}"
+                    
+                    # Include sample output examples with correct implementation type
                     if output is not None:
-                        # Mock reasonable shaped embedding
-                        mock_embedding_shape = [1, 512]
+                        # Get actual embedding shape if available, otherwise use mock
+                        if isinstance(output, dict) and (
+                            "image_embedding" in output and hasattr(output["image_embedding"], "shape") or
+                            "text_embedding" in output and hasattr(output["text_embedding"], "shape")
+                        ):
+                            if "image_embedding" in output:
+                                embedding_shape = list(output["image_embedding"].shape)
+                            else:
+                                embedding_shape = list(output["text_embedding"].shape)
+                        else:
+                            # Fallback to mock shape
+                            embedding_shape = [1, 512]
                         
-                        # Save results to demonstrate working implementation
+                        # For similarity, get actual value if available
+                        similarity_value = (
+                            float(output["similarity"].item()) 
+                            if isinstance(output, dict) and "similarity" in output and hasattr(output["similarity"], "item") 
+                            else 0.75  # Mock value
+                        )
+                        
+                        # Save results with the correct implementation type
                         results["openvino_similarity_example"] = {
                             "input": {"text": self.test_text, "image": "image input (binary data not shown)"},
-                            "output": 0.75,  # Mock similarity value
+                            "output": similarity_value,
                             "timestamp": time.time(),
-                            "implementation": "(MOCK)"
+                            "implementation": implementation_type
                         }
                         
                         results["openvino_image_example"] = {
                             "input": "image input (binary data not shown)",
-                            "output_shape": mock_embedding_shape,
+                            "output_shape": embedding_shape,
                             "timestamp": time.time(),
-                            "implementation": "(MOCK)"
+                            "implementation": implementation_type
                         }
                         
                         results["openvino_text_example"] = {
                             "input": self.test_text,
-                            "output_shape": mock_embedding_shape,
+                            "output_shape": embedding_shape,
                             "timestamp": time.time(),
-                            "implementation": "(MOCK)"
+                            "implementation": implementation_type
                         }
             except Exception as e:
                 results["openvino_tests"] = f"Error in OpenVINO utils: {str(e)}"

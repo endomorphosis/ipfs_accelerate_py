@@ -636,8 +636,8 @@ class hf_clip:
                 self.ov = self.resources["openvino"]
             else:
                 try:
-                    import openvino as ov
-                    self.ov = ov
+                    import openvino
+                    self.ov = openvino
                 except ImportError as e:
                     print(f"Error importing OpenVINO: {e}")
                     processor, endpoint = create_dummy_components()
@@ -662,167 +662,183 @@ class hf_clip:
         # Create dummy components that we'll use if any part of initialization fails
         dummy_processor, dummy_endpoint = create_dummy_components()
         
+        # Flag to track if we're using real implementation
+        using_real_implementation = False
+        
         try:
             # Safe handling of HuggingFace cache paths
             try:
+                # Setup cached model paths
                 homedir = os.path.expanduser("~")
                 model_name_convert = model.replace("/", "--")
                 huggingface_cache = os.path.join(homedir, ".cache/huggingface")
                 huggingface_cache_models = os.path.join(huggingface_cache, "hub")
                 
-                # Check if cache directory exists
-                if os.path.exists(huggingface_cache_models):
-                    huggingface_cache_models_files = os.listdir(huggingface_cache_models)
-                    huggingface_cache_models_files_dirs = [
-                        os.path.join(huggingface_cache_models, file) 
-                        for file in huggingface_cache_models_files 
-                        if os.path.isdir(os.path.join(huggingface_cache_models, file))
-                    ]
-                    huggingface_cache_models_files_dirs_models = [
-                        x for x in huggingface_cache_models_files_dirs if "model" in x
-                    ]
-                    
-                    # Safely get model directory
-                    model_src_path = None
-                    model_matches = [
-                        x for x in huggingface_cache_models_files_dirs_models if model_name_convert in x
-                    ]
-                    if model_matches and len(model_matches) > 0:  # Safe list indexing
-                        model_src_path = model_matches[0]
-                    else:
-                        print(f"Model {model} not found in HuggingFace cache")
-                        model_src_path = os.path.join(huggingface_cache_models, f"models--{model_name_convert}")
-                else:
-                    print(f"HuggingFace cache directory not found at {huggingface_cache_models}")
-                    model_src_path = os.path.join(homedir, "openvino_models", model_name_convert)
-                
-                # Create destination path
-                model_dst_path = os.path.join(model_src_path, "openvino") if model_src_path else None
-            except Exception as cache_error:
-                print(f"Error accessing HuggingFace cache: {cache_error}")
-                model_src_path = os.path.join(homedir, "openvino_models", model_name_convert)
-                model_dst_path = os.path.join(model_src_path, "openvino")
-            
-            # Get task type safely
-            task = "vision-text-dual"  # Default task for CLIP
-            if get_openvino_pipeline_type:
+                # Check if OpenVINO and optimum are available
                 try:
-                    task = get_openvino_pipeline_type(model, model_type)
-                except Exception as e:
-                    print(f"Error getting OpenVINO pipeline type: {e}")
-            
-            # Get weight format safely
-            weight_format = "int8"  # Default to int8
-            try:
-                if openvino_label and ":" in openvino_label:
-                    openvino_index = int(openvino_label.split(":")[1])
-                    if openvino_index == 0:
-                        weight_format = "int8"  # CPU
-                    elif openvino_index == 1:
-                        weight_format = "int4"  # GPU
-                    elif openvino_index == 2:
-                        weight_format = "int4"  # NPU
-            except Exception as e:
-                print(f"Error parsing OpenVINO label: {e}")
+                    from optimum.intel import OVModelForFeatureExtraction
+                    optimum_available = True
+                except ImportError:
+                    optimum_available = False
+                    print("Optimum Intel not available, will use direct OpenVINO conversion")
                 
-            # Update model destination path
-            if model_dst_path:
-                model_dst_path = f"{model_dst_path}_{weight_format}"
+                # Create model destination directory if needed
+                model_dir = os.path.join(homedir, "openvino_models", model_name_convert)
+                os.makedirs(model_dir, exist_ok=True)
                 
-                # Create directory if it doesn't exist
-                if not os.path.exists(model_dst_path):
-                    os.makedirs(model_dst_path, exist_ok=True)
-                    
-                    # Try using openvino_skill_convert if available
-                    if hasattr(self, 'openvino_skill_convert'):
-                        try:
-                            convert = self.openvino_skill_convert(model, model_dst_path, task, weight_format)
-                            print(f"Model converted with openvino_skill_convert: {convert}")
-                        except Exception as e:
-                            print(f"Error using openvino_skill_convert: {e}")
-                        
-                        # Fall back to openvino_cli_convert
-                        if openvino_cli_convert is not None:
-                            try:
-                                convert = openvino_cli_convert(
-                                    model, 
-                                    model_dst_path=model_dst_path, 
-                                    task=task, 
-                                    weight_format=weight_format, 
-                                    ratio="1.0", 
-                                    group_size=128, 
-                                    sym=True
-                                )
-                                print(f"Successfully converted model using OpenVINO CLI: {convert}")
-                            except Exception as e:
-                                print(f"Error using openvino_cli_convert: {e}")
-            
-            # Try to get processor
-            processor = dummy_processor  # Default to dummy processor
-            try:
-                processor_result = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
-                if processor_result is not None:
-                    processor = processor_result
-            except Exception as e:
-                print(f"Error loading CLIPProcessor: {e}")
+                # Create CLIP processor
                 try:
-                    if model_src_path:
-                        processor_result = self.transformers.CLIPProcessor.from_pretrained(model_src_path, trust_remote_code=True)
-                        if processor_result is not None:
-                            processor = processor_result
+                    processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
+                    print(f"Successfully loaded CLIP processor from model: {model}")
                 except Exception as e:
-                    print(f"Error loading processor from cache: {e}")
+                    print(f"Error loading CLIP processor: {e}")
                     try:
-                        # Try with AutoProcessor
-                        processor_result = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
-                        if processor_result is not None:
-                            processor = processor_result
+                        processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
+                        print(f"Successfully loaded AutoProcessor from model: {model}")
                     except Exception as e:
                         print(f"Error loading AutoProcessor: {e}")
-                        # Will use our dummy processor
-            
-            # Try to get model
-            endpoint = dummy_endpoint  # Default to dummy endpoint if initialization fails
-            if get_openvino_model is not None:
-                try:
-                    model_result = get_openvino_model(model, model_type, openvino_label)
-                    if model_result is not None:
-                        endpoint = model_result
-                        print(f"Successfully loaded OpenVINO model directly")
-                except Exception as e:
-                    print(f"Error with get_openvino_model: {e}")
-            
-            # Try optimum model if direct model loading failed
-            if endpoint == dummy_endpoint and get_optimum_openvino_model is not None:
-                try:
-                    optimum_model_result = get_optimum_openvino_model(model, model_type, openvino_label)
-                    if optimum_model_result is not None:
-                        endpoint = optimum_model_result
-                        print(f"Successfully loaded optimum OpenVINO model")
-                except Exception as e:
-                    print(f"Error with get_optimum_openvino_model: {e}")
-            
-            # Create endpoint handler
-            endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(
-                endpoint=endpoint,
-                tokenizer=processor,
-                endpoint_model=model,
-                openvino_label=openvino_label
-            )
-            
-            # Return initialized components - always return success even with dummy components
-            return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
-            
+                        processor = dummy_processor
+                
+                # Try to load model directly through OpenVINO
+                ov_model = None
+                
+                # Process device information
+                if openvino_label and ":" in openvino_label:
+                    try:
+                        device_parts = openvino_label.split(":")
+                        device_type = device_parts[0]
+                        device_index = int(device_parts[1]) if len(device_parts) > 1 else 0
+                    except Exception as e:
+                        print(f"Error parsing device label: {e}")
+                        device_type = "CPU"
+                        device_index = 0
+                else:
+                    device_type = "CPU"
+                    device_index = 0
+                
+                # Get the task type for CLIP (feature-extraction)
+                task_type = "feature-extraction"
+                if get_openvino_pipeline_type:
+                    try:
+                        task_type = get_openvino_pipeline_type(model, model_type)
+                        print(f"Using task type: {task_type} for model {model}")
+                    except Exception as e:
+                        print(f"Error getting pipeline type: {e}, using default: {task_type}")
+                
+                # Try multiple approaches to initialize the model
+                
+                # Approach 1: Try optimum-intel integration first if available
+                if optimum_available:
+                    try:
+                        print(f"Trying to initialize CLIP model with optimum-intel OVModelForFeatureExtraction")
+                        ov_model = OVModelForFeatureExtraction.from_pretrained(
+                            model, 
+                            export=True,
+                            compile=False,
+                            trust_remote_code=True
+                        )
+                        # Compile the model for the target device
+                        ov_model.compile()
+                        print("Successfully loaded CLIP model using optimum-intel")
+                        using_real_implementation = True
+                    except Exception as e:
+                        print(f"Error loading model with optimum-intel: {e}")
+                        ov_model = None
+                
+                # Approach 2: Try direct OpenVINO integration with CLI convert
+                if ov_model is None and openvino_cli_convert is not None:
+                    try:
+                        print(f"Converting CLIP model using OpenVINO CLI")
+                        model_dst_path = os.path.join(model_dir, "openvino_model")
+                        os.makedirs(model_dst_path, exist_ok=True)
+                        
+                        # Convert the model using CLI
+                        convert_result = openvino_cli_convert(
+                            model, 
+                            model_dst_path=model_dst_path, 
+                            task=task_type, 
+                            weight_format="int8", 
+                            ratio="1.0", 
+                            group_size=128, 
+                            sym=True
+                        )
+                        
+                        if convert_result:
+                            print(f"Successfully converted model using CLI: {convert_result}")
+                            
+                            # Try to load the converted model
+                            model_xml_path = os.path.join(model_dst_path, f"{model_name_convert}.xml")
+                            if os.path.exists(model_xml_path):
+                                # Create a Core object and read the model
+                                core = self.ov.Core()
+                                ov_model = core.read_model(model_xml_path)
+                                ov_model = core.compile_model(ov_model, device_type)
+                                print(f"Successfully loaded converted CLIP model from {model_xml_path}")
+                                using_real_implementation = True
+                    except Exception as e:
+                        print(f"Error with OpenVINO CLI conversion: {e}")
+                        ov_model = None
+                
+                # Approach 3: Try using get_openvino_model directly
+                if ov_model is None and get_openvino_model is not None:
+                    try:
+                        print(f"Trying to get OpenVINO model directly with get_openvino_model")
+                        ov_model = get_openvino_model(model, task_type, openvino_label)
+                        if ov_model is not None:
+                            print(f"Successfully loaded OpenVINO model directly")
+                            using_real_implementation = True
+                    except Exception as e:
+                        print(f"Error with get_openvino_model: {e}")
+                        ov_model = None
+                
+                # Approach 4: Try using our own conversion if available
+                if ov_model is None and hasattr(self, 'openvino_skill_convert'):
+                    try:
+                        print(f"Trying CLIP model conversion with openvino_skill_convert")
+                        model_dst_path = os.path.join(model_dir, "openvino_converted")
+                        os.makedirs(model_dst_path, exist_ok=True)
+                        ov_model = self.openvino_skill_convert(model, model_dst_path, task_type, "int8")
+                        if ov_model is not None:
+                            print(f"Successfully converted and loaded CLIP model with openvino_skill_convert")
+                            using_real_implementation = True
+                    except Exception as e:
+                        print(f"Error with openvino_skill_convert: {e}")
+                        ov_model = None
+                
+                # Fall back to dummy implementation if all approaches failed
+                if ov_model is None:
+                    print("All initialization approaches failed, using dummy implementation")
+                    ov_model = dummy_endpoint
+                
+                # Create the endpoint handler
+                endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(
+                    endpoint=ov_model,
+                    tokenizer=processor,
+                    endpoint_model=model,
+                    openvino_label=openvino_label,
+                    implementation_real=using_real_implementation
+                )
+                
+                # Return the model components
+                implementation_type = "REAL" if using_real_implementation else "MOCK"
+                print(f"Initialized OpenVINO CLIP model: {implementation_type}")
+                return ov_model, processor, endpoint_handler, asyncio.Queue(64), 0
+                
+            except Exception as cache_error:
+                print(f"Error in CLIP model setup: {cache_error}")
+                processor, endpoint = create_dummy_components()
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
-            # Create endpoint handler with dummy components
-            endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(
-                endpoint=dummy_endpoint,
-                tokenizer=dummy_processor,
-                endpoint_model=model,
-                openvino_label=openvino_label
-            )
-            return dummy_endpoint, dummy_processor, endpoint_handler, asyncio.Queue(64), 0
+        
+        # Create endpoint handler with dummy components as fallback
+        endpoint_handler = self.create_openvino_image_embedding_endpoint_handler(
+            endpoint=dummy_endpoint,
+            tokenizer=dummy_processor,
+            endpoint_model=model,
+            openvino_label=openvino_label,
+            implementation_real=False
+        )
+        return dummy_endpoint, dummy_processor, endpoint_handler, asyncio.Queue(64), 0
     
     def create_cpu_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint=None):
         """
@@ -1362,7 +1378,7 @@ class hf_clip:
                     return {"error": str(e)}
         return handler
 
-    def create_openvino_image_embedding_endpoint_handler(self, endpoint=None, tokenizer=None, endpoint_model=None, openvino_label=None):
+    def create_openvino_image_embedding_endpoint_handler(self, endpoint=None, tokenizer=None, endpoint_model=None, openvino_label=None, implementation_real=False):
         """Creates an OpenVINO handler for CLIP image and text embedding extraction.
         
         Args:
@@ -1370,6 +1386,7 @@ class hf_clip:
             tokenizer: The text/image processor
             endpoint_model: The model name or path
             openvino_label: Label to identify this endpoint
+            implementation_real: Flag indicating if this is a real implementation
             
         Returns:
             A handler function for OpenVINO CLIP endpoint
@@ -1384,8 +1401,8 @@ class hf_clip:
             Returns:
                 Dictionary with embeddings and/or similarity scores
             """
-            # Mark if we're using a mock
-            using_mock = False
+            # Mark if we're using a mock - initialize with the passed implementation flag
+            using_mock = not implementation_real
             
             try:
                 result = {}
@@ -1432,23 +1449,52 @@ class hf_clip:
                             raise ValueError(f"Unsupported image input type: {type(image_input)}")
                         
                         # Check if we have real endpoint and it's callable
-                        if endpoint is not None and callable(endpoint):
+                        if endpoint is not None and callable(endpoint) and not using_mock:
                             # Run inference with OpenVINO
                             try:
-                                image_features = endpoint(dict(image_inputs))
+                                # Convert to dictionary first if not already
+                                image_inputs_dict = dict(image_inputs) if not isinstance(image_inputs, dict) else image_inputs
                                 
-                                # Extract image embedding from output
-                                if "image_embeds" in image_features:
+                                # For OpenVINO optimum models
+                                if hasattr(endpoint, 'forward') and callable(endpoint.forward):
+                                    image_features = endpoint.forward(**image_inputs_dict)
+                                else:
+                                    # For direct OpenVINO models
+                                    image_features = endpoint(image_inputs_dict)
+                                
+                                # Extract image embedding from output based on model output format
+                                if hasattr(image_features, 'image_embeds'):
+                                    # For optimum models that return an object
+                                    image_embeddings = self.torch.tensor(image_features.image_embeds)
+                                    result["image_embedding"] = image_embeddings
+                                elif isinstance(image_features, dict) and "image_embeds" in image_features:
+                                    # For models that return a dict with image_embeds
                                     image_embeddings = self.torch.tensor(image_features["image_embeds"])
                                     result["image_embedding"] = image_embeddings
-                                elif len(image_features) > 0:
+                                elif isinstance(image_features, dict) and "last_hidden_state" in image_features:
+                                    # For BERT-like outputs
+                                    image_embeddings = self.torch.tensor(image_features["last_hidden_state"])
+                                    # Pool if needed
+                                    if image_embeddings.dim() > 2:
+                                        image_embeddings = image_embeddings.mean(dim=1)
+                                    result["image_embedding"] = image_embeddings
+                                elif isinstance(image_features, dict) and len(image_features) > 0:
                                     # Try to get from first output if named keys aren't available
                                     output_values = list(image_features.values())
                                     if len(output_values) > 0:
                                         image_embeddings = self.torch.tensor(output_values[0])
                                         result["image_embedding"] = image_embeddings
+                                    else:
+                                        # Create a fallback embedding
+                                        using_mock = True
+                                        batch_size = 1 if not isinstance(image_input, list) else len(image_input)
+                                        result["image_embedding"] = self.torch.rand((batch_size, 512))
+                                elif isinstance(image_features, (list, tuple)) and len(image_features) > 0:
+                                    # For list-like outputs, use the first element
+                                    image_embeddings = self.torch.tensor(image_features[0])
+                                    result["image_embedding"] = image_embeddings
                                 else:
-                                    # Create a fallback embedding
+                                    # Create a fallback embedding if output format is unknown
                                     using_mock = True
                                     batch_size = 1 if not isinstance(image_input, list) else len(image_input)
                                     result["image_embedding"] = self.torch.rand((batch_size, 512))
@@ -1459,7 +1505,7 @@ class hf_clip:
                                 batch_size = 1 if not isinstance(image_input, list) else len(image_input)
                                 result["image_embedding"] = self.torch.rand((batch_size, 512))
                         else:
-                            # Create a fallback embedding if no endpoint
+                            # Create a fallback embedding if no endpoint or we're already using mock
                             using_mock = True
                             batch_size = 1 if not isinstance(image_input, list) else len(image_input)
                             result["image_embedding"] = self.torch.rand((batch_size, 512))
@@ -1484,29 +1530,52 @@ class hf_clip:
                             raise ValueError(f"Unsupported text input type: {type(text_input)}")
                         
                         # Check if we have real endpoint and it's callable
-                        if endpoint is not None and callable(endpoint):
+                        if endpoint is not None and callable(endpoint) and not using_mock:
                             # Run inference with OpenVINO
                             try:
-                                text_features = endpoint(dict(text_inputs))
+                                # Convert to dictionary first if not already
+                                text_inputs_dict = dict(text_inputs) if not isinstance(text_inputs, dict) else text_inputs
                                 
-                                # Extract text embedding from output
-                                if "text_embeds" in text_features:
+                                # For OpenVINO optimum models
+                                if hasattr(endpoint, 'forward') and callable(endpoint.forward):
+                                    text_features = endpoint.forward(**text_inputs_dict)
+                                else:
+                                    # For direct OpenVINO models
+                                    text_features = endpoint(text_inputs_dict)
+                                
+                                # Extract text embedding from output based on model output format
+                                if hasattr(text_features, 'text_embeds'):
+                                    # For optimum models that return an object
+                                    text_embeddings = self.torch.tensor(text_features.text_embeds)
+                                    result["text_embedding"] = text_embeddings
+                                elif isinstance(text_features, dict) and "text_embeds" in text_features:
+                                    # For models that return a dict with text_embeds
                                     text_embeddings = self.torch.tensor(text_features["text_embeds"])
                                     result["text_embedding"] = text_embeddings
-                                elif "last_hidden_state" in text_features:
+                                elif isinstance(text_features, dict) and "last_hidden_state" in text_features:
+                                    # For BERT-like outputs
                                     text_embeddings = self.torch.tensor(text_features["last_hidden_state"])
                                     # Pool to get sentence embedding - average across sequence dimension
                                     if text_embeddings.dim() > 2:
                                         text_embeddings = text_embeddings.mean(dim=1)
                                     result["text_embedding"] = text_embeddings
-                                elif len(text_features) > 0:
+                                elif isinstance(text_features, dict) and len(text_features) > 0:
                                     # Try to get from first output if named keys aren't available
                                     output_values = list(text_features.values())
                                     if len(output_values) > 0:
                                         text_embeddings = self.torch.tensor(output_values[0])
                                         result["text_embedding"] = text_embeddings
+                                    else:
+                                        # Create a fallback embedding
+                                        using_mock = True
+                                        batch_size = 1 if not isinstance(text_input, list) else len(text_input)
+                                        result["text_embedding"] = self.torch.rand((batch_size, 512))
+                                elif isinstance(text_features, (list, tuple)) and len(text_features) > 0:
+                                    # For list-like outputs, use the first element
+                                    text_embeddings = self.torch.tensor(text_features[0])
+                                    result["text_embedding"] = text_embeddings
                                 else:
-                                    # Create a fallback embedding
+                                    # Create a fallback embedding if output format is unknown
                                     using_mock = True
                                     batch_size = 1 if not isinstance(text_input, list) else len(text_input)
                                     result["text_embedding"] = self.torch.rand((batch_size, 512))
@@ -1517,7 +1586,7 @@ class hf_clip:
                                 batch_size = 1 if not isinstance(text_input, list) else len(text_input)
                                 result["text_embedding"] = self.torch.rand((batch_size, 512))
                         else:
-                            # Create a fallback embedding if no endpoint
+                            # Create a fallback embedding if no endpoint or we're already using mock
                             using_mock = True
                             batch_size = 1 if not isinstance(text_input, list) else len(text_input)
                             result["text_embedding"] = self.torch.rand((batch_size, 512))
@@ -1546,23 +1615,27 @@ class hf_clip:
                 
                 # No valid inputs
                 if not result:
-                    return {"message": "No valid input provided"}
+                    return {"message": "No valid input provided", "implementation_type": "MOCK" if using_mock else "REAL"}
+                
+                # Add implementation type information
+                result["implementation_type"] = "MOCK" if using_mock else "REAL"
                 
                 # Add MOCK/REAL indicator to results - create a copy of keys first to avoid dictionary size change during iteration
                 keys_to_process = list(result.keys())
                 for key in keys_to_process:
-                    if isinstance(result[key], (self.torch.Tensor, list, tuple)) and key != "similarity":
+                    if isinstance(result[key], (self.torch.Tensor, list, tuple)) and key != "similarity" and key != "implementation_type":
                         result[key + "_status"] = "MOCK" if using_mock else "REAL"
                 
                 # Return single embedding if that's all that was requested
-                if len(result) == 1 and (
+                if len(result) == 2 and (
                     "image_embedding" in result or 
                     "text_embedding" in result
-                ):
-                    embedding_key = list(result.keys())[0]
+                ) and "implementation_type" in result:
+                    embedding_key = next(k for k in result.keys() if k != "implementation_type")
                     return {
                         embedding_key: result[embedding_key],
-                        embedding_key + "_status": "MOCK" if using_mock else "REAL"
+                        embedding_key + "_status": "MOCK" if using_mock else "REAL",
+                        "implementation_type": "MOCK" if using_mock else "REAL"
                     }
                 
                 return result
@@ -1572,33 +1645,117 @@ class hf_clip:
                 # Return a minimal result with mock data on complete failure
                 return {
                     "error": str(e),
-                    "status": "MOCK"
+                    "status": "MOCK",
+                    "implementation_type": "MOCK"
                 }
                 
         return handler
 
     def openvino_skill_convert(self, model_name, model_dst_path, task, weight_format, hfmodel=None, hfprocessor=None):
-        if hfmodel is None:
-            hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
-    
-        if hfprocessor is None:
-            hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
-        if hfprocessor is not None:
-            text = "Replace me by any text you'd like."
-            image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
-            image = load_image(image_url)
-            processed_data = hfprocessor(
-                text = "Replace me by any text you'd like.",
-                images = [image],
-                return_tensors="pt", 
-                padding=True
-            )
-            results = hfmodel(**processed_data)
-            hfmodel.config.torchscript = True
-            ov_model = self.ov.convert_model(hfmodel,  example_input=dict(processed_data))
-            if not os.path.exists(model_dst_path):
-                os.mkdir(model_dst_path)
-            self.ov.save_model(ov_model, os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml"))
-            ov_model = self.ov.compile_model(ov_model)
-            hfmodel = None
-        return ov_model
+        """Convert a CLIP model to OpenVINO format.
+        
+        Args:
+            model_name: Name or path of the HuggingFace model
+            model_dst_path: Destination path for the converted model
+            task: Model task type (usually 'feature-extraction' for CLIP)
+            weight_format: Weight format for quantization (int8, int4, etc.)
+            hfmodel: Pre-loaded model (optional)
+            hfprocessor: Pre-loaded processor (optional)
+            
+        Returns:
+            Compiled OpenVINO model or None if conversion fails
+        """
+        print(f"Converting {model_name} to OpenVINO format with task={task}, format={weight_format}")
+        
+        try:
+            # Create the destination directory if it doesn't exist
+            os.makedirs(model_dst_path, exist_ok=True)
+            model_xml_path = os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml")
+            
+            # If model is already converted, just load and return it
+            if os.path.exists(model_xml_path):
+                print(f"Found existing OpenVINO CLIP model at {model_xml_path}, loading it")
+                core = self.ov.Core()
+                ov_model = core.read_model(model_xml_path)
+                ov_model = core.compile_model(ov_model)
+                return ov_model
+                
+            # Load model if not provided
+            if hfmodel is None:
+                try:
+                    print("Loading CLIP model...")
+                    hfmodel = self.transformers.CLIPModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
+                except Exception as e:
+                    print(f"Error loading CLIPModel: {e}, trying AutoModel")
+                    hfmodel = self.transformers.AutoModel.from_pretrained(model_name, torch_dtype=self.torch.float16)
+        
+            # Load processor if not provided
+            if hfprocessor is None:
+                try:
+                    print("Loading CLIP processor...")
+                    hfprocessor = self.transformers.CLIPProcessor.from_pretrained(model_name)
+                except Exception as e:
+                    print(f"Error loading CLIPProcessor: {e}, trying AutoProcessor")
+                    hfprocessor = self.transformers.AutoProcessor.from_pretrained(model_name)
+                    
+            # Set up inputs for tracing the model
+            if hfprocessor is not None:
+                # Prepare sample inputs for conversion
+                try:
+                    # Use a sample image and text for conversion
+                    text = "Example text for conversion."
+                    # First try with a local image if available
+                    local_image_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test.jpg")
+                    if os.path.exists(local_image_path):
+                        image = load_image(local_image_path)
+                    else:
+                        # Use a remote image if no local image is available
+                        image_url = "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/d5fbbd1a-d484-415c-88cb-9986625b7b11"
+                        image = load_image(image_url)
+                        
+                    # Process the data
+                    processed_data = hfprocessor(
+                        text=text,
+                        images=[image],
+                        return_tensors="pt", 
+                        padding=True
+                    )
+                    
+                    # Run a forward pass to make sure everything works
+                    print("Running forward pass on CLIP model...")
+                    with self.torch.no_grad():
+                        results = hfmodel(**processed_data)
+                    
+                    # Prepare model for conversion
+                    print("Converting CLIP model to OpenVINO format...")
+                    hfmodel.config.torchscript = True
+                    
+                    # Convert to OpenVINO model
+                    ov_model = self.ov.convert_model(hfmodel, example_input=dict(processed_data))
+                    
+                    # Save model to disk
+                    print(f"Saving OpenVINO CLIP model to {model_xml_path}")
+                    self.ov.save_model(ov_model, model_xml_path)
+                    
+                    # Compile and return the model
+                    ov_model = self.ov.compile_model(ov_model)
+                    
+                    # Clean up to reduce memory usage
+                    del hfmodel
+                    
+                    return ov_model
+                    
+                except Exception as conversion_error:
+                    print(f"Error during CLIP model conversion: {conversion_error}")
+                    import traceback
+                    traceback.print_exc()
+                    return None
+            else:
+                print("No processor available, cannot convert CLIP model")
+                return None
+                
+        except Exception as e:
+            print(f"Error in openvino_skill_convert: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

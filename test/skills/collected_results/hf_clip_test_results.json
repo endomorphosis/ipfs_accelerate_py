@@ -21,7 +21,7 @@
       1,
       512
     ],
-    "timestamp": 1740699010.3280663,
+    "timestamp": 1740701629.1198313,
     "implementation": "(REAL)"
   },
   "cpu_text_embedding": "Success (REAL)",
@@ -35,7 +35,7 @@
       1,
       512
     ],
-    "timestamp": 1740699010.3282661,
+    "timestamp": 1740701629.1200583,
     "implementation": "(REAL)"
   },
   "cpu_similarity_example": {
@@ -43,40 +43,12 @@
       "text": "a red square",
       "image": "image input (binary data not shown)"
     },
-    "output": 0.03913796693086624,
-    "timestamp": 1740699010.3283544,
+    "output": -0.005877666175365448,
+    "timestamp": 1740701629.1201804,
     "implementation": "(REAL)"
   },
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success (MOCK)",
-  "openvino_handler": "Success (MOCK)",
-  "openvino_similarity_example": {
-    "input": {
-      "text": "a red square",
-      "image": "image input (binary data not shown)"
-    },
-    "output": 0.75,
-    "timestamp": 1740699028.4591475,
-    "implementation": "(MOCK)"
-  },
-  "openvino_image_example": {
-    "input": "image input (binary data not shown)",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740699028.4591513,
-    "implementation": "(MOCK)"
-  },
-  "openvino_text_example": {
-    "input": "a red square",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740699028.4591527,
-    "implementation": "(MOCK)"
-  },
+  "openvino_init": "Success (REAL)",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK)",
   "qualcomm_handler": "Success (MOCK)",
@@ -86,7 +58,7 @@
       "image": "image input (binary data not shown)"
     },
     "output": 0.75,
-    "timestamp": 1740699028.5576844,
+    "timestamp": 1740701656.9081728,
     "implementation": "(MOCK)"
   },
   "qualcomm_image_example": {
@@ -95,7 +67,7 @@
       1,
       512
     ],
-    "timestamp": 1740699028.5576878,
+    "timestamp": 1740701656.9081771,
     "implementation": "(MOCK)"
   },
   "qualcomm_text_example": {
@@ -104,11 +76,11 @@
       1,
       512
     ],
-    "timestamp": 1740699028.5576885,
+    "timestamp": 1740701656.9081788,
     "implementation": "(MOCK)"
   },
   "metadata": {
-    "timestamp": 1740699028.5577602,
+    "timestamp": 1740701656.912963,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -117,6 +89,6 @@
     "mps_available": false,
     "transformers_mocked": false,
     "test_model": "openai/clip-vit-base-patch32",
-    "test_run_id": "clip-test-1740699028"
+    "test_run_id": "clip-test-1740701656"
   }
 }

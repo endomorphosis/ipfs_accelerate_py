@@ -74,65 +74,157 @@ class test_hf_xclip:
 
         # Test CPU initialization and handler
         try:
-            # Use a more generic patching approach to avoid AutoModelForVideoTextRetrieval errors
-            with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                 patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
-                 patch('transformers.AutoModel.from_pretrained') as mock_model:
+            # Check if transformers is available as a non-mocked import
+            transformers_available = "transformers" in sys.modules and not isinstance(self.resources["transformers"], MagicMock)
+            
+            # First try real initialization without mocks
+            if transformers_available:
+                try:
+                    print("Trying real CPU initialization for XCLIP...")
+                    endpoint, processor, handler, queue, batch_size = self.xclip.init_cpu(
+                        self.model_name,
+                        "cpu",
+                        "cpu"
+                    )
+                    
+                    valid_init = endpoint is not None and processor is not None and handler is not None
+                    implementation_type = "(REAL)"
+                    results["cpu_init"] = f"Success {implementation_type}" if valid_init else f"Failed CPU initialization"
+                    
+                    # Use handler directly from initialization
+                    test_handler = handler
+                    
+                except Exception as real_init_error:
+                    print(f"Real CPU initialization failed: {real_init_error}")
+                    print("Falling back to mock implementation...")
+                    implementation_type = "(MOCK)"
+                    
+                    # Fall back to mock initialization
+                    with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
+                         patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
+                         patch('transformers.AutoModel.from_pretrained') as mock_model:
+                        
+                        mock_config.return_value = MagicMock()
+                        mock_processor.return_value = MagicMock()
+                        mock_model.return_value = MagicMock()
+                        
+                        endpoint, processor, handler, queue, batch_size = self.xclip.init_cpu(
+                            self.model_name,
+                            "cpu",
+                            "cpu"
+                        )
+                        
+                        valid_init = endpoint is not None and processor is not None and handler is not None
+                        results["cpu_init"] = f"Success {implementation_type}" if valid_init else f"Failed CPU initialization"
+                        
+                        # Create test handler
+                        test_handler = self.xclip.create_cpu_video_embedding_endpoint_handler(
+                            endpoint,
+                            processor,
+                            self.model_name,
+                            "cpu"
+                        )
+            else:
+                # If transformers not available, use mocks directly
+                print("Transformers not available, using mock implementation...")
+                implementation_type = "(MOCK)"
                 
-                mock_config.return_value = MagicMock()
-                mock_processor.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
+                with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
+                     patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
+                     patch('transformers.AutoModel.from_pretrained') as mock_model:
+                    
+                    mock_config.return_value = MagicMock()
+                    mock_processor.return_value = MagicMock()
+                    mock_model.return_value = MagicMock()
+                    
+                    endpoint, processor, handler, queue, batch_size = self.xclip.init_cpu(
+                        self.model_name,
+                        "cpu",
+                        "cpu"
+                    )
+                    
+                    valid_init = endpoint is not None and processor is not None and handler is not None
+                    results["cpu_init"] = f"Success {implementation_type}" if valid_init else f"Failed CPU initialization"
+                    
+                    # Create test handler
+                    test_handler = self.xclip.create_cpu_video_embedding_endpoint_handler(
+                        endpoint,
+                        processor,
+                        self.model_name,
+                        "cpu"
+                    )
+            
+            # Test text embedding
+            text_embedding = test_handler(text=self.test_text)
+            
+            # Get implementation type from the result, or use the one from initialization
+            result_impl_type = text_embedding.get("implementation_type", implementation_type) if isinstance(text_embedding, dict) else implementation_type
+            
+            # Make sure we have the correct format with parentheses
+            if result_impl_type == "REAL" or result_impl_type == "MOCK":
+                result_impl_type = f"({result_impl_type})"
                 
-                endpoint, processor, handler, queue, batch_size = self.xclip.init_cpu(
-                    self.model_name,
-                    "cpu",
-                    "cpu"
-                )
+            results["cpu_text_embedding"] = f"Success {result_impl_type}" if text_embedding is not None else "Failed text embedding"
+            
+            # Include sample output info
+            if text_embedding is not None and isinstance(text_embedding, dict) and "text_embedding" in text_embedding:
+                text_emb = text_embedding["text_embedding"]
+                results["cpu_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
+                results["cpu_text_embedding_timestamp"] = time.time()
+            
+            # Test video embedding
+            video_embedding = test_handler(frames=self.frames)
+            
+            # Get implementation type from the result, or use the one from initialization
+            result_impl_type = video_embedding.get("implementation_type", implementation_type) if isinstance(video_embedding, dict) else implementation_type
+            
+            # Make sure we have the correct format with parentheses
+            if result_impl_type == "REAL" or result_impl_type == "MOCK":
+                result_impl_type = f"({result_impl_type})"
                 
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cpu_init"] = "Success (MOCK)" if valid_init else "Failed CPU initialization"
+            results["cpu_video_embedding"] = f"Success {result_impl_type}" if video_embedding is not None else "Failed video embedding"
+            
+            # Include sample output info
+            if video_embedding is not None and isinstance(video_embedding, dict) and "video_embedding" in video_embedding:
+                video_emb = video_embedding["video_embedding"]
+                results["cpu_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
+                results["cpu_video_embedding_timestamp"] = time.time()
+            
+            # Test similarity computation
+            similarity = test_handler(frames=self.frames, text=self.test_text)
+            
+            # Get implementation type from the result, or use the one from initialization
+            result_impl_type = similarity.get("implementation_type", implementation_type) if isinstance(similarity, dict) else implementation_type
+            
+            # Make sure we have the correct format with parentheses
+            if result_impl_type == "REAL" or result_impl_type == "MOCK":
+                result_impl_type = f"({result_impl_type})"
                 
-                test_handler = self.xclip.create_cpu_video_embedding_endpoint_handler(
-                    endpoint,
-                    processor,
-                    self.model_name,
-                    "cpu"
-                )
+            results["cpu_similarity"] = f"Success {result_impl_type}" if similarity is not None else "Failed similarity computation"
+            
+            # Include similarity score if available
+            if similarity is not None and isinstance(similarity, dict) and "similarity" in similarity:
+                sim_score = similarity["similarity"]
+                if hasattr(sim_score, "item") and callable(sim_score.item):
+                    results["cpu_similarity_score"] = float(sim_score.item())
+                elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
+                    results["cpu_similarity_score"] = sim_score.tolist()
+                else:
+                    results["cpu_similarity_score"] = "unknown format"
+                results["cpu_similarity_timestamp"] = time.time()
                 
-                # Test text embedding
-                text_embedding = test_handler(text=self.test_text)
-                results["cpu_text_embedding"] = "Success (MOCK)" if text_embedding is not None else "Failed text embedding"
-                
-                # Include sample output info
-                if text_embedding is not None and isinstance(text_embedding, dict) and "text_embedding" in text_embedding:
-                    text_emb = text_embedding["text_embedding"]
-                    results["cpu_text_embedding_shape"] = list(text_emb.shape) if hasattr(text_emb, "shape") else "unknown shape"
-                    results["cpu_text_embedding_timestamp"] = time.time()
-                
-                # Test video embedding
-                video_embedding = test_handler(frames=self.frames)
-                results["cpu_video_embedding"] = "Success (MOCK)" if video_embedding is not None else "Failed video embedding"
-                
-                # Include sample output info
-                if video_embedding is not None and isinstance(video_embedding, dict) and "video_embedding" in video_embedding:
-                    video_emb = video_embedding["video_embedding"]
-                    results["cpu_video_embedding_shape"] = list(video_emb.shape) if hasattr(video_emb, "shape") else "unknown shape"
-                    results["cpu_video_embedding_timestamp"] = time.time()
-                
-                # Test similarity computation
-                similarity = test_handler(frames=self.frames, text=self.test_text)
-                results["cpu_similarity"] = "Success (MOCK)" if similarity is not None else "Failed similarity computation"
-                
-                # Include similarity score if available
-                if similarity is not None and isinstance(similarity, dict) and "similarity" in similarity:
-                    sim_score = similarity["similarity"]
-                    if hasattr(sim_score, "item") and callable(sim_score.item):
-                        results["cpu_similarity_score"] = float(sim_score.item())
-                    elif hasattr(sim_score, "tolist") and callable(sim_score.tolist):
-                        results["cpu_similarity_score"] = sim_score.tolist()
-                    else:
-                        results["cpu_similarity_score"] = "unknown format"
-                    results["cpu_similarity_timestamp"] = time.time()
+                # Add example with implementation type for completeness
+                results["cpu_similarity_example"] = {
+                    "input": {
+                        "text": self.test_text,
+                        "video": "Video frames (array data)"
+                    },
+                    "output": {
+                        "similarity_value": results["cpu_similarity_score"]
+                    },
+                    "implementation_type": result_impl_type,
+                    "platform": "CPU"
+                }
                 
         except Exception as e:
             results["cpu_tests"] = f"Error: {str(e)}"
@@ -422,17 +514,26 @@ class test_hf_xclip:
         os.makedirs(collected_dir, exist_ok=True)
         
         # Add metadata about the environment to the results
+        # Check if transformers is a mock or real implementation
+        transformers_available = "transformers" in sys.modules and not isinstance(self.resources["transformers"], MagicMock)
+        transformers_version = transformers.__version__ if transformers_available and hasattr(transformers, "__version__") else "mocked"
+        
+        # Gather implementation type information from results
+        contains_real_impl = any("(REAL)" in str(v) for v in test_results.values() if isinstance(v, str))
+        
         test_results["metadata"] = {
             "timestamp": time.time(),
             "torch_version": torch.__version__,
             "numpy_version": np.__version__,
-            "transformers_version": "mocked", # Using mocked transformers
+            "transformers_version": transformers_version,
             "cuda_available": torch.cuda.is_available(),
             "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
             "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
             "test_model": self.model_name,
             "test_run_id": f"xclip-test-{int(time.time())}",
-            "mock_implementation": True
+            "using_mocks": not contains_real_impl,  # Only mark as using mocks if no real implementations found
+            "has_real_cpu_impl": contains_real_impl,
+            "transformers_available": transformers_available
         }
         
         # Save collected results

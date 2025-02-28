@@ -266,21 +266,46 @@ class test_hf_bert:
                     print(f"Mock openvino_cli_convert called for {model_name}")
                     return True
                 
-                # Initialize with mock OpenVINO utils
-                endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
-                    model_name=self.model_name,
-                    model_type="feature-extraction",
-                    device="CPU",
-                    openvino_label="openvino:0",
-                    get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                    get_openvino_model=mock_get_openvino_model,
-                    get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                    openvino_cli_convert=mock_openvino_cli_convert
-                )
-                
-                # If we got a handler back, we succeeded
-                valid_init = handler is not None
-                results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
+                # Try with real OpenVINO utils first
+                try:
+                    print("Trying real OpenVINO initialization...")
+                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
+                        model_name=self.model_name,
+                        model_type="feature-extraction",
+                        device="CPU",
+                        openvino_label="openvino:0",
+                        get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
+                        get_openvino_model=ov_utils.get_openvino_model,
+                        get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
+                        openvino_cli_convert=ov_utils.openvino_cli_convert
+                    )
+                    
+                    # If we got a handler back, we succeeded
+                    valid_init = handler is not None
+                    is_real_impl = True
+                    results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
+                    print(f"Real OpenVINO initialization: {results['openvino_init']}")
+                    
+                except Exception as e:
+                    print(f"Real OpenVINO initialization failed: {e}")
+                    print("Falling back to mock implementation...")
+                    
+                    # Fall back to mock implementation
+                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
+                        model_name=self.model_name,
+                        model_type="feature-extraction",
+                        device="CPU",
+                        openvino_label="openvino:0",
+                        get_optimum_openvino_model=mock_get_optimum_openvino_model,
+                        get_openvino_model=mock_get_openvino_model,
+                        get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
+                        openvino_cli_convert=mock_openvino_cli_convert
+                    )
+                    
+                    # If we got a handler back, the mock succeeded
+                    valid_init = handler is not None
+                    is_real_impl = False
+                    results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
                 
                 # Run inference
                 start_time = time.time()
@@ -293,7 +318,9 @@ class test_hf_bert:
                     output.shape[0] == 1  # batch size 1
                 )
                 
-                results["openvino_handler"] = "Success (MOCK)" if is_valid_embedding else "Failed OpenVINO handler"
+                # Set the appropriate success message based on real vs mock implementation
+                implementation_type = "REAL" if is_real_impl else "MOCK"
+                results["openvino_handler"] = f"Success ({implementation_type})" if is_valid_embedding else f"Failed OpenVINO handler"
                 
                 # Record example
                 self.examples.append({
@@ -303,7 +330,7 @@ class test_hf_bert:
                     },
                     "timestamp": datetime.datetime.now().isoformat(),
                     "elapsed_time": elapsed_time,
-                    "implementation_type": "MOCK",
+                    "implementation_type": implementation_type,
                     "platform": "OpenVINO"
                 })
                 

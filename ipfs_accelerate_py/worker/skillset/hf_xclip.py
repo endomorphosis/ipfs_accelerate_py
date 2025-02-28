@@ -259,39 +259,161 @@ class hf_xclip:
             Tuple of (endpoint, processor, endpoint_handler, asyncio.Queue, batch_size)
         """
         self.init()
-        try:
-            # First try loading the full components
-            config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-            tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-            processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
-            
-            endpoint = self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True)
-            
-            # Create the handler with the endpoint and processor
-            endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(
-                tokenizer=processor,  # Use processor as tokenizer
-                endpoint_model=model,
-                cpu_label=cpu_label,
-                endpoint=endpoint
-            )
-            
-            # Return all components needed for inference
-            return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
-            
-        except Exception as e:
-            print(f"Error initializing CPU model: {e}")
-            
-            # Create mock versions for testing if real initialization fails
+        
+        # Check if transformers is available as a real module (not a mock)
+        transformers_available = not isinstance(self.transformers, type)
+        
+        if transformers_available:
             try:
-                # Try to at least get the processor
-                processor = self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True)
-            except Exception:
-                processor = MagicMock()
+                print(f"Trying to load real XCLIP model: {model}")
                 
-            # Mock the endpoint 
+                # First attempt with AutoConfig for model information
+                try:
+                    config = self.transformers.AutoConfig.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    print(f"Successfully loaded config for {model}")
+                except Exception as config_error:
+                    print(f"Error loading AutoConfig: {config_error}")
+                    config = None
+                
+                # Try to load processor - critical component for XCLIP
+                try:
+                    processor = self.transformers.AutoProcessor.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    print(f"Successfully loaded AutoProcessor for {model}")
+                except Exception as processor_error:
+                    print(f"Error loading AutoProcessor: {processor_error}")
+                    
+                    # Try fallback to specific processor classes
+                    try:
+                        # Try CLIPProcessor as a fallback
+                        processor = self.transformers.CLIPProcessor.from_pretrained(
+                            model, 
+                            trust_remote_code=True
+                        )
+                        print(f"Successfully loaded CLIPProcessor for {model}")
+                    except Exception as clip_error:
+                        print(f"Error loading CLIPProcessor: {clip_error}")
+                        processor = None
+                
+                # Try to load model
+                try:
+                    endpoint = self.transformers.AutoModel.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    print(f"Successfully loaded AutoModel for {model}")
+                except Exception as model_error:
+                    print(f"Error loading AutoModel: {model_error}")
+                    
+                    # Try alternative model classes
+                    try:
+                        # Try specific model classes based on type
+                        model_candidates = [
+                            self.transformers.CLIPModel,
+                            self.transformers.VisionTextDualEncoderModel
+                        ]
+                        
+                        for model_class in model_candidates:
+                            try:
+                                endpoint = model_class.from_pretrained(
+                                    model, 
+                                    trust_remote_code=True
+                                )
+                                print(f"Successfully loaded {model_class.__name__} for {model}")
+                                break
+                            except Exception:
+                                continue
+                        
+                        # Check if we found a working model class
+                        if 'endpoint' not in locals() or endpoint is None:
+                            raise ValueError("No compatible model class found")
+                            
+                    except Exception as alt_model_error:
+                        print(f"Error loading alternative model classes: {alt_model_error}")
+                        endpoint = None
+                
+                # If we have both processor and endpoint, we can create a real handler
+                if processor is not None and endpoint is not None:
+                    # Create the handler with the endpoint and processor
+                    endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(
+                        tokenizer=processor,
+                        endpoint_model=model,
+                        cpu_label=cpu_label,
+                        endpoint=endpoint
+                    )
+                    
+                    # Return all components needed for inference
+                    print(f"Successfully initialized real XCLIP model for CPU")
+                    return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+                else:
+                    raise ValueError("Missing processor or endpoint for real implementation")
+                    
+            except Exception as e:
+                print(f"Error initializing real CPU model: {e}")
+                print("Falling back to mock implementation...")
+        else:
+            print("Transformers not available, using mock implementation")
+        
+        # Create mock versions for testing if real initialization fails
+        try:
+            # Create mock processor and endpoint
+            from unittest.mock import MagicMock
+            
+            # Try to get processor if transformers is available
+            if transformers_available:
+                try:
+                    processor = self.transformers.AutoProcessor.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                except Exception:
+                    processor = MagicMock()
+            else:
+                processor = MagicMock()
+            
+            # Mock the endpoint
             mock_endpoint = MagicMock()
             
-            # Create handler even with mocks
+            # Define some basic behavior for mocks
+            if isinstance(processor, MagicMock):
+                processor.side_effect = lambda **kwargs: {
+                    "input_ids": self.torch.ones((1, 10), dtype=self.torch.long),
+                    "attention_mask": self.torch.ones((1, 10), dtype=self.torch.long),
+                    "pixel_values": self.torch.zeros((1, 3, 224, 224), dtype=self.torch.float32)
+                }
+            
+            if isinstance(mock_endpoint, MagicMock):
+                class MockOutput:
+                    def __init__(self):
+                        self.text_embeds = self.torch.randn(1, 512)
+                        self.image_embeds = self.torch.randn(1, 512)
+                
+                mock_endpoint.return_value = MockOutput()
+            
+            # Create handler with mocks
+            endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(
+                tokenizer=processor, 
+                endpoint_model=model,
+                cpu_label=cpu_label,
+                endpoint=mock_endpoint
+            )
+            
+            print("Successfully initialized mock XCLIP model for CPU")
+            return mock_endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+            
+        except Exception as mock_error:
+            print(f"Error creating mock implementation: {mock_error}")
+            
+            # Create absolute minimal mocks as a last resort
+            processor = MagicMock()
+            mock_endpoint = MagicMock()
+            
+            # Create handler with minimal mocks
             endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(
                 tokenizer=processor, 
                 endpoint_model=model,
@@ -653,35 +775,131 @@ class hf_xclip:
                 Dictionary with embeddings and/or similarity scores with implementation type
             """
             # Flag to track if we're using real implementation or mock
-            is_mock = True  # Default to mock for CPU implementation for now
+            is_mock = False  # Start with assuming real implementation
             
-            # Initialize model if available
-            if endpoint is not None and "eval" in dir(endpoint):
-                try:
-                    endpoint.eval()
-                except Exception as e:
-                    print(f"Error putting model in eval mode: {e}")
+            # Check if we have valid model components
+            has_valid_model = (
+                endpoint is not None and 
+                hasattr(endpoint, "eval") and 
+                tokenizer is not None and
+                hasattr(tokenizer, "__call__")
+            )
             
-            # Create embeddings for response
+            # If we don't have valid components, we'll need to use mock implementation
+            if not has_valid_model:
+                is_mock = True
+            
+            # Create result dictionary for embeddings
             result = {}
             
-            # Create text embedding if text input is provided
-            if text is not None:
-                text_embedding = self.torch.randn(1, 512)
-                result["text_embedding"] = text_embedding
+            # Try to use real implementation first
+            if not is_mock:
+                try:
+                    # Initialize model in evaluation mode
+                    endpoint.eval()
+                    
+                    # Process with torch.no_grad to save memory
+                    with self.torch.no_grad():
+                        # Process text input if provided
+                        if text is not None:
+                            try:
+                                # Process input through tokenizer
+                                text_inputs = tokenizer(
+                                    text=text,
+                                    return_tensors="pt",
+                                    padding=True
+                                )
+                                
+                                # Run model inference with text inputs only
+                                text_outputs = endpoint(**text_inputs)
+                                
+                                # Extract text embeddings
+                                if hasattr(text_outputs, "text_embeds"):
+                                    result["text_embedding"] = text_outputs.text_embeds
+                                elif hasattr(text_outputs, "text_model_output") and hasattr(text_outputs.text_model_output, "pooler_output"):
+                                    result["text_embedding"] = text_outputs.text_model_output.pooler_output
+                                else:
+                                    # Fallback if text embeddings not directly accessible
+                                    is_mock = True
+                                    print("Text embeddings not found in model output, using mock implementation")
+                            except Exception as text_error:
+                                print(f"Error processing text input: {text_error}")
+                                is_mock = True
+                        
+                        # Process video frames if provided
+                        if frames is not None and not is_mock:
+                            try:
+                                # Process video frames through tokenizer
+                                if isinstance(frames, list) and len(frames) > 0:
+                                    video_inputs = tokenizer(
+                                        images=frames,
+                                        return_tensors="pt",
+                                        padding=True
+                                    )
+                                    
+                                    # Run model inference with video inputs
+                                    video_outputs = endpoint(**video_inputs)
+                                    
+                                    # Extract video embeddings
+                                    if hasattr(video_outputs, "image_embeds"):
+                                        result["video_embedding"] = video_outputs.image_embeds
+                                    elif hasattr(video_outputs, "vision_model_output") and hasattr(video_outputs.vision_model_output, "pooler_output"):
+                                        result["video_embedding"] = video_outputs.vision_model_output.pooler_output
+                                    else:
+                                        # Fallback if video embeddings not directly accessible
+                                        is_mock = True
+                                        print("Video embeddings not found in model output, using mock implementation")
+                                else:
+                                    # Input not in expected format
+                                    is_mock = True
+                                    print("Video frames not in expected format")
+                            except Exception as video_error:
+                                print(f"Error processing video frames: {video_error}")
+                                is_mock = True
+                        
+                        # If we have both text and video embeddings, calculate similarity
+                        if "text_embedding" in result and "video_embedding" in result and not is_mock:
+                            try:
+                                text_emb = result["text_embedding"]
+                                video_emb = result["video_embedding"]
+                                
+                                # Normalize embeddings
+                                text_norm = text_emb.norm(dim=-1, keepdim=True)
+                                video_norm = video_emb.norm(dim=-1, keepdim=True)
+                                
+                                # Check for zero norms to avoid NaN issues
+                                if self.torch.all(text_norm > 0) and self.torch.all(video_norm > 0):
+                                    text_emb_norm = text_emb / text_norm
+                                    video_emb_norm = video_emb / video_norm
+                                    
+                                    # Calculate similarity score
+                                    result["similarity"] = self.torch.matmul(text_emb_norm, video_emb_norm.T)
+                                else:
+                                    # Handle zero norm case
+                                    is_mock = True
+                                    print("Zero norm detected in embeddings")
+                            except Exception as sim_error:
+                                print(f"Error calculating similarity: {sim_error}")
+                                is_mock = True
+                
+                except Exception as e:
+                    print(f"Error in real implementation: {e}")
+                    is_mock = True
             
-            # Create video embedding if frames are provided
-            if frames is not None:
-                video_embedding = self.torch.randn(1, 512)
-                result["video_embedding"] = video_embedding
-            
-            # If both inputs are provided, calculate similarity
-            if text is not None and frames is not None:
-                similarity = self.torch.tensor([[0.8]])  # Mock similarity score
-                result["similarity"] = similarity
+            # If real implementation failed or wasn't available, use mock implementation
+            if is_mock:
+                # Create mock embeddings
+                if text is not None and "text_embedding" not in result:
+                    result["text_embedding"] = self.torch.randn(1, 512)
+                
+                if frames is not None and "video_embedding" not in result:
+                    result["video_embedding"] = self.torch.randn(1, 512)
+                
+                if text is not None and frames is not None and "similarity" not in result:
+                    result["similarity"] = self.torch.tensor([[0.8]])  # Mock similarity score
             
             # Add implementation type to result
-            result["implementation_type"] = "MOCK"
+            result["implementation_type"] = "REAL" if not is_mock else "MOCK"
             
             # Return the appropriate result
             return result

@@ -433,15 +433,24 @@ class test_hf_llava:
             
             with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
                 try:
+                    # Need to add the missing get_openvino_genai_pipeline function parameter
+                    def safe_get_openvino_genai_pipeline(*args, **kwargs):
+                        try:
+                            return ov_utils.get_openvino_genai_pipeline(*args, **kwargs)
+                        except Exception as e:
+                            print(f"Error in get_openvino_genai_pipeline: {e}")
+                            return MagicMock()
+                            
                     endpoint, processor, handler, queue, batch_size = self.llava.init_openvino(
                         self.model_name,
-                        "text-generation",
+                        "image-text-to-text",  # Changed from "text-generation" to correct model type
                         "CPU",
                         "openvino:0",
+                        safe_get_openvino_genai_pipeline,
                         safe_get_optimum_openvino_model,
                         safe_get_openvino_model,
                         safe_get_openvino_pipeline_type,
-                        safe_openvino_cli_convert
+                        safe_openvino_cli_convert  # This parameter was already included
                     )
                     
                     valid_init = handler is not None
