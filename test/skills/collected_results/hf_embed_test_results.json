@@ -16,8 +16,7 @@
     "cpu_similarity": "Success (REAL)",
     "cpu_similarity_in_range": true,
     "cuda_tests": "CUDA not available",
-    "openvino_init": "Success (MOCK)",
-    "openvino_handler": "Success (MOCK)",
+    "openvino_tests": "OpenVINO not installed",
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Failed Qualcomm initialization",
     "qualcomm_handler": "Failed Qualcomm handler"
@@ -32,8 +31,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T15:48:59.622189",
-      "elapsed_time": 0.02532029151916504,
+      "timestamp": "2025-02-27T17:25:47.021989",
+      "elapsed_time": 0.0016674995422363281,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "single"
@@ -47,8 +46,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T15:48:59.622707",
-      "elapsed_time": 0.0004737377166748047,
+      "timestamp": "2025-02-27T17:25:47.023243",
+      "elapsed_time": 0.0011141300201416016,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -56,34 +55,20 @@
     {
       "input": "Similarity test between single and first batch embedding",
       "output": {
-        "similarity_value": 0.9849632382392883,
+        "similarity_value": 0.9826818704605103,
         "in_range": true
       },
-      "timestamp": "2025-02-27T15:48:59.630263",
+      "timestamp": "2025-02-27T17:25:47.023844",
       "elapsed_time": 0.001,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "similarity"
-    },
-    {
-      "input": "Batch of 2 texts",
-      "output": {
-        "embedding_shape": [
-          2,
-          384
-        ]
-      },
-      "timestamp": "2025-02-27T15:49:09.063680",
-      "elapsed_time": 0.02196025848388672,
-      "implementation_type": "(MOCK)",
-      "platform": "OpenVINO",
-      "test_type": "batch"
     }
   ],
   "metadata": {
     "model_name": "sentence-transformers/all-MiniLM-L6-v2",
-    "test_timestamp": "2025-02-27T15:49:09.167816",
-    "timestamp": 1740700149.167833,
+    "test_timestamp": "2025-02-27T17:25:57.699435",
+    "timestamp": 1740705957.6994946,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -99,10 +84,10 @@
     "platform_status": {
       "cpu": "Ready (REAL)",
       "cuda": "CUDA not available",
-      "openvino": "Ready (MOCK)",
+      "openvino": "OpenVINO not installed",
       "apple": "Apple Silicon not available",
       "qualcomm": "Failed initialization"
     },
-    "test_run_id": "embed-test-1740700149"
+    "test_run_id": "embed-test-1740705957"
   }
 }

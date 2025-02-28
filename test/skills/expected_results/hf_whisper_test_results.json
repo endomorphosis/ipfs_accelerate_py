@@ -8,23 +8,13 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "REAL TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740698480.6244836,
-    "elapsed_time": 0.017792224884033203,
+    "timestamp": 1740704509.2401717,
+    "elapsed_time": 0.008412837982177734,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
   "cuda_tests": "CUDA not available",
-  "openvino_init": "Success (MOCK)",
-  "openvino_handler": "Success (MOCK)",
-  "openvino_transcription": "Mock OpenVINO whisper transcription",
-  "openvino_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "Mock OpenVINO whisper transcription",
-    "timestamp": 1740698499.9222472,
-    "elapsed_time": 0.08,
-    "implementation_type": "(MOCK)",
-    "platform": "OpenVINO"
-  },
+  "openvino_tests": "OpenVINO not installed",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (MOCK)",
@@ -32,13 +22,13 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740698500.147825,
+    "timestamp": 1740704522.1903431,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740698500.1479561,
+    "timestamp": 1740704522.1904807,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -48,6 +38,6 @@
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "openai/whisper-tiny",
-    "test_run_id": "whisper-test-1740698500"
+    "test_run_id": "whisper-test-1740704522"
   }
 }

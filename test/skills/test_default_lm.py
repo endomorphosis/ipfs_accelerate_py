@@ -353,37 +353,172 @@ class test_hf_lm:
                 import openvino
                 has_openvino = True
                 print("OpenVINO import successful")
+                # Try to import optimum.intel directly
+                try:
+                    import optimum.intel
+                    print("Successfully imported optimum.intel")
+                except ImportError:
+                    print("optimum.intel not available, OpenVINO implementation will use mocks")
             except ImportError:
                 has_openvino = False
                 results["openvino_tests"] = "OpenVINO not installed"
                 self.status_messages["openvino"] = "OpenVINO not installed"
                 
             if has_openvino:
-                implementation_type = "MOCK"  # Use mocks for OpenVINO tests
+                # Try to determine if we can use real implementation
+                try:
+                    from optimum.intel.openvino import OVModelForCausalLM
+                    print("Successfully imported OVModelForCausalLM")
+                    is_real_implementation = True
+                    implementation_type = "(REAL)"
+                    
+                    # Store capability information
+                    results["openvino_implementation_capability"] = "REAL - optimum.intel.openvino available"
+                except ImportError:
+                    print("optimum.intel.openvino not available, will use mocks")
+                    is_real_implementation = False
+                    implementation_type = "(MOCK)"
+                is_real_implementation = False
                 
                 # Import the existing OpenVINO utils from the main package
-                from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
+                from ipfs_accelerate_py.ipfs_accelerate_py.worker.openvino_utils import openvino_utils
                 
                 # Initialize openvino_utils
                 ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
                 
-                # Use a patched version for testing
-                with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+                # Implement file locking for thread safety
+                import fcntl
+                from contextlib import contextmanager
+                
+                @contextmanager
+                def file_lock(lock_file, timeout=600):
+                    """Simple file-based lock with timeout"""
                     start_time = time.time()
-                    endpoint, tokenizer, handler, queue, batch_size = self.lm.init_openvino(
-                        self.model_name,
-                        "text-generation",
-                        "CPU",
-                        "openvino:0",
-                        ov_utils.get_optimum_openvino_model,
-                        ov_utils.get_openvino_model,
-                        ov_utils.get_openvino_pipeline_type
-                    )
-                    init_time = time.time() - start_time
+                    lock_dir = os.path.dirname(lock_file)
+                    os.makedirs(lock_dir, exist_ok=True)
+                    
+                    fd = open(lock_file, 'w')
+                    try:
+                        while True:
+                            try:
+                                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                break
+                            except IOError:
+                                if time.time() - start_time > timeout:
+                                    raise TimeoutError(f"Could not acquire lock on {lock_file} within {timeout} seconds")
+                                time.sleep(1)
+                        yield
+                    finally:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                        fd.close()
+                        try:
+                            os.unlink(lock_file)
+                        except:
+                            pass
+                
+                # Define safe wrappers for OpenVINO functions
+                def safe_get_openvino_model(*args, **kwargs):
+                    try:
+                        return ov_utils.get_openvino_model(*args, **kwargs)
+                    except Exception as e:
+                        print(f"Error in get_openvino_model: {e}")
+                        import unittest.mock
+                        return unittest.mock.MagicMock()
+                        
+                def safe_get_optimum_openvino_model(*args, **kwargs):
+                    try:
+                        return ov_utils.get_optimum_openvino_model(*args, **kwargs)
+                    except Exception as e:
+                        print(f"Error in get_optimum_openvino_model: {e}")
+                        import unittest.mock
+                        return unittest.mock.MagicMock()
+                        
+                def safe_get_openvino_pipeline_type(*args, **kwargs):
+                    try:
+                        return ov_utils.get_openvino_pipeline_type(*args, **kwargs)
+                    except Exception as e:
+                        print(f"Error in get_openvino_pipeline_type: {e}")
+                        return "text-generation"
+                
+                def safe_openvino_cli_convert(*args, **kwargs):
+                    try:
+                        if hasattr(ov_utils, 'openvino_cli_convert'):
+                            return ov_utils.openvino_cli_convert(*args, **kwargs)
+                        else:
+                            print("openvino_cli_convert not available")
+                            return None
+                    except Exception as e:
+                        print(f"Error in openvino_cli_convert: {e}")
+                        return None
+                
+                # Try real OpenVINO implementation first
+                try:
+                    print("Trying real OpenVINO implementation for Language Model...")
+                    
+                    # Create lock file path based on model name
+                    cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "lm_ov_locks")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    lock_file = os.path.join(cache_dir, f"{self.model_name.replace('/', '_')}_conversion.lock")
+                    
+                    # Use file locking to prevent multiple conversions
+                    with file_lock(lock_file):
+                        start_time = time.time()
+                        endpoint, tokenizer, handler, queue, batch_size = self.lm.init_openvino(
+                            self.model_name,
+                            "text-generation",  # Correct task type
+                            "CPU",
+                            "openvino:0",
+                            safe_get_optimum_openvino_model,
+                            safe_get_openvino_model,
+                            safe_get_openvino_pipeline_type,
+                            safe_openvino_cli_convert  # Add the missing CLI convert parameter
+                        )
+                        init_time = time.time() - start_time
+                    
+                    # Check if we got a real handler and not mocks
+                    import unittest.mock
+                    if (endpoint is not None and not isinstance(endpoint, unittest.mock.MagicMock) and 
+                        tokenizer is not None and not isinstance(tokenizer, unittest.mock.MagicMock) and
+                        handler is not None and not isinstance(handler, unittest.mock.MagicMock)):
+                        is_real_implementation = True
+                        implementation_type = "(REAL)"
+                        print("Successfully created real OpenVINO implementation")
+                    else:
+                        is_real_implementation = False
+                        implementation_type = "(MOCK)"
+                        print("Received mock components in initialization")
                     
                     valid_init = handler is not None
-                    results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
-                    self.status_messages["openvino"] = "Ready (MOCK)" if valid_init else "Failed initialization"
+                    results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
+                    results["openvino_implementation_type"] = implementation_type
+                    self.status_messages["openvino"] = f"Ready {implementation_type}" if valid_init else "Failed initialization"
+                    
+                except Exception as real_init_error:
+                    print(f"Real OpenVINO implementation failed: {real_init_error}")
+                    traceback.print_exc()
+                    
+                    # Fall back to mock implementation
+                    is_real_implementation = False
+                    implementation_type = "(MOCK)"
+                    
+                    # Use a patched version when real implementation fails
+                    with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+                        start_time = time.time()
+                        endpoint, tokenizer, handler, queue, batch_size = self.lm.init_openvino(
+                            self.model_name,
+                            "text-generation",
+                            "CPU",
+                            "openvino:0",
+                            safe_get_optimum_openvino_model,
+                            safe_get_openvino_model,
+                            safe_get_openvino_pipeline_type
+                        )
+                        init_time = time.time() - start_time
+                        
+                        valid_init = handler is not None
+                        results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
+                    results["openvino_implementation_type"] = implementation_type
+                        self.status_messages["openvino"] = f"Ready {implementation_type}" if valid_init else "Failed initialization"
                     
                     test_handler = self.lm.create_openvino_lm_endpoint_handler(
                         endpoint,
@@ -406,13 +541,25 @@ class test_hf_lm:
                             results["openvino_output"] = output
                         results["openvino_output_length"] = len(output)
                         
-                        # Record example
+                        # Add a marker to the output text to clearly indicate implementation type
+                        if is_real_implementation:
+                            if not output.startswith("(REAL)"):
+                                marked_output = f"(REAL) {output}"
+                            else:
+                                marked_output = output
+                        else:
+                            if not output.startswith("(MOCK)"):
+                                marked_output = f"(MOCK) {output}"
+                            else:
+                                marked_output = output
+                        
+                        # Record example with correct implementation type
                         self.examples.append({
                             "input": self.test_prompt,
-                            "output": output[:100] + "..." if len(output) > 100 else output,
+                            "output": marked_output[:100] + "..." if len(marked_output) > 100 else marked_output,
                             "timestamp": datetime.datetime.now().isoformat(),
                             "elapsed_time": elapsed_time,
-                            "implementation_type": "(MOCK)",
+                            "implementation_type": "(REAL)" if is_real_implementation else "(MOCK)",
                             "platform": "OpenVINO",
                             "test_type": "standard"
                         })

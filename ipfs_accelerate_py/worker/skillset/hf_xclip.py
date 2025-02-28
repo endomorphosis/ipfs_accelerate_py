@@ -261,7 +261,20 @@ class hf_xclip:
         self.init()
         
         # Check if transformers is available as a real module (not a mock)
-        transformers_available = not isinstance(self.transformers, type)
+        transformers_available = False
+        try:
+            # More robust check for transformers availability
+            if self.transformers is not None:
+                if not isinstance(self.transformers, type):
+                    # Make sure we have a key class available
+                    if hasattr(self.transformers, 'AutoProcessor'):
+                        transformers_available = True
+                        print("Transformers module available with AutoProcessor")
+        except Exception as check_error:
+            print(f"Error checking transformers availability: {check_error}")
+        
+        # Variable to track which implementation we're using
+        is_real_impl = False
         
         if transformers_available:
             try:
@@ -279,66 +292,59 @@ class hf_xclip:
                     config = None
                 
                 # Try to load processor - critical component for XCLIP
+                processor = None
                 try:
-                    processor = self.transformers.AutoProcessor.from_pretrained(
-                        model, 
-                        trust_remote_code=True
-                    )
-                    print(f"Successfully loaded AutoProcessor for {model}")
-                except Exception as processor_error:
-                    print(f"Error loading AutoProcessor: {processor_error}")
+                    # Try with different processor classes in order of likelihood
+                    processor_candidates = [
+                        lambda: self.transformers.AutoProcessor.from_pretrained(model, trust_remote_code=True),
+                        lambda: self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True),
+                        lambda: self.transformers.XCLIPProcessor.from_pretrained(model, trust_remote_code=True)
+                    ]
                     
-                    # Try fallback to specific processor classes
-                    try:
-                        # Try CLIPProcessor as a fallback
-                        processor = self.transformers.CLIPProcessor.from_pretrained(
-                            model, 
-                            trust_remote_code=True
-                        )
-                        print(f"Successfully loaded CLIPProcessor for {model}")
-                    except Exception as clip_error:
-                        print(f"Error loading CLIPProcessor: {clip_error}")
-                        processor = None
+                    for proc_loader in processor_candidates:
+                        try:
+                            processor = proc_loader()
+                            if processor is not None:
+                                print(f"Successfully loaded processor for {model}")
+                                break
+                        except Exception as proc_error:
+                            print(f"Error with processor candidate: {proc_error}")
+                    
+                    if processor is None:
+                        print("All processor loading attempts failed")
+                except Exception as processor_error:
+                    print(f"Error loading processor: {processor_error}")
                 
                 # Try to load model
+                endpoint = None
                 try:
-                    endpoint = self.transformers.AutoModel.from_pretrained(
-                        model, 
-                        trust_remote_code=True
-                    )
-                    print(f"Successfully loaded AutoModel for {model}")
-                except Exception as model_error:
-                    print(f"Error loading AutoModel: {model_error}")
+                    # Try with different model classes in order of likelihood
+                    model_candidates = [
+                        lambda: self.transformers.AutoModel.from_pretrained(model, trust_remote_code=True),
+                        lambda: self.transformers.CLIPModel.from_pretrained(model, trust_remote_code=True),
+                        lambda: self.transformers.VisionTextDualEncoderModel.from_pretrained(model, trust_remote_code=True)
+                    ]
                     
-                    # Try alternative model classes
-                    try:
-                        # Try specific model classes based on type
-                        model_candidates = [
-                            self.transformers.CLIPModel,
-                            self.transformers.VisionTextDualEncoderModel
-                        ]
-                        
-                        for model_class in model_candidates:
-                            try:
-                                endpoint = model_class.from_pretrained(
-                                    model, 
-                                    trust_remote_code=True
-                                )
-                                print(f"Successfully loaded {model_class.__name__} for {model}")
+                    # Try all model classes until one works
+                    for model_loader in model_candidates:
+                        try:
+                            endpoint = model_loader()
+                            if endpoint is not None:
+                                print(f"Successfully loaded model for {model}")
                                 break
-                            except Exception:
-                                continue
-                        
-                        # Check if we found a working model class
-                        if 'endpoint' not in locals() or endpoint is None:
-                            raise ValueError("No compatible model class found")
-                            
-                    except Exception as alt_model_error:
-                        print(f"Error loading alternative model classes: {alt_model_error}")
-                        endpoint = None
+                        except Exception as model_class_error:
+                            print(f"Error with model candidate: {model_class_error}")
+                    
+                    if endpoint is None:
+                        print("All model loading attempts failed")
+                except Exception as model_error:
+                    print(f"Error loading model: {model_error}")
                 
                 # If we have both processor and endpoint, we can create a real handler
                 if processor is not None and endpoint is not None:
+                    # Set flag that we're using real implementation
+                    is_real_impl = True
+                    
                     # Create the handler with the endpoint and processor
                     endpoint_handler = self.create_cpu_video_embedding_endpoint_handler(
                         tokenizer=processor,
@@ -351,8 +357,8 @@ class hf_xclip:
                     print(f"Successfully initialized real XCLIP model for CPU")
                     return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
                 else:
-                    raise ValueError("Missing processor or endpoint for real implementation")
-                    
+                    print("Missing processor or endpoint for real implementation")
+                    # Continue to mock implementation
             except Exception as e:
                 print(f"Error initializing real CPU model: {e}")
                 print("Falling back to mock implementation...")
@@ -367,10 +373,11 @@ class hf_xclip:
             # Try to get processor if transformers is available
             if transformers_available:
                 try:
-                    processor = self.transformers.AutoProcessor.from_pretrained(
-                        model, 
-                        trust_remote_code=True
-                    )
+                    if processor is None:  # Only try again if we don't already have one
+                        processor = self.transformers.AutoProcessor.from_pretrained(
+                            model, 
+                            trust_remote_code=True
+                        )
                 except Exception:
                     processor = MagicMock()
             else:
@@ -388,10 +395,12 @@ class hf_xclip:
                 }
             
             if isinstance(mock_endpoint, MagicMock):
+                # Create a mock output class that mimics the real model output
                 class MockOutput:
                     def __init__(self):
-                        self.text_embeds = self.torch.randn(1, 512)
-                        self.image_embeds = self.torch.randn(1, 512)
+                        import torch
+                        self.text_embeds = torch.randn(1, 512)
+                        self.image_embeds = torch.randn(1, 512)
                 
                 mock_endpoint.return_value = MockOutput()
             
@@ -788,6 +797,7 @@ class hf_xclip:
             # If we don't have valid components, we'll need to use mock implementation
             if not has_valid_model:
                 is_mock = True
+                print("Invalid model components detected, will use mock implementation")
             
             # Create result dictionary for embeddings
             result = {}
@@ -804,24 +814,70 @@ class hf_xclip:
                         if text is not None:
                             try:
                                 # Process input through tokenizer
-                                text_inputs = tokenizer(
-                                    text=text,
-                                    return_tensors="pt",
-                                    padding=True
-                                )
+                                # Try different input formats based on what the tokenizer accepts
+                                try:
+                                    # Standard format first
+                                    text_inputs = tokenizer(
+                                        text=text,
+                                        return_tensors="pt",
+                                        padding=True
+                                    )
+                                except Exception as standard_error:
+                                    print(f"Standard tokenizer format failed: {standard_error}")
+                                    try:
+                                        # Try alternative format
+                                        text_inputs = tokenizer(
+                                            text,
+                                            return_tensors="pt",
+                                            padding=True
+                                        )
+                                    except Exception as alt_error:
+                                        print(f"Alternative tokenizer format failed: {alt_error}")
+                                        raise
                                 
                                 # Run model inference with text inputs only
                                 text_outputs = endpoint(**text_inputs)
                                 
-                                # Extract text embeddings
+                                # Extract text embeddings - Try multiple possible output formats
                                 if hasattr(text_outputs, "text_embeds"):
                                     result["text_embedding"] = text_outputs.text_embeds
+                                    print("Found text embeddings in text_embeds attribute")
                                 elif hasattr(text_outputs, "text_model_output") and hasattr(text_outputs.text_model_output, "pooler_output"):
                                     result["text_embedding"] = text_outputs.text_model_output.pooler_output
+                                    print("Found text embeddings in text_model_output.pooler_output")
+                                elif hasattr(text_outputs, "pooler_output"):
+                                    result["text_embedding"] = text_outputs.pooler_output
+                                    print("Found text embeddings in pooler_output")
+                                elif hasattr(text_outputs, "last_hidden_state"):
+                                    # Use mean pooling as a fallback for models that return hidden states
+                                    print("Using mean pooling on last_hidden_state for text embeddings")
+                                    # Apply attention mask if available
+                                    if "attention_mask" in text_inputs:
+                                        mask = text_inputs["attention_mask"].unsqueeze(-1)
+                                        embeddings = text_outputs.last_hidden_state * mask
+                                        result["text_embedding"] = embeddings.sum(1) / mask.sum(1)
+                                    else:
+                                        # Simple mean if no mask available
+                                        result["text_embedding"] = text_outputs.last_hidden_state.mean(1)
                                 else:
+                                    # Try to find any attribute that might contain embeddings
+                                    found_embedding = False
+                                    for attr_name in dir(text_outputs):
+                                        if "embed" in attr_name.lower() and not attr_name.startswith("_"):
+                                            try:
+                                                embed_attr = getattr(text_outputs, attr_name)
+                                                if hasattr(embed_attr, "shape") and len(embed_attr.shape) >= 2:
+                                                    result["text_embedding"] = embed_attr
+                                                    print(f"Found text embeddings in {attr_name}")
+                                                    found_embedding = True
+                                                    break
+                                            except:
+                                                continue
+                                    
                                     # Fallback if text embeddings not directly accessible
-                                    is_mock = True
-                                    print("Text embeddings not found in model output, using mock implementation")
+                                    if not found_embedding:
+                                        is_mock = True
+                                        print("Text embeddings not found in model output, using mock implementation")
                             except Exception as text_error:
                                 print(f"Error processing text input: {text_error}")
                                 is_mock = True
@@ -831,24 +887,62 @@ class hf_xclip:
                             try:
                                 # Process video frames through tokenizer
                                 if isinstance(frames, list) and len(frames) > 0:
-                                    video_inputs = tokenizer(
-                                        images=frames,
-                                        return_tensors="pt",
-                                        padding=True
-                                    )
+                                    try:
+                                        # Standard format first
+                                        video_inputs = tokenizer(
+                                            images=frames,
+                                            return_tensors="pt",
+                                            padding=True
+                                        )
+                                    except Exception as standard_error:
+                                        print(f"Standard image tokenizer format failed: {standard_error}")
+                                        try:
+                                            # Try alternative format without named parameter
+                                            video_inputs = tokenizer(
+                                                frames,
+                                                return_tensors="pt",
+                                                padding=True
+                                            )
+                                        except Exception as alt_error:
+                                            print(f"Alternative image tokenizer format failed: {alt_error}")
+                                            raise
                                     
                                     # Run model inference with video inputs
                                     video_outputs = endpoint(**video_inputs)
                                     
-                                    # Extract video embeddings
+                                    # Extract video embeddings - Try multiple possible output formats
                                     if hasattr(video_outputs, "image_embeds"):
                                         result["video_embedding"] = video_outputs.image_embeds
+                                        print("Found video embeddings in image_embeds attribute")
                                     elif hasattr(video_outputs, "vision_model_output") and hasattr(video_outputs.vision_model_output, "pooler_output"):
                                         result["video_embedding"] = video_outputs.vision_model_output.pooler_output
+                                        print("Found video embeddings in vision_model_output.pooler_output")
+                                    elif hasattr(video_outputs, "pooler_output"):
+                                        result["video_embedding"] = video_outputs.pooler_output
+                                        print("Found video embeddings in pooler_output")
+                                    elif hasattr(video_outputs, "last_hidden_state"):
+                                        # Use mean pooling as a fallback for models that return hidden states
+                                        print("Using mean pooling on last_hidden_state for video embeddings")
+                                        result["video_embedding"] = video_outputs.last_hidden_state.mean(1)
                                     else:
+                                        # Try to find any attribute that might contain embeddings
+                                        found_embedding = False
+                                        for attr_name in dir(video_outputs):
+                                            if ("embed" in attr_name.lower() or "visual" in attr_name.lower() or "vision" in attr_name.lower()) and not attr_name.startswith("_"):
+                                                try:
+                                                    embed_attr = getattr(video_outputs, attr_name)
+                                                    if hasattr(embed_attr, "shape") and len(embed_attr.shape) >= 2:
+                                                        result["video_embedding"] = embed_attr
+                                                        print(f"Found video embeddings in {attr_name}")
+                                                        found_embedding = True
+                                                        break
+                                                except:
+                                                    continue
+                                        
                                         # Fallback if video embeddings not directly accessible
-                                        is_mock = True
-                                        print("Video embeddings not found in model output, using mock implementation")
+                                        if not found_embedding:
+                                            is_mock = True
+                                            print("Video embeddings not found in model output, using mock implementation")
                                 else:
                                     # Input not in expected format
                                     is_mock = True
@@ -863,6 +957,13 @@ class hf_xclip:
                                 text_emb = result["text_embedding"]
                                 video_emb = result["video_embedding"]
                                 
+                                # Normalize embeddings with careful handling of dimensions
+                                # Make sure embeddings are of proper shape for matrix multiplication
+                                if len(text_emb.shape) == 1:
+                                    text_emb = text_emb.unsqueeze(0)  # Add batch dimension if missing
+                                if len(video_emb.shape) == 1:
+                                    video_emb = video_emb.unsqueeze(0)  # Add batch dimension if missing
+                                
                                 # Normalize embeddings
                                 text_norm = text_emb.norm(dim=-1, keepdim=True)
                                 video_norm = video_emb.norm(dim=-1, keepdim=True)
@@ -872,8 +973,15 @@ class hf_xclip:
                                     text_emb_norm = text_emb / text_norm
                                     video_emb_norm = video_emb / video_norm
                                     
-                                    # Calculate similarity score
-                                    result["similarity"] = self.torch.matmul(text_emb_norm, video_emb_norm.T)
+                                    # Calculate similarity score with proper transposition
+                                    if video_emb_norm.shape[0] == 1:
+                                        # Single video embedding
+                                        result["similarity"] = self.torch.matmul(text_emb_norm, video_emb_norm.transpose(0, 1))
+                                    else:
+                                        # Multiple video embeddings
+                                        result["similarity"] = self.torch.matmul(text_emb_norm, video_emb_norm.T)
+                                    
+                                    print(f"Successfully calculated similarity: {result['similarity'].item() if result['similarity'].numel() == 1 else result['similarity'].shape}")
                                 else:
                                     # Handle zero norm case
                                     is_mock = True
@@ -888,6 +996,7 @@ class hf_xclip:
             
             # If real implementation failed or wasn't available, use mock implementation
             if is_mock:
+                print("Using mock implementation for XCLIP handler")
                 # Create mock embeddings
                 if text is not None and "text_embedding" not in result:
                     result["text_embedding"] = self.torch.randn(1, 512)

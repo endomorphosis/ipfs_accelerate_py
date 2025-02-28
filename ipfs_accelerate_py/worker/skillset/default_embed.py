@@ -283,7 +283,11 @@ class hf_embed:
 
     def init_openvino(self, model_name=None, model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """
-        Initialize embedding model for OpenVINO inference
+        Initialize embedding model for OpenVINO inference with real implementation
+        and robust fallbacks.
+        
+        This implementation uses a try-real-first-then-fallback pattern with clear
+        implementation type tracking and file locking for thread-safe model conversion.
         
         Args:
             model_name: Model name or path
@@ -301,14 +305,23 @@ class hf_embed:
         self.init()
         print(f"Loading {model_name} for OpenVINO inference...")
         
+        # Track if we're using a real implementation
+        is_real_implementation = False
+        
         try:
-            # Try to import OpenVINO
+            # Import OpenVINO and file locking utility
             try:
                 import openvino as ov
                 import inspect
                 import traceback
                 self.ov = ov
                 print("OpenVINO imported successfully")
+                
+                # Import file locking
+                try:
+                    import fcntl
+                except ImportError:
+                    print("Warning: fcntl not available, file locking will be disabled")
             except ImportError:
                 print("OpenVINO not available. Falling back to CPU.")
                 return self.init_cpu(model_name, "cpu", "cpu")
@@ -316,22 +329,108 @@ class hf_embed:
             # Store OpenVINO Core utility function for later use
             self.openvino_cli_convert = openvino_cli_convert
             
-            # Parse the device label to get the right device
-            if isinstance(device, str) and device.lower() == "cpu":
-                target_device = "CPU"
-            else:
-                target_device = device
+            # Define a file lock utility for thread-safe conversion
+            class FileLock:
+                """Simple file-based lock with timeout"""
+                def __init__(self, lock_file, timeout=600):
+                    self.lock_file = lock_file
+                    self.timeout = timeout
+                    self.fd = None
                 
-            # Parse the OpenVINO label to get the index for weight format
-            openvino_index = 0
+                def __enter__(self):
+                    try:
+                        import fcntl
+                        start_time = time.time()
+                        # Create directory if it doesn't exist
+                        os.makedirs(os.path.dirname(self.lock_file), exist_ok=True)
+                        while True:
+                            try:
+                                # Try to create and lock the file
+                                self.fd = open(self.lock_file, 'w')
+                                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                                break
+                            except IOError:
+                                # Check timeout
+                                if time.time() - start_time > self.timeout:
+                                    raise TimeoutError(f"Could not acquire lock on {self.lock_file} within {self.timeout} seconds")
+                                
+                                # Wait and retry
+                                time.sleep(1)
+                    except ImportError:
+                        print("Warning: fcntl not available, skipping file locking")
+                    return self
+                
+                def __exit__(self, *args):
+                    try:
+                        import fcntl
+                        if self.fd:
+                            fcntl.flock(self.fd, fcntl.LOCK_UN)
+                            self.fd.close()
+                            try:
+                                os.unlink(self.lock_file)
+                            except:
+                                pass
+                    except ImportError:
+                        if self.fd:
+                            self.fd.close()
+                            
+            # Helper function to find model path with multiple fallback strategies
+            def find_model_path(model_name):
+                """Find a model's path with multiple fallback strategies"""
+                try:
+                    # Handle case where model_name is already a path
+                    if os.path.exists(model_name):
+                        return model_name
+                    
+                    # Try HF cache locations
+                    potential_cache_paths = [
+                        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models"),
+                        os.path.join(os.path.expanduser("~"), ".cache", "optimum", "ov"),
+                        os.path.join("/tmp", "hf_models"),
+                        os.path.join(os.path.expanduser("~"), ".cache", "torch", "hub"),
+                    ]
+                    
+                    # Search in all potential cache paths
+                    for cache_path in potential_cache_paths:
+                        if os.path.exists(cache_path):
+                            # Try direct match first
+                            model_dirs = [x for x in os.listdir(cache_path) if model_name in x]
+                            if model_dirs:
+                                return os.path.join(cache_path, model_dirs[0])
+                            
+                            # Try deeper search
+                            for root, dirs, files in os.walk(cache_path):
+                                if model_name in root:
+                                    return root
+                    
+                    # Return the model name as a last resort
+                    return model_name
+                except Exception as e:
+                    print(f"Error finding model path: {e}")
+                    return model_name
+            
+            # Parse the device label to get the right device
+            target_device = "CPU"  # Default device
             try:
+                if isinstance(device, str):
+                    if device.lower() == "cpu":
+                        target_device = "CPU"
+                    elif device.lower() in ["gpu", "vpu"]:
+                        target_device = device.upper()
+                    else:
+                        target_device = device  # Use as-is
+                
+                # Parse the OpenVINO label to get the index
+                openvino_index = 0
                 if isinstance(openvino_label, str) and ":" in openvino_label:
                     parts = openvino_label.split(":")
                     if len(parts) > 1:
                         openvino_index = int(parts[1])
                         print(f"Using OpenVINO device index: {openvino_index}")
-            except (ValueError, IndexError):
-                print("Invalid OpenVINO label format, using default index 0")
+            except (ValueError, IndexError, TypeError) as e:
+                print(f"Error parsing device or OpenVINO label: {e}, using defaults")
+                target_device = "CPU"
+                openvino_index = 0
                 
             # Determine weight format based on target device
             weight_format = "int8"  # Default for CPU
@@ -361,32 +460,25 @@ class hf_embed:
                 # Create a path for the XML model file
                 xml_path = os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml")
                 
+                # Create lock file path for thread-safe conversion
+                lock_file = os.path.join(model_dir, ".embed_conversion.lock")
+                print(f"Using lock file: {lock_file}")
+                
             except Exception as path_error:
                 print(f"Error setting up paths: {path_error}")
                 # Use a simpler fallback path
                 model_dst_path = os.path.join(homedir, "openvino_models_fallback")
                 os.makedirs(model_dst_path, exist_ok=True)
                 xml_path = os.path.join(model_dst_path, model_name.replace("/", "--") + ".xml")
+                lock_file = os.path.join(model_dst_path, ".embed_conversion.lock")
                 
-            # Create a real Optimum OpenVINO model if provided functions are available
+            # Create variables to hold our components
             endpoint = None
             tokenizer = None
             using_mock = False
-
-            # Step 1: Try to load a real tokenizer first
-            try:
-                print("Loading tokenizer...")
-                tokenizer = self.transformers.AutoTokenizer.from_pretrained(
-                    model_name,
-                    trust_remote_code=True,
-                    cache_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
-                )
-                print(f"Successfully loaded tokenizer for {model_name}")
-            except Exception as tok_error:
-                print(f"Error loading tokenizer: {tok_error}")
-                # We'll create a mock tokenizer later if needed
-                
-            # Step 2: Determine the proper task type
+            
+            # Step 1: Determine the proper task type for sentence embeddings
+            task = "feature-extraction"  # Default for embedding models
             try:
                 # Get the task type from the provided function if available
                 if get_openvino_pipeline_type is not None and callable(get_openvino_pipeline_type):
@@ -396,98 +488,146 @@ class hf_embed:
                     task = model_type
                     print(f"Using provided model type: {task}")
                 else:
-                    task = "feature-extraction"  # Default for embedding models
-                    print(f"Using default task: {task}")
+                    print(f"Using default task type: {task}")
             except Exception as task_error:
                 print(f"Error determining task type: {task_error}")
-                task = "feature-extraction"  # Default for embedding models
-            
-            # Step 3: Try different methods to get a real OpenVINO model
-            
-            # Method 1: Try using the optimum converter if available
-            if endpoint is None and get_optimum_openvino_model is not None and callable(get_optimum_openvino_model):
-                try:
-                    print("Attempting to get model with get_optimum_openvino_model...")
-                    # Check the function signature to see what args it expects
-                    sig = inspect.signature(get_optimum_openvino_model)
-                    if len(sig.parameters) >= 3:
-                        # Function expects model name, model type, and openvino label
-                        endpoint = get_optimum_openvino_model(model_name, task, openvino_label)
-                    else:
-                        # Function expects just model name and model type
-                        endpoint = get_optimum_openvino_model(model_name, task)
-                        
-                    if endpoint is not None:
-                        print("Successfully obtained model with get_optimum_openvino_model")
-                except Exception as opt_error:
-                    print(f"Error getting optimum model: {opt_error}")
-                    print(f"Traceback: {traceback.format_exc()}")
-            
-            # Method 2: Try using the openvino model getter if available
-            if endpoint is None and get_openvino_model is not None and callable(get_openvino_model):
-                try:
-                    print("Attempting to get model with get_openvino_model...")
-                    # Check the function signature to see what args it expects
-                    sig = inspect.signature(get_openvino_model)
-                    if len(sig.parameters) >= 3:
-                        # Function expects model name, model type, and device name
-                        endpoint = get_openvino_model(model_name, task, openvino_label)
-                    else:
-                        # Function expects just model name and model type
-                        endpoint = get_openvino_model(model_name, task)
-                        
-                    if endpoint is not None:
-                        print("Successfully obtained model with get_openvino_model")
-                except Exception as ov_error:
-                    print(f"Error getting openvino model: {ov_error}")
-                    print(f"Traceback: {traceback.format_exc()}")
-                    
-            # Method 3: Try direct conversion with CLI tool if model doesn't exist yet
-            if endpoint is None and not os.path.exists(xml_path) and openvino_cli_convert is not None and callable(openvino_cli_convert):
-                try:
-                    print(f"Model doesn't exist at {xml_path}, attempting conversion...")
-                    convert_result = openvino_cli_convert(
+                print(f"Using default task type: {task}")
+                
+            # Step 2: Try to load a real tokenizer with proper error handling
+            try:
+                print("Loading tokenizer...")
+                with FileLock(lock_file, timeout=60):  # Short timeout for tokenizer
+                    tokenizer = self.transformers.AutoTokenizer.from_pretrained(
                         model_name,
-                        model_dst_path=model_dst_path,
-                        task=task,
-                        weight_format=weight_format,
-                        ratio="1.0",
-                        group_size=128,
-                        sym=True
+                        trust_remote_code=True,
+                        cache_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
                     )
-                    print(f"CLI conversion result: {convert_result}")
-                    
-                    # Check if the model file was created
-                    if os.path.exists(xml_path):
-                        print(f"Successfully converted model to {xml_path}")
+                    print(f"Successfully loaded tokenizer for {model_name}")
+            except Exception as tok_error:
+                print(f"Error loading tokenizer: {tok_error}")
+                print(f"Will create a mock tokenizer if needed")
+                
+            # Step 3: Use file locking to prevent multiple conversions and try different approaches to get the model
+            try:
+                with FileLock(lock_file, timeout=1200):  # 20 minute timeout for conversion
+                    # Method 1: Check if precomputed model exists and load it directly
+                    if endpoint is None and os.path.exists(xml_path):
                         try:
-                            # Load the converted model
+                            print(f"Found existing model at {xml_path}. Loading...")
                             core = ov.Core()
                             endpoint = core.read_model(xml_path)
-                            endpoint = core.compile_model(endpoint)
-                            print("Successfully loaded converted model")
-                        except Exception as load_error:
-                            print(f"Error loading converted model: {load_error}")
-                    else:
-                        print(f"Model wasn't created at expected path: {xml_path}")
-                except Exception as convert_error:
-                    print(f"Error during model conversion: {convert_error}")
+                            endpoint = core.compile_model(endpoint, target_device)
+                            print("Successfully loaded existing model")
+                            is_real_implementation = True
+                        except Exception as e:
+                            print(f"Error loading existing model: {e}")
                     
-            # Method 4: Try loading directly from path if it exists
-            if endpoint is None and os.path.exists(xml_path):
-                try:
-                    print(f"Loading existing model from {xml_path}...")
-                    core = ov.Core()
-                    endpoint = core.read_model(xml_path)
-                    endpoint = core.compile_model(endpoint, target_device)
-                    print("Successfully loaded existing model from path")
-                except Exception as direct_error:
-                    print(f"Error loading existing model: {direct_error}")
+                    # Method 2: Try using the optimum converter if available
+                    if endpoint is None and get_optimum_openvino_model is not None and callable(get_optimum_openvino_model):
+                        try:
+                            print("Attempting to get model with get_optimum_openvino_model...")
+                            # Check function signature
+                            sig = inspect.signature(get_optimum_openvino_model)
+                            if len(sig.parameters) >= 3:
+                                endpoint = get_optimum_openvino_model(model_name, task, openvino_label)
+                            else:
+                                endpoint = get_optimum_openvino_model(model_name, task)
+                                
+                            if endpoint is not None:
+                                print("Successfully loaded model with get_optimum_openvino_model")
+                                is_real_implementation = True
+                        except Exception as opt_error:
+                            print(f"Error with get_optimum_openvino_model: {opt_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
                     
-            # Method 5: Last resort - create a mock model and tokenizer if needed
+                    # Method 3: Try using the OpenVINO model getter if available
+                    if endpoint is None and get_openvino_model is not None and callable(get_openvino_model):
+                        try:
+                            print("Attempting to get model with get_openvino_model...")
+                            # Check function signature
+                            sig = inspect.signature(get_openvino_model)
+                            if len(sig.parameters) >= 3:
+                                endpoint = get_openvino_model(model_name, task, openvino_label)
+                            else:
+                                endpoint = get_openvino_model(model_name, task)
+                                
+                            if endpoint is not None:
+                                print("Successfully loaded model with get_openvino_model")
+                                is_real_implementation = True
+                        except Exception as ov_error:
+                            print(f"Error with get_openvino_model: {ov_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                    
+                    # Method 4: Try direct conversion with Optimum
+                    if endpoint is None:
+                        try:
+                            print("Attempting direct model conversion with Optimum...")
+                            from optimum.intel.openvino import OVModelForFeatureExtraction
+                            
+                            # Find model path
+                            model_path = find_model_path(model_name)
+                            print(f"Using model path: {model_path}")
+                            
+                            # Convert and compile model
+                            ov_model = OVModelForFeatureExtraction.from_pretrained(
+                                model_path,
+                                export=True,
+                                compile=True,
+                                device=target_device,
+                                trust_remote_code=True
+                            )
+                            
+                            print("Successfully converted and loaded with Optimum OVModelForFeatureExtraction")
+                            endpoint = ov_model
+                            is_real_implementation = True
+                            
+                            # Save model for future use if requested
+                            try:
+                                ov_model.save_pretrained(model_dst_path)
+                                print(f"Saved model to {model_dst_path}")
+                            except Exception as save_error:
+                                print(f"Error saving model: {save_error}")
+                            
+                        except Exception as optimum_error:
+                            print(f"Error with direct Optimum conversion: {optimum_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                    
+                    # Method 5: Try CLI conversion tool if provided
+                    if endpoint is None and openvino_cli_convert is not None and callable(openvino_cli_convert):
+                        try:
+                            print(f"Attempting conversion with openvino_cli_convert...")
+                            convert_result = openvino_cli_convert(
+                                model_name,
+                                model_dst_path=model_dst_path,
+                                task=task,
+                                weight_format=weight_format,
+                                ratio="1.0",
+                                group_size=128,
+                                sym=True
+                            )
+                            print(f"CLI conversion result: {convert_result}")
+                            
+                            # Check if model was created and load it
+                            if os.path.exists(xml_path):
+                                core = ov.Core()
+                                endpoint = core.read_model(xml_path)
+                                endpoint = core.compile_model(endpoint, target_device)
+                                print("Successfully loaded converted model with CLI tool")
+                                is_real_implementation = True
+                            else:
+                                print(f"Model not found at expected path: {xml_path}")
+                        except Exception as cli_error:
+                            print(f"Error with CLI conversion: {cli_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
+            except Exception as lock_error:
+                print(f"Error during model loading/conversion: {lock_error}")
+                print(f"Traceback: {traceback.format_exc()}")
+                
+            # Step 4: Create mock implementations if needed
             if endpoint is None or tokenizer is None:
                 print("Creating mock implementations for missing components...")
                 using_mock = True
+                is_real_implementation = False
                 
                 # Create a mock OpenVINO model if needed
                 if endpoint is None:
@@ -497,6 +637,7 @@ class hf_embed:
                     class MockOVModel:
                         def __init__(self, torch_module):
                             self.torch = torch_module
+                            self.implementation_type = "MOCK"
                             
                         def infer(self, inputs):
                             """Simulate inference with OpenVINO"""
@@ -519,6 +660,9 @@ class hf_embed:
                             return self.infer(inputs)
                             
                     endpoint = MockOVModel(self.torch)
+                else:
+                    # Mark real endpoint with implementation type
+                    setattr(endpoint, "implementation_type", "REAL")
                     
                 # Create a mock tokenizer if needed
                 if tokenizer is None:
@@ -548,17 +692,62 @@ class hf_embed:
                     
                     tokenizer = SimpleTokenizer(self.torch)
             
-            # Create the handler with the model and tokenizer (real or mock)
+            # Step 5: Test the model with a sample input
+            if endpoint is not None and tokenizer is not None:
+                try:
+                    print("Testing model with sample input...")
+                    # Create a sample input
+                    sample_text = "This is a test input for embedding."
+                    tokens = tokenizer(sample_text, return_tensors="pt", padding=True, truncation=True)
+                    
+                    # Run inference to verify model works
+                    if hasattr(endpoint, '__call__') and callable(endpoint.__call__):
+                        try:
+                            with self.torch.no_grad():
+                                results = endpoint(**tokens)
+                            print("Model test successful with __call__ interface")
+                        except Exception as call_error:
+                            print(f"Model test failed with __call__ interface: {call_error}")
+                            is_real_implementation = False
+                            
+                    elif hasattr(endpoint, 'infer') and callable(endpoint.infer):
+                        try:
+                            # Convert to format expected by OpenVINO
+                            input_dict = {}
+                            for key, value in tokens.items():
+                                if hasattr(value, 'numpy'):
+                                    input_dict[key] = value.numpy()
+                                else:
+                                    input_dict[key] = value
+                            
+                            results = endpoint.infer(input_dict)
+                            print("Model test successful with infer interface")
+                        except Exception as infer_error:
+                            print(f"Model test failed with infer interface: {infer_error}")
+                            is_real_implementation = False
+                    else:
+                        print("Model doesn't have a standard interface for testing")
+                        is_real_implementation = False
+                        
+                except Exception as test_error:
+                    print(f"Error testing model: {test_error}")
+                    is_real_implementation = False
+            
+            # Create the handler with proper implementation type
+            implementation_type = "REAL" if is_real_implementation else "MOCK"
+            print(f"Creating OpenVINO text embedding handler with implementation type: {implementation_type}")
+            
+            # Store the implementation type in the model
+            if hasattr(endpoint, "__setattr__"):
+                endpoint.__setattr__("implementation_type", implementation_type)
+            
+            # Create and return the handler
             endpoint_handler = self.create_openvino_text_embedding_endpoint_handler(
                 model_name, 
                 tokenizer, 
                 openvino_label, 
                 endpoint
             )
-            
-            # Print implementation status for debugging
-            status = "REAL" if not using_mock else "MOCK"
-            print(f"Initialized OpenVINO embedding model ({status})")
             
             return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
             

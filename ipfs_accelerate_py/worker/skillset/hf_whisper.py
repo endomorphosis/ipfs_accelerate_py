@@ -491,11 +491,30 @@ class hf_whisper:
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
+        """Initialize OpenVINO for Whisper with real implementation and robust fallbacks
+        
+        This implementation uses a try-real-first-then-fallback pattern with clear implementation
+        type tracking and file locking for thread-safe model conversion.
+        
+        Args:
+            model: The model name/path
+            model_type: The model task type (should be "automatic-speech-recognition")
+            device: The device to run on ("CPU")
+            openvino_label: Device label like "openvino:0"
+            get_optimum_openvino_model: Function to get optimum OpenVINO model
+            get_openvino_model: Function to get OpenVINO model
+            get_openvino_pipeline_type: Function to get pipeline type
+            openvino_cli_convert: Function to convert model via CLI
+            
+        Returns:
+            tuple: (endpoint, processor, handler, queue, batch_size)
+        """
         self.init()
         # Initialize OpenVINO
         if "openvino" not in list(self.resources.keys()):
             try:
                 import openvino as ov
+                import fcntl  # For file locking
                 self.ov = ov
                 print("OpenVINO imported successfully")
             except ImportError as e:
@@ -503,15 +522,22 @@ class hf_whisper:
                 return None, None, None, asyncio.Queue(64), 0
         else:
             self.ov = self.resources["openvino"]
+            try:
+                import fcntl  # For file locking
+            except ImportError:
+                print("Warning: fcntl not available, file locking will be disabled")
         
         # Store the convert function
         self.openvino_cli_convert = openvino_cli_convert
         
+        # Create a tracking variable for implementation type
+        is_real_implementation = False
+        
         # First check if the model is valid or try a different model
         try:
             config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)
-            model_type = config.model_type
-            print(f"Model type detected: {model_type}")
+            detected_model_type = config.model_type
+            print(f"Model type detected: {detected_model_type}")
             
             # Use safer model if needed
             if model == "sanchit-gandhi/whisper-tiny-random" or model == "distil-whisper/distil-small.en":
@@ -524,7 +550,26 @@ class hf_whisper:
             print(f"Falling back to {fallback_model}")
             model = fallback_model
         
-        # Load the processor/tokenizer
+        # Normalize model type to ensure consistent task specification for Whisper
+        model_type = "automatic-speech-recognition"  # Always use this for Whisper
+        
+        # Parse openvino_label for better parameter validation
+        try:
+            openvino_parts = openvino_label.split(":")
+            device_type = openvino_parts[0].lower()
+            device_index = int(openvino_parts[1]) if len(openvino_parts) > 1 else 0
+            
+            # Validate device type
+            if device_type not in ["openvino", "cpu", "gpu", "vpu"]:
+                print(f"Warning: Unexpected device type '{device_type}', defaulting to 'CPU'")
+                device_type = "CPU"
+        except Exception as e:
+            print(f"Error parsing openvino_label: {e}, using defaults")
+            device_type = "CPU"
+            device_index = 0
+        
+        # Load the processor/tokenizer first - this is needed regardless of implementation
+        processor = None
         try:
             # Try WhisperProcessor directly
             from transformers import WhisperProcessor
@@ -537,112 +582,265 @@ class hf_whisper:
                 print("Successfully loaded AutoProcessor for OpenVINO")
             except Exception as e:
                 print(f"AutoProcessor failed: {e}")
-                # Create a mock processor as last resort
-                from unittest.mock import MagicMock
-                class MockProcessor:
-                    def __init__(self, torch_module):
-                        self.feature_extractor = MagicMock()
-                        self.tokenizer = MagicMock()
-                        self.feature_extractor.sampling_rate = 16000
-                        self.model_input_names = ["input_features"]
-                        self.torch = torch_module
-                        
-                    def __call__(self, audio, **kwargs):
-                        return {"input_features": self.torch.randn(1, 80, 3000)}
-                        
-                    def batch_decode(self, *args, **kwargs):
-                        return ["Mock OpenVINO whisper transcription"]
                 
-                processor = MockProcessor(self.torch)
-                print("Created mock processor for OpenVINO as last resort")
+                # Try combo of feature extractor and tokenizer
+                try:
+                    feature_extractor = self.transformers.WhisperFeatureExtractor.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    tokenizer = self.transformers.WhisperTokenizer.from_pretrained(
+                        model, 
+                        trust_remote_code=True
+                    )
+                    
+                    # Create a processor that combines these
+                    class CombinedProcessor:
+                        def __init__(self, feature_extractor, tokenizer):
+                            self.feature_extractor = feature_extractor
+                            self.tokenizer = tokenizer
+                            self.model_input_names = ["input_features"]
+                            
+                        def __call__(self, audio, **kwargs):
+                            features = self.feature_extractor(audio, **kwargs)
+                            return features
+                            
+                        def batch_decode(self, *args, **kwargs):
+                            return self.tokenizer.batch_decode(*args, **kwargs)
+                    
+                    processor = CombinedProcessor(feature_extractor, tokenizer)
+                    print("Created combined processor from feature extractor and tokenizer")
+                except Exception as e:
+                    print(f"Combined processor creation failed: {e}")
+                    
+                    # Create a mock processor as last resort
+                    from unittest.mock import MagicMock
+                    class MockProcessor:
+                        def __init__(self, torch_module):
+                            self.feature_extractor = MagicMock()
+                            self.tokenizer = MagicMock()
+                            self.feature_extractor.sampling_rate = 16000
+                            self.model_input_names = ["input_features"]
+                            self.torch = torch_module
+                            
+                        def __call__(self, audio, **kwargs):
+                            return {"input_features": self.torch.randn(1, 80, 3000)}
+                            
+                        def batch_decode(self, *args, **kwargs):
+                            return ["Mock OpenVINO whisper transcription"]
+                    
+                    processor = MockProcessor(self.torch)
+                    print("Created mock processor for OpenVINO as last resort")
         
-        # Try multiple ways to get a working OpenVINO model
+        # Define a file lock utility for thread-safe conversion
+        class FileLock:
+            """Simple file-based lock with timeout"""
+            def __init__(self, lock_file, timeout=600):
+                self.lock_file = lock_file
+                self.timeout = timeout
+                self.fd = None
+            
+            def __enter__(self):
+                try:
+                    import fcntl
+                    start_time = time.time()
+                    while True:
+                        try:
+                            # Try to create and lock the file
+                            self.fd = open(self.lock_file, 'w')
+                            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except IOError:
+                            # Check timeout
+                            if time.time() - start_time > self.timeout:
+                                raise TimeoutError(f"Could not acquire lock on {self.lock_file} within {self.timeout} seconds")
+                            
+                            # Wait and retry
+                            time.sleep(1)
+                except ImportError:
+                    print("Warning: fcntl not available, skipping file locking")
+                return self
+            
+            def __exit__(self, *args):
+                try:
+                    import fcntl
+                    if self.fd:
+                        fcntl.flock(self.fd, fcntl.LOCK_UN)
+                        self.fd.close()
+                        try:
+                            os.unlink(self.lock_file)
+                        except:
+                            pass
+                except ImportError:
+                    if self.fd:
+                        self.fd.close()
+        
+        # Helper function to find model path with fallbacks
+        def find_model_path(model_name):
+            """Find a model's path with multiple fallback strategies"""
+            try:
+                # Try HF cache first
+                cache_path = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+                if os.path.exists(cache_path):
+                    model_dirs = [x for x in os.listdir(cache_path) if model_name in x]
+                    if model_dirs:
+                        return os.path.join(cache_path, model_dirs[0])
+                        
+                # Try alternate paths
+                alt_paths = [
+                    os.path.join(os.path.expanduser("~"), ".cache", "huggingface"),
+                    os.path.join(os.path.expanduser("~"), ".cache", "optimum", "ov"),
+                    os.path.join("/tmp", "hf_models")
+                ]
+                for path in alt_paths:
+                    if os.path.exists(path):
+                        for root, dirs, _ in os.walk(path):
+                            if model_name in root:
+                                return root
+                                
+                # Return the model name as a last resort
+                return model_name
+            except Exception as e:
+                print(f"Error finding model path: {e}")
+                return model_name
+        
+        # Try multiple ways to get a working OpenVINO model with proper file locking
         endpoint = None
         endpoint_handler = None
         batch_size = 0
         
-        # Method 1: Use the provided get_openvino_model utility
+        # Prepare model destination path
+        model_dst_path = os.path.join(os.path.expanduser("~"), ".cache", "openvino_models", model.replace("/", "--"))
+        os.makedirs(model_dst_path, exist_ok=True)
+        print(f"Model destination path: {model_dst_path}")
+        
+        # Create lock file path for thread-safe conversion
+        lock_file = os.path.join(model_dst_path, ".whisper_conversion.lock")
+        print(f"Using lock file: {lock_file}")
+        
+        # Method 1: Look for precomputed OpenVINO model
         if not endpoint:
             try:
-                print(f"Trying to get OpenVINO model using get_openvino_model for {model}")
-                endpoint = get_openvino_model(model, "automatic-speech-recognition", openvino_label)
-                if endpoint:
-                    print("Successfully loaded OpenVINO model with get_openvino_model")
+                with FileLock(lock_file, timeout=60):  # Short timeout for just checking
+                    # Check for existing OpenVINO model file
+                    ov_model_path = os.path.join(model_dst_path, model.replace("/", "--") + ".xml")
+                    if os.path.exists(ov_model_path):
+                        print(f"Found existing OpenVINO model at {ov_model_path}")
+                        try:
+                            core = self.ov.Core()
+                            endpoint = core.read_model(ov_model_path)
+                            endpoint = core.compile_model(endpoint, device_type)
+                            print("Successfully loaded pre-existing OpenVINO model")
+                            is_real_implementation = True
+                        except Exception as e:
+                            print(f"Error loading pre-existing model: {e}")
             except Exception as e:
-                print(f"get_openvino_model failed: {e}")
+                print(f"Error checking for precomputed model: {e}")
         
-        # Method 2: Try the optimum converter
+        # Method 2: Use the provided get_optimum_openvino_model utility
         if not endpoint:
             try:
                 print(f"Trying to get OpenVINO model using get_optimum_openvino_model for {model}")
-                endpoint = get_optimum_openvino_model(model, "automatic-speech-recognition", openvino_label)
-                if endpoint:
-                    print("Successfully loaded OpenVINO model with get_optimum_openvino_model")
+                with FileLock(lock_file, timeout=600):  # 10 minute timeout for conversion
+                    endpoint = get_optimum_openvino_model(model, model_type, openvino_label)
+                    if endpoint:
+                        print("Successfully loaded OpenVINO model with get_optimum_openvino_model")
+                        is_real_implementation = True
             except Exception as e:
                 print(f"get_optimum_openvino_model failed: {e}")
-                
-        # Method 3: Try direct conversion
+        
+        # Method 3: Use the provided get_openvino_model utility
         if not endpoint:
             try:
-                model_dst_path = os.path.join(os.path.expanduser("~"), ".cache", "openvino_models", model.replace("/", "--"))
-                os.makedirs(model_dst_path, exist_ok=True)
-                print(f"Model destination path: {model_dst_path}")
-                
-                # First try using the skill converter
-                try:
-                    print(f"Attempting to convert {model} using openvino_skill_convert")
-                    from transformers import WhisperForConditionalGeneration
-                    hf_model = WhisperForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float32)
-                    
-                    # Ensure we can run a test forward pass
-                    sample_audio = self.np.zeros(16000, dtype=self.np.float32)
-                    inputs = processor(sample_audio, sampling_rate=16000, return_tensors="pt")
-                    with self.torch.no_grad():
-                        hf_model.eval()
-                        _ = hf_model.generate(inputs.input_features)
-                    
-                    # Now convert to OpenVINO
-                    endpoint = self.openvino_skill_convert(
-                        model, 
-                        model_dst_path, 
-                        "automatic-speech-recognition", 
-                        "fp16",
-                        hfmodel=hf_model,
-                        hfprocessor=processor
-                    )
-                    
+                print(f"Trying to get OpenVINO model using get_openvino_model for {model}")
+                with FileLock(lock_file, timeout=600):  # 10 minute timeout for conversion
+                    endpoint = get_openvino_model(model, model_type, openvino_label)
                     if endpoint:
-                        print("Successfully converted and loaded model with openvino_skill_convert")
-                except Exception as conversion_error:
-                    print(f"Skill conversion failed: {conversion_error}")
-                    
-                    # Fall back to CLI converter
-                    if not endpoint and self.openvino_cli_convert:
+                        print("Successfully loaded OpenVINO model with get_openvino_model")
+                        is_real_implementation = True
+            except Exception as e:
+                print(f"get_openvino_model failed: {e}")
+                
+        # Method 4: Try using the Optimum library directly
+        if not endpoint:
+            try:
+                print(f"Trying to convert model using Optimum directly")
+                with FileLock(lock_file, timeout=1200):  # 20 minute timeout for conversion
+                    try:
+                        from optimum.intel.openvino import OVModelForSpeechSeq2Seq
+                        model_path = find_model_path(model)
+                        print(f"Loading model from: {model_path}")
+                        
+                        ov_model = OVModelForSpeechSeq2Seq.from_pretrained(
+                            model_path,
+                            device=device_type,
+                            trust_remote_code=True,
+                            export=True,
+                            compile=True
+                        )
+                        print("Successfully converted and loaded with Optimum OVModelForSpeechSeq2Seq")
+                        endpoint = ov_model
+                        is_real_implementation = True
+                    except Exception as e:
+                        print(f"OVModelForSpeechSeq2Seq failed: {e}")
+                        
+                        # Try direct conversion with openvino_skill_convert
                         try:
-                            print(f"Attempting to convert {model} using openvino_cli_convert")
-                            self.openvino_cli_convert(
+                            print(f"Attempting to convert {model} using openvino_skill_convert")
+                            from transformers import WhisperForConditionalGeneration
+                            hf_model = WhisperForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float32)
+                            
+                            # Ensure we can run a test forward pass
+                            sample_audio = self.np.zeros(16000, dtype=self.np.float32)
+                            inputs = processor(sample_audio, sampling_rate=16000, return_tensors="pt")
+                            with self.torch.no_grad():
+                                hf_model.eval()
+                                _ = hf_model.generate(inputs.input_features)
+                            
+                            # Now convert to OpenVINO
+                            endpoint = self.openvino_skill_convert(
                                 model, 
-                                model_dst_path=model_dst_path, 
-                                task="automatic-speech-recognition", 
-                                weight_format="fp16"
+                                model_dst_path, 
+                                model_type, 
+                                "fp16",
+                                hfmodel=hf_model,
+                                hfprocessor=processor
                             )
                             
-                            # Load the converted model
-                            core = self.ov.Core()
-                            ov_model_path = os.path.join(model_dst_path, model.replace("/", "--") + ".xml")
-                            if os.path.exists(ov_model_path):
-                                print(f"OpenVINO model found at {ov_model_path}")
-                                endpoint = core.read_model(ov_model_path)
-                                endpoint = core.compile_model(endpoint)
-                                print("Successfully loaded OpenVINO model with CLI converter")
-                            else:
-                                print(f"Expected model file not found at {ov_model_path}")
-                        except Exception as e:
-                            print(f"CLI converter failed: {e}")
+                            if endpoint:
+                                print("Successfully converted and loaded model with openvino_skill_convert")
+                                is_real_implementation = True
+                        except Exception as conversion_error:
+                            print(f"Skill conversion failed: {conversion_error}")
+                            
+                            # Fall back to CLI converter
+                            if not endpoint and self.openvino_cli_convert:
+                                try:
+                                    print(f"Attempting to convert {model} using openvino_cli_convert")
+                                    self.openvino_cli_convert(
+                                        model, 
+                                        model_dst_path=model_dst_path, 
+                                        task=model_type, 
+                                        weight_format="fp16"
+                                    )
+                                    
+                                    # Load the converted model
+                                    core = self.ov.Core()
+                                    ov_model_path = os.path.join(model_dst_path, model.replace("/", "--") + ".xml")
+                                    if os.path.exists(ov_model_path):
+                                        print(f"OpenVINO model found at {ov_model_path}")
+                                        endpoint = core.read_model(ov_model_path)
+                                        endpoint = core.compile_model(endpoint, device_type)
+                                        print("Successfully loaded OpenVINO model with CLI converter")
+                                        is_real_implementation = True
+                                    else:
+                                        print(f"Expected model file not found at {ov_model_path}")
+                                except Exception as e:
+                                    print(f"CLI converter failed: {e}")
             except Exception as e:
                 print(f"All conversion methods failed: {e}")
         
-        # Method 4: Create a mock endpoint if all else failed
+        # Method 5: Create a mock endpoint if all else failed
         if not endpoint:
             from unittest.mock import MagicMock
             print("Creating mock OpenVINO endpoint as last resort")
@@ -650,8 +848,10 @@ class hf_whisper:
             endpoint.generate = MagicMock(return_value=self.torch.tensor([[1, 2, 3]]))
             endpoint.config = MagicMock()
             endpoint.config.torchscript = False
+            is_real_implementation = False
         
-        # Test the OpenVINO model with a sample input
+        # Test the OpenVINO model with a sample input to verify it works
+        is_working = False
         if endpoint is not None and processor is not None:
             try:
                 print("Testing OpenVINO model with sample input...")
@@ -665,14 +865,28 @@ class hf_whisper:
                         generated_ids = endpoint.generate(inputs.input_features)
                         result = processor.batch_decode(generated_ids, skip_special_tokens=True)
                         print(f"OpenVINO model test successful, got: {result}")
+                        is_working = True
                 else:
-                    print("OpenVINO model doesn't have expected generate method, will use mock handler")
+                    print("OpenVINO model doesn't have expected generate method")
+                    if is_real_implementation:
+                        # If we thought it was real but it doesn't work, mark as not real
+                        is_real_implementation = False
             except Exception as e:
                 print(f"OpenVINO model test failed: {e}")
+                if is_real_implementation:
+                    # If we thought it was real but the test failed, mark as not real
+                    is_real_implementation = False
         
-        # Create handler and return
+        # Create and return handler with proper implementation type
+        implementation_type = "REAL" if is_real_implementation else "MOCK"
+        print(f"Creating OpenVINO Whisper handler with implementation type: {implementation_type}")
         endpoint_handler = self.create_openvino_whisper_endpoint_handler(endpoint, processor, model, openvino_label)
-        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size          
+        
+        # Store the implementation type in the endpoint handler if possible
+        if hasattr(endpoint, "__setattr__"):
+            endpoint.__setattr__("implementation_type", implementation_type)
+        
+        return endpoint, processor, endpoint_handler, asyncio.Queue(64), batch_size
     
     def init_apple(self, model, device, apple_label):
         """Initialize Whisper model for Apple Silicon hardware."""

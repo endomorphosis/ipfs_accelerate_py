@@ -25,16 +25,33 @@ def load_video_frames(video_file, num_frames=8):
 
 # Use direct import with the absolute path
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+
+# Try to import transformers directly to have a real implementation available
+transformers = None
+try:
+    import transformers
+    transformers_available = True
+    print("Successfully imported real transformers module")
+except ImportError:
+    transformers_available = False
+    print("Transformers not available, using mock...")
+    transformers = MagicMock()
+
+# Import the XCLIP module
 from ipfs_accelerate_py.worker.skillset.hf_xclip import hf_xclip
 
 class test_hf_xclip:
     def __init__(self, resources=None, metadata=None):
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np, 
-            "transformers": MagicMock(),
-            "decord": MagicMock()
-        }
+        if resources:
+            self.resources = resources
+        else:
+            # Create resources with real transformers if available
+            self.resources = {
+                "torch": torch,
+                "numpy": np, 
+                "transformers": transformers if transformers_available else MagicMock(),
+                "decord": MagicMock()
+            }
         self.metadata = metadata if metadata else {}
         self.xclip = hf_xclip(resources=self.resources, metadata=self.metadata)
         self.model_name = "microsoft/xclip-base-patch32"
@@ -298,6 +315,7 @@ class test_hf_xclip:
         try:
             try:
                 import openvino
+                import traceback  # For better error reporting
             except ImportError:
                 results["openvino_tests"] = "OpenVINO not installed"
                 return results
@@ -308,40 +326,276 @@ class test_hf_xclip:
             # Initialize openvino_utils
             ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
             
-            # Use a patched version for testing
-            with patch('openvino.runtime.Core' if hasattr(openvino, 'runtime') and hasattr(openvino.runtime, 'Core') else 'openvino.Core'):
+            # Implement file locking for thread safety
+            import fcntl
+            from contextlib import contextmanager
+            
+            @contextmanager
+            def file_lock(lock_file, timeout=600):
+                """Simple file-based lock with timeout"""
+                start_time = time.time()
+                lock_dir = os.path.dirname(lock_file)
+                os.makedirs(lock_dir, exist_ok=True)
                 
-                # Create a safer OpenVINO initialization to avoid list index errors
+                fd = open(lock_file, 'w')
                 try:
-                    endpoint, processor, handler, queue, batch_size = self.xclip.init_openvino(
-                        self.model_name,
-                        "video-classification",
-                        "CPU",
-                        "openvino:0",
-                        ov_utils.get_optimum_openvino_model,
-                        ov_utils.get_openvino_model,
-                        ov_utils.get_openvino_pipeline_type,
-                        ov_utils.openvino_cli_convert
-                    )
-                except Exception as ov_error:
-                    # If the real initialization fails, create mocks for testing
-                    print(f"Falling back to mock OpenVINO initialization: {ov_error}")
-                    processor = MagicMock()
-                    endpoint = MagicMock()
+                    while True:
+                        try:
+                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except IOError:
+                            if time.time() - start_time > timeout:
+                                raise TimeoutError(f"Could not acquire lock on {lock_file} within {timeout} seconds")
+                            time.sleep(1)
+                    yield
+                finally:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    fd.close()
+                    try:
+                        os.unlink(lock_file)
+                    except:
+                        pass
+            
+            # First try real OpenVINO implementation
+            is_real_impl = False
+            implementation_type = "(MOCK)"  # Default assuming mock
+            
+            try:
+                print("Trying real OpenVINO implementation for XCLIP...")
+                
+                # Helper function to find model path
+                def find_model_path(model_name):
+                    """Find a model's path with multiple fallback strategies"""
+                    try:
+                        # Handle case where model_name is already a path
+                        if os.path.exists(model_name):
+                            return model_name
+                        
+                        # Try HF cache locations
+                        potential_cache_paths = [
+                            os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models"),
+                            os.path.join(os.path.expanduser("~"), ".cache", "optimum", "ov"),
+                            os.path.join("/tmp", "hf_models")
+                        ]
+                        
+                        # Search in all potential cache paths
+                        for cache_path in potential_cache_paths:
+                            if os.path.exists(cache_path):
+                                # Try direct match first
+                                try:
+                                    model_dirs = [x for x in os.listdir(cache_path) if model_name in x]
+                                    if model_dirs:
+                                        return os.path.join(cache_path, model_dirs[0])
+                                except Exception as e:
+                                    print(f"Error listing {cache_path}: {e}")
+                                
+                                # Try deeper search
+                                for root, dirs, _ in os.walk(cache_path):
+                                    if model_name.replace("/", "_") in root or model_name in root:
+                                        return root
+                        
+                        # Last resort - return the model name
+                        return model_name
+                    except Exception as e:
+                        print(f"Error finding model path: {e}")
+                        return model_name
+                
+                # Create lock file path based on model name
+                cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "xclip_ov_locks")
+                os.makedirs(cache_dir, exist_ok=True)
+                lock_file = os.path.join(cache_dir, f"{self.model_name.replace('/', '_')}_conversion.lock")
+                
+                # Try direct approach with optimum
+                try:
+                    print("Trying direct optimum-intel approach first...")
+                    # Use file locking to prevent multiple conversions
+                    with file_lock(lock_file):
+                        try:
+                            # Try to use optimum-intel for XCLIP
+                            from optimum.intel.openvino import OVModelForVision2Seq
+                            from transformers import XCLIPProcessor
+                            
+                            # Find model path
+                            model_path = find_model_path(self.model_name)
+                            print(f"Using model path: {model_path}")
+                            
+                            # Load model and processor with correct task type
+                            ov_model = OVModelForVision2Seq.from_pretrained(
+                                model_path,
+                                device="CPU",
+                                trust_remote_code=True
+                            )
+                            processor = XCLIPProcessor.from_pretrained(model_path)
+                            
+                            # Use correct task type for XCLIP
+                            model_type = "video-to-text-retrieval"
+                            
+                            # Create handler function
+                            def direct_handler(frames=None, text=None):
+                                try:
+                                    start_time = time.time()
+                                    result = {}
+                                    
+                                    # Handle different input combinations
+                                    if text is not None and frames is not None:
+                                        # Process both for similarity
+                                        inputs = processor(text=text, videos=frames, return_tensors="pt")
+                                        with torch.no_grad():
+                                            outputs = ov_model(**inputs)
+                                        
+                                        # Extract embeddings and similarity
+                                        text_embedding = outputs.text_embeds
+                                        video_embedding = outputs.vision_embeds
+                                        
+                                        # Calculate similarity
+                                        similarity = torch.nn.functional.cosine_similarity(
+                                            text_embedding, 
+                                            video_embedding
+                                        )
+                                        
+                                        result = {
+                                            "text_embedding": text_embedding[0],
+                                            "video_embedding": video_embedding[0],
+                                            "similarity": similarity,
+                                            "implementation_type": "REAL",
+                                            "elapsed_time": time.time() - start_time
+                                        }
+                                        
+                                    elif text is not None:
+                                        # Process text only
+                                        inputs = processor(text=text, return_tensors="pt")
+                                        with torch.no_grad():
+                                            outputs = ov_model.get_text_features(**inputs)
+                                        
+                                        result = {
+                                            "text_embedding": outputs[0],
+                                            "implementation_type": "REAL",
+                                            "elapsed_time": time.time() - start_time
+                                        }
+                                        
+                                    elif frames is not None:
+                                        # Process video only
+                                        inputs = processor(videos=frames, return_tensors="pt")
+                                        with torch.no_grad():
+                                            outputs = ov_model.get_video_features(**inputs)
+                                        
+                                        result = {
+                                            "video_embedding": outputs[0],
+                                            "implementation_type": "REAL",
+                                            "elapsed_time": time.time() - start_time
+                                        }
+                                    
+                                    return result
+                                    
+                                except Exception as e:
+                                    print(f"Error in direct handler: {e}")
+                                    print(f"Traceback: {traceback.format_exc()}")
+                                    # Fall back to mock result with implementation type marker
+                                    return {
+                                        "text_embedding": torch.zeros(512),
+                                        "video_embedding": torch.zeros(512),
+                                        "similarity": torch.tensor([0.75]),
+                                        "implementation_type": "MOCK",
+                                        "error": str(e)
+                                    }
+                            
+                            # Set handler
+                            handler = direct_handler
+                            endpoint = None
+                            queue = None
+                            batch_size = 1
+                            
+                            is_real_impl = True
+                            implementation_type = "(REAL)"
+                            print("Successfully created real OpenVINO implementation via direct approach")
+                            
+                        except Exception as optimum_error:
+                            print(f"Direct optimum-intel approach failed: {optimum_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            raise optimum_error
+                            
+                except Exception as direct_error:
+                    print(f"Direct approach failed: {direct_error}")
                     
-                    # Create a custom handler that always returns success
-                    def mock_openvino_handler(frames=None, text=None):
-                        return {"text_embedding": torch.zeros(1, 512), 
+                    # Fall back to standard approach with correct task type
+                    try:
+                        endpoint, processor, handler, queue, batch_size = self.xclip.init_openvino(
+                            self.model_name,
+                            "video-to-text-retrieval",  # Correct task type for XCLIP
+                            "CPU",
+                            "openvino:0",
+                            ov_utils.get_optimum_openvino_model,
+                            ov_utils.get_openvino_model,
+                            ov_utils.get_openvino_pipeline_type,
+                            ov_utils.openvino_cli_convert
+                        )
+                        
+                        # Check if we got real implementation or mock
+                        import unittest.mock
+                        if isinstance(handler, unittest.mock.MagicMock) or (processor is not None and isinstance(processor, unittest.mock.MagicMock)):
+                            is_real_impl = False
+                            implementation_type = "(MOCK)"
+                            print("Received mock components from handler, using mock implementation")
+                        else:
+                            is_real_impl = True
+                            implementation_type = "(REAL)"
+                            print("Successfully initialized real OpenVINO implementation")
+                            
+                    except Exception as ov_error:
+                        print(f"Standard OpenVINO initialization failed: {ov_error}")
+                        print(f"Falling back to mock implementation...")
+                        is_real_impl = False
+                        implementation_type = "(MOCK)"
+                        traceback.print_exc()
+                        
+                        # Create mocks for testing
+                        processor = MagicMock()
+                        endpoint = MagicMock()
+                        
+                        # Create a custom handler that always returns success
+                        def mock_openvino_handler(frames=None, text=None):
+                            return {
+                                "text_embedding": torch.zeros(1, 512), 
                                 "video_embedding": torch.zeros(1, 512),
-                                "similarity": torch.tensor([[0.8]])}
-                    
-                    handler = mock_openvino_handler
-                    queue = asyncio.Queue(32)
-                    batch_size = 0
+                                "similarity": torch.tensor([[0.8]]),
+                                "implementation_type": "MOCK"
+                            }
+                        
+                        handler = mock_openvino_handler
+                        queue = asyncio.Queue(32)
+                        batch_size = 0
                 
-                valid_init = handler is not None
-                results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
+            except Exception as e:
+                print(f"All OpenVINO initialization attempts failed: {e}")
+                traceback.print_exc()
                 
+                # Fall back to mock implementation
+                processor = MagicMock()
+                endpoint = MagicMock()
+                
+                # Create a custom handler that always returns success
+                def fallback_mock_handler(frames=None, text=None):
+                    return {
+                        "text_embedding": torch.zeros(1, 512), 
+                        "video_embedding": torch.zeros(1, 512),
+                        "similarity": torch.tensor([[0.8]]),
+                        "implementation_type": "MOCK"
+                    }
+                
+                handler = fallback_mock_handler
+                queue = asyncio.Queue(32)
+                batch_size = 0
+                
+                is_real_impl = False
+                implementation_type = "(MOCK)"
+            
+            valid_init = handler is not None
+            results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
+            
+            test_handler = handler  # Use handler directly
+            
+            # If we still need to create a handler function, use this:
+            if not test_handler:
                 test_handler = self.xclip.create_openvino_video_embedding_endpoint_handler(
                     endpoint,
                     processor,
@@ -349,8 +603,17 @@ class test_hf_xclip:
                     "openvino:0"
                 )
                 
+                # Test with both frames and text for similarity
                 output = test_handler(self.frames, self.test_text)
-                results["openvino_handler"] = "Success (MOCK)" if output is not None else "Failed OpenVINO handler"
+                
+                # Get implementation type from the result
+                result_impl_type = output.get("implementation_type", implementation_type) if isinstance(output, dict) else implementation_type
+                
+                # Make sure we have the correct format with parentheses
+                if result_impl_type == "REAL" or result_impl_type == "MOCK":
+                    result_impl_type = f"({result_impl_type})"
+                    
+                results["openvino_handler"] = f"Success {result_impl_type}" if output is not None else "Failed OpenVINO handler"
                 
                 # Include similarity score if available
                 if output is not None and isinstance(output, dict):
@@ -373,6 +636,19 @@ class test_hf_xclip:
                             results["openvino_similarity_score"] = sim_score.tolist()
                         else:
                             results["openvino_similarity_score"] = "unknown format"
+                            
+                    # Add example with correct implementation type
+                    results["openvino_similarity_example"] = {
+                        "input": {
+                            "text": self.test_text,
+                            "video": "Video frames (array data)"
+                        },
+                        "output": {
+                            "similarity_value": results.get("openvino_similarity_score", 0.0)
+                        },
+                        "implementation_type": result_impl_type,
+                        "platform": "OpenVINO"
+                    }
         except ImportError:
             results["openvino_tests"] = "OpenVINO not installed"
         except Exception as e:
@@ -559,6 +835,9 @@ class test_hf_xclip:
                                     or "score" in k
                                     or "keys" in k]
                     excluded_keys.extend(variable_keys)
+                    
+                    # Also exclude cpu_similarity_example since similarity values are random
+                    excluded_keys.append("cpu_similarity_example")
                     
                     expected_copy = {k: v for k, v in expected_results.items() if k not in excluded_keys}
                     results_copy = {k: v for k, v in test_results.items() if k not in excluded_keys}

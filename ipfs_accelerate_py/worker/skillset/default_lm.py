@@ -249,7 +249,7 @@ class hf_lm:
         # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
         return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
     
-    def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None):
+    def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize OpenVINO model for inference
         
         Args:
@@ -260,6 +260,7 @@ class hf_lm:
             get_optimum_openvino_model: Optional function to get Optimum model
             get_openvino_model: Optional function to get OpenVINO model
             get_openvino_pipeline_type: Optional function to get pipeline type
+            openvino_cli_convert: Optional function to convert model to OpenVINO format
             
         Returns:
             Tuple of (endpoint, tokenizer, handler, queue, batch_size)
@@ -268,54 +269,264 @@ class hf_lm:
             # Try importing OpenVINO
             try:
                 import openvino as ov
-                print("OpenVINO imported successfully")
+                from openvino.runtime import Core, get_version
+                print(f"OpenVINO imported successfully, version: {get_version()}")
+                has_openvino = True
             except ImportError:
                 print("OpenVINO not available - using mocks")
+                has_openvino = False
                 
             self.init()
             
-            # Create mock objects if we're testing
-            if isinstance(self.transformers, type(MagicMock())) or get_openvino_model is None:
-                print("Using mocks for OpenVINO")
+            # Validate device parameters
+            def validate_device_params(device_label):
+                """Extract and validate device parameters from label string"""
+                try:
+                    parts = device_label.split(":")
+                    device_type = parts[0].lower()
+                    device_index = int(parts[1]) if len(parts) > 1 else 0
+                    
+                    # Validate device type
+                    if device_type not in ["cpu", "gpu", "vpu"]:
+                        print(f"Warning: Unknown device type '{device_type}', defaulting to 'cpu'")
+                        device_type = "cpu"
+                        
+                    return device_type, device_index
+                except Exception as e:
+                    print(f"Error parsing device parameters: {e}, using defaults")
+                    return "cpu", 0
+            
+            # Find model path with multiple fallback strategies
+            def find_model_path(model_name):
+                """Find a model's path with multiple fallback strategies"""
+                try:
+                    # Handle case where model_name is already a path
+                    if os.path.exists(model_name):
+                        return model_name
+                    
+                    # Try HF cache locations
+                    potential_cache_paths = [
+                        os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models"),
+                        os.path.join(os.path.expanduser("~"), ".cache", "optimum", "ov"),
+                        os.path.join("/tmp", "hf_models"),
+                        os.path.join(os.path.expanduser("~"), ".cache", "torch", "hub"),
+                    ]
+                    
+                    # Search in all potential cache paths
+                    for cache_path in potential_cache_paths:
+                        if os.path.exists(cache_path):
+                            # Try direct match first
+                            model_dirs = [x for x in os.listdir(cache_path) if model_name in x]
+                            if model_dirs:
+                                return os.path.join(cache_path, model_dirs[0])
+                            
+                            # Try deeper search
+                            for root, dirs, files in os.walk(cache_path):
+                                if model_name in root:
+                                    return root
+                    
+                    # Try downloading if possible
+                    try:
+                        from huggingface_hub import snapshot_download
+                        return snapshot_download(model_name)
+                    except Exception as e:
+                        print(f"Failed to download model: {e}")
+                        
+                    # Last resort - just return the name and let caller handle
+                    return model_name
+                except Exception as e:
+                    print(f"Error finding model path: {e}")
+                    return model_name
+            
+            # File locking utility for thread safety
+            import fcntl
+            class FileLock:
+                """
+                Simple file-based lock with timeout
+                
+                Usage:
+                    with FileLock("path/to/lock_file", timeout=60):
+                        # critical section
+                """
+                def __init__(self, lock_file, timeout=60):
+                    self.lock_file = lock_file
+                    self.timeout = timeout
+                    self.fd = None
+                
+                def __enter__(self):
+                    start_time = time.time()
+                    while True:
+                        try:
+                            # Try to create and lock the file
+                            self.fd = open(self.lock_file, 'w')
+                            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            break
+                        except IOError:
+                            # Check timeout
+                            if time.time() - start_time > self.timeout:
+                                raise TimeoutError(f"Could not acquire lock on {self.lock_file} within {self.timeout} seconds")
+                            
+                            # Wait and retry
+                            time.sleep(1)
+                    return self
+                
+                def __exit__(self, *args):
+                    if self.fd:
+                        fcntl.flock(self.fd, fcntl.LOCK_UN)
+                        self.fd.close()
+                        try:
+                            os.unlink(self.lock_file)
+                        except:
+                            pass
+            
+            # Extract device type and index
+            device_type, device_index = validate_device_params(openvino_label)
+            
+            # Try real OpenVINO implementation first if available
+            is_real_implementation = False
+            if has_openvino and get_optimum_openvino_model is not None and get_openvino_model is not None and not isinstance(self.transformers, type(MagicMock())):
+                try:
+                    print(f"Trying real OpenVINO implementation for {model_type} model: {model}")
+                    
+                    # Find model path with fallbacks
+                    model_path = find_model_path(model)
+                    print(f"Using model path: {model_path}")
+                    
+                    # Create lock directory
+                    cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "lm_ov_locks")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    lock_file = os.path.join(cache_dir, f"{model.replace('/', '_')}_conversion.lock")
+                    
+                    # Use file locking for thread safety
+                    with FileLock(lock_file, timeout=600):  # 10min timeout
+                        # Try optimum-based loading first
+                        try:
+                            print("Trying Optimum-based OpenVINO model loading...")
+                            from optimum.intel.openvino import OVModelForCausalLM
+                            
+                            # Create output directory
+                            model_dir = os.path.join(os.path.dirname(model_path), "openvino_model")
+                            os.makedirs(model_dir, exist_ok=True)
+                            
+                            # Check if model already converted to IR format
+                            model_xml = os.path.join(model_dir, "openvino_model.xml")
+                            if not os.path.exists(model_xml) and openvino_cli_convert is not None:
+                                # Convert model to IR format if needed
+                                print(f"Converting {model} to OpenVINO IR format...")
+                                conversion_result = openvino_cli_convert(model_path, model_type, model_dir)
+                                if not conversion_result:
+                                    raise ValueError("Model conversion failed")
+                            
+                            # Load model from IR if available, otherwise from original
+                            if os.path.exists(model_xml):
+                                print(f"Loading converted IR model from {model_xml}")
+                                ov_model = OVModelForCausalLM.from_pretrained(
+                                    model_dir,
+                                    device=device_type,
+                                    trust_remote_code=True
+                                )
+                            else:
+                                print(f"Converting model directly with Optimum")
+                                ov_model = OVModelForCausalLM.from_pretrained(
+                                    model_path,
+                                    device=device_type,
+                                    trust_remote_code=True
+                                )
+                            
+                            # Load tokenizer for the model
+                            tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                                model_path,
+                                trust_remote_code=True
+                            )
+                            
+                            # Create endpoint object
+                            class OptimumModelEndpoint:
+                                def __init__(self, model):
+                                    self.model = model
+                                    
+                                def generate(self, *args, **kwargs):
+                                    return self.model.generate(*args, **kwargs)
+                            
+                            endpoint = OptimumModelEndpoint(ov_model)
+                            is_real_implementation = True
+                            print("Successfully loaded real OpenVINO model with Optimum")
+                            
+                        except Exception as optimum_error:
+                            print(f"Optimum-based loading failed: {optimum_error}")
+                            import traceback
+                            traceback.print_exc()
+                            
+                            # Try direct OpenVINO API as fallback
+                            try:
+                                print("Falling back to direct OpenVINO API...")
+                                
+                                # Initialize OpenVINO Core
+                                core = Core()
+                                
+                                # Find appropriate device with fallback to CPU
+                                devices = core.available_devices
+                                print(f"Available devices: {devices}")
+                                if device_type not in devices:
+                                    print(f"Device {device_type} not available, falling back to CPU")
+                                    device_type = "CPU"
+                                
+                                # Use get_openvino_model to load the model
+                                endpoint = get_openvino_model(model, model_type, openvino_label)
+                                
+                                # Load tokenizer
+                                tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                                    model_path,
+                                    trust_remote_code=True
+                                )
+                                
+                                # Verify we got a real model, not a mock
+                                if endpoint is not None and not isinstance(endpoint, type(MagicMock())):
+                                    is_real_implementation = True
+                                    print("Successfully loaded real OpenVINO model with direct API")
+                                else:
+                                    raise ValueError("Failed to load real OpenVINO model")
+                                    
+                            except Exception as ov_error:
+                                print(f"Direct OpenVINO implementation failed: {ov_error}")
+                                traceback.print_exc()
+                                # Fall back to mock implementation below
+                                raise
+                
+                except Exception as e:
+                    print(f"Real OpenVINO implementation failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fall back to mock implementation
+            
+            # Fall back to mock implementation if real one failed or isn't available
+            if not is_real_implementation:
+                print("Using mock implementation for OpenVINO")
                 tokenizer = MagicMock()
-                tokenizer.batch_decode = MagicMock(return_value=["Once upon a time..."])
+                tokenizer.batch_decode = MagicMock(return_value=["(MOCK) Once upon a time..."])
                 
                 endpoint = MagicMock()
                 # Create mock functions for testing
                 endpoint.run_model = MagicMock(return_value={
                     "logits": np.random.rand(1, 10, 30522)
                 })
-            else:
-                # Try loading real model with OpenVINO
-                try:
-                    tokenizer = self.transformers.AutoTokenizer.from_pretrained(
-                        model, 
-                        use_fast=True, 
-                        trust_remote_code=True
-                    )
-                    endpoint = get_openvino_model(model, model_type, openvino_label)
-                except Exception as e:
-                    print(f"Error loading model: {e}")
-                    tokenizer = MagicMock()
-                    tokenizer.batch_decode = MagicMock(return_value=["Once upon a time..."])
-                    
-                    endpoint = MagicMock()
-                    endpoint.run_model = MagicMock(return_value={
-                        "logits": np.random.rand(1, 10, 30522)
-                    })
+                # Add generate method to support both APIs
+                endpoint.generate = MagicMock(return_value=np.array([[101, 102, 103]]))
             
-            # Create handler function
+            # Create handler function with implementation type awareness
             endpoint_handler = self.create_openvino_lm_endpoint_handler(
                 endpoint, 
                 tokenizer, 
                 model, 
-                openvino_label
+                openvino_label,
+                is_real_implementation
             )
             
             return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
         
         except Exception as e:
             print(f"Error in OpenVINO initialization: {e}")
+            import traceback
+            traceback.print_exc()
             return None, None, None, None, 0          
     
     def create_cpu_lm_endpoint_handler(self, endpoint, tokenizer, model_name, cpu_label):
@@ -422,7 +633,7 @@ class hf_lm:
                     
         return handler
 
-    def create_openvino_lm_endpoint_handler(self, endpoint, tokenizer, model_name, openvino_label):
+    def create_openvino_lm_endpoint_handler(self, endpoint, tokenizer, model_name, openvino_label, is_real_implementation=False):
         """Create a handler for OpenVINO-based language model inference
         
         Args:
@@ -430,26 +641,30 @@ class hf_lm:
             tokenizer: Tokenizer
             model_name: Name of the model
             openvino_label: OpenVINO device label
+            is_real_implementation: Whether this is a real implementation or a mock
             
         Returns:
             Handler function for inference
         """
-        def handler(text_input, generation_config=None, endpoint=endpoint, tokenizer=tokenizer, model_name=model_name, openvino_label=openvino_label):
-            # Check if we're using a mock
-            is_mock = isinstance(endpoint, type(MagicMock())) or isinstance(tokenizer, type(MagicMock()))
+        def handler(text_input, generation_config=None, endpoint=endpoint, tokenizer=tokenizer, model_name=model_name, openvino_label=openvino_label, is_real=is_real_implementation):
+            # Double-check if we're using a mock
+            is_mock = not is_real or isinstance(endpoint, type(MagicMock())) or isinstance(tokenizer, type(MagicMock()))
+            implementation_type = "(MOCK)" if is_mock else "(REAL)"
             
             try:
                 # For testing with mocks
                 if is_mock:
-                    print("Using mock OpenVINO handler")
+                    print(f"Using {implementation_type} OpenVINO handler")
                     
-                    # Return different results based on input type
+                    # Return different results based on input type with implementation marker
                     if isinstance(text_input, list):
-                        return ["Once upon a time... " + prompt for prompt in text_input]
+                        return [f"{implementation_type} Once upon a time... " + prompt for prompt in text_input]
                     else:
-                        return "Once upon a time... " + str(text_input)
+                        return f"{implementation_type} Once upon a time... " + str(text_input)
                 
                 # Process real inference with OpenVINO
+                start_time = time.time()
+                
                 # Process input based on type
                 if isinstance(text_input, str):
                     # Single text input
@@ -457,7 +672,8 @@ class hf_lm:
                         text_input, 
                         return_tensors="np",
                         padding=True,
-                        truncation=True
+                        truncation=True,
+                        max_length=512
                     )
                 elif isinstance(text_input, list):
                     # Batch processing
@@ -465,7 +681,8 @@ class hf_lm:
                         text_input, 
                         return_tensors="np",
                         padding=True,
-                        truncation=True
+                        truncation=True,
+                        max_length=512
                     )
                 else:
                     # Assume it's already tokenized
@@ -474,7 +691,10 @@ class hf_lm:
                 # Set up generation parameters
                 generation_kwargs = {
                     "max_new_tokens": 30,
-                    "do_sample": False  # OpenVINO generally works best with greedy decoding
+                    "do_sample": False,  # OpenVINO generally works best with greedy decoding
+                    "temperature": 0.7,
+                    "top_p": 0.95,
+                    "repetition_penalty": 1.1
                 }
                 
                 # Override with user-provided config if available
@@ -484,31 +704,56 @@ class hf_lm:
                 # Different handling based on endpoint type
                 if hasattr(endpoint, 'generate'):
                     # Pipeline-style endpoint
-                    outputs = endpoint.generate(
-                        inputs["input_ids"],
-                        **generation_kwargs
-                    )
-                    
-                    # Process outputs
-                    if hasattr(outputs, 'numpy'):
-                        decoded_text = tokenizer.batch_decode(
-                            outputs.numpy(), 
-                            skip_special_tokens=True
+                    print("Using pipeline-style OpenVINO endpoint")
+                    try:
+                        # Generate output text
+                        outputs = endpoint.generate(
+                            inputs["input_ids"],
+                            attention_mask=inputs.get("attention_mask", None),
+                            **generation_kwargs
                         )
-                    else:
-                        decoded_text = tokenizer.batch_decode(
-                            outputs, 
-                            skip_special_tokens=True
-                        )
-                    
-                    # Return single string or list based on input
-                    if isinstance(text_input, list):
-                        return decoded_text
-                    else:
-                        return decoded_text[0] if len(decoded_text) > 0 else ""
+                        
+                        # Process outputs
+                        if hasattr(outputs, 'numpy'):
+                            # Convert to numpy if needed
+                            decoded_text = tokenizer.batch_decode(
+                                outputs.numpy(), 
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=True
+                            )
+                        else:
+                            # Use as-is if already in correct format
+                            decoded_text = tokenizer.batch_decode(
+                                outputs, 
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=True
+                            )
+                        
+                        # Add implementation marker to show this is real
+                        if isinstance(decoded_text, list):
+                            decoded_text = [f"(REAL) {text}" for text in decoded_text]
+                        else:
+                            decoded_text = f"(REAL) {decoded_text}"
+                        
+                        # Return single string or list based on input
+                        if isinstance(text_input, list):
+                            result = decoded_text
+                        else:
+                            result = decoded_text[0] if isinstance(decoded_text, list) and len(decoded_text) > 0 else decoded_text
+                            
+                        print(f"OpenVINO generation took {time.time() - start_time:.2f} seconds")
+                        return result
+                        
+                    except Exception as gen_error:
+                        print(f"Error in pipeline generate: {gen_error}")
+                        import traceback
+                        traceback.print_exc()
+                        raise
                         
                 elif hasattr(endpoint, 'run_model'):
                     # Low-level inference endpoint
+                    print("Using low-level OpenVINO inference endpoint")
+                    
                     # Convert inputs to dictionary format
                     input_dict = {}
                     for key, value in inputs.items():
@@ -524,29 +769,64 @@ class hf_lm:
                     if 'logits' in outputs:
                         # Get predictions from logits
                         logits = self.np.array(outputs['logits'])
-                        next_token_ids = self.np.argmax(logits, axis=-1)
                         
-                        # Decode to text
-                        decoded_text = tokenizer.batch_decode(
-                            next_token_ids,
-                            skip_special_tokens=True
-                        )
+                        # For greedy decoding, just take the argmax of the last token
+                        if not generation_kwargs.get("do_sample", False):
+                            next_token_ids = self.np.argmax(logits[:, -1:, :], axis=-1)
+                            
+                            # Concatenate with input ids to get the full sequence
+                            output_ids = self.np.concatenate([input_dict['input_ids'], next_token_ids], axis=1)
+                            
+                            # Decode to text
+                            decoded_text = tokenizer.batch_decode(
+                                output_ids,
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=True
+                            )
+                        else:
+                            # More complex sampling would be implemented here
+                            # For now, just use argmax as fallback
+                            next_token_ids = self.np.argmax(logits[:, -1:, :], axis=-1)
+                            output_ids = self.np.concatenate([input_dict['input_ids'], next_token_ids], axis=1)
+                            decoded_text = tokenizer.batch_decode(
+                                output_ids,
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=True
+                            )
+                        
+                        # Add implementation marker 
+                        if isinstance(decoded_text, list):
+                            decoded_text = [f"(REAL) {text}" for text in decoded_text]
+                        else:
+                            decoded_text = f"(REAL) {decoded_text}"
                         
                         # Return based on input type
                         if isinstance(text_input, list):
-                            return decoded_text
+                            result = decoded_text
                         else:
-                            return decoded_text[0] if len(decoded_text) > 0 else ""
+                            result = decoded_text[0] if isinstance(decoded_text, list) and len(decoded_text) > 0 else decoded_text
+                            
+                        print(f"OpenVINO inference took {time.time() - start_time:.2f} seconds")
+                        return result
                     else:
                         # No logits in output - this is unexpected
-                        return "Error: Unexpected model output format"
+                        print("Error: Unexpected model output format - no logits found")
+                        raise ValueError("Unexpected model output format - no logits found")
                 else:
                     # Unknown endpoint type
-                    return "Error: Unsupported OpenVINO endpoint"
+                    print("Error: Unsupported OpenVINO endpoint type")
+                    raise ValueError("Unsupported OpenVINO endpoint type")
                 
             except Exception as e:
                 print(f"Error in OpenVINO language model handler: {e}")
-                return f"Error: {str(e)}"
+                import traceback
+                traceback.print_exc()
+                
+                # Fall back to mocks with error information
+                if isinstance(text_input, list):
+                    return [f"(MOCK) Error in OpenVINO: {str(e)}" for _ in text_input]
+                else:
+                    return f"(MOCK) Error in OpenVINO: {str(e)}"
                 
         return handler
 

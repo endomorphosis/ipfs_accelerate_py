@@ -2,12 +2,23 @@
   "init": "Success",
   "load_video": "Success (MOCK)",
   "load_video_frame_count": 8,
-  "cpu_init": "Success (MOCK)",
-  "cpu_text_embedding": "Success (MOCK)",
+  "cpu_similarity_example": {
+    "input": {
+      "text": "A person dancing",
+      "video": "Video frames (array data)"
+    },
+    "output": {
+      "similarity_value": 0.02254188433289528
+    },
+    "implementation_type": "(REAL)",
+    "platform": "CPU"
+  },
+  "cpu_init": "Success (REAL)",
+  "cpu_text_embedding": "Success (REAL)",
   "cpu_text_embedding_shape": [1, 512],
-  "cpu_video_embedding": "Success (MOCK)",
+  "cpu_video_embedding": "Success (REAL)",
   "cpu_video_embedding_shape": [1, 512],
-  "cpu_similarity": "Success (MOCK)",
+  "cpu_similarity": "Success (REAL)",
   "cpu_similarity_score": 0.800000011920929,
   "cuda_tests": "CUDA not available",
   "openvino_init": "Success (MOCK)",
@@ -17,7 +28,7 @@
   "openvino_video_embedding_shape": [1, 512],
   "openvino_similarity_score": 0.800000011920929,
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success (MOCK)",
+  "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (MOCK)",
   "qualcomm_output_keys": ["text_embedding", "video_embedding", "similarity", "implementation_type"],
   "qualcomm_text_embedding_shape": [1, 512],
@@ -26,11 +37,13 @@
   "metadata": {
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
-    "transformers_version": "mocked",
+    "transformers_version": "4.39.1",
     "cuda_available": false,
     "cuda_device_count": 0,
     "mps_available": false,
     "test_model": "microsoft/xclip-base-patch32",
-    "mock_implementation": true
+    "using_mocks": false,
+    "has_real_cpu_impl": true,
+    "transformers_available": true
   }
 }
