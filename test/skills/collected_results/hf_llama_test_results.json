@@ -25,7 +25,7 @@
       "output": {
         "generated_text": "Once upon a time, there was a clever fox named Finn who lived in the forest. One day, he met a friendly dog named Max who had gotten lost while on a walk with his owner."
       },
-      "timestamp": "2025-02-27T19:52:37.614065",
+      "timestamp": "2025-02-27T20:23:27.079203",
       "elapsed_time": 1.5,
       "implementation_type": "REAL",
       "platform": "CPU"
@@ -35,7 +35,7 @@
       "output": {
         "generated_text": "Once upon a time, there was a fox named Rusty and a dog named Max. They lived on opposite sides of a large forest but would often meet in the clearing by the river."
       },
-      "timestamp": "2025-02-27T19:52:37.614076",
+      "timestamp": "2025-02-27T20:23:27.079216",
       "elapsed_time": 0.8,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
@@ -45,15 +45,15 @@
       "output": {
         "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
       },
-      "timestamp": "2025-02-27T19:52:37.614078",
+      "timestamp": "2025-02-27T20:23:27.079218",
       "elapsed_time": 0.5,
       "implementation_type": "MOCK",
       "platform": "Qualcomm"
     }
   ],
   "metadata": {
-    "model_name": "facebook/opt-125m",
-    "test_timestamp": "2025-02-27T19:52:37.614081",
+    "model_name": "/tmp/llama_test_model",
+    "test_timestamp": "2025-02-27T20:23:27.079220",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",

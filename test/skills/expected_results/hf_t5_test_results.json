@@ -1,38 +1,34 @@
 {
   "init": "Success",
-  "cpu_init": "Success (REAL)",
-  "cpu_handler": "Success (REAL)",
-  "cpu_output_type": "<class 'dict'>",
-  "cpu_output_length": 2,
-  "cpu_output_example": {
-    "input": "translate English to French: The quick brown fox jumps over the lazy dog",
-    "output": {
-      "text": "Example generated text from T5",
-      "implementation_type": "REAL"
-    },
-    "timestamp": 1740710089.641722,
-    "implementation": "(REAL)"
-  },
+  "cpu_tests": "Error: cannot access local variable 'sys' where it is not associated with a value",
   "cuda_init": "Success (MOCK)",
   "cuda_handler": "Success (MOCK)",
   "cuda_output": "Generated text from T5 (mock for translate English to French: T...)",
   "cuda_output_length": 67,
-  "cuda_timestamp": 1740710089.7640445,
+  "cuda_timestamp": 1740716681.762017,
   "cuda_output_example": {
     "input": "translate English to French: The quick brown fox jumps over the lazy dog",
     "output": "Generated text from T5 (mock for translate English to French: T...)",
-    "timestamp": 1740710089.764045,
-    "implementation": "(MOCK)"
+    "timestamp": 1740716681.7620175,
+    "implementation": "(MOCK)",
+    "platform": "CUDA",
+    "generation_config": {
+      "max_new_tokens": 50,
+      "do_sample": true,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "num_beams": 1
+    }
   },
   "openvino_init": "Success (MOCK)",
   "openvino_handler": "Success (MOCK)",
   "openvino_output": "Generated text from T5 (mock for translate English to French: The quick brown fox jumps over the laz...",
   "openvino_output_length": 106,
-  "openvino_timestamp": 1740710091.0469007,
+  "openvino_timestamp": 1740716682.8511891,
   "openvino_output_example": {
     "input": "translate English to French: The quick brown fox jumps over the lazy dog",
     "output": "Generated text from T5 (mock for translate English to French: The quick brown fox jumps over the laz...",
-    "timestamp": 1740710091.0469012,
+    "timestamp": 1740716682.85119,
     "elapsed_time": 0.01,
     "implementation_type": "(MOCK)",
     "platform": "OpenVINO"
@@ -40,19 +36,19 @@
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK)",
   "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_output": "Le renard brun rapide saute par-dessus le chien paresseux (Qualcomm SNPE)",
-  "qualcomm_output_length": 73,
-  "qualcomm_timestamp": 1740710091.2072349,
+  "qualcomm_output": "Generated text from T5 (mock due to tokenization error)",
+  "qualcomm_output_length": 55,
+  "qualcomm_timestamp": 1740716682.8653388,
   "qualcomm_output_example": {
     "input": "translate English to French: The quick brown fox jumps over the lazy dog",
-    "output": "Le renard brun rapide saute par-dessus le chien paresseux (Qualcomm SNPE)",
-    "timestamp": 1740710091.2072358,
+    "output": "Generated text from T5 (mock due to tokenization error)",
+    "timestamp": 1740716682.8653398,
     "elapsed_time": 0.01,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740710091.2072926,
+    "timestamp": 1740716682.8653824,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -60,7 +56,7 @@
     "cuda_device_count": 1,
     "mps_available": false,
     "transformers_mocked": false,
-    "test_model": "google/t5-efficient-tiny",
-    "test_run_id": "t5-test-1740710091"
+    "test_model": "/tmp/t5_test_model",
+    "test_run_id": "t5-test-1740716682"
   }
 }

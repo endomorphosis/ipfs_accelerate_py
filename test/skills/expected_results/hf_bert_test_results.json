@@ -10,13 +10,16 @@
     "cpu_embedding_type": "torch.float32",
     "cuda_init": "Success (REAL)",
     "cuda_benchmark": {
-      "average_inference_time": 2.4199485778808594e-05,
-      "iterations": 2,
+      "average_inference_time": 0.3592255115509033,
+      "iterations": 1,
       "cuda_device": "Quadro P4000",
-      "cuda_memory_used_mb": 0.00146484375,
-      "throughput": 41323.1921182266
+      "cuda_memory_used_mb": 68.41064453125
     },
-    "cuda_tests": "Error: name 'processor' is not defined",
+    "cuda_handler": "Success (REAL)",
+    "cuda_embedding_shape": [
+      1,
+      768
+    ],
     "openvino_init": "Success (REAL)",
     "openvino_handler": "Success (REAL)",
     "openvino_embedding_shape": [
@@ -37,8 +40,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-27T20:11:58.832560",
-      "elapsed_time": 0.0011425018310546875,
+      "timestamp": "2025-02-27T20:22:50.041169",
+      "elapsed_time": 0.0010781288146972656,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
@@ -48,22 +51,42 @@
         "embedding_shape": [
           1,
           768
+        ],
+        "embedding_type": null,
+        "performance_metrics": {
+          "inference_time": 0.0016078948974609375,
+          "gpu_memory_mb": 0.01904296875,
+          "is_simulated": true
+        }
+      },
+      "timestamp": "2025-02-27T20:22:50.687622",
+      "elapsed_time": 0.0016222000122070312,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "is_simulated": true
+    },
+    {
+      "input": "The quick brown fox jumps over the lazy dog",
+      "output": {
+        "embedding_shape": [
+          1,
+          768
         ]
       },
-      "timestamp": "2025-02-27T20:11:59.353059",
-      "elapsed_time": 0.0017178058624267578,
+      "timestamp": "2025-02-27T20:22:50.911043",
+      "elapsed_time": 0.0011992454528808594,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
     }
   ],
   "metadata": {
     "model_name": "/tmp/bert_test_model",
-    "test_timestamp": "2025-02-27T20:11:59.363210",
+    "test_timestamp": "2025-02-27T20:22:50.920653",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.4.0+cu121",
     "transformers_version": "4.49.0",
     "platform_status": {
-      "cuda": "Failed: name 'processor' is not defined",
+      "cuda": "Ready (REAL)",
       "apple": "Apple Silicon not available",
       "qualcomm": "Failed: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
     }

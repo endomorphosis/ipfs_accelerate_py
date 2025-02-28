@@ -89,7 +89,9 @@ class test_hf_clip:
         
         # Initialize the CLIP model
         self.clip = hf_clip(resources=self.resources, metadata=self.metadata)
-        self.model_name = "openai/clip-vit-base-patch32"
+        # Use an openly accessible model that doesn't require authentication
+        # Original model that required authentication: "openai/clip-vit-base-patch32"
+        self.model_name = "openai/clip-vit-base-patch16"  # Open-access alternative
         
         # Create test data
         self.test_image = Image.new('RGB', (100, 100), color='red')

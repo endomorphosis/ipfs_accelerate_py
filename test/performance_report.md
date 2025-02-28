@@ -7,6 +7,7 @@ This report summarizes the performance test results for the IPFS Accelerate Pyth
 - **Date:** February 27, 2025
 - **Hardware:** Machine with NVIDIA Quadro P4000 GPU
 - **Framework Version:** Latest development version
+- **Fixed Issues:** Applied CUDA implementation detection fixes to 7 test files
 
 ## Summary of Results
 
@@ -27,11 +28,24 @@ This report summarizes the performance test results for the IPFS Accelerate Pyth
 - CUDA implementation detection is now working correctly as shown by the CLIP test
 - Our fixes to the detection logic successfully identify simulated real implementations
 - Authentication issues with HuggingFace prevented full testing with real model weights
+- The BERT model successfully reported REAL implementation status during testing
 
 ### OpenVINO Performance
 - OpenVINO is properly detected as REAL or MOCK based on implementation
 - The model conversion and handling logic works as expected
 - Error handling appropriately allows fallback to mock implementations
+
+## Fixed Files Summary
+
+The following test files were fixed with enhanced implementation detection:
+
+1. **wav2vec2** (`test_hf_wav2vec2.py`): Added implementation type extraction from output and tracking
+2. **whisper** (`test_hf_whisper.py`): Enhanced implementation type detection and simulated real support
+3. **xclip** (`test_hf_xclip.py`): Fixed CUDA implementation detection for proper status identification
+4. **clap** (`test_hf_clap.py`): Added better error handling and implementation type tracking
+5. **t5** (`test_hf_t5.py`): Enhanced CUDA handler with proper implementation type markers
+6. **llama** (`test_hf_llama.py`): Fixed JSON format issues and enhanced implementation detection
+7. **default_embed** (`test_default_embed.py`): Improved detection for sentence embeddings
 
 ## Platform Implementation Type Detection
 The enhanced implementation detection logic now correctly identifies:

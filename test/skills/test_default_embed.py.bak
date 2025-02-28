@@ -50,7 +50,6 @@ class test_hf_embed:
         self.examples = []
         self.status_messages = {}
         
-        # Initialize return value
         return None
 
     def test(self):
@@ -282,7 +281,9 @@ class test_hf_embed:
                     
                     # Set up mock output
                     embedding_dim = 384  # Common size for MiniLM
-                    mock_model.return_value.last_hidden_state = torch.zeros((1, 10, embedding_dim))
+                    mock_randn = MagicMock()
+                    mock_randn.return_value = torch.zeros((1, 10, embedding_dim))
+                    mock_model.return_value.last_hidden_state = mock_randn.return_value
                     
                     start_time = time.time()
                     endpoint, tokenizer, handler, queue, batch_size = self.embed.init_cuda(
@@ -358,7 +359,7 @@ class test_hf_embed:
                 is_real_implementation = True
                 
                 # Import the existing OpenVINO utils from the main package
-                from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
+                from ipfs_accelerate_py.ipfs_accelerate_py.worker.openvino_utils import openvino_utils
                 
                 # Initialize openvino_utils
                 ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
@@ -575,11 +576,11 @@ class test_hf_embed:
                                 "CPU",
                                 "openvino:0",
                                 safe_get_optimum_openvino_model,
-                                safe_get_openvino_model,
-                                safe_get_openvino_pipeline_type,
-                                safe_openvino_cli_convert
-                            )
-                            init_time = time.time() - start_time
+                            safe_get_openvino_model,
+                            safe_get_openvino_pipeline_type,
+                            safe_openvino_cli_convert
+                        )
+                        init_time = time.time() - start_time
                     
                     # Check if we got a real handler and not mocks
                     import unittest.mock

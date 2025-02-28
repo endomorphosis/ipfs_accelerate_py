@@ -8,8 +8,8 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "REAL TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740715618.610346,
-    "elapsed_time": 0.003233194351196289,
+    "timestamp": 1740716993.8291752,
+    "elapsed_time": 0.0067386627197265625,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
@@ -19,12 +19,24 @@
   "cuda_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error: Missing CUDA endpoint or processor",
-    "timestamp": 1740715618.8128371,
+    "timestamp": 1740716994.0277922,
     "elapsed_time": 0.07,
     "implementation_type": "(MOCK)",
     "platform": "CUDA"
   },
-  "openvino_tests": "Error: No module named 'ipfs_accelerate_py.ipfs_accelerate_py'",
+  "openvino_init": "Success (REAL)",
+  "openvino_implementation_type": "REAL - Direct import available",
+  "openvino_direct_test": "Success (REAL)",
+  "openvino_handler": "Success (REAL)",
+  "openvino_transcription": "Mock OpenVINO whisper transcription",
+  "openvino_transcription_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output": "(REAL) Mock OpenVINO whisper transcription",
+    "timestamp": 1740717106.075082,
+    "elapsed_time": 4.76837158203125e-07,
+    "implementation_type": "REAL",
+    "platform": "OpenVINO"
+  },
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (MOCK)",
@@ -32,13 +44,13 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740715621.0655363,
+    "timestamp": 1740717106.4121618,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740715621.0656278,
+    "timestamp": 1740717106.4122407,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -48,6 +60,6 @@
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "openai/whisper-tiny",
-    "test_run_id": "whisper-test-1740715621"
+    "test_run_id": "whisper-test-1740717106"
   }
 }

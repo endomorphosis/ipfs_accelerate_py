@@ -54,12 +54,261 @@ class test_hf_xclip:
             }
         self.metadata = metadata if metadata else {}
         self.xclip = hf_xclip(resources=self.resources, metadata=self.metadata)
-        self.model_name = "microsoft/xclip-base-patch32"
+        
+        # Use an openly accessible model that doesn't require authentication
+        # Original model that required authentication: "microsoft/xclip-base-patch32"
+        self.model_name = "microsoft/xclip-base-patch16-zero-shot"  # Open-access alternative
+        
+        # If the openly accessible model isn't available, try to find a cached model
+        try:
+            # Check if we can get a list of locally cached models
+            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+            if os.path.exists(cache_dir):
+                # Look for any XCLIP model in cache
+                xclip_models = [name for name in os.listdir(cache_dir) if "xclip" in name.lower()]
+                if xclip_models:
+                    # Use the first XCLIP model found
+                    xclip_model_name = xclip_models[0].replace("--", "/")
+                    print(f"Found local XCLIP model: {xclip_model_name}")
+                    self.model_name = xclip_model_name
+                else:
+                    # Create a local test model
+                    self.model_name = self._create_test_model()
+            else:
+                # Create a local test model
+                self.model_name = self._create_test_model()
+        except Exception as e:
+            print(f"Error finding local model: {e}")
+            # Create a local test model
+            self.model_name = self._create_test_model()
+            
+        print(f"Using model: {self.model_name}")
+        
         self.test_text = "A person dancing"
         # Create a dummy video as a sequence of frames
         self.frames = [Image.new('RGB', (224, 224), color='red') for _ in range(8)]
         self.test_video_url = "http://example.com/test.mp4"
         return None
+        
+    def _create_test_model(self):
+        """
+        Create a tiny XCLIP model for testing without needing Hugging Face authentication.
+        
+        Returns:
+            str: Path to the created model
+        """
+        try:
+            print("Creating local test model for XCLIP testing...")
+            
+            # Create model directory in /tmp for tests
+            test_model_dir = os.path.join("/tmp", "xclip_test_model")
+            os.makedirs(test_model_dir, exist_ok=True)
+            
+            # Create a minimal config file for a tiny XCLIP model
+            config = {
+                "architectures": ["XCLIPModel"],
+                "attention_dropout": 0.0,
+                "bos_token_id": 0,
+                "eos_token_id": 2,
+                "hidden_act": "quick_gelu",
+                "hidden_size": 256,
+                "image_size": 224,
+                "initializer_factor": 1.0,
+                "initializer_range": 0.02,
+                "intermediate_size": 512,
+                "layer_norm_eps": 1e-05,
+                "model_type": "xclip",
+                "num_attention_heads": 4,
+                "num_hidden_layers": 2,
+                "pad_token_id": 1,
+                "patch_size": 32,
+                "projection_dim": 256,
+                "text_config": {
+                    "attention_dropout": 0.0,
+                    "bos_token_id": 0,
+                    "eos_token_id": 2,
+                    "hidden_act": "quick_gelu",
+                    "hidden_size": 256,
+                    "initializer_factor": 1.0,
+                    "initializer_range": 0.02,
+                    "intermediate_size": 512,
+                    "layer_norm_eps": 1e-05,
+                    "max_position_embeddings": 77,
+                    "model_type": "clip_text_model",
+                    "num_attention_heads": 4,
+                    "num_hidden_layers": 2,
+                    "pad_token_id": 1,
+                    "vocab_size": 49408
+                },
+                "text_max_length": 77,
+                "torch_dtype": "float32",
+                "transformers_version": "4.35.2",
+                "vision_config": {
+                    "attention_dropout": 0.0,
+                    "hidden_act": "quick_gelu",
+                    "hidden_size": 256,
+                    "image_size": 224,
+                    "initializer_factor": 1.0,
+                    "initializer_range": 0.02,
+                    "intermediate_size": 512,
+                    "layer_norm_eps": 1e-05,
+                    "model_type": "clip_vision_model",
+                    "num_attention_heads": 4,
+                    "num_hidden_layers": 2,
+                    "patch_size": 32
+                }
+            }
+            
+            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+                
+            # Create a minimal processor config
+            processor_config = {
+                "feature_extractor": {
+                    "do_normalize": True,
+                    "do_resize": True,
+                    "image_mean": [0.48145466, 0.4578275, 0.40821073],
+                    "image_processor_type": "CLIPImageProcessor",
+                    "image_std": [0.26862954, 0.26130258, 0.27577711],
+                    "resample": 3,
+                    "size": 224
+                },
+                "processor_class": "XCLIPProcessor",
+                "tokenizer": {
+                    "bos_token": "<|startoftext|>",
+                    "clean_up_tokenization_spaces": True,
+                    "eos_token": "<|endoftext|>",
+                    "model_max_length": 77,
+                    "tokenizer_class": "CLIPTokenizer",
+                    "unk_token": "<|endoftext|>"
+                }
+            }
+            
+            with open(os.path.join(test_model_dir, "preprocessor_config.json"), "w") as f:
+                json.dump(processor_config, f)
+                
+            # Create a minimal vocabulary file
+            vocab = {
+                "<|startoftext|>": 0,
+                "<|pad|>": 1,
+                "<|endoftext|>": 2,
+                "hello": 3,
+                "world": 4,
+                "a": 5,
+                "person": 6,
+                "dancing": 7,
+                "video": 8,
+                "clip": 9,
+                "model": 10
+            }
+            
+            # Add more vocab entries to reach the minimum needed
+            for i in range(11, 1000):
+                vocab[f"token{i}"] = i
+            
+            # Create vocab.json
+            with open(os.path.join(test_model_dir, "vocab.json"), "w") as f:
+                json.dump(vocab, f)
+                
+            # Create a minimal merges file
+            with open(os.path.join(test_model_dir, "merges.txt"), "w") as f:
+                f.write("# version: 0.2\n")
+                f.write("Ġ t\n")
+                f.write("Ġ a\n")
+                f.write("Ġ the\n")
+                
+            # Create small random model weights if torch is available
+            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
+                # Create random tensors for model weights
+                model_state = {}
+                
+                # Extract dimensions from config
+                hidden_size = config["hidden_size"]
+                intermediate_size = config["intermediate_size"]
+                num_attention_heads = config["num_attention_heads"]
+                num_hidden_layers = config["num_hidden_layers"]
+                text_config = config["text_config"]
+                vision_config = config["vision_config"]
+                
+                # Text model embedding weights
+                model_state["text_model.embeddings.token_embedding.weight"] = torch.randn(text_config["vocab_size"], hidden_size)
+                model_state["text_model.embeddings.position_embedding.weight"] = torch.randn(text_config["max_position_embeddings"], hidden_size)
+                
+                # Text encoder
+                for i in range(num_hidden_layers):
+                    # Self-attention weights for text model
+                    layer_prefix = f"text_model.encoder.layers.{i}"
+                    
+                    # Self-attention
+                    model_state[f"{layer_prefix}.self_attn.q_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.k_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.v_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.out_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    
+                    # Layer norms
+                    model_state[f"{layer_prefix}.layer_norm1.weight"] = torch.ones(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm1.bias"] = torch.zeros(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm2.weight"] = torch.ones(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm2.bias"] = torch.zeros(hidden_size)
+                    
+                    # MLP
+                    model_state[f"{layer_prefix}.mlp.fc1.weight"] = torch.randn(intermediate_size, hidden_size)
+                    model_state[f"{layer_prefix}.mlp.fc2.weight"] = torch.randn(hidden_size, intermediate_size)
+                
+                # Final layer norm for text model
+                model_state["text_model.final_layer_norm.weight"] = torch.ones(hidden_size)
+                model_state["text_model.final_layer_norm.bias"] = torch.zeros(hidden_size)
+                
+                # Vision model
+                # Patch embedding
+                patch_size = vision_config["patch_size"]
+                image_size = vision_config["image_size"]
+                num_patches = (image_size // patch_size) ** 2
+                model_state["vision_model.embeddings.patch_embedding.weight"] = torch.randn(hidden_size, 3, patch_size, patch_size)
+                model_state["vision_model.embeddings.class_embedding"] = torch.randn(hidden_size)
+                model_state["vision_model.embeddings.position_embedding.weight"] = torch.randn(num_patches + 1, hidden_size)
+                
+                # Vision encoder
+                for i in range(num_hidden_layers):
+                    # Self-attention weights for vision model
+                    layer_prefix = f"vision_model.encoder.layers.{i}"
+                    
+                    # Self-attention
+                    model_state[f"{layer_prefix}.self_attn.q_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.k_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.v_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    model_state[f"{layer_prefix}.self_attn.out_proj.weight"] = torch.randn(hidden_size, hidden_size)
+                    
+                    # Layer norms
+                    model_state[f"{layer_prefix}.layer_norm1.weight"] = torch.ones(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm1.bias"] = torch.zeros(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm2.weight"] = torch.ones(hidden_size)
+                    model_state[f"{layer_prefix}.layer_norm2.bias"] = torch.zeros(hidden_size)
+                    
+                    # MLP
+                    model_state[f"{layer_prefix}.mlp.fc1.weight"] = torch.randn(intermediate_size, hidden_size)
+                    model_state[f"{layer_prefix}.mlp.fc2.weight"] = torch.randn(hidden_size, intermediate_size)
+                
+                # Final layer norm for vision model
+                model_state["vision_model.post_layernorm.weight"] = torch.ones(hidden_size)
+                model_state["vision_model.post_layernorm.bias"] = torch.zeros(hidden_size)
+                
+                # Projection layers
+                model_state["visual_projection.weight"] = torch.randn(config["projection_dim"], hidden_size)
+                model_state["text_projection.weight"] = torch.randn(config["projection_dim"], hidden_size)
+                
+                # Save model weights
+                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
+                print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
+            
+            print(f"Test model created at {test_model_dir}")
+            return test_model_dir
+            
+        except Exception as e:
+            print(f"Error creating test model: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            # Fall back to a model name that won't need to be downloaded for mocks
+            return "microsoft/xclip-base-patch32"
 
     def test(self):
         """Run all tests for the XClip video-language model"""

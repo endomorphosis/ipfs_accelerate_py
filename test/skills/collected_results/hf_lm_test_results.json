@@ -38,8 +38,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T19:58:18.148161",
-      "elapsed_time": 0.0013315677642822266,
+      "timestamp": "2025-02-27T20:21:36.797329",
+      "elapsed_time": 0.005273580551147461,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "standard"
@@ -47,8 +47,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T19:58:18.148561",
-      "elapsed_time": 0.0003807544708251953,
+      "timestamp": "2025-02-27T20:21:36.799137",
+      "elapsed_time": 0.001749277114868164,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "config"
@@ -59,8 +59,8 @@
         "count": 1,
         "first_output": "Once upon a time..."
       },
-      "timestamp": "2025-02-27T19:58:18.148839",
-      "elapsed_time": 0.0002696514129638672,
+      "timestamp": "2025-02-27T20:21:36.800355",
+      "elapsed_time": 0.0011866092681884766,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
@@ -68,8 +68,8 @@
     {
       "input": "Once upon a time",
       "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:19.343598",
-      "elapsed_time": 8.344650268554688e-06,
+      "timestamp": "2025-02-27T20:21:37.864529",
+      "elapsed_time": 2.0503997802734375e-05,
       "implementation_type": "(MOCK)",
       "platform": "CUDA",
       "test_type": "standard",
@@ -78,8 +78,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:19.343624",
-      "elapsed_time": 5.0067901611328125e-06,
+      "timestamp": "2025-02-27T20:21:37.864586",
+      "elapsed_time": 1.2636184692382812e-05,
       "implementation_type": "(MOCK)",
       "platform": "CUDA",
       "test_type": "config",
@@ -91,8 +91,8 @@
         "count": 2,
         "first_output": "(MOCK) Once upon a time... Once upon a time"
       },
-      "timestamp": "2025-02-27T19:58:19.343633",
-      "elapsed_time": 3.337860107421875e-06,
+      "timestamp": "2025-02-27T20:21:37.864612",
+      "elapsed_time": 9.775161743164062e-06,
       "implementation_type": "(MOCK)",
       "platform": "CUDA",
       "test_type": "batch"
@@ -100,8 +100,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:21.660640",
-      "elapsed_time": 7.152557373046875e-06,
+      "timestamp": "2025-02-27T20:21:39.939432",
+      "elapsed_time": 6.67572021484375e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "standard"
@@ -109,8 +109,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T19:58:21.660668",
-      "elapsed_time": 3.5762786865234375e-06,
+      "timestamp": "2025-02-27T20:21:39.939458",
+      "elapsed_time": 5.0067901611328125e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "config"
@@ -121,8 +121,8 @@
         "count": 2,
         "first_output": "Once upon a time... Once upon a time"
       },
-      "timestamp": "2025-02-27T19:58:21.660681",
-      "elapsed_time": 5.245208740234375e-06,
+      "timestamp": "2025-02-27T20:21:39.939469",
+      "elapsed_time": 3.814697265625e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
@@ -130,8 +130,8 @@
   ],
   "metadata": {
     "model_name": "facebook/opt-125m",
-    "test_timestamp": "2025-02-27T19:58:21.660698",
-    "timestamp": 1740715101.6606998,
+    "test_timestamp": "2025-02-27T20:21:39.939486",
+    "timestamp": 1740716499.9394882,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
@@ -148,6 +148,6 @@
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "lm-test-1740715101"
+    "test_run_id": "lm-test-1740716499"
   }
 }
