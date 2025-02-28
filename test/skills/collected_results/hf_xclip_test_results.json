@@ -1,7 +1,7 @@
 {
   "init": "Success",
   "load_video": "Success (MOCK)",
-  "load_video_timestamp": 1740706059.9492917,
+  "load_video_timestamp": 1740714802.5633876,
   "load_video_frame_count": 8,
   "cpu_init": "Success (REAL)",
   "cpu_text_embedding": "Success (REAL)",
@@ -9,33 +9,48 @@
     1,
     512
   ],
-  "cpu_text_embedding_timestamp": 1740706065.0087798,
+  "cpu_text_embedding_timestamp": 1740714804.5525432,
   "cpu_video_embedding": "Success (REAL)",
   "cpu_video_embedding_shape": [
     1,
     512
   ],
-  "cpu_video_embedding_timestamp": 1740706065.0093248,
+  "cpu_video_embedding_timestamp": 1740714804.5527885,
   "cpu_similarity": "Success (REAL)",
-  "cpu_similarity_score": 0.004080094397068024,
-  "cpu_similarity_timestamp": 1740706065.021923,
+  "cpu_similarity_score": 0.01643785648047924,
+  "cpu_similarity_timestamp": 1740714804.5614698,
   "cpu_similarity_example": {
     "input": {
       "text": "A person dancing",
       "video": "Video frames (array data)"
     },
     "output": {
-      "similarity_value": 0.004080094397068024
+      "similarity_value": 0.01643785648047924
     },
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
-  "cuda_tests": "CUDA not available",
+  "cuda_init": "Success (MOCK)",
+  "cuda_text": "Success (MOCK)",
+  "cuda_text_embedding_shape": [
+    1,
+    512
+  ],
+  "cuda_text_timestamp": 1740714804.5837612,
+  "cuda_video": "Success (MOCK)",
+  "cuda_video_embedding_shape": [
+    1,
+    512
+  ],
+  "cuda_video_timestamp": 1740714804.5838501,
+  "cuda_similarity": "Success (MOCK)",
+  "cuda_similarity_score": -0.01660795882344246,
+  "cuda_similarity_timestamp": 1740714804.5841098,
   "openvino_init": "Success (REAL)",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_output_timestamp": 1740706097.3380518,
+  "qualcomm_output_timestamp": 1740714808.0353973,
   "qualcomm_output_keys": [
     "text_embedding",
     "video_embedding",
@@ -52,15 +67,15 @@
   ],
   "qualcomm_similarity_score": 0.800000011920929,
   "metadata": {
-    "timestamp": 1740706097.3382044,
+    "timestamp": 1740714808.0355668,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "test_model": "microsoft/xclip-base-patch32",
-    "test_run_id": "xclip-test-1740706097",
+    "test_run_id": "xclip-test-1740714808",
     "using_mocks": false,
     "has_real_cpu_impl": true,
     "transformers_available": true

@@ -11,7 +11,17 @@
     "cpu_batch": "Success (REAL)",
     "cpu_batch_output_count": 1,
     "cpu_batch_first_output": "Once upon a time...",
-    "cuda_tests": "CUDA not available",
+    "cuda_init": "Success (MOCK)",
+    "cuda_handler": "Success (MOCK)",
+    "cuda_output": "(MOCK) Once upon a time... Once upon a time",
+    "cuda_output_length": 43,
+    "cuda_config": "Success (MOCK)",
+    "cuda_config_output": "(MOCK) Once upon a time... Once upon a time",
+    "cuda_config_output_length": 43,
+    "cuda_batch": "Success (MOCK)",
+    "cuda_batch_output_count": 2,
+    "cuda_batch_first_output": "(MOCK) Once upon a time... Once upon a time",
+    "openvino_implementation_capability": "REAL - optimum.intel.openvino available",
     "openvino_tests": "OpenVINO not installed",
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Success (MOCK)",
@@ -28,8 +38,8 @@
     {
       "input": "Once upon a time",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T17:26:18.939375",
-      "elapsed_time": 0.014888525009155273,
+      "timestamp": "2025-02-27T19:58:18.148161",
+      "elapsed_time": 0.0013315677642822266,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "standard"
@@ -37,8 +47,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time...",
-      "timestamp": "2025-02-27T17:26:18.940345",
-      "elapsed_time": 0.0008940696716308594,
+      "timestamp": "2025-02-27T19:58:18.148561",
+      "elapsed_time": 0.0003807544708251953,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "config"
@@ -49,17 +59,49 @@
         "count": 1,
         "first_output": "Once upon a time..."
       },
-      "timestamp": "2025-02-27T17:26:18.944078",
-      "elapsed_time": 0.003691434860229492,
+      "timestamp": "2025-02-27T19:58:18.148839",
+      "elapsed_time": 0.0002696514129638672,
       "implementation_type": "(REAL)",
       "platform": "CPU",
       "test_type": "batch"
     },
     {
       "input": "Once upon a time",
+      "output": "(MOCK) Once upon a time... Once upon a time",
+      "timestamp": "2025-02-27T19:58:19.343598",
+      "elapsed_time": 8.344650268554688e-06,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "standard",
+      "metadata": null
+    },
+    {
+      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
+      "output": "(MOCK) Once upon a time... Once upon a time",
+      "timestamp": "2025-02-27T19:58:19.343624",
+      "elapsed_time": 5.0067901611328125e-06,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "config",
+      "metadata": null
+    },
+    {
+      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
+      "output": {
+        "count": 2,
+        "first_output": "(MOCK) Once upon a time... Once upon a time"
+      },
+      "timestamp": "2025-02-27T19:58:19.343633",
+      "elapsed_time": 3.337860107421875e-06,
+      "implementation_type": "(MOCK)",
+      "platform": "CUDA",
+      "test_type": "batch"
+    },
+    {
+      "input": "Once upon a time",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T17:26:49.157836",
-      "elapsed_time": 1.71661376953125e-05,
+      "timestamp": "2025-02-27T19:58:21.660640",
+      "elapsed_time": 7.152557373046875e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "standard"
@@ -67,8 +109,8 @@
     {
       "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
       "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-27T17:26:49.157890",
-      "elapsed_time": 9.775161743164062e-06,
+      "timestamp": "2025-02-27T19:58:21.660668",
+      "elapsed_time": 3.5762786865234375e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "config"
@@ -79,8 +121,8 @@
         "count": 2,
         "first_output": "Once upon a time... Once upon a time"
       },
-      "timestamp": "2025-02-27T17:26:49.157932",
-      "elapsed_time": 6.67572021484375e-06,
+      "timestamp": "2025-02-27T19:58:21.660681",
+      "elapsed_time": 5.245208740234375e-06,
       "implementation_type": "(MOCK)",
       "platform": "Qualcomm",
       "test_type": "batch"
@@ -88,24 +130,24 @@
   ],
   "metadata": {
     "model_name": "facebook/opt-125m",
-    "test_timestamp": "2025-02-27T17:26:49.157969",
-    "timestamp": 1740706009.1579738,
+    "test_timestamp": "2025-02-27T19:58:21.660698",
+    "timestamp": 1740715101.6606998,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "transformers_mocked": false,
     "test_prompt": "Once upon a time",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "platform_status": {
       "cpu": "Ready (REAL)",
-      "cuda": "CUDA not available",
+      "cuda": "Ready (MOCK)",
       "openvino": "OpenVINO not installed",
       "apple": "Apple Silicon not available",
       "qualcomm": "Ready (MOCK)"
     },
-    "test_run_id": "lm-test-1740706009"
+    "test_run_id": "lm-test-1740715101"
   }
 }

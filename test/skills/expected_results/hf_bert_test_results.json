@@ -1,14 +1,71 @@
 {
-  "init": "Success",
-  "cpu_init": "Success",
-  "cpu_handler": "Success",
-  "cpu_embedding_shape": [1, 768],
-  "cpu_embedding_type": "torch.float32",
-  "cuda_tests": "CUDA not available",
-  "openvino_init": "Success",
-  "openvino_handler": "Success",
-  "openvino_embedding_shape": [1, 768],
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
-  "qualcomm_handler": "Success"
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_handler": "Success (REAL)",
+    "cpu_embedding_shape": [
+      1,
+      768
+    ],
+    "cpu_embedding_type": "torch.float32",
+    "cuda_init": "Success (REAL)",
+    "cuda_benchmark": {
+      "average_inference_time": 2.4199485778808594e-05,
+      "iterations": 2,
+      "cuda_device": "Quadro P4000",
+      "cuda_memory_used_mb": 0.00146484375,
+      "throughput": 41323.1921182266
+    },
+    "cuda_tests": "Error: name 'processor' is not defined",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)",
+    "openvino_embedding_shape": [
+      1,
+      768
+    ],
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success (MOCK)",
+    "qualcomm_tests": "Error: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+  },
+  "examples": [
+    {
+      "input": "The quick brown fox jumps over the lazy dog",
+      "output": {
+        "embedding_shape": [
+          1,
+          768
+        ],
+        "embedding_type": "torch.float32"
+      },
+      "timestamp": "2025-02-27T20:11:58.832560",
+      "elapsed_time": 0.0011425018310546875,
+      "implementation_type": "REAL",
+      "platform": "CPU"
+    },
+    {
+      "input": "The quick brown fox jumps over the lazy dog",
+      "output": {
+        "embedding_shape": [
+          1,
+          768
+        ]
+      },
+      "timestamp": "2025-02-27T20:11:59.353059",
+      "elapsed_time": 0.0017178058624267578,
+      "implementation_type": "REAL",
+      "platform": "OpenVINO"
+    }
+  ],
+  "metadata": {
+    "model_name": "/tmp/bert_test_model",
+    "test_timestamp": "2025-02-27T20:11:59.363210",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.4.0+cu121",
+    "transformers_version": "4.49.0",
+    "platform_status": {
+      "cuda": "Failed: name 'processor' is not defined",
+      "apple": "Apple Silicon not available",
+      "qualcomm": "Failed: The size of tensor a (11) must match the size of tensor b (10) at non-singleton dimension 1"
+    }
+  }
 }

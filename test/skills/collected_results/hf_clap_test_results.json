@@ -7,29 +7,29 @@
     1,
     512
   ],
-  "cpu_audio_embedding_timestamp": 1740702868.9154644,
-  "cpu_audio_embedding_time": 0.0006318092346191406,
+  "cpu_audio_embedding_timestamp": 1740714818.7789047,
+  "cpu_audio_embedding_time": 0.0004515647888183594,
   "cpu_text_embedding": "Success (REAL)",
   "cpu_text_embedding_shape": [
     1,
     512
   ],
-  "cpu_text_embedding_timestamp": 1740702868.9154992,
-  "cpu_text_embedding_time": 2.8848648071289062e-05,
+  "cpu_text_embedding_timestamp": 1740714818.77892,
+  "cpu_text_embedding_time": 1.239776611328125e-05,
   "cpu_similarity": "Success (REAL)",
   "cpu_similarity_score": 0.800000011920929,
-  "cpu_similarity_timestamp": 1740702868.9157526,
-  "cpu_similarity_time": 0.00018525123596191406,
+  "cpu_similarity_timestamp": 1740714818.7790482,
+  "cpu_similarity_time": 9.393692016601562e-05,
   "cpu_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740702868.915755,
+    "timestamp": 1740714818.7790494,
     "implementation": "(REAL)"
   },
-  "cuda_tests": "CUDA not available",
+  "cuda_tests": "Error: laion/clap-htsat-unfused is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `huggingface-cli login` or by passing `token=<your_token>`",
   "openvino_init": "Success (REAL)",
   "openvino_handler": "Success (REAL)",
-  "openvino_output_timestamp": 1740702888.7125013,
+  "openvino_output_timestamp": 1740714819.7653043,
   "openvino_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -47,13 +47,13 @@
   "openvino_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740702888.7125566,
+    "timestamp": 1740714819.7653315,
     "implementation": "(REAL)"
   },
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (REAL)",
-  "qualcomm_output_timestamp": 1740702889.440045,
+  "qualcomm_output_timestamp": 1740714819.8600054,
   "qualcomm_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -71,18 +71,18 @@
   "qualcomm_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740702889.4400961,
+    "timestamp": 1740714819.8600366,
     "implementation": "(REAL)"
   },
   "metadata": {
-    "timestamp": 1740702889.4403398,
+    "timestamp": 1740714819.8601573,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "test_model": "laion/clap-htsat-unfused",
-    "test_run_id": "clap-test-1740702889",
+    "test_run_id": "clap-test-1740714819",
     "mock_implementation": false,
     "implementation_type": "(REAL)",
     "transformers_available": true,

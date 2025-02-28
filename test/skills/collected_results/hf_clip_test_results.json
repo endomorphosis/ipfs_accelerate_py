@@ -21,7 +21,7 @@
       1,
       512
     ],
-    "timestamp": 1740701629.1198313,
+    "timestamp": 1740714770.0833266,
     "implementation": "(REAL)"
   },
   "cpu_text_embedding": "Success (REAL)",
@@ -35,7 +35,7 @@
       1,
       512
     ],
-    "timestamp": 1740701629.1200583,
+    "timestamp": 1740714770.0833776,
     "implementation": "(REAL)"
   },
   "cpu_similarity_example": {
@@ -43,11 +43,52 @@
       "text": "a red square",
       "image": "image input (binary data not shown)"
     },
-    "output": -0.005877666175365448,
-    "timestamp": 1740701629.1201804,
+    "output": 0.00812667328864336,
+    "timestamp": 1740714770.0834012,
     "implementation": "(REAL)"
   },
-  "cuda_tests": "CUDA not available",
+  "cuda_init": "Failed CUDA initialization",
+  "cuda_handler": "Success (REAL)",
+  "cuda_similarity_example": {
+    "input": {
+      "text": "a red square",
+      "image": "image input (binary data not shown)"
+    },
+    "output": 0.75,
+    "timestamp": 1740714771.5980115,
+    "implementation_type": "REAL",
+    "performance": {
+      "inference_time": 0.10025405883789062
+    },
+    "is_simulated": false
+  },
+  "cuda_image_example": {
+    "input": "image input (binary data not shown)",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740714771.5980124,
+    "implementation_type": "REAL",
+    "is_simulated": false
+  },
+  "cuda_text_example": {
+    "input": "a red square",
+    "output_shape": [
+      1,
+      512
+    ],
+    "timestamp": 1740714771.5980134,
+    "implementation_type": "REAL",
+    "is_simulated": false
+  },
+  "cuda_device": "cuda:0",
+  "cuda_capabilities": {
+    "device_name": "Quadro P4000",
+    "device_count": 1,
+    "memory_allocated_mb": 0.0,
+    "memory_reserved_mb": 0.0
+  },
   "openvino_init": "Success (REAL)",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Success (MOCK)",
@@ -58,7 +99,7 @@
       "image": "image input (binary data not shown)"
     },
     "output": 0.75,
-    "timestamp": 1740701656.9081728,
+    "timestamp": 1740714775.3461404,
     "implementation": "(MOCK)"
   },
   "qualcomm_image_example": {
@@ -67,7 +108,7 @@
       1,
       512
     ],
-    "timestamp": 1740701656.9081771,
+    "timestamp": 1740714775.346143,
     "implementation": "(MOCK)"
   },
   "qualcomm_text_example": {
@@ -76,19 +117,19 @@
       1,
       512
     ],
-    "timestamp": 1740701656.9081788,
+    "timestamp": 1740714775.3461437,
     "implementation": "(MOCK)"
   },
   "metadata": {
-    "timestamp": 1740701656.912963,
+    "timestamp": 1740714775.3462248,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "transformers_mocked": false,
     "test_model": "openai/clip-vit-base-patch32",
-    "test_run_id": "clip-test-1740701656"
+    "test_run_id": "clip-test-1740714775"
   }
 }

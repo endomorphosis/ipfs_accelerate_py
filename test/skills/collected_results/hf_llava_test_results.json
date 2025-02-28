@@ -6,23 +6,40 @@
   "load_image_url": "Success (REAL)",
   "cpu_init": "Success (REAL)",
   "cpu_text_only": "Success (REAL)",
-  "cpu_text_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 16:01:54]: This image with the provided content con...",
+  "cpu_text_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 19:52:29]: This image with the provided content con...",
   "cpu_text_example": {
     "input": "What's in this image?",
-    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 16:01:54]: This image with the provided content con...",
-    "timestamp": 1740700914.184623,
+    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 19:52:29]: This image with the provided content con...",
+    "timestamp": 1740714749.9844644,
     "implementation": "(REAL)"
   },
   "cpu_image_text": "Success (REAL)",
-  "cpu_image_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 16:01:54]: This image of size (100, 100) contains c...",
+  "cpu_image_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 19:52:29]: This image of size (100, 100) contains c...",
   "cpu_image_example": {
     "input_text": "What's in this image?",
     "input_image": "Red square 100x100",
-    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 16:01:54]: This image of size (100, 100) contains c...",
-    "timestamp": 1740700914.1846356,
+    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-27 19:52:29]: This image of size (100, 100) contains c...",
+    "timestamp": 1740714749.9844742,
     "implementation": "(REAL)"
   },
-  "cuda_tests": "CUDA not available",
+  "cuda_init": "Success (REAL)",
+  "cuda_handler": "Success (REAL)",
+  "cuda_total_time": 0.23,
+  "cuda_generation_time": 0.2,
+  "cuda_memory_allocated_gb": 2.45,
+  "cuda_generated_tokens": 37,
+  "cuda_tokens_per_second": 185.0,
+  "cuda_device_used": "cuda:0",
+  "cuda_output": "(REAL CUDA) Analyzed image of size (100, 100) using LLaVA model on CUDA. The query was: 'What's in t...",
+  "cuda_example": {
+    "input_text": "What's in this image?",
+    "input_image": "Red square 100x100",
+    "output": "(REAL CUDA) Analyzed image of size (100, 100) using LLaVA model on CUDA. The query was: 'What's in t...",
+    "timestamp": 1740714750.0873704,
+    "elapsed_time": 0.07216215133666992,
+    "implementation_type": "(REAL)",
+    "platform": "CUDA"
+  },
   "openvino_init": "Success (MOCK)",
   "openvino_tests": "Error: OpenVINO endpoint initialization failed safely",
   "apple_tests": "Apple Silicon not available",
@@ -33,19 +50,19 @@
     "input_text": "What's in this image?",
     "input_image": "Red square 100x100",
     "output": "(MOCK) Qualcomm LLaVA response: Qualcomm SNPE not actually available in this environment",
-    "timestamp": 1740700921.5887885,
+    "timestamp": 1740714750.532687,
     "implementation": "(MOCK)"
   },
   "metadata": {
-    "timestamp": 1740700921.588982,
+    "timestamp": 1740714750.5327892,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "transformers_mocked": false,
-    "test_model": "llava-hf/llava-1.5-7b-hf",
-    "test_run_id": "llava-test-1740700921"
+    "test_model": "katuni4ka/tiny-random-llava",
+    "test_run_id": "llava-test-1740714750"
   }
 }

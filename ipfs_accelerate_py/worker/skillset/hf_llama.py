@@ -178,47 +178,190 @@ class hf_llama:
             return None, None, None, None, 0
     
     def init_cuda(self, model, device, cuda_label):
+        """
+        Initialize LLaMA model for CUDA execution with enhanced memory optimization
+        
+        Args:
+            model: Model name or path
+            device: Device type (should be 'cuda')
+            cuda_label: CUDA device label (e.g. 'cuda:0')
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, handler, queue, batch_size)
+        """
         self.init()
         
+        # First check if CUDA is available
+        if not hasattr(self.torch, 'cuda') or not self.torch.cuda.is_available():
+            print("CUDA is not available on this system")
+            return None, None, None, None, 0
+        
+        # Get CUDA device information
         try:
+            # Parse cuda_label to extract device index
+            if ":" in cuda_label:
+                device_index = int(cuda_label.split(":")[1])
+                if device_index >= self.torch.cuda.device_count():
+                    print(f"Warning: CUDA device index {device_index} out of range (0-{self.torch.cuda.device_count()-1}), using device 0")
+                    device_index = 0
+                    cuda_label = "cuda:0"
+            else:
+                device_index = 0
+                cuda_label = "cuda:0"
+                
+            # Create device object for consistent usage
+            cuda_device = self.torch.device(cuda_label)
+            
+            # Get and display device information
+            device_name = self.torch.cuda.get_device_name(device_index)
+            print(f"Using CUDA device: {device_name} (index {device_index})")
+            
+            # Get memory information for logging and memory settings
+            if hasattr(self.torch.cuda, 'mem_get_info'):
+                free_memory, total_memory = self.torch.cuda.mem_get_info(device_index)
+                free_memory_gb = free_memory / (1024**3)
+                total_memory_gb = total_memory / (1024**3)
+                print(f"Available CUDA memory: {free_memory_gb:.2f}GB / {total_memory_gb:.2f}GB")
+            else:
+                # Older CUDA versions might not have mem_get_info
+                free_memory = None
+                total_memory = None
+                print("CUDA memory info not available")
+            
+            # Clean up CUDA cache before loading model
+            if hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
+                
+        except Exception as e:
+            print(f"Error initializing CUDA device: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return None, None, None, None, 0
+        
+        try:
+            # Check if we're using mock transformers
             if isinstance(self.transformers, type(MagicMock())):
                 # Create mocks for testing
+                print("Using mock transformers implementation for CUDA test")
                 config = MagicMock()
                 tokenizer = MagicMock() 
                 tokenizer.batch_decode = MagicMock(return_value=["Once upon a time..."])
                 
                 endpoint = MagicMock()
                 endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                is_real_impl = False
             else:
-                # Try loading real model
-                config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-                tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
+                # Try loading real model with CUDA support
+                print("Attempting to load real model with CUDA support")
+                is_real_impl = True
                 
+                # Load config and tokenizer first
                 try:
-                    endpoint = self.transformers.AutoModelForCausalLM.from_pretrained(
-                        model, 
-                        torch_dtype=self.torch.float16, 
-                        trust_remote_code=True
-                    ).to(device)
+                    print(f"Loading configuration and tokenizer for {model}")
+                    config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
+                    tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
                 except Exception as e:
-                    print(f"Error loading CUDA model: {e}")
-                    endpoint = MagicMock()
-                    endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                    print(f"Error loading config or tokenizer: {e}")
+                    print(f"Falling back to mock tokenizer")
+                    tokenizer = MagicMock()
+                    tokenizer.batch_decode = MagicMock(return_value=["Once upon a time..."])
+                    is_real_impl = False
+                
+                # Load model with optimized memory settings if we have real tokenizer
+                if is_real_impl:
+                    try:
+                        # Set memory optimization parameters
+                        if free_memory is not None:
+                            free_memory_gb = free_memory / (1024**3)
+                        else:
+                            # Conservative estimate if we can't get actual memory info
+                            free_memory_gb = 4.0
+                        
+                        # Determine memory optimization settings
+                        use_half_precision = True  # Default to half precision for better memory efficiency
+                        use_8bit_quantization = free_memory_gb < 4.0  # Use 8-bit quantization for lower memory
+                        low_cpu_mem_usage = True  # Always use low CPU memory usage
+                        
+                        # Choose batch size based on available memory
+                        batch_size = max(1, min(8, int(free_memory_gb / 2)))
+                        print(f"Using batch size: {batch_size}")
+                        
+                        # Prepare model loading parameters with memory optimizations
+                        model_kwargs = {
+                            "torch_dtype": self.torch.float16 if use_half_precision else self.torch.float32,
+                            "low_cpu_mem_usage": low_cpu_mem_usage,
+                            "trust_remote_code": True,
+                            "device_map": cuda_label
+                        }
+                        
+                        # Add 8-bit quantization if needed
+                        if use_8bit_quantization and hasattr(self.transformers, 'BitsAndBytesConfig'):
+                            print("Using 8-bit quantization for memory efficiency")
+                            model_kwargs["quantization_config"] = self.transformers.BitsAndBytesConfig(
+                                load_in_8bit=True,
+                                llm_int8_threshold=6.0
+                            )
+                        
+                        # Load the model with the optimized settings
+                        print(f"Loading model {model} with optimized memory settings:")
+                        print(f"- Half precision: {use_half_precision}")
+                        print(f"- 8-bit quantization: {use_8bit_quantization if 'quantization_config' in model_kwargs else False}")
+                        print(f"- Low CPU memory usage: {low_cpu_mem_usage}")
+                        
+                        endpoint = self.transformers.AutoModelForCausalLM.from_pretrained(
+                            model, 
+                            **model_kwargs
+                        )
+                        
+                        # Move model to device if not already done by device_map
+                        if not hasattr(endpoint, 'device') or endpoint.device != cuda_device:
+                            print(f"Moving model to {cuda_label}")
+                            endpoint = endpoint.to(cuda_device)
+                        
+                        # Set model to evaluation mode
+                        endpoint.eval()
+                        
+                        # Log memory usage after model loading
+                        if hasattr(self.torch.cuda, 'mem_get_info'):
+                            try:
+                                free_after_load, _ = self.torch.cuda.mem_get_info(device_index)
+                                free_after_load_gb = free_after_load / (1024**3)
+                                memory_used_gb = free_memory_gb - free_after_load_gb
+                                print(f"Model loaded. CUDA memory used: {memory_used_gb:.2f}GB, Available: {free_after_load_gb:.2f}GB")
+                            except Exception as mem_error:
+                                print(f"Error getting CUDA memory usage after model loading: {mem_error}")
+                        
+                    except Exception as e:
+                        print(f"Error loading CUDA model: {e}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        print("Falling back to mock implementation")
+                        endpoint = MagicMock()
+                        endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                        is_real_impl = False
             
+            # Create handler with implementation status
             endpoint_handler = self.create_cuda_llama_endpoint_handler(
                 tokenizer, 
                 endpoint_model=model, 
                 cuda_label=cuda_label, 
-                endpoint=endpoint
+                endpoint=endpoint,
+                is_real_impl=is_real_impl
             )
             
-            if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+            # Final cache cleanup
+            if hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
                 
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), batch_size if is_real_impl else 1
             
         except Exception as e:
             print(f"Error in CUDA initialization: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            # Ensure we clean up CUDA memory on error
+            if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
             return None, None, None, None, 0
 
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
@@ -1147,38 +1290,45 @@ class hf_llama:
                 
         return handler
     
-    def create_cuda_llama_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint):
-        """Create a handler for CUDA-based LLaMA inference.
+    def create_cuda_llama_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint, is_real_impl=False):
+        """Create a handler for CUDA-based LLaMA inference with enhanced memory management.
         
         Args:
             tokenizer: The tokenizer to use for input/output processing
             endpoint_model: Model name or path
             cuda_label: CUDA device identifier (e.g., 'cuda:0')
             endpoint: The LLaMA model endpoint
+            is_real_impl: Flag indicating if we're using a real implementation or mock
             
         Returns:
             Handler function for CUDA-based text generation
         """
         
-        def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint):
-            """CUDA handler for LLaMA text generation.
+        def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint, generation_config=None):
+            """CUDA handler for LLaMA text generation with optimized memory management.
             
             Args:
                 text_input: Input text or tokenized input
+                generation_config: Optional dictionary with generation parameters
                 
             Returns:
                 Dictionary with generated text and implementation type
             """
+            # Start performance tracking
+            import time
+            start_time = time.time()
+            
             # Flag to track if we're using real implementation or mock
-            is_mock = False
+            is_mock = not is_real_impl
             
             # Validate input
             if text_input is None:
                 is_mock = True
                 return {
-                    "generated_text": "No input provided",
+                    "text": "No input provided",
                     "model_name": endpoint_model,
-                    "implementation_type": "MOCK"
+                    "implementation_type": "MOCK",
+                    "device": cuda_label
                 }
             
             # Check for CUDA availability
@@ -1192,9 +1342,10 @@ class hf_llama:
             if isinstance(endpoint, type(MagicMock())) or isinstance(tokenizer, type(MagicMock())) or not cuda_available:
                 is_mock = True
                 return {
-                    "generated_text": "Once upon a time, a fox and a dog became best friends in the forest, learning to hunt together.",
+                    "text": "Once upon a time, a fox and a dog became best friends in the forest, learning to hunt together.",
                     "model_name": endpoint_model,
-                    "implementation_type": "MOCK"
+                    "implementation_type": "MOCK",
+                    "device": cuda_label
                 }
             
             # Initialize model with error handling
@@ -1211,23 +1362,43 @@ class hf_llama:
                     if hasattr(self.torch.cuda, 'empty_cache'):
                         self.torch.cuda.empty_cache()
                     
+                    # Get CUDA memory information for tracking
+                    mem_info = {}
+                    if hasattr(self.torch.cuda, 'mem_get_info'):
+                        try:
+                            free_memory_start, total_memory = self.torch.cuda.mem_get_info()
+                            free_memory_start_gb = free_memory_start / (1024**3)
+                            total_memory_gb = total_memory / (1024**3)
+                            mem_info = {
+                                "free_memory_gb": free_memory_start_gb,
+                                "total_memory_gb": total_memory_gb,
+                                "used_memory_gb": total_memory_gb - free_memory_start_gb
+                            }
+                            print(f"CUDA memory available before processing: {free_memory_start_gb:.2f}GB / {total_memory_gb:.2f}GB")
+                        except Exception as mem_error:
+                            print(f"Error getting CUDA memory info: {mem_error}")
+                            free_memory_start = None
+                    
+                    # Handle batch input (list of strings)
+                    is_batch = isinstance(text_input, list)
+                    batch_size = len(text_input) if is_batch else 1
+                    
                     # Tokenize input safely
                     try:
-                        if isinstance(text_input, str):
-                            inputs = tokenizer(text_input, return_tensors="pt")
+                        if is_batch:
+                            # Process as batch
+                            inputs = tokenizer(text_input, return_tensors="pt", padding=True, truncation=True)
+                        elif isinstance(text_input, str):
+                            # Record input length for diagnostics
+                            input_length = len(text_input.split())
                             
-                            # Safely move tensors to the correct device
-                            input_dict = {}
-                            for key in list(inputs.keys()):
-                                if hasattr(inputs[key], 'to') and callable(inputs[key].to):
-                                    input_dict[key] = inputs[key].to(cuda_label)
-                                else:
-                                    input_dict[key] = inputs[key]
-                            inputs = input_dict
+                            # Set return_tensors to pt for PyTorch
+                            inputs = tokenizer(text_input, return_tensors="pt")
                         else:
                             # Assume it's already tokenized, create a safe copy
                             inputs = {}
                             if hasattr(text_input, 'items'):
+                                input_length = 0  # We don't know the length of pre-tokenized input
                                 for k, v in text_input.items():
                                     if hasattr(v, 'to') and callable(v.to):
                                         inputs[k] = v.to(cuda_label)
@@ -1239,19 +1410,33 @@ class hf_llama:
                                 if hasattr(self.torch.cuda, 'empty_cache'):
                                     self.torch.cuda.empty_cache()
                                 return {
-                                    "generated_text": f"Invalid input type: {type(text_input)}",
+                                    "text": f"Invalid input type: {type(text_input)}",
                                     "model_name": endpoint_model,
-                                    "implementation_type": "MOCK"
+                                    "implementation_type": "MOCK",
+                                    "device": cuda_label
                                 }
+                        
+                        # Safely move tensors to the correct device for all inputs
+                        cuda_inputs = {}
+                        for key in list(inputs.keys()):
+                            if hasattr(inputs[key], 'to') and callable(inputs[key].to):
+                                cuda_inputs[key] = inputs[key].to(cuda_label)
+                            else:
+                                cuda_inputs[key] = inputs[key]
+                        inputs = cuda_inputs
+                        
                     except Exception as tokenize_error:
                         print(f"Error tokenizing or moving input to CUDA: {tokenize_error}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
                         is_mock = True
                         if hasattr(self.torch.cuda, 'empty_cache'):
                             self.torch.cuda.empty_cache()
                         return {
-                            "generated_text": f"Error preparing input: {str(tokenize_error)[:50]}...",
+                            "text": f"Error preparing input: {str(tokenize_error)[:50]}...",
                             "model_name": endpoint_model,
-                            "implementation_type": "MOCK"
+                            "implementation_type": "MOCK",
+                            "device": cuda_label
                         }
                         
                     # Validate inputs
@@ -1260,36 +1445,72 @@ class hf_llama:
                         if hasattr(self.torch.cuda, 'empty_cache'):
                             self.torch.cuda.empty_cache()
                         return {
-                            "generated_text": "Invalid inputs format or missing input_ids",
+                            "text": "Invalid inputs format or missing input_ids",
                             "model_name": endpoint_model,
-                            "implementation_type": "MOCK"
+                            "implementation_type": "MOCK",
+                            "device": cuda_label
                         }
                     
                     # Run generation safely
                     try:
+                        # Record timing for generation start
+                        generation_start_time = time.time()
+                        
                         # Verify endpoint has generate method
                         if not hasattr(endpoint, 'generate') or not callable(endpoint.generate):
                             is_mock = True
                             if hasattr(self.torch.cuda, 'empty_cache'):
                                 self.torch.cuda.empty_cache()
                             return {
-                                "generated_text": "Model endpoint missing generate method",
+                                "text": "Model endpoint missing generate method",
                                 "model_name": endpoint_model,
-                                "implementation_type": "MOCK"
+                                "implementation_type": "MOCK",
+                                "device": cuda_label
                             }
                             
                         # Get attention_mask safely
                         attention_mask = inputs.get("attention_mask", None)
                         
-                        # Run generation
+                        # Determine generation parameters based on input length
+                        # Longer input = fewer new tokens to prevent CUDA OOM
+                        max_input_length = inputs["input_ids"].shape[1] if hasattr(inputs["input_ids"], "shape") else 0
+                        max_new_tokens = max(32, min(512, 1024 - max_input_length))
+                        
+                        # Parse generation_config if provided
+                        gen_params = {
+                            "max_new_tokens": max_new_tokens,
+                            "do_sample": True,
+                            "temperature": 0.7,
+                            "top_p": 0.9,
+                            "pad_token_id": tokenizer.eos_token_id if hasattr(tokenizer, 'eos_token_id') else None
+                        }
+                        
+                        # Override with user-provided parameters if any
+                        if generation_config and isinstance(generation_config, dict):
+                            for key, value in generation_config.items():
+                                if key in ["max_new_tokens", "do_sample", "temperature", "top_p", "top_k", "num_beams"]:
+                                    gen_params[key] = value
+                        
+                        # Run generation with enhanced parameters
                         outputs = endpoint.generate(
                             inputs["input_ids"],
                             attention_mask=attention_mask,
-                            max_new_tokens=256,
-                            do_sample=True,
-                            temperature=0.7,
-                            top_p=0.9
+                            **gen_params
                         )
+                        
+                        # Record generation time
+                        generation_time = time.time() - generation_start_time
+                        
+                        # Get CUDA memory usage after generation
+                        gpu_memory_used_mb = None
+                        if hasattr(self.torch.cuda, 'mem_get_info') and free_memory_start is not None:
+                            try:
+                                free_memory_after, _ = self.torch.cuda.mem_get_info()
+                                memory_used_mb = (free_memory_start - free_memory_after) / (1024**2)
+                                gpu_memory_used_mb = memory_used_mb
+                                print(f"CUDA memory used for generation: {memory_used_mb:.2f}MB")
+                            except Exception as mem_error:
+                                print(f"Error getting CUDA memory usage after generation: {mem_error}")
                         
                         # Verify outputs are valid
                         if outputs is None:
@@ -1297,89 +1518,174 @@ class hf_llama:
                             if hasattr(self.torch.cuda, 'empty_cache'):
                                 self.torch.cuda.empty_cache()
                             return {
-                                "generated_text": "Model generated null output",
+                                "text": "Model generated null output",
                                 "model_name": endpoint_model,
-                                "implementation_type": "MOCK"
+                                "implementation_type": "MOCK",
+                                "device": cuda_label
                             }
                     except Exception as gen_error:
                         print(f"Error during generation: {gen_error}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
                         is_mock = True
                         if hasattr(self.torch.cuda, 'empty_cache'):
                             self.torch.cuda.empty_cache()
                         return {
-                            "generated_text": f"Error during generation: {str(gen_error)[:50]}...",
+                            "text": f"Error during generation: {str(gen_error)[:50]}...",
                             "model_name": endpoint_model,
-                            "implementation_type": "MOCK"
+                            "implementation_type": "MOCK",
+                            "device": cuda_label
                         }
                     
                     # Decode output safely
                     try:
-                        # Verify output has expected structure
-                        if not hasattr(outputs, 'shape') or len(outputs.shape) < 1 or outputs.shape[0] < 1:
-                            is_mock = True
-                            if hasattr(self.torch.cuda, 'empty_cache'):
-                                self.torch.cuda.empty_cache()
-                            return {
-                                "generated_text": "Invalid output tensor shape",
-                                "model_name": endpoint_model,
-                                "implementation_type": "MOCK"
-                            }
-                        
-                        # Move to CPU for decoding
-                        if hasattr(outputs[0], 'cpu') and callable(outputs[0].cpu):
-                            outputs_cpu = outputs[0].cpu()
+                        # Handle batch outputs
+                        if is_batch:
+                            # Process batch results
+                            batch_results = []
+                            
+                            # Verify output has expected structure for batch
+                            if not hasattr(outputs, 'shape') or len(outputs.shape) < 2 or outputs.shape[0] < batch_size:
+                                is_mock = True
+                                if hasattr(self.torch.cuda, 'empty_cache'):
+                                    self.torch.cuda.empty_cache()
+                                return {
+                                    "text": "Invalid output tensor shape for batch",
+                                    "model_name": endpoint_model,
+                                    "implementation_type": "MOCK",
+                                    "device": cuda_label
+                                }
+                            
+                            # Move to CPU for decoding (save CUDA memory)
+                            if hasattr(outputs, 'cpu') and callable(outputs.cpu):
+                                outputs_cpu = outputs.cpu()
+                            else:
+                                outputs_cpu = outputs
+                                
+                            # Verify tokenizer has batch_decode method
+                            if hasattr(tokenizer, 'batch_decode') and callable(tokenizer.batch_decode):
+                                batch_texts = tokenizer.batch_decode(outputs_cpu, skip_special_tokens=True)
+                                
+                                # Return as a list of dict results with metadata
+                                for i, text in enumerate(batch_texts):
+                                    if text and len(text.strip()) > 0:
+                                        batch_results.append(text)
+                                    else:
+                                        batch_results.append("Empty generation result")
+                                
+                                # Create batch output
+                                return batch_results
+                            else:
+                                # Fall back to one-by-one decoding
+                                for i in range(batch_size):
+                                    if i < outputs_cpu.shape[0]:
+                                        text = tokenizer.decode(outputs_cpu[i], skip_special_tokens=True)
+                                        batch_results.append(text if text and len(text.strip()) > 0 else "Empty result")
+                                    else:
+                                        batch_results.append("Index out of range")
+                                
+                                return batch_results
                         else:
-                            outputs_cpu = outputs[0]
-                        
-                        # Verify tokenizer has decode method
-                        if not hasattr(tokenizer, 'decode') or not callable(tokenizer.decode):
-                            is_mock = True
-                            if hasattr(self.torch.cuda, 'empty_cache'):
-                                self.torch.cuda.empty_cache()
-                            return {
-                                "generated_text": "Tokenizer missing decode method",
-                                "model_name": endpoint_model,
-                                "implementation_type": "MOCK"
-                            }
-                        
-                        # Decode the output
-                        decoded_output = tokenizer.decode(outputs_cpu, skip_special_tokens=True)
-                        
-                        # Check for empty output
-                        if not decoded_output or len(decoded_output.strip()) == 0:
-                            decoded_output = "Empty generation result"
-                            is_mock = True
+                            # Handle single output
+                            # Verify output has expected structure
+                            if not hasattr(outputs, 'shape') or len(outputs.shape) < 1 or outputs.shape[0] < 1:
+                                is_mock = True
+                                if hasattr(self.torch.cuda, 'empty_cache'):
+                                    self.torch.cuda.empty_cache()
+                                return {
+                                    "text": "Invalid output tensor shape",
+                                    "model_name": endpoint_model,
+                                    "implementation_type": "MOCK",
+                                    "device": cuda_label
+                                }
+                            
+                            # Move to CPU for decoding (save CUDA memory)
+                            if hasattr(outputs, 'cpu') and callable(outputs.cpu):
+                                # Move entire tensor to CPU
+                                outputs_cpu = outputs.cpu()
+                                if outputs_cpu.shape[0] > 0:
+                                    outputs_cpu = outputs_cpu[0]  # Use first sequence
+                            elif hasattr(outputs[0], 'cpu') and callable(outputs[0].cpu):
+                                # Already has batch dimension separated
+                                outputs_cpu = outputs[0].cpu()
+                            else:
+                                # Can't move to CPU, use as is
+                                outputs_cpu = outputs[0] if outputs.shape[0] > 0 else outputs
+                            
+                            # Verify tokenizer has decode method
+                            if not hasattr(tokenizer, 'decode') or not callable(tokenizer.decode):
+                                is_mock = True
+                                if hasattr(self.torch.cuda, 'empty_cache'):
+                                    self.torch.cuda.empty_cache()
+                                return {
+                                    "text": "Tokenizer missing decode method",
+                                    "model_name": endpoint_model,
+                                    "implementation_type": "MOCK",
+                                    "device": cuda_label
+                                }
+                            
+                            # Decode the output
+                            decoded_output = tokenizer.decode(outputs_cpu, skip_special_tokens=True)
+                            
+                            # Check for empty output
+                            if not decoded_output or len(decoded_output.strip()) == 0:
+                                decoded_output = "Empty generation result"
+                                is_mock = True
+                            
                     except Exception as decode_error:
                         print(f"Error decoding output: {decode_error}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
                         is_mock = True
                         if hasattr(self.torch.cuda, 'empty_cache'):
                             self.torch.cuda.empty_cache()
                         return {
-                            "generated_text": f"Error decoding output: {str(decode_error)[:50]}...",
+                            "text": f"Error decoding output: {str(decode_error)[:50]}...",
                             "model_name": endpoint_model,
-                            "implementation_type": "MOCK"
+                            "implementation_type": "MOCK",
+                            "device": cuda_label
                         }
+                    
+                    # Calculate total processing time
+                    total_time = time.time() - start_time
                     
                     # Cleanup GPU memory
                     if hasattr(self.torch.cuda, 'empty_cache'):
                         self.torch.cuda.empty_cache()
                     
-                    # Return result with implementation type
-                    return {
-                        "generated_text": decoded_output,
+                    # For batch outputs, we already returned above
+                    if is_batch:
+                        return batch_results
+                    
+                    # Return result with implementation type and performance metrics
+                    result = {
+                        "text": decoded_output,
                         "model_name": endpoint_model,
-                        "implementation_type": "REAL"
+                        "implementation_type": "REAL" if not is_mock else "MOCK",
+                        "device": cuda_label,
+                        "generation_time_seconds": generation_time if 'generation_time' in locals() else None,
+                        "total_time_seconds": total_time,
+                        "gpu_memory_mb": gpu_memory_used_mb
                     }
+                    
+                    # Add memory info if available
+                    if mem_info:
+                        result["memory_info"] = mem_info
+                        
+                    return result
                     
                 except Exception as e:
                     # Clean GPU memory on any unexpected error
                     if hasattr(self.torch.cuda, 'empty_cache'):
                         self.torch.cuda.empty_cache()
                     print(f"Unexpected error in CUDA LLaMA endpoint handler: {e}")
+                    import traceback
+                    print(f"Traceback: {traceback.format_exc()}")
                     return {
-                        "generated_text": f"Unexpected error: {str(e)[:100]}...",
+                        "text": f"Unexpected error: {str(e)[:100]}...",
                         "model_name": endpoint_model,
-                        "implementation_type": "MOCK"
+                        "implementation_type": "MOCK",
+                        "device": cuda_label
                     }
                     
         return handler

@@ -402,7 +402,7 @@ class hf_llava:
             return self._create_mock_endpoint(model_name, qualcomm_label)
     
     def init_cuda(self, model_name, device, cuda_label):
-        """Initialize LLaVA model for CUDA/GPU.
+        """Initialize LLaVA model for CUDA/GPU with enhanced memory optimization and error handling.
         
         Args:
             model_name (str): HuggingFace model name or path
@@ -414,40 +414,201 @@ class hf_llava:
         """
         self.init()
         
-        # Check if CUDA is available
+        # First check if CUDA is available
         if not hasattr(self.torch, 'cuda') or not self.torch.cuda.is_available():
             print(f"CUDA is not available, falling back to CPU for model '{model_name}'")
             return self._create_mock_endpoint(model_name, cuda_label)
-            
+        
+        # Get CUDA device information
         try:
-            # Load model configuration and processor
-            config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)    
-            processor = self.transformers.AutoProcessor.from_pretrained(model_name)
+            # Parse cuda_label to extract device index
+            if ":" in cuda_label:
+                device_index = int(cuda_label.split(":")[1])
+                if device_index >= self.torch.cuda.device_count():
+                    print(f"Warning: CUDA device index {device_index} out of range (0-{self.torch.cuda.device_count()-1}), using device 0")
+                    device_index = 0
+                    cuda_label = "cuda:0"
+            else:
+                device_index = 0
+                cuda_label = "cuda:0"
+                
+            # Create device object for consistent usage
+            cuda_device = self.torch.device(cuda_label)
             
-            # Load the model to GPU with optimizations
-            endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(
-                model_name,  
-                torch_dtype=self.torch.float16,  # Use 16-bit precision for GPU
-                trust_remote_code=True
-            ).to(device)
+            # Get and display device information
+            device_name = self.torch.cuda.get_device_name(device_index)
+            print(f"Using CUDA device: {device_name} (index {device_index})")
             
-            # Create the handler function
+            # Get memory information for logging and memory settings
+            if hasattr(self.torch.cuda, 'mem_get_info'):
+                free_memory, total_memory = self.torch.cuda.mem_get_info(device_index)
+                free_memory_gb = free_memory / (1024**3)
+                total_memory_gb = total_memory / (1024**3)
+                print(f"Available CUDA memory: {free_memory_gb:.2f}GB / {total_memory_gb:.2f}GB")
+            else:
+                # Older CUDA versions might not have mem_get_info
+                free_memory = None
+                total_memory = None
+                print("CUDA memory info not available")
+            
+            # Clean up CUDA cache before loading model
+            if hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
+                
+        except Exception as e:
+            print(f"Error initializing CUDA device: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return self._create_mock_endpoint(model_name, cuda_label)
+        
+        try:
+            # Check if we're using mock transformers
+            if isinstance(self.transformers, type(MagicMock())):
+                # Create mocks for testing
+                print("Using mock transformers implementation for CUDA test")
+                config = MagicMock()
+                processor = MagicMock() 
+                processor.batch_decode = MagicMock(return_value=["This is a mock response from LLaVA"])
+                
+                endpoint = MagicMock()
+                endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                is_real_impl = False
+            else:
+                # Try loading real model with CUDA support
+                print("Attempting to load real model with CUDA support")
+                is_real_impl = True
+                
+                # Load processor first
+                try:
+                    print(f"Loading processor for {model_name}")
+                    processor = self.transformers.AutoProcessor.from_pretrained(model_name)
+                except Exception as e:
+                    print(f"Error loading processor: {e}")
+                    print(f"Falling back to mock processor")
+                    processor = self._create_mock_processor()
+                    is_real_impl = False
+                
+                # Load model with optimized memory settings if we have real processor
+                if is_real_impl:
+                    try:
+                        # Set memory optimization parameters
+                        if free_memory is not None:
+                            free_memory_gb = free_memory / (1024**3)
+                        else:
+                            # Conservative estimate if we can't get actual memory info
+                            free_memory_gb = 4.0
+                        
+                        # Determine memory optimization settings
+                        use_half_precision = True  # Default to half precision for better memory efficiency
+                        use_8bit_quantization = free_memory_gb < 4.0  # Use 8-bit quantization for lower memory
+                        low_cpu_mem_usage = True  # Always use low CPU memory usage
+                        
+                        # Choose batch size based on available memory
+                        batch_size = max(1, min(8, int(free_memory_gb / 2)))
+                        print(f"Using batch size: {batch_size}")
+                        
+                        # Prepare model loading parameters with memory optimizations
+                        model_kwargs = {
+                            "torch_dtype": self.torch.float16 if use_half_precision else self.torch.float32,
+                            "low_cpu_mem_usage": low_cpu_mem_usage,
+                            "trust_remote_code": True,
+                            "device_map": cuda_label if hasattr(self.transformers, "AutoModelForImageTextToText") else "auto"
+                        }
+                        
+                        # Add 8-bit quantization if needed
+                        if use_8bit_quantization and hasattr(self.transformers, 'BitsAndBytesConfig'):
+                            print("Using 8-bit quantization for memory efficiency")
+                            model_kwargs["quantization_config"] = self.transformers.BitsAndBytesConfig(
+                                load_in_8bit=True,
+                                llm_int8_threshold=6.0
+                            )
+                        
+                        # Load the model with the optimized settings
+                        print(f"Loading model {model_name} with optimized memory settings:")
+                        print(f"- Half precision: {use_half_precision}")
+                        print(f"- 8-bit quantization: {use_8bit_quantization if 'quantization_config' in model_kwargs else False}")
+                        print(f"- Low CPU memory usage: {low_cpu_mem_usage}")
+                        
+                        # Try loading with optimal model class first
+                        try:
+                            if hasattr(self.transformers, "AutoModelForImageTextToText"):
+                                endpoint = self.transformers.AutoModelForImageTextToText.from_pretrained(
+                                    model_name, 
+                                    **model_kwargs
+                                )
+                            else:
+                                # Fall back to other model classes
+                                print("AutoModelForImageTextToText not available, trying AutoModelForVision2Seq")
+                                if hasattr(self.transformers, "AutoModelForVision2Seq"):
+                                    endpoint = self.transformers.AutoModelForVision2Seq.from_pretrained(
+                                        model_name, 
+                                        **model_kwargs
+                                    )
+                                else:
+                                    # Generic fallback
+                                    print("Falling back to generic model loading")
+                                    endpoint = self.transformers.AutoModel.from_pretrained(
+                                        model_name, 
+                                        **model_kwargs
+                                    )
+                        except Exception as model_error:
+                            print(f"Error loading model with transformers: {model_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            print("Falling back to mock implementation")
+                            endpoint = MagicMock()
+                            endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                            is_real_impl = False
+                        
+                        # Move model to device if not already done by device_map
+                        if is_real_impl:
+                            if not hasattr(endpoint, 'device') or endpoint.device != cuda_device:
+                                print(f"Moving model to {cuda_label}")
+                                endpoint = endpoint.to(cuda_device)
+                            
+                            # Set model to evaluation mode
+                            endpoint.eval()
+                            
+                            # Log memory usage after model loading
+                            if hasattr(self.torch.cuda, 'mem_get_info'):
+                                try:
+                                    free_after_load, _ = self.torch.cuda.mem_get_info(device_index)
+                                    free_after_load_gb = free_after_load / (1024**3)
+                                    memory_used_gb = free_memory_gb - free_after_load_gb
+                                    print(f"Model loaded. CUDA memory used: {memory_used_gb:.2f}GB, Available: {free_after_load_gb:.2f}GB")
+                                except Exception as mem_error:
+                                    print(f"Error getting CUDA memory usage after model loading: {mem_error}")
+                    
+                    except Exception as e:
+                        print(f"Error loading CUDA model: {e}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        print("Falling back to mock implementation")
+                        endpoint = MagicMock()
+                        endpoint.generate = MagicMock(return_value=self.torch.tensor([[101, 102, 103]]))
+                        is_real_impl = False
+            
+            # Create handler with implementation status
             endpoint_handler = self.create_cuda_vlm_endpoint_handler(
-                endpoint=endpoint,
+                endpoint=endpoint, 
                 processor=processor,
-                model_name=model_name,
-                cuda_label=cuda_label
+                model_name=model_name, 
+                cuda_label=cuda_label,
+                is_real_impl=is_real_impl
             )
             
-            # Clean up CUDA memory
-            self.torch.cuda.empty_cache()
-            
-            print(f"Successfully initialized LLaVA model '{model_name}' on CUDA device {cuda_label}")
-            return endpoint, processor, endpoint_handler, asyncio.Queue(64), 0
+            # Final cache cleanup
+            if hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
+                
+            return endpoint, processor, endpoint_handler, asyncio.Queue(16), batch_size if is_real_impl else 1
             
         except Exception as e:
-            print(f"Error initializing LLaVA model on CUDA: {e}")
-            # Return mock objects in case of failure for graceful degradation
+            print(f"Error in CUDA initialization: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            # Ensure we clean up CUDA memory on error
+            if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
             return self._create_mock_endpoint(model_name, cuda_label)
 
     def init_openvino(self, model_name, model_type, device, openvino_label, get_openvino_genai_pipeline, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
@@ -1027,105 +1188,396 @@ class hf_llava:
         return handler
     
     
-    def create_cuda_vlm_endpoint_handler(self, endpoint, processor, model_name, cuda_label):
-        """Create endpoint handler for CUDA/GPU backend.
+    def create_cuda_vlm_endpoint_handler(self, endpoint, processor, model_name, cuda_label, is_real_impl=True):
+        """Create enhanced endpoint handler for CUDA/GPU backend with memory optimization and performance tracking.
         
         Args:
             endpoint: The model endpoint/object
             processor: The tokenizer/processor for the model
             model_name: Name of the model
-            cuda_label: Label identifying this endpoint
-        
+            cuda_label: Label identifying this endpoint (e.g., "cuda:0")
+            is_real_impl: Flag indicating if we're using real implementation or mock
+            
         Returns:
-            Handler function for processing requests
+            Handler function for processing requests with performance metrics
         """
-        def handler(text=None, image=None, endpoint=endpoint, processor=processor, model_name=model_name, cuda_label=cuda_label):
-            """Process text and image inputs using LLaVA on CUDA/GPU.
+        # Import needed modules
+        import time
+        import traceback
+        
+        # Create device object
+        cuda_device = None
+        if ":" in cuda_label:
+            device_index = int(cuda_label.split(":")[1])
+            if self.torch.cuda.is_available() and device_index < self.torch.cuda.device_count():
+                cuda_device = self.torch.device(cuda_label)
+        
+        def handler(text=None, image=None, endpoint=endpoint, processor=processor, model_name=model_name, 
+                   cuda_label=cuda_label, max_new_tokens=None, temperature=0.7, top_p=0.9, top_k=50, 
+                   do_sample=True, batch_mode=False):
+            """Process text and image inputs using LLaVA on CUDA/GPU with full performance metrics.
             
             Args:
-                text: Text prompt to process with the image
-                image: Image to analyze (can be path, URL, or PIL Image)
+                text: Text prompt to process with the image (str, list, or dict)
+                image: Image to analyze (file path, URL, PIL Image, or list of images)
+                max_new_tokens: Maximum number of tokens to generate (default: auto-determined)
+                temperature: Temperature for sampling (default: 0.7)
+                top_p: Top-p sampling parameter (default: 0.9)
+                top_k: Top-k sampling parameter (default: 50)
+                do_sample: Whether to use sampling (default: True)
+                batch_mode: Whether to process inputs as batch (default: False)
                 
             Returns:
-                Generated text response from the model
+                Dictionary with generated text and detailed performance metrics
             """
+            # Start time tracking
+            start_time = time.time()
+            
+            # If we know we're using mocks, return a clear mock response
+            if not is_real_impl or isinstance(endpoint, type(MagicMock())) or isinstance(processor, type(MagicMock())):
+                # Create mock response that's clearly marked as such
+                time.sleep(0.1)  # Small sleep to simulate processing time
+                if isinstance(text, str):
+                    mock_text = f"(MOCK) CUDA LLaVA analyzed the provided image and found: This appears to be an image {text}"
+                else:
+                    mock_text = "(MOCK) CUDA LLaVA: This appears to be an image with various objects and elements"
+                
+                return {
+                    "text": mock_text,
+                    "implementation_type": "MOCK",
+                    "device": cuda_label,
+                    "total_time": time.time() - start_time
+                }
+            
+            # Initialize performance trackers
+            preprocessing_start = time.time()
+            preprocessing_time = None
+            generation_time = None
+            postprocessing_time = None
+            gpu_memory_before = None
+            gpu_memory_after = None
+            gpu_memory_used = None
+            
             try:
-                # Load and process image if provided
-                if image is not None:
-                    if isinstance(image, str):
-                        if image.startswith("http") or image.startswith("https"):
-                            response = requests.get(image)
-                            image_obj = Image.open(BytesIO(response.content)).convert("RGB")
-                        else:
-                            image_obj = Image.open(image).convert("RGB")
-                    elif isinstance(image, Image.Image):
-                        image_obj = image
-                    else:
-                        raise ValueError(f"Unsupported image type: {type(image)}")
-                else:
-                    # Text-only input
-                    image_obj = None
-                    
-                # Process the text input
-                if text is not None and isinstance(text, str):
-                    # Standard format for multimodal conversation
-                    conversation = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": text},
-                                {"type": "image"}
-                            ]
+                # Clean CUDA cache before processing
+                if hasattr(self.torch.cuda, 'empty_cache'):
+                    self.torch.cuda.empty_cache()
+                
+                # Get initial GPU memory usage if available
+                if cuda_device is not None and hasattr(self.torch.cuda, 'mem_get_info'):
+                    try:
+                        free_memory_before, total_memory = self.torch.cuda.mem_get_info(cuda_device.index)
+                        gpu_memory_before = {
+                            "free_gb": free_memory_before / (1024**3),
+                            "total_gb": total_memory / (1024**3),
+                            "used_gb": (total_memory - free_memory_before) / (1024**3)
                         }
-                    ]
-                elif isinstance(text, (tuple, list)):
-                    # Allow for pre-formatted conversation
-                    conversation = text
-                elif isinstance(text, dict):
-                    # Single message as dict
-                    conversation = [text]
-                else:
-                    raise ValueError(f"Unsupported text input type: {type(text)}")
+                    except Exception as mem_error:
+                        print(f"Error getting initial GPU memory info: {mem_error}")
                 
-                # Create streamer for real-time text output
-                streamer = self.transformers.TextStreamer(
-                    processor, 
-                    skip_prompt=True, 
-                    skip_special_tokens=True
-                )
+                # Process the input image(s)
+                try:
+                    # Handle batch mode with multiple images
+                    if batch_mode and isinstance(image, list):
+                        # Process multiple images
+                        image_objs = []
+                        for img in image:
+                            if isinstance(img, str):
+                                if img.startswith("http") or img.startswith("https"):
+                                    response = requests.get(img, timeout=10)
+                                    image_objs.append(Image.open(BytesIO(response.content)).convert("RGB"))
+                                else:
+                                    image_objs.append(Image.open(img).convert("RGB"))
+                            elif isinstance(img, Image.Image):
+                                image_objs.append(img)
+                            else:
+                                raise ValueError(f"Unsupported image type in batch: {type(img)}")
+                    else:
+                        # Single image processing
+                        if image is not None:
+                            if isinstance(image, str):
+                                if image.startswith("http") or image.startswith("https"):
+                                    response = requests.get(image, timeout=10)
+                                    image_obj = Image.open(BytesIO(response.content)).convert("RGB")
+                                else:
+                                    image_obj = Image.open(image).convert("RGB")
+                            elif isinstance(image, Image.Image):
+                                image_obj = image
+                            else:
+                                raise ValueError(f"Unsupported image type: {type(image)}")
+                        else:
+                            # Text-only input
+                            image_obj = None
+                except Exception as img_error:
+                    print(f"Error processing image: {img_error}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    return {
+                        "text": f"Error processing image: {str(img_error)}",
+                        "implementation_type": "REAL (error)",
+                        "device": cuda_label,
+                        "error": str(img_error),
+                        "total_time": time.time() - start_time
+                    }
+                    
+                # Process the text input(s)
+                try:
+                    if batch_mode and isinstance(text, list):
+                        # Process batch of text inputs
+                        conversations = []
+                        for txt in text:
+                            if isinstance(txt, str):
+                                conversations.append([
+                                    {
+                                        "role": "user",
+                                        "content": [
+                                            {"type": "text", "text": txt},
+                                            {"type": "image"}
+                                        ]
+                                    }
+                                ])
+                            elif isinstance(txt, (tuple, list)):
+                                conversations.append(txt)
+                            elif isinstance(txt, dict):
+                                conversations.append([txt])
+                            else:
+                                raise ValueError(f"Unsupported text input type in batch: {type(txt)}")
+                    else:
+                        # Single text processing
+                        if text is not None and isinstance(text, str):
+                            # Standard format for multimodal conversation
+                            conversation = [
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": text},
+                                        {"type": "image"}
+                                    ]
+                                }
+                            ]
+                        elif isinstance(text, (tuple, list)):
+                            # Allow for pre-formatted conversation
+                            conversation = text
+                        elif isinstance(text, dict):
+                            # Single message as dict
+                            conversation = [text]
+                        else:
+                            raise ValueError(f"Unsupported text input type: {type(text)}")
+                except Exception as txt_error:
+                    print(f"Error processing text input: {txt_error}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    return {
+                        "text": f"Error processing text input: {str(txt_error)}",
+                        "implementation_type": "REAL (error)",
+                        "device": cuda_label,
+                        "error": str(txt_error),
+                        "total_time": time.time() - start_time
+                    }
                 
-                # Process inputs
-                prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+                # Process inputs with the processor
+                try:
+                    if batch_mode and isinstance(text, list):
+                        # Batch processing
+                        inputs_list = []
+                        for i, conv in enumerate(conversations):
+                            prompt = processor.apply_chat_template(conv, add_generation_prompt=True)
+                            img = image_objs[i] if i < len(image_objs) else None
+                            inputs = processor(img, prompt, return_tensors="pt")
+                            # Move to CUDA
+                            for key in inputs:
+                                if hasattr(inputs[key], 'to') and callable(inputs[key].to):
+                                    inputs[key] = inputs[key].to(cuda_device)
+                            inputs_list.append(inputs)
+                    else:
+                        # Single input processing
+                        prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+                        inputs = processor(image_obj, prompt, return_tensors="pt")
+                        # Move to CUDA
+                        for key in inputs:
+                            if hasattr(inputs[key], 'to') and callable(inputs[key].to):
+                                inputs[key] = inputs[key].to(cuda_device)
+                except Exception as proc_error:
+                    print(f"Error processing inputs with processor: {proc_error}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    return {
+                        "text": f"Error processing inputs: {str(proc_error)}",
+                        "implementation_type": "REAL (error)",
+                        "device": cuda_label,
+                        "error": str(proc_error),
+                        "total_time": time.time() - start_time
+                    }
                 
-                # Create inputs and move to GPU
-                inputs = processor(image_obj, prompt, return_tensors="pt")
-                for key in inputs:
-                    if hasattr(inputs[key], 'to') and callable(inputs[key].to):
-                        inputs[key] = inputs[key].to(cuda_label)
+                # Calculate preprocessing time
+                preprocessing_time = time.time() - preprocessing_start
                 
                 # Generate response with GPU acceleration
-                output_ids = endpoint.generate(
-                    **inputs,
-                    do_sample=False,
-                    max_new_tokens=50,
-                    streamer=streamer,
-                )
+                generation_start = time.time()
+                try:
+                    # Set up generation parameters
+                    if max_new_tokens is None:
+                        # Auto-determine based on input length
+                        if batch_mode:
+                            # For batch, use a moderate default
+                            max_new_tokens = 100
+                        else:
+                            # For single, get input length if possible
+                            if "input_ids" in inputs and hasattr(inputs["input_ids"], "shape"):
+                                input_length = inputs["input_ids"].shape[1]
+                                max_new_tokens = max(50, min(512, 1024 - input_length))
+                            else:
+                                max_new_tokens = 100
+                    
+                    generation_params = {
+                        "do_sample": do_sample,
+                        "max_new_tokens": max_new_tokens,
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "top_k": top_k
+                    }
+                    
+                    # Try to create streamer if we're not in batch mode
+                    if not batch_mode:
+                        try:
+                            generation_params["streamer"] = self.transformers.TextStreamer(
+                                processor, 
+                                skip_prompt=True, 
+                                skip_special_tokens=True
+                            )
+                        except Exception as streamer_error:
+                            print(f"Streamer creation failed: {streamer_error}, continuing without streamer")
+                    
+                    # Run generation
+                    with self.torch.no_grad():
+                        if batch_mode and isinstance(text, list):
+                            # Batch generation
+                            outputs = []
+                            for batch_inputs in inputs_list:
+                                batch_output_ids = endpoint.generate(
+                                    **batch_inputs,
+                                    **generation_params
+                                )
+                                outputs.append(batch_output_ids)
+                        else:
+                            # Single generation
+                            output_ids = endpoint.generate(
+                                **inputs,
+                                **generation_params
+                            )
+                    
+                    # Get GPU memory usage after generation
+                    if cuda_device is not None and hasattr(self.torch.cuda, 'mem_get_info'):
+                        try:
+                            free_memory_after, total_memory = self.torch.cuda.mem_get_info(cuda_device.index)
+                            gpu_memory_after = {
+                                "free_gb": free_memory_after / (1024**3),
+                                "total_gb": total_memory / (1024**3),
+                                "used_gb": (total_memory - free_memory_after) / (1024**3)
+                            }
+                            
+                            # Calculate memory used for this operation
+                            gpu_memory_used = (free_memory_before - free_memory_after) / (1024**3)  # in GB
+                        except Exception as mem_error:
+                            print(f"Error getting final GPU memory info: {mem_error}")
+                    
+                except Exception as gen_error:
+                    print(f"Error during generation: {gen_error}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    return {
+                        "text": f"Error during generation: {str(gen_error)}",
+                        "implementation_type": "REAL (error)",
+                        "device": cuda_label,
+                        "error": str(gen_error),
+                        "preprocessing_time": preprocessing_time,
+                        "total_time": time.time() - start_time
+                    }
+                
+                # Calculate generation time
+                generation_time = time.time() - generation_start
                 
                 # Decode response
-                response = processor.decode(output_ids[0], skip_special_tokens=True)
+                postprocessing_start = time.time()
+                try:
+                    if batch_mode and isinstance(text, list):
+                        # Batch decoding
+                        responses = []
+                        for output in outputs:
+                            batch_response = processor.decode(output[0], skip_special_tokens=True)
+                            responses.append(batch_response)
+                        
+                        # Combine or return as list based on need
+                        response = responses
+                    else:
+                        # Single decoding
+                        response = processor.decode(output_ids[0], skip_special_tokens=True)
+                        
+                except Exception as decode_error:
+                    print(f"Error decoding response: {decode_error}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    return {
+                        "text": f"Error decoding response: {str(decode_error)}",
+                        "implementation_type": "REAL (error)",
+                        "device": cuda_label,
+                        "error": str(decode_error),
+                        "preprocessing_time": preprocessing_time,
+                        "generation_time": generation_time,
+                        "total_time": time.time() - start_time
+                    }
                 
-                # Add timestamp and metadata for testing/debugging
-                import time
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                image_info = f"of size {image_obj.size}" if image_obj and hasattr(image_obj, 'size') else "with the provided content"
+                # Calculate postprocessing time
+                postprocessing_time = time.time() - postprocessing_start
                 
-                return f"(REAL) CUDA LLaVA response [device: {cuda_label}, timestamp: {timestamp}]: {response}"
+                # Calculate total time
+                total_time = time.time() - start_time
+                
+                # Construct response with full metrics
+                result = {
+                    "text": response,
+                    "implementation_type": "REAL",
+                    "device": str(cuda_device) if cuda_device else cuda_label,
+                    "model_name": model_name,
+                    "preprocessing_time": preprocessing_time,
+                    "generation_time": generation_time,
+                    "postprocessing_time": postprocessing_time,
+                    "total_time": total_time,
+                    "is_batch": batch_mode
+                }
+                
+                # Add memory metrics if available
+                if gpu_memory_before:
+                    result["gpu_memory_before"] = gpu_memory_before
+                if gpu_memory_after:
+                    result["gpu_memory_after"] = gpu_memory_after
+                if gpu_memory_used is not None:
+                    result["gpu_memory_used_gb"] = gpu_memory_used
+                
+                # Add generation parameters for reference
+                result["generation_params"] = {
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "top_k": top_k,
+                    "do_sample": do_sample
+                }
+                
+                # Calculate tokens per second if we have actual text
+                if not batch_mode and isinstance(response, str):
+                    # Simple approximation: count spaces to estimate tokens
+                    generated_tokens = len(response.split())
+                    if generation_time > 0:
+                        result["tokens_per_second"] = generated_tokens / generation_time
+                    result["generated_tokens"] = generated_tokens
+                
+                return result
                 
             except Exception as e:
-                print(f"Error in CUDA LLaVA handler: {e}")
-                import time
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                return f"(ERROR) CUDA LLaVA response [timestamp: {timestamp}]: Error processing request - {str(e)}"
+                print(f"Unexpected error in CUDA LLaVA handler: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
+                return {
+                    "text": f"Unexpected error in CUDA handler: {str(e)}",
+                    "implementation_type": "REAL (error)",
+                    "device": cuda_label,
+                    "error": str(e),
+                    "total_time": time.time() - start_time
+                }
                 
             finally:
                 # Clean up CUDA memory after request

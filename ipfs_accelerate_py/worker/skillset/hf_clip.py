@@ -576,20 +576,140 @@ class hf_clip:
             return None, None, None, None, 0
 
     def init_cuda(self, model, device, cuda_label):
+        """
+        Initialize CLIP model for CUDA inference
+        
+        Args:
+            model: Model name or path (e.g., 'openai/clip-vit-base-patch32')
+            device: Device to run on ('cuda')
+            cuda_label: CUDA device label (e.g., 'cuda:0')
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
-        config = self.transformers.AutoConfig.from_pretrained(model, trust_remote_code=True)    
-        tokenizer = self.transformers.AutoTokenizer.from_pretrained(model)
-        processor = self.transformers.CLIPProcessor.from_pretrained(model, trust_remote_code=True)
-        endpoint = None
+        print(f"Initializing CLIP model {model} for CUDA inference...")
+        
+        # Create batch_size and implementation type flags for result tracking
+        batch_size = 0
+        implementation_type = "MOCK"
+        
+        # First validate CUDA is actually available
+        if not self.torch.cuda.is_available():
+            print("CUDA requested but not available, using mock implementation")
+            # Create empty endpoint and mock objects
+            endpoint = None
+            tokenizer = None
+            endpoint_handler = self.create_cuda_image_embedding_endpoint_handler(
+                tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint
+            )
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), batch_size
+            
+        # Get device from cuda_label
         try:
-            endpoint = self.transformers.CLIPModel.from_pretrained(model, torch_dtype=self.torch.float16, trust_remote_code=True).to(device)
+            # Parse device ID from label
+            device_parts = cuda_label.split(":")
+            device_id = int(device_parts[1]) if len(device_parts) > 1 else 0
+            
+            # Validate device ID
+            if device_id >= self.torch.cuda.device_count():
+                print(f"Warning: CUDA device index {device_id} exceeds available devices ({self.torch.cuda.device_count()})")
+                device_id = 0
+                
+            # Create device
+            cuda_device = f"cuda:{device_id}"
+            
+            # Print device information
+            print(f"Using CUDA device: {self.torch.cuda.get_device_name(device_id)} (index {device_id})")
         except Exception as e:
-            print(e)
-            pass
-        endpoint_handler = self.create_cuda_image_embedding_endpoint_handler(tokenizer, endpoint_model=model, cuda_label=cuda_label, endpoint=endpoint)
+            print(f"Error parsing CUDA device: {e}, using default cuda:0")
+            cuda_device = "cuda:0"
+        
+        try:
+            # First attempt to load the model configuration
+            try:
+                config = self.transformers.AutoConfig.from_pretrained(
+                    model, 
+                    trust_remote_code=True, 
+                    cache_dir=os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+                )
+            except Exception as e:
+                print(f"Error loading model configuration: {e}")
+                
+            # Then load tokenizer and processor
+            try:
+                tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                    model, 
+                    trust_remote_code=True
+                )
+                processor = self.transformers.CLIPProcessor.from_pretrained(
+                    model, 
+                    trust_remote_code=True
+                )
+            except Exception as e:
+                print(f"Error loading tokenizer/processor: {e}")
+                tokenizer = None
+                processor = None
+            
+            # Try to load the actual model with CUDA support
+            try:
+                # Empty cache before loading model
+                self.torch.cuda.empty_cache()
+                
+                # Create model with half precision for better CUDA performance
+                print(f"Loading CLIP model {model} to {cuda_device} with FP16 precision...")
+                endpoint = self.transformers.CLIPModel.from_pretrained(
+                    model, 
+                    torch_dtype=self.torch.float16,  # Use half precision for CUDA
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True
+                )
+                
+                # Move model to the specified CUDA device
+                endpoint = endpoint.to(cuda_device)
+                
+                # Set model to evaluation mode
+                endpoint.eval()
+                
+                # Print memory usage info
+                if hasattr(self.torch.cuda, "memory_allocated"):
+                    allocated_mem = self.torch.cuda.memory_allocated(device_id) / (1024**2)
+                    print(f"CUDA memory allocated: {allocated_mem:.2f} MB")
+                    
+                # Determine reasonable batch size based on available memory
+                total_mem = self.torch.cuda.get_device_properties(device_id).total_memory / (1024**3)
+                # Set batch size to roughly scale with available VRAM (conservative estimate)
+                batch_size = max(1, min(16, int(total_mem * 2)))
+                print(f"Using batch size: {batch_size}")
+                
+                # Set implementation type to REAL
+                implementation_type = "REAL"
+                
+            except Exception as e:
+                print(f"Error loading model to CUDA: {e}")
+                endpoint = None
+                
+        except Exception as e:
+            print(f"Error in CUDA initialization: {e}")
+            import traceback
+            traceback.print_exc()
+            endpoint = None
+            tokenizer = None
+            
+        # Create the handler function (will use mock if endpoint is None)
+        endpoint_handler = self.create_cuda_image_embedding_endpoint_handler(
+            tokenizer if tokenizer is not None else processor, 
+            endpoint_model=model, 
+            cuda_label=cuda_device,  # Use corrected/validated device
+            endpoint=endpoint,
+            implementation_type=implementation_type
+        )
+        
+        # Clean up memory
         self.torch.cuda.empty_cache()
-        # batch_size = await self.max_batch_size(endpoint_model, cuda_label)
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0    
+        
+        print(f"CLIP CUDA initialization complete: {implementation_type}")
+        return endpoint, tokenizer if tokenizer is not None else processor, endpoint_handler, asyncio.Queue(64), batch_size
 
     def init_openvino(self, model=None, model_type=None, device=None, openvino_label=None, get_optimum_openvino_model=None, get_openvino_model=None, get_openvino_pipeline_type=None, openvino_cli_convert=None):
         """Initialize CLIP model for OpenVINO.
@@ -1327,55 +1447,468 @@ class hf_clip:
                 
         return handler
     
-    def create_cuda_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None):
-        def handler(x, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, endpoint=endpoint):
-            if "eval" in dir(endpoint):
-                endpoint.eval()
+    def create_cuda_image_embedding_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint=None, implementation_type="MOCK"):
+        """
+        Create an enhanced handler for CLIP that processes text and/or images using CUDA acceleration
+        with optimized memory management and detailed performance metrics.
+        
+        Args:
+            tokenizer: The tokenizer or processor for the model
+            endpoint_model: The model name or path
+            cuda_label: The CUDA device label (e.g., 'cuda:0')
+            endpoint: The model endpoint (optional)
+            implementation_type: Flag indicating if this is a real or mock implementation
+            
+        Returns:
+            A handler function for CUDA-accelerated CLIP with comprehensive performance metrics
+        """
+        # Import necessary modules
+        import traceback
+        
+        # Validate and create device object
+        cuda_device = None
+        device_id = 0
+        try:
+            if ":" in cuda_label:
+                device_parts = cuda_label.split(":")
+                device_id = int(device_parts[1]) if len(device_parts) > 1 else 0
                 
+                # Validate device index against available devices
+                if self.torch.cuda.is_available() and device_id < self.torch.cuda.device_count():
+                    cuda_device = self.torch.device(cuda_label)
+                else:
+                    # Use default device if specified one is invalid
+                    print(f"Warning: CUDA device {device_id} not available, using device 0")
+                    device_id = 0
+                    cuda_device = self.torch.device("cuda:0")
+            else:
+                cuda_device = self.torch.device("cuda:0")
+                
+        except Exception as e:
+            print(f"Error creating CUDA device object: {e}")
+            cuda_device = None
+            
+        def handler(x=None, y=None, tokenizer=tokenizer, endpoint_model=endpoint_model, 
+                    cuda_label=cuda_label, endpoint=endpoint, batch_size=None):
+            """
+            Process text and/or image inputs with CLIP using CUDA with optimized memory management
+            and detailed performance metrics.
+            
+            Args:
+                x: Text input (str or list of str) or image if y is None
+                y: Image input (str path, PIL Image, or list of either)
+                batch_size: Optional custom batch size for processing (default: auto-determine)
+                
+            Returns:
+                Dict containing embeddings and/or similarity scores with comprehensive performance metrics
+            """
+            # Start performance tracking
+            start_time = time.time()
+            
+            # Track if we're using mocks
+            using_mock = (implementation_type != "REAL" or endpoint is None or 
+                         not self.torch.cuda.is_available() or cuda_device is None)
+
+            # Initialize performance trackers
+            preprocessing_time = None
+            embedding_time = None
+            similarity_time = None
+            gpu_memory_before = None
+            gpu_memory_after = None
+            gpu_memory_used = None
+            
+            # Initialize result dict
+            result = {
+                "implementation_type": "MOCK" if using_mock else "REAL",
+                "device": str(cuda_device) if cuda_device else cuda_label,
+                "model_name": endpoint_model
+            }
+            
+            # Return mock early if we know we're using mocks
+            if using_mock:
+                # Create a basic mock response
+                time.sleep(0.1)  # Small delay to simulate processing
+                if x is not None:
+                    batch_size_text = 1 if not isinstance(x, list) else len(x)
+                    result["text_embedding"] = self.torch.rand((batch_size_text, 512))
+                if y is not None:
+                    batch_size_img = 1 if not isinstance(y, list) else len(y)
+                    result["image_embedding"] = self.torch.rand((batch_size_img, 512))
+                if x is not None and y is not None:
+                    result["similarity"] = self.torch.tensor([[0.75]])
+                
+                # Add timing information
+                result["total_time"] = time.time() - start_time
+                return result
+            
+            # Set eval mode if available
+            if endpoint is not None and hasattr(endpoint, "eval"):
+                endpoint.eval()
+            
+            # Run inference within torch.no_grad() context for efficiency
             with self.torch.no_grad():
                 try:
-                    self.torch.cuda.empty_cache()
-                    
-                    if y is not None:
-                        if isinstance(y, str):
-                            image = load_image(y)
-                            inputs = tokenizer(images=[image], return_tensors='pt', padding=True).to(cuda_label)
-                        elif isinstance(y, list):
-                            inputs = tokenizer(images=[load_image(img) for img in y], return_tensors='pt').to(cuda_label)
-                            
-                        image_features = endpoint.get_image_features(**inputs)
-                        image_embeddings = image_features.detach().cpu()
-                        
-                        if x is None:
-                            self.torch.cuda.empty_cache()
-                            return {"image_embedding": image_embeddings}
-                    
-                    if x is not None:
-                        if isinstance(x, str):
-                            inputs = tokenizer(text=[x], return_tensors='pt').to(cuda_label)
-                        elif isinstance(x, list):
-                            inputs = tokenizer(text=x, return_tensors='pt').to(cuda_label)
-                            
-                        text_features = endpoint.get_text_features(**inputs)
-                        text_embeddings = text_features.detach().cpu()
-                        
-                        if y is None:
-                            self.torch.cuda.empty_cache()
-                            return {"text_embedding": text_embeddings}
-                    
-                    if x is not None and y is not None:
+                    # Clear GPU memory before starting
+                    if hasattr(self.torch.cuda, "empty_cache"):
                         self.torch.cuda.empty_cache()
-                        return {
-                            "text_embedding": text_embeddings,
-                            "image_embedding": image_embeddings
-                        }
                     
-                    self.torch.cuda.empty_cache()
-                    return {"message": "No valid input provided"}
+                    # Get initial memory usage for tracking
+                    if hasattr(self.torch.cuda, 'mem_get_info'):
+                        try:
+                            free_memory_start, total_memory = self.torch.cuda.mem_get_info(device_id)
+                            gpu_memory_before = {
+                                "free_gb": free_memory_start / (1024**3),
+                                "total_gb": total_memory / (1024**3),
+                                "used_gb": (total_memory - free_memory_start) / (1024**3)
+                            }
+                        except Exception as mem_error:
+                            print(f"Error getting initial GPU memory info: {mem_error}")
+                    
+                    # Start preprocessing timer
+                    preprocessing_start = time.time()
+                    
+                    # Check what kind of inputs we have
+                    text_input = None
+                    image_input = None
+                    
+                    # If only x is provided, determine if it's text or image
+                    if x is not None and y is None:
+                        if isinstance(x, str) and (x.startswith('http') or os.path.exists(x)):
+                            # x is an image path
+                            image_input = x
+                        elif isinstance(x, Image.Image):
+                            # x is a PIL image
+                            image_input = x
+                        else:
+                            # Assume x is text
+                            text_input = x
+                    else:
+                        # Both x and y are provided or both are None
+                        text_input = x
+                        image_input = y
+                    
+                    # Process image if provided
+                    image_embeddings = None
+                    if image_input is not None:
+                        try:
+                            # Load and process image(s)
+                            if isinstance(image_input, str):
+                                # Single image path
+                                image = load_image(image_input)
+                                image_inputs = tokenizer(images=[image], return_tensors='pt', padding=True)
+                            elif isinstance(image_input, Image.Image):
+                                # Single PIL image
+                                image_inputs = tokenizer(images=[image_input], return_tensors='pt', padding=True)
+                            elif isinstance(image_input, list):
+                                # List of images
+                                images = [
+                                    img if isinstance(img, Image.Image) else load_image(img)
+                                    for img in image_input
+                                ]
+                                image_inputs = tokenizer(images=images, return_tensors='pt', padding=True)
+                            else:
+                                raise ValueError(f"Unsupported image input type: {type(image_input)}")
+                            
+                            # Move inputs to CUDA
+                            cuda_inputs = {}
+                            for k, v in image_inputs.items():
+                                if hasattr(v, 'to') and callable(v.to):
+                                    cuda_inputs[k] = v.to(cuda_device)
+                                else:
+                                    cuda_inputs[k] = v
+                            
+                            # Record preprocessing time
+                            preprocessing_time = time.time() - preprocessing_start
+                            
+                            # Start embedding timer
+                            embedding_start = time.time()
+                            
+                            # Handle batch processing for multiple images
+                            is_batch = isinstance(image_input, list) and len(image_input) > 1
+                            
+                            # Determine optimal batch size if needed
+                            if is_batch and batch_size is None:
+                                # Calculate based on available memory if possible
+                                if gpu_memory_before is not None:
+                                    # Rough heuristic: 1 GB can handle ~16 images at 224x224
+                                    available_gb = gpu_memory_before["free_gb"]
+                                    batch_size = max(1, min(32, int(available_gb * 16)))
+                                else:
+                                    # Default batch size if memory info not available
+                                    batch_size = 8
+                                print(f"Using auto-determined batch size for images: {batch_size}")
+                            
+                            # Get image features
+                            if endpoint is not None and hasattr(endpoint, 'get_image_features'):
+                                if is_batch and batch_size is not None:
+                                    # Process in batches to avoid OOM errors
+                                    all_embeddings = []
+                                    batch_count = 0
+                                    for i in range(0, len(image_input), batch_size):
+                                        batch_count += 1
+                                        batch_end = min(i + batch_size, len(image_input))
+                                        # Extract batch inputs
+                                        batch_inputs = {
+                                            k: v[i:batch_end] if hasattr(v, '__getitem__') else v
+                                            for k, v in cuda_inputs.items()
+                                        }
+                                        
+                                        # Process batch
+                                        batch_features = endpoint.get_image_features(**batch_inputs)
+                                        # Move to CPU and detach immediately to save CUDA memory
+                                        all_embeddings.append(batch_features.detach().cpu())
+                                        
+                                        # Clean cache between batches
+                                        if hasattr(self.torch.cuda, "empty_cache"):
+                                            self.torch.cuda.empty_cache()
+                                    
+                                    # Combine all batches
+                                    image_embeddings = self.torch.cat(all_embeddings, dim=0)
+                                    result["image_embedding"] = image_embeddings
+                                    result["image_batch_count"] = batch_count
+                                else:
+                                    # Single image or small batch processing
+                                    image_features = endpoint.get_image_features(**cuda_inputs)
+                                    # Move back to CPU and detach from graph
+                                    image_embeddings = image_features.detach().cpu()
+                                    result["image_embedding"] = image_embeddings
+                            else:
+                                # Fall back to mock
+                                using_mock = True
+                                batch_size_img = 1 if not isinstance(image_input, list) else len(image_input)
+                                result["image_embedding"] = self.torch.rand((batch_size_img, 512))
+                            
+                            # Record embedding time
+                            embedding_image_time = time.time() - embedding_start
+                            result["image_embedding_time"] = embedding_image_time
+                            
+                        except Exception as e:
+                            print(f"Error processing image input on CUDA: {e}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            
+                            # Create fallback image embedding
+                            using_mock = True
+                            batch_size_img = 1 if not isinstance(image_input, list) else len(image_input)
+                            result["image_embedding"] = self.torch.rand((batch_size_img, 512))
+                    
+                    # Process text if provided
+                    text_embeddings = None
+                    if text_input is not None:
+                        try:
+                            # Process text input(s)
+                            if isinstance(text_input, str):
+                                # Single text
+                                text_inputs = tokenizer(text=[text_input], return_tensors='pt', padding=True)
+                            elif isinstance(text_input, list):
+                                # List of texts
+                                text_inputs = tokenizer(text=text_input, return_tensors='pt', padding=True)
+                            else:
+                                raise ValueError(f"Unsupported text input type: {type(text_input)}")
+                            
+                            # Move to CUDA
+                            cuda_inputs = {}
+                            for k, v in text_inputs.items():
+                                if hasattr(v, 'to') and callable(v.to):
+                                    cuda_inputs[k] = v.to(cuda_device)
+                                else:
+                                    cuda_inputs[k] = v
+                            
+                            # Record preprocessing time if not already set
+                            if preprocessing_time is None:
+                                preprocessing_time = time.time() - preprocessing_start
+                            
+                            # Start embedding timer
+                            embedding_start = time.time()
+                            
+                            # Handle batch processing for multiple texts
+                            is_batch = isinstance(text_input, list) and len(text_input) > 1
+                            
+                            # Determine optimal batch size if needed
+                            if is_batch and batch_size is None:
+                                # Calculate based on available memory if possible
+                                if gpu_memory_before is not None:
+                                    # Text uses less memory than images
+                                    available_gb = gpu_memory_before["free_gb"]
+                                    batch_size = max(1, min(64, int(available_gb * 32)))
+                                else:
+                                    # Default batch size if memory info not available
+                                    batch_size = 16
+                                print(f"Using auto-determined batch size for texts: {batch_size}")
+                            
+                            # Get text features
+                            if endpoint is not None and hasattr(endpoint, 'get_text_features'):
+                                if is_batch and batch_size is not None:
+                                    # Process in batches to avoid OOM errors
+                                    all_embeddings = []
+                                    batch_count = 0
+                                    for i in range(0, len(text_input), batch_size):
+                                        batch_count += 1
+                                        batch_end = min(i + batch_size, len(text_input))
+                                        # Extract batch inputs
+                                        batch_inputs = {
+                                            k: v[i:batch_end] if hasattr(v, '__getitem__') else v
+                                            for k, v in cuda_inputs.items()
+                                        }
+                                        
+                                        # Process batch
+                                        batch_features = endpoint.get_text_features(**batch_inputs)
+                                        # Move to CPU and detach immediately to save CUDA memory
+                                        all_embeddings.append(batch_features.detach().cpu())
+                                        
+                                        # Clean cache between batches
+                                        if hasattr(self.torch.cuda, "empty_cache"):
+                                            self.torch.cuda.empty_cache()
+                                    
+                                    # Combine all batches
+                                    text_embeddings = self.torch.cat(all_embeddings, dim=0)
+                                    result["text_embedding"] = text_embeddings
+                                    result["text_batch_count"] = batch_count
+                                else:
+                                    # Single text or small batch processing
+                                    text_features = endpoint.get_text_features(**cuda_inputs)
+                                    # Move back to CPU and detach from graph
+                                    text_embeddings = text_features.detach().cpu()
+                                    result["text_embedding"] = text_embeddings
+                            else:
+                                # Fall back to mock
+                                using_mock = True
+                                batch_size_text = 1 if not isinstance(text_input, list) else len(text_input)
+                                result["text_embedding"] = self.torch.rand((batch_size_text, 512))
+                            
+                            # Record embedding time
+                            embedding_text_time = time.time() - embedding_start
+                            result["text_embedding_time"] = embedding_text_time
+                            
+                        except Exception as e:
+                            print(f"Error processing text input on CUDA: {e}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            
+                            # Create fallback text embedding
+                            using_mock = True
+                            batch_size_text = 1 if not isinstance(text_input, list) else len(text_input)
+                            result["text_embedding"] = self.torch.rand((batch_size_text, 512))
+                    
+                    # Calculate similarity if we have both embeddings 
+                    if "image_embedding" in result and "text_embedding" in result:
+                        try:
+                            # Start similarity timer
+                            similarity_start = time.time()
+                            
+                            # Get embeddings from result
+                            image_emb = result["image_embedding"]
+                            text_emb = result["text_embedding"]
+                            
+                            # Calculate on CPU to avoid transferring back to CUDA
+                            image_norm = image_emb / image_emb.norm(dim=-1, keepdim=True)
+                            text_norm = text_emb / text_emb.norm(dim=-1, keepdim=True)
+                            
+                            # Calculate cosine similarity with better batch handling
+                            if image_norm.dim() == 2 and text_norm.dim() == 2:
+                                # Standard similarity calculation
+                                similarity = (text_norm @ image_norm.T)
+                            elif image_norm.dim() == 1 and text_norm.dim() == 1:
+                                # Single examples
+                                similarity = (text_norm @ image_norm).unsqueeze(0).unsqueeze(0)
+                            elif image_norm.dim() == 1 and text_norm.dim() == 2:
+                                # Multiple texts, single image
+                                image_norm = image_norm.unsqueeze(0)
+                                similarity = (text_norm @ image_norm.T)
+                            elif image_norm.dim() == 2 and text_norm.dim() == 1:
+                                # Single text, multiple images
+                                text_norm = text_norm.unsqueeze(0)
+                                similarity = (text_norm @ image_norm.T)
+                            else:
+                                # Unexpected case, fallback
+                                similarity = self.torch.tensor([[0.75]])
+                                using_mock = True
+                            
+                            result["similarity"] = similarity
+                            
+                            # Record similarity time
+                            similarity_time = time.time() - similarity_start
+                            result["similarity_time"] = similarity_time
+                            
+                        except Exception as e:
+                            print(f"Error calculating similarity: {e}")
+                            print(f"Traceback: {traceback.format_exc()}")
+                            
+                            # Create a mock similarity
+                            using_mock = True
+                            result["similarity"] = self.torch.tensor([[0.75]])
+                    
+                    # Get GPU memory usage after processing
+                    if hasattr(self.torch.cuda, 'mem_get_info'):
+                        try:
+                            free_memory_after, total_memory = self.torch.cuda.mem_get_info(device_id)
+                            gpu_memory_after = {
+                                "free_gb": free_memory_after / (1024**3),
+                                "total_gb": total_memory / (1024**3),
+                                "used_gb": (total_memory - free_memory_after) / (1024**3)
+                            }
+                            
+                            # Calculate memory used for this operation
+                            if gpu_memory_before is not None:
+                                gpu_memory_used = (free_memory_start - free_memory_after) / (1024**3)  # in GB
+                        except Exception as mem_error:
+                            print(f"Error getting final GPU memory info: {mem_error}")
+                    
+                    # No valid inputs
+                    if not any(k in result for k in ["image_embedding", "text_embedding", "similarity"]):
+                        result["message"] = "No valid input provided"
+                    
+                    # Update implementation type in result
+                    result["implementation_type"] = "MOCK" if using_mock else "REAL"
+                    
+                    # Add all performance information
+                    total_time = time.time() - start_time
+                    result["total_time"] = total_time
+                    if preprocessing_time is not None:
+                        result["preprocessing_time"] = preprocessing_time
+                    if embedding_time is not None:
+                        result["embedding_time"] = embedding_time
+                    
+                    # Add detailed memory information
+                    if gpu_memory_before is not None:
+                        result["gpu_memory_before"] = gpu_memory_before
+                    if gpu_memory_after is not None:
+                        result["gpu_memory_after"] = gpu_memory_after
+                    if gpu_memory_used is not None:
+                        result["gpu_memory_used_gb"] = gpu_memory_used
+                    
+                    # Add embedding dimensions for reference
+                    if "image_embedding" in result and isinstance(result["image_embedding"], self.torch.Tensor):
+                        result["image_embedding_shape"] = list(result["image_embedding"].shape)
+                    if "text_embedding" in result and isinstance(result["text_embedding"], self.torch.Tensor):
+                        result["text_embedding_shape"] = list(result["text_embedding"].shape)
+                    
+                    # Clean up CUDA memory before returning
+                    if hasattr(self.torch.cuda, "empty_cache"):
+                        self.torch.cuda.empty_cache()
+                    
+                    return result
+                
                 except Exception as e:
-                    self.torch.cuda.empty_cache()
-                    print(f"Error in CUDA endpoint handler: {e}")
-                    return {"error": str(e)}
+                    # Clean up memory on error
+                    if hasattr(self.torch.cuda, "empty_cache"):
+                        self.torch.cuda.empty_cache()
+                        
+                    print(f"Error in CUDA CLIP handler: {e}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    
+                    # Return error result with full details
+                    error_result = {
+                        "error": str(e),
+                        "implementation_type": "MOCK",
+                        "device": str(cuda_device) if cuda_device else cuda_label,
+                        "total_time": time.time() - start_time
+                    }
+                    
+                    # Add preprocessing time if available
+                    if preprocessing_time is not None:
+                        error_result["preprocessing_time"] = preprocessing_time
+                    
+                    return error_result
+        
         return handler
 
     def create_openvino_image_embedding_endpoint_handler(self, endpoint=None, tokenizer=None, endpoint_model=None, openvino_label=None, implementation_real=False):

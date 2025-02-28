@@ -8,13 +8,23 @@
   "cpu_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "REAL TRANSCRIPTION: This audio contains speech in English",
-    "timestamp": 1740705907.381693,
-    "elapsed_time": 0.005986928939819336,
+    "timestamp": 1740715618.610346,
+    "elapsed_time": 0.003233194351196289,
     "implementation_type": "(REAL)",
     "platform": "CPU"
   },
-  "cuda_tests": "CUDA not available",
-  "openvino_tests": "OpenVINO not installed",
+  "cuda_init": "Failed CUDA initialization",
+  "cuda_handler": "Success (MOCK)",
+  "cuda_transcription": "Error: Missing CUDA endpoint or processor",
+  "cuda_transcription_example": {
+    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
+    "output": "Error: Missing CUDA endpoint or processor",
+    "timestamp": 1740715618.8128371,
+    "elapsed_time": 0.07,
+    "implementation_type": "(MOCK)",
+    "platform": "CUDA"
+  },
+  "openvino_tests": "Error: No module named 'ipfs_accelerate_py.ipfs_accelerate_py'",
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (MOCK)",
@@ -22,22 +32,22 @@
   "qualcomm_transcription_example": {
     "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "output": "Error in Qualcomm Whisper handler: 'str' object is not callable",
-    "timestamp": 1740705917.8003998,
+    "timestamp": 1740715621.0655363,
     "elapsed_time": 0.09,
     "implementation_type": "(MOCK)",
     "platform": "Qualcomm"
   },
   "metadata": {
-    "timestamp": 1740705917.8009887,
+    "timestamp": 1740715621.0656278,
     "torch_version": "2.4.0+cu121",
     "numpy_version": "1.26.4",
     "transformers_version": "4.49.0",
-    "cuda_available": false,
-    "cuda_device_count": 0,
+    "cuda_available": true,
+    "cuda_device_count": 1,
     "mps_available": false,
     "transformers_mocked": false,
     "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
     "test_model": "openai/whisper-tiny",
-    "test_run_id": "whisper-test-1740705917"
+    "test_run_id": "whisper-test-1740715621"
   }
 }

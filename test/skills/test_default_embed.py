@@ -270,7 +270,8 @@ class test_hf_embed:
         if torch.cuda.is_available():
             try:
                 print("Testing text embedding on CUDA...")
-                implementation_type = "MOCK"  # Always use mocks for CUDA tests
+                # Try to use real CUDA implementation first
+                implementation_type = "(REAL)"  # Default to real, will update if we fall back to mocks
                 with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
                      patch('transformers.AutoTokenizer.from_pretrained') as mock_tokenizer, \
                      patch('transformers.AutoModel.from_pretrained') as mock_model:

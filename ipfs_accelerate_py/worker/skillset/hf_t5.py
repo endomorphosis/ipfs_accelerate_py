@@ -308,17 +308,199 @@ class hf_t5:
         return None
     
     def init_cuda(self, model, device, cuda_label):
+        """Initialize T5 model for CUDA (GPU) inference.
+        
+        Args:
+            model: Model name or path (e.g., 't5-small')
+            device: Device to run on ('cuda' or 'cuda:0', etc.)
+            cuda_label: Label to identify this endpoint
+            
+        Returns:
+            Tuple of (endpoint, tokenizer, endpoint_handler, asyncio.Queue, batch_size)
+        """
         self.init()
-        tokenizer = self.transformers.T5Tokenizer.from_pretrained(model)
-        endpoint = None
+        
+        # Check if CUDA is available
+        if not hasattr(self.torch, 'cuda') or not self.torch.cuda.is_available():
+            print(f"CUDA is not available, falling back to CPU for model '{model}'")
+            return self.init_cpu(model, "cpu", "cpu")
+        
+        print(f"Loading {model} for CUDA inference on {device}...")
+        
         try:
-            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(model, torch_dtype=self.torch.float16).to(device)
+            # Clean GPU cache before loading
+            self.torch.cuda.empty_cache()
+            
+            # Add local cache directory for testing environments without internet
+            cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            # Parse CUDA device information
+            try:
+                if ":" in cuda_label:
+                    device_index = int(cuda_label.split(":")[1])
+                    if device_index >= self.torch.cuda.device_count():
+                        print(f"Warning: CUDA device index {device_index} out of range (0-{self.torch.cuda.device_count()-1}), using device 0")
+                        device_index = 0
+                        cuda_label = "cuda:0"
+                else:
+                    device_index = 0
+                    cuda_label = "cuda:0"
+                    
+                device_name = self.torch.cuda.get_device_name(device_index)
+                print(f"Using CUDA device: {device_name} (index {device_index})")
+                
+                # Get free CUDA memory and calculate appropriate settings
+                free_memory, total_memory = self.torch.cuda.mem_get_info(device_index)
+                free_memory_gb = free_memory / (1024**3)
+                print(f"Available CUDA memory: {free_memory_gb:.2f}GB")
+                
+                # Determine batch size based on available memory and model size
+                batch_size = max(1, min(8, int(free_memory_gb / 2)))
+                print(f"Using batch size: {batch_size}")
+                
+            except Exception as e:
+                print(f"Error getting CUDA device info: {e}")
+                device_index = 0
+                cuda_label = "cuda:0"
+                batch_size = 1
+            
+            # Function to create a simple mock model when we can't load from HF
+            def create_mock_model():
+                print("Creating mock T5 model for testing")
+                from unittest.mock import MagicMock
+                
+                # Create mock tokenizer
+                tokenizer = MagicMock()
+                tokenizer.__call__ = lambda text, return_tensors=None, **kwargs: {
+                    "input_ids": self.torch.ones((1, 10), dtype=self.torch.long),
+                    "attention_mask": self.torch.ones((1, 10), dtype=self.torch.long)
+                }
+                tokenizer.decode = lambda *args, **kwargs: "Mock T5 generated text"
+                tokenizer.batch_decode = lambda *args, **kwargs: ["Mock T5 generated text"]
+                
+                # Create mock model
+                endpoint = MagicMock()
+                endpoint.to = lambda *args, **kwargs: endpoint
+                endpoint.eval = lambda: endpoint
+                endpoint.generate = lambda **kwargs: self.torch.ones((1, 5), dtype=self.torch.long)
+                
+                return tokenizer, endpoint, True  # True = is_mock
+            
+            # Try to load the real model
+            is_mock = False
+            try:
+                # Check if transformers is available as a real module
+                if isinstance(self.transformers, type(MagicMock())):
+                    tokenizer, endpoint, is_mock = create_mock_model()
+                else:
+                    # Try to load the tokenizer
+                    print(f"Loading T5 tokenizer: {model}")
+                    try:
+                        tokenizer = self.transformers.T5Tokenizer.from_pretrained(
+                            model, 
+                            cache_dir=cache_dir
+                        )
+                    except Exception as tokenizer_error:
+                        print(f"Error loading tokenizer: {tokenizer_error}")
+                        print("Trying AutoTokenizer as fallback")
+                        try:
+                            tokenizer = self.transformers.AutoTokenizer.from_pretrained(
+                                model,
+                                cache_dir=cache_dir
+                            )
+                        except Exception as auto_tokenizer_error:
+                            print(f"Error loading AutoTokenizer: {auto_tokenizer_error}")
+                            # Fall back to mock model
+                            tokenizer, endpoint, is_mock = create_mock_model()
+                            
+                    # If tokenizer loaded successfully, try to load the model
+                    if not is_mock:
+                        print(f"Loading T5 model: {model}")
+                        try:
+                            # Try loading with half precision first (better memory efficiency)
+                            endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(
+                                model,
+                                torch_dtype=self.torch.float16,  # Use half precision for memory efficiency
+                                low_cpu_mem_usage=True,
+                                cache_dir=cache_dir
+                            )
+                            print("Model loaded with FP16 precision")
+                        except Exception as fp16_error:
+                            print(f"Error loading model with FP16 precision: {fp16_error}")
+                            print("Falling back to FP32 precision")
+                            
+                            try:
+                                # Fall back to full precision
+                                endpoint = self.transformers.T5ForConditionalGeneration.from_pretrained(
+                                    model,
+                                    low_cpu_mem_usage=True,
+                                    cache_dir=cache_dir
+                                )
+                                print("Model loaded with FP32 precision")
+                            except Exception as fp32_error:
+                                print(f"Error loading model with FP32 precision: {fp32_error}")
+                                # Fall back to AutoModelForSeq2SeqLM
+                                try:
+                                    print("Trying AutoModelForSeq2SeqLM as fallback")
+                                    endpoint = self.transformers.AutoModelForSeq2SeqLM.from_pretrained(
+                                        model,
+                                        low_cpu_mem_usage=True,
+                                        cache_dir=cache_dir
+                                    )
+                                    print("Model loaded with AutoModelForSeq2SeqLM")
+                                except Exception as auto_model_error:
+                                    print(f"Error loading with AutoModelForSeq2SeqLM: {auto_model_error}")
+                                    # Fall back to mock model
+                                    tokenizer, endpoint, is_mock = create_mock_model()
+            
+                        # If model loaded successfully, move it to the correct device
+                        if not is_mock:
+                            try:
+                                # Move model to device
+                                endpoint = endpoint.to(cuda_label)
+                                
+                                # Set model to evaluation mode
+                                endpoint.eval()
+                                
+                                print(f"Model successfully moved to {cuda_label}")
+                                
+                            except Exception as device_error:
+                                print(f"Error moving model to device: {device_error}")
+                                # Clean up GPU memory
+                                self.torch.cuda.empty_cache()
+                                # Fall back to mock model
+                                tokenizer, endpoint, is_mock = create_mock_model()
+            except Exception as e:
+                print(f"Unexpected error loading model: {e}")
+                # Fall back to mock model
+                tokenizer, endpoint, is_mock = create_mock_model()
+            
+            # Create the handler function with implementation type information
+            endpoint_handler = self.create_cuda_t5_endpoint_handler(
+                tokenizer, 
+                model, 
+                cuda_label, 
+                endpoint, 
+                is_mock=is_mock
+            )
+            
+            # Clean up GPU memory
+            self.torch.cuda.empty_cache()
+            
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), batch_size
+            
         except Exception as e:
-            print(e)
-            pass
-        endpoint_handler = self.create_cuda_t5_endpoint_handler(tokenizer, model, cuda_label, endpoint)
-        self.torch.cuda.empty_cache()
-        return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
+            print(f"Error initializing CUDA model: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            
+            # Ensure we clean up CUDA memory on error
+            if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
+                
+            # Return None values to signal initialization failure
+            return None, None, None, None, 0
     
     def init_openvino(self, model, model_type, device, openvino_label, get_optimum_openvino_model, get_openvino_model, get_openvino_pipeline_type, openvino_cli_convert):
         """Initialize T5 model for OpenVINO.
@@ -428,7 +610,7 @@ class hf_t5:
             print(f"Error initializing T5 for OpenVINO: {e}")
             return None, None, None, None, 0
     
-    def create_cuda_t5_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint):
+    def create_cuda_t5_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint, is_mock=False):
         """Creates a CUDA handler for T5 text generation.
         
         Args:
@@ -436,21 +618,28 @@ class hf_t5:
             endpoint_model: Model name or path
             cuda_label: CUDA device identifier
             endpoint: Model endpoint
+            is_mock: Flag indicating whether we're using a mock implementation
             
         Returns:
             Handler function for CUDA T5 text generation
         """
-        def handler(x, cuda_endpoint_handler=endpoint, cuda_processor=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label):
+        def handler(x, generation_config=None, cuda_endpoint_handler=endpoint, cuda_processor=tokenizer, endpoint_model=endpoint_model, cuda_label=cuda_label, is_mock_impl=is_mock):
             """CUDA handler for T5 text generation.
             
             Args:
                 x: Input text to process
+                generation_config: Optional dictionary with generation parameters
                 
             Returns:
                 Dictionary with generated text and implementation type
             """
-            # Flag to track if we're using real implementation or mock
-            is_mock = False
+            # Start with the implementation flag from initialization
+            is_mock = is_mock_impl
+            
+            # Record start time for performance measuring
+            import time
+            import traceback
+            start_time = time.time()
             
             # Validate input
             if x is None:
@@ -460,6 +649,7 @@ class hf_t5:
                     "implementation_type": "MOCK"
                 }
             
+            # Convert input to string
             chat = x if isinstance(x, str) else str(x)
             
             # Check for CUDA availability
@@ -486,6 +676,23 @@ class hf_t5:
                     "implementation_type": "MOCK"
                 }
             
+            # If we already know we're using a mock, return mock result
+            if is_mock:
+                return {
+                    "text": f"Generated text from T5 (mock for {chat[:30]}...)",
+                    "implementation_type": "MOCK"
+                }
+            
+            # Extract device from cuda_label
+            try:
+                device = self.torch.device(cuda_label)
+                device_index = device.index if hasattr(device, 'index') else 0
+                device_name = self.torch.cuda.get_device_name(device_index)
+                print(f"Using CUDA device: {device_name} (index {device_index})")
+            except Exception as device_error:
+                print(f"Error setting up CUDA device: {device_error}")
+                device = None
+            
             # Try real CUDA implementation
             with self.torch.no_grad():
                 try:
@@ -493,8 +700,20 @@ class hf_t5:
                     if hasattr(self.torch.cuda, 'empty_cache'):
                         self.torch.cuda.empty_cache()
                     
+                    # Get initial GPU memory for tracking
+                    try:
+                        if hasattr(self.torch.cuda, 'mem_get_info'):
+                            free_memory_start, total_memory = self.torch.cuda.mem_get_info(device_index)
+                            free_memory_start_gb = free_memory_start / (1024**3)
+                            total_memory_gb = total_memory / (1024**3)
+                            print(f"CUDA memory available: {free_memory_start_gb:.2f}GB / {total_memory_gb:.2f}GB total")
+                    except Exception as mem_error:
+                        print(f"Error getting GPU memory info: {mem_error}")
+                        free_memory_start = 0
+                    
                     # Tokenize input
                     try:
+                        print(f"Tokenizing input: {chat[:50]}...")
                         inputs = cuda_processor(chat, return_tensors="pt")
                         
                         # Move tensors to the correct device
@@ -503,11 +722,13 @@ class hf_t5:
                             input_dict = {}
                             for key in list(inputs.keys()):
                                 if hasattr(inputs[key], 'to') and callable(inputs[key].to):
-                                    input_dict[key] = inputs[key].to(cuda_label)
+                                    input_dict[key] = inputs[key].to(device)
                                 else:
                                     input_dict[key] = inputs[key]
+                            print(f"Inputs successfully moved to {cuda_label}")
                         except Exception as device_error:
                             print(f"Error moving tensors to CUDA device: {device_error}")
+                            print(f"Traceback: {traceback.format_exc()}")
                             is_mock = True
                             
                             # Clean GPU memory on error
@@ -520,6 +741,7 @@ class hf_t5:
                             }
                     except Exception as tokenize_error:
                         print(f"Tokenization error: {tokenize_error}")
+                        print(f"Traceback: {traceback.format_exc()}")
                         is_mock = True
                         
                         # Clean GPU memory on error
@@ -533,7 +755,46 @@ class hf_t5:
                     
                     # Generate text
                     try:
-                        outputs = cuda_endpoint_handler.generate(**input_dict)
+                        # Record generation start time
+                        generation_start_time = time.time()
+                        
+                        # Set up generation parameters
+                        if generation_config is None:
+                            generation_config = {}
+                        
+                        # Extract generation parameters with defaults
+                        max_new_tokens = generation_config.get("max_new_tokens", 100)
+                        do_sample = generation_config.get("do_sample", True)
+                        temperature = generation_config.get("temperature", 0.7)
+                        top_p = generation_config.get("top_p", 0.9)
+                        num_beams = generation_config.get("num_beams", 1)
+                        
+                        print(f"Running T5 generation on CUDA with parameters: max_new_tokens={max_new_tokens}, temperature={temperature}, top_p={top_p}")
+                        
+                        outputs = cuda_endpoint_handler.generate(
+                            **input_dict,
+                            max_new_tokens=max_new_tokens,
+                            do_sample=do_sample,
+                            temperature=temperature,
+                            top_p=top_p,
+                            num_beams=num_beams
+                        )
+                        
+                        # Record generation time
+                        generation_time = time.time() - generation_start_time
+                        print(f"Generation completed in {generation_time:.2f} seconds")
+                        
+                        # Check GPU memory usage
+                        try:
+                            if hasattr(self.torch.cuda, 'mem_get_info'):
+                                free_memory_after, _ = self.torch.cuda.mem_get_info(device_index)
+                                memory_used_gb = (free_memory_start - free_memory_after) / (1024**3)
+                                memory_allocated = self.torch.cuda.memory_allocated(device_index) / (1024**3)
+                                print(f"CUDA memory used: {memory_used_gb:.2f}GB (allocated: {memory_allocated:.2f}GB)")
+                        except Exception as mem_error:
+                            print(f"Error measuring GPU memory usage: {mem_error}")
+                            memory_used_gb = 0
+                            memory_allocated = 0
                         
                         # Ensure output is valid
                         if outputs is None or not hasattr(outputs, '__getitem__') or len(outputs) == 0:
@@ -550,11 +811,13 @@ class hf_t5:
                             
                         # Decode result
                         if hasattr(cuda_processor, 'decode'):
+                            print("Decoding model output...")
                             results = cuda_processor.decode(
                                 outputs[0], 
                                 skip_special_tokens=True, 
                                 clean_up_tokenization_spaces=False
                             )
+                            print(f"Decoded output length: {len(results)}")
                         else:
                             is_mock = True
                             
@@ -570,15 +833,77 @@ class hf_t5:
                         # Clean GPU memory after successful generation
                         if hasattr(self.torch.cuda, 'empty_cache'):
                             self.torch.cuda.empty_cache()
-                            
-                        # Return successful result
+                        
+                        # Calculate total processing time
+                        total_time = time.time() - start_time
+                        
+                        # Return successful result with performance metrics
                         return {
                             "text": results,
-                            "implementation_type": "REAL"
+                            "implementation_type": "REAL",
+                            "device": cuda_label,
+                            "model": endpoint_model,
+                            "total_time": total_time,
+                            "generation_time": generation_time,
+                            "gpu_memory_used_gb": memory_used_gb,
+                            "gpu_memory_allocated_gb": memory_allocated,
+                            "generated_tokens": len(outputs[0]) if hasattr(outputs, '__getitem__') else 0,
+                            "tokens_per_second": len(outputs[0]) / generation_time if hasattr(outputs, '__getitem__') and generation_time > 0 else 0
                         }
                         
                     except Exception as gen_error:
                         print(f"Error generating text with CUDA: {gen_error}")
+                        print(f"Traceback: {traceback.format_exc()}")
+                        
+                        # Try falling back to CPU if CUDA fails
+                        try:
+                            print("Falling back to CPU for generation")
+                            # Move model to CPU
+                            cpu_model = cuda_endpoint_handler.to("cpu")
+                            cpu_inputs = {k: v.to("cpu") if hasattr(v, "to") else v for k, v in input_dict.items()}
+                            
+                            # Extract generation parameters with defaults
+                            if generation_config is None:
+                                generation_config = {}
+                            
+                            max_new_tokens = generation_config.get("max_new_tokens", 100)
+                            do_sample = generation_config.get("do_sample", True)
+                            temperature = generation_config.get("temperature", 0.7)
+                            top_p = generation_config.get("top_p", 0.9)
+                            num_beams = generation_config.get("num_beams", 1)
+                            
+                            # Generate on CPU
+                            with self.torch.no_grad():
+                                cpu_outputs = cpu_model.generate(
+                                    **cpu_inputs,
+                                    max_new_tokens=max_new_tokens,
+                                    do_sample=do_sample,
+                                    temperature=temperature,
+                                    top_p=top_p,
+                                    num_beams=num_beams
+                                )
+                                
+                            # Decode result
+                            if hasattr(cuda_processor, 'decode'):
+                                cpu_results = cuda_processor.decode(
+                                    cpu_outputs[0], 
+                                    skip_special_tokens=True, 
+                                    clean_up_tokenization_spaces=False
+                                )
+                                
+                                # Return CPU fallback result
+                                fallback_time = time.time() - start_time
+                                return {
+                                    "text": cpu_results,
+                                    "implementation_type": "REAL (CPU fallback)",
+                                    "device": "cpu",
+                                    "model": endpoint_model,
+                                    "total_time": fallback_time,
+                                    "error": str(gen_error)
+                                }
+                        except Exception as cpu_error:
+                            print(f"CPU fallback also failed: {cpu_error}")
+                        
                         is_mock = True
                         
                         # Clean GPU memory on error
@@ -587,11 +912,13 @@ class hf_t5:
                             
                         return {
                             "text": f"Generated text from T5 (mock for {chat[:30]}...)",
-                            "implementation_type": "MOCK"
+                            "implementation_type": "MOCK",
+                            "error": str(gen_error)
                         }
                         
                 except Exception as e:
                     print(f"Unexpected error in CUDA handler: {e}")
+                    print(f"Traceback: {traceback.format_exc()}")
                     is_mock = True
                     
                     # Clean GPU memory on error
@@ -600,7 +927,8 @@ class hf_t5:
                         
                     return {
                         "text": f"Generated text from T5 (mock for {chat[:30]}...)",
-                        "implementation_type": "MOCK"
+                        "implementation_type": "MOCK",
+                        "error": str(e)
                     }
         return handler
     

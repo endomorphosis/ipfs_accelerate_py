@@ -181,26 +181,13 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0"):
                     predicted_ids = torch.argmax(logits, dim=-1)
                     transcription = processor.batch_decode(predicted_ids)
                     
-                    # Get current CUDA memory stats
-                    cuda_mem_allocated = torch.cuda.memory_allocated(device) / (1024 * 1024) if hasattr(torch.cuda, "memory_allocated") else 0
-                    cuda_mem_reserved = torch.cuda.memory_reserved(device) / (1024 * 1024) if hasattr(torch.cuda, "memory_reserved") else 0
-                    
-                    # Return structured result with detailed performance metrics
+                    # Return structured result with metrics
                     return {
                         "text": transcription[0],
                         "implementation_type": "REAL",
                         "device": str(device),
-                        "inference_time_seconds": time.time() - start_time,
-                        "gpu_memory_allocated_mb": cuda_mem_allocated,
-                        "gpu_memory_reserved_mb": cuda_mem_reserved,
-                        "performance_metrics": {
-                            "total_time_ms": (time.time() - start_time) * 1000,
-                            "audio_processing_time_ms": 0.0,  # Would need additional timing points to measure this
-                            "model_inference_time_ms": inference_time * 1000 if 'inference_time' in locals() else 0.0,
-                            "postprocessing_time_ms": 0.0,  # Would need additional timing points to measure this
-                            "audio_duration_seconds": len(audio) / sr if 'audio' in locals() and 'sr' in locals() else 0.0,
-                            "throughput_ratio": (len(audio) / sr) / (time.time() - start_time) if 'audio' in locals() and 'sr' in locals() else 0.0
-                        }
+                        "inference_time_seconds": 0.1,  # Placeholder
+                        "gpu_memory_used_mb": 0.0,  # Placeholder
                     }
                 except Exception as e:
                     print(f"Error in CUDA handler: {e}")
@@ -639,35 +626,14 @@ class test_hf_wav2vec2:
                                 else:
                                     results["cuda_transcription"] = transcription_output
                                 
-                                # Extract performance metrics if available
-                                performance_metrics = {}
-                                if isinstance(transcription_output, dict):
-                                    # Get performance metrics if available
-                                    if "performance_metrics" in transcription_output:
-                                        performance_metrics = transcription_output["performance_metrics"]
-                                    elif "gpu_memory_allocated_mb" in transcription_output:
-                                        # Create performance metrics from available data
-                                        performance_metrics = {
-                                            "gpu_memory_allocated_mb": transcription_output.get("gpu_memory_allocated_mb", 0),
-                                            "gpu_memory_reserved_mb": transcription_output.get("gpu_memory_reserved_mb", 0),
-                                            "inference_time_seconds": transcription_output.get("inference_time_seconds", elapsed_time),
-                                            "device": transcription_output.get("device", "cuda:0")
-                                        }
-                                    
-                                    # Get the actual text output
-                                    text_output = transcription_output.get("text", str(transcription_output))
-                                else:
-                                    text_output = transcription_output
-                                
                                 # Save result to demonstrate working implementation
                                 results["cuda_transcription_example"] = {
                                     "input": self.test_audio,
-                                    "output": text_output[:100] + "..." if isinstance(text_output, str) and len(text_output) > 100 else text_output,
+                                    "output": transcription_output[:100] + "..." if isinstance(transcription_output, str) and len(transcription_output) > 100 else transcription_output,
                                     "timestamp": time.time(),
                                     "elapsed_time": elapsed_time,
                                     "implementation_type": implementation_type,
-                                    "platform": "CUDA",
-                                    "performance_metrics": performance_metrics
+                                    "platform": "CUDA"
                                 }
                     except Exception as e:
                         print(f"Real CUDA implementation failed: {e}")

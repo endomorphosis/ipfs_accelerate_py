@@ -20,10 +20,222 @@ class test_hf_t5:
         }
         self.metadata = metadata if metadata else {}
         self.t5 = hf_t5(resources=self.resources, metadata=self.metadata)
-        # Use a model that's more likely to be accessible
-        self.model_name = "google/t5-efficient-tiny"  # Changed from "t5-small" for better accessibility
+        
+        # Try to use a simpler model that's more likely to be available locally
+        # or create a tiny test model for our tests
+        try:
+            # Check if we can get a list of locally cached models
+            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
+            if os.path.exists(cache_dir):
+                # Look for any T5 model in cache
+                t5_models = [name for name in os.listdir(cache_dir) if "t5" in name.lower()]
+                if t5_models:
+                    # Use the first T5 model found
+                    t5_model_name = t5_models[0].replace("--", "/")
+                    print(f"Found local T5 model: {t5_model_name}")
+                    self.model_name = t5_model_name
+                else:
+                    # Create a local test model
+                    self.model_name = self._create_test_model()
+            else:
+                # Create a local test model
+                self.model_name = self._create_test_model()
+        except Exception as e:
+            print(f"Error finding local model: {e}")
+            # Create a local test model
+            self.model_name = self._create_test_model()
+            
+        print(f"Using model: {self.model_name}")
         self.test_input = "translate English to French: The quick brown fox jumps over the lazy dog"
         return None
+        
+    def _create_test_model(self):
+        """
+        Create a tiny T5 model for testing without needing Hugging Face authentication.
+        
+        Returns:
+            str: Path to the created model
+        """
+        try:
+            print("Creating local test model for T5 testing...")
+            
+            # Create model directory in /tmp for tests
+            test_model_dir = os.path.join("/tmp", "t5_test_model")
+            os.makedirs(test_model_dir, exist_ok=True)
+            
+            # Create a minimal config file for a tiny T5 model
+            config = {
+                "architectures": ["T5ForConditionalGeneration"],
+                "d_ff": 512,
+                "d_kv": 16,
+                "d_model": 64,
+                "decoder_start_token_id": 0,
+                "dropout_rate": 0.1,
+                "eos_token_id": 1,
+                "feed_forward_proj": "gated-gelu",
+                "initializer_factor": 1.0,
+                "is_encoder_decoder": True,
+                "layer_norm_epsilon": 1e-06,
+                "model_type": "t5",
+                "num_decoder_layers": 2,
+                "num_heads": 4,
+                "num_layers": 2,
+                "pad_token_id": 0,
+                "relative_attention_num_buckets": 8,
+                "tie_word_embeddings": False,
+                "vocab_size": 32128
+            }
+            
+            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
+                json.dump(config, f)
+                
+            # Create a minimal tokenizer config
+            tokenizer_config = {
+                "model_max_length": 512,
+                "eos_token": "</s>",
+                "unk_token": "<unk>",
+                "pad_token": "<pad>",
+                "extra_ids": 100,
+                "additional_special_tokens": ["<extra_id_0>", "<extra_id_1>", "<extra_id_2>"]
+            }
+            
+            with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
+                json.dump(tokenizer_config, f)
+                
+            # Create special_tokens_map.json
+            special_tokens_map = {
+                "eos_token": "</s>",
+                "unk_token": "<unk>",
+                "pad_token": "<pad>",
+                "additional_special_tokens": ["<extra_id_0>", "<extra_id_1>", "<extra_id_2>"]
+            }
+            
+            with open(os.path.join(test_model_dir, "special_tokens_map.json"), "w") as f:
+                json.dump(special_tokens_map, f)
+                
+            # Create spiece.model (minimal tokenizer)
+            # This is just a placeholder file, as the real spiece model is complex
+            with open(os.path.join(test_model_dir, "spiece.model"), "wb") as f:
+                # Write a simple binary header that won't crash tokenizer loading
+                f.write(b"\x00\x01\02\x03T5Tokenizer")
+                
+            # Create generation_config.json
+            generation_config = {
+                "eos_token_id": 1,
+                "pad_token_id": 0,
+                "max_length": 128
+            }
+            
+            with open(os.path.join(test_model_dir, "generation_config.json"), "w") as f:
+                json.dump(generation_config, f)
+            
+            # Create a small random model weights file if torch is available
+            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
+                # Create random tensors for model weights
+                model_state = {}
+                
+                vocab_size = config["vocab_size"]
+                d_model = config["d_model"]
+                d_ff = config["d_ff"]
+                d_kv = config["d_kv"]
+                num_heads = config["num_heads"]
+                num_layers = config["num_layers"]
+                num_decoder_layers = config["num_decoder_layers"]
+                
+                # Shared embedding for encoder and decoder
+                model_state["shared.weight"] = torch.randn(vocab_size, d_model)
+                
+                # Encoder layers
+                for layer_idx in range(num_layers):
+                    layer_prefix = f"encoder.block.{layer_idx}"
+                    
+                    # Layer norm
+                    model_state[f"{layer_prefix}.layer.0.layer_norm.weight"] = torch.ones(d_model)
+                    
+                    # Self-attention
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.q.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.k.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.v.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.o.weight"] = torch.randn(d_kv * num_heads, d_model)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.relative_attention_bias.weight"] = torch.randn(config["relative_attention_num_buckets"], num_heads)
+                    
+                    # Second layer norm
+                    model_state[f"{layer_prefix}.layer.1.layer_norm.weight"] = torch.ones(d_model)
+                    
+                    # Feed-forward
+                    model_state[f"{layer_prefix}.layer.1.DenseReluDense.wi_0.weight"] = torch.randn(d_ff, d_model)
+                    model_state[f"{layer_prefix}.layer.1.DenseReluDense.wi_1.weight"] = torch.randn(d_ff, d_model)
+                    model_state[f"{layer_prefix}.layer.1.DenseReluDense.wo.weight"] = torch.randn(d_model, d_ff)
+                
+                # Encoder final layer norm
+                model_state["encoder.final_layer_norm.weight"] = torch.ones(d_model)
+                
+                # Decoder layers
+                for layer_idx in range(num_decoder_layers):
+                    layer_prefix = f"decoder.block.{layer_idx}"
+                    
+                    # Self-attention layer norm
+                    model_state[f"{layer_prefix}.layer.0.layer_norm.weight"] = torch.ones(d_model)
+                    
+                    # Self-attention
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.q.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.k.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.v.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.o.weight"] = torch.randn(d_kv * num_heads, d_model)
+                    model_state[f"{layer_prefix}.layer.0.SelfAttention.relative_attention_bias.weight"] = torch.randn(config["relative_attention_num_buckets"], num_heads)
+                    
+                    # Cross-attention layer norm
+                    model_state[f"{layer_prefix}.layer.1.layer_norm.weight"] = torch.ones(d_model)
+                    
+                    # Cross-attention
+                    model_state[f"{layer_prefix}.layer.1.EncDecAttention.q.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.1.EncDecAttention.k.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.1.EncDecAttention.v.weight"] = torch.randn(d_model, d_kv * num_heads)
+                    model_state[f"{layer_prefix}.layer.1.EncDecAttention.o.weight"] = torch.randn(d_kv * num_heads, d_model)
+                    
+                    # Feed-forward layer norm
+                    model_state[f"{layer_prefix}.layer.2.layer_norm.weight"] = torch.ones(d_model)
+                    
+                    # Feed-forward
+                    model_state[f"{layer_prefix}.layer.2.DenseReluDense.wi_0.weight"] = torch.randn(d_ff, d_model)
+                    model_state[f"{layer_prefix}.layer.2.DenseReluDense.wi_1.weight"] = torch.randn(d_ff, d_model)
+                    model_state[f"{layer_prefix}.layer.2.DenseReluDense.wo.weight"] = torch.randn(d_model, d_ff)
+                
+                # Decoder final layer norm
+                model_state["decoder.final_layer_norm.weight"] = torch.ones(d_model)
+                
+                # Save weights
+                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
+                print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
+                
+                # Create model.safetensors.index.json for compatibility with larger models
+                index_data = {
+                    "metadata": {
+                        "total_size": 0  # Will be filled
+                    },
+                    "weight_map": {}
+                }
+                
+                # Fill weight map with placeholders
+                total_size = 0
+                for key in model_state:
+                    tensor_size = model_state[key].nelement() * model_state[key].element_size()
+                    total_size += tensor_size
+                    index_data["weight_map"][key] = "model.safetensors"
+                
+                index_data["metadata"]["total_size"] = total_size
+                
+                with open(os.path.join(test_model_dir, "model.safetensors.index.json"), "w") as f:
+                    json.dump(index_data, f)
+                
+            print(f"Test model created at {test_model_dir}")
+            return test_model_dir
+            
+        except Exception as e:
+            print(f"Error creating test model: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            # Fall back to a model name that won't need to be downloaded for mocks
+            return "google/t5-efficient-tiny"
 
     def test(self):
         """Run all tests for the T5 language model"""
@@ -95,51 +307,225 @@ class test_hf_t5:
         # Test CUDA if available
         if torch.cuda.is_available():
             try:
-                with patch('transformers.T5Tokenizer.from_pretrained') as mock_tokenizer, \
-                     patch('transformers.T5ForConditionalGeneration.from_pretrained') as mock_model:
-                    
-                    mock_tokenizer.return_value = MagicMock()
-                    mock_model.return_value = MagicMock()
-                    mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
-                    mock_tokenizer.batch_decode.return_value = ["Le renard brun rapide saute par-dessus le chien paresseux"]
-                    
-                    endpoint, tokenizer, handler, queue, batch_size = self.t5.init_cuda(
-                        self.model_name,
-                        "cuda",
-                        "cuda:0"
-                    )
-                    
-                    valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                    results["cuda_init"] = "Success (MOCK)" if valid_init else "Failed CUDA initialization"
-                    
-                    test_handler = self.t5.create_cuda_t5_endpoint_handler(
-                        tokenizer,
-                        self.model_name,
-                        "cuda:0",
-                        endpoint
-                    )
-                    
-                    output = test_handler(self.test_input)
-                    results["cuda_handler"] = "Success (MOCK)" if output is not None else "Failed CUDA handler"
-                    
-                    # Include sample output for verification
-                    if output is not None:
-                        if isinstance(output, str):
-                            if len(output) > 100:
-                                results["cuda_output"] = output[:100] + "..."
-                            else:
-                                results["cuda_output"] = output
-                            results["cuda_output_length"] = len(output)
-                            results["cuda_timestamp"] = time.time()
+                print("\nTesting T5 on CUDA...")
+                # First try with real implementation (no patching)
+                try:
+                    # Check if transformers is available and not mocked
+                    transformers_is_mock = isinstance(self.resources["transformers"], MagicMock)
+                    if not transformers_is_mock:
+                        print("Using real transformers for CUDA test")
                         
-                        # Save result to demonstrate working implementation
-                        results["cuda_output_example"] = {
-                            "input": self.test_input,
-                            "output": output[:100] + "..." if isinstance(output, str) and len(output) > 100 else output,
-                            "timestamp": time.time(),
-                            "implementation": "(MOCK)"
+                        # Initialize with real implementation
+                        endpoint, tokenizer, handler, queue, batch_size = self.t5.init_cuda(
+                            self.model_name,
+                            "cuda",
+                            "cuda:0"
+                        )
+                        
+                        # Check if initialization succeeded
+                        valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                        
+                        # Determine if we got a real or mock implementation from the initialization
+                        is_real_impl = valid_init and not isinstance(endpoint, MagicMock)
+                        implementation_type = "(REAL)" if is_real_impl else "(MOCK)"
+                        
+                        results["cuda_init"] = f"Success {implementation_type}" if valid_init else "Failed CUDA initialization"
+                        print(f"CUDA initialization: {results['cuda_init']}")
+                        
+                        if valid_init:
+                            # Test with the handler
+                            print(f"Testing CUDA handler with input: '{self.test_input[:50]}...'")
+                            
+                            # Create generation config with parameters for a thorough test
+                            generation_config = {
+                                "max_new_tokens": 50,
+                                "do_sample": True,
+                                "temperature": 0.7,
+                                "top_p": 0.9,
+                                "num_beams": 1
+                            }
+                            
+                            # Enhance handler with implementation type markers if possible
+                            try:
+                                import sys
+                                sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
+                                import utils as test_utils
+                                
+                                if hasattr(test_utils, 'enhance_cuda_implementation_detection'):
+                                    print("Enhancing T5 CUDA handler with implementation type markers")
+                                    enhanced_handler = test_utils.enhance_cuda_implementation_detection(
+                                        self.t5,
+                                        handler,
+                                        is_real=is_real_impl
+                                    )
+                                    # Use the enhanced handler
+                                    output = enhanced_handler(self.test_input, generation_config=generation_config)
+                                else:
+                                    # Fall back to original handler
+                                    output = handler(self.test_input, generation_config=generation_config)
+                            except Exception as e:
+                                print(f"Could not enhance handler: {e}")
+                                # Fall back to original handler
+                                output = handler(self.test_input, generation_config=generation_config)
+                            
+                            # Check if we got valid output
+                            is_valid_output = output is not None
+                            
+                            # Extract implementation type from output
+                            if isinstance(output, dict) and "implementation_type" in output:
+                                actual_impl_type = output["implementation_type"]
+                                if actual_impl_type == "REAL":
+                                    implementation_type = "(REAL)"
+                                elif actual_impl_type == "REAL (CPU fallback)":
+                                    implementation_type = "(REAL - CPU fallback)"
+                                else:
+                                    implementation_type = "(MOCK)"
+                            
+                            results["cuda_handler"] = f"Success {implementation_type}" if is_valid_output else "Failed CUDA handler"
+                            print(f"CUDA handler: {results['cuda_handler']}")
+                            
+                            # Process output for results
+                            if is_valid_output:
+                                # Handle different output formats
+                                if isinstance(output, dict) and "text" in output:
+                                    text_output = output["text"]
+                                    
+                                    # Record performance metrics if available
+                                    if "total_time" in output:
+                                        results["cuda_total_time"] = output["total_time"]
+                                    if "generation_time" in output:
+                                        results["cuda_generation_time"] = output["generation_time"]
+                                    if "gpu_memory_used_gb" in output:
+                                        results["cuda_memory_used_gb"] = output["gpu_memory_used_gb"]
+                                    if "gpu_memory_allocated_gb" in output:
+                                        results["cuda_memory_allocated_gb"] = output["gpu_memory_allocated_gb"]
+                                    if "generated_tokens" in output:
+                                        results["cuda_generated_tokens"] = output["generated_tokens"]
+                                    if "tokens_per_second" in output:
+                                        results["cuda_tokens_per_second"] = output["tokens_per_second"]
+                                    if "device" in output:
+                                        results["cuda_device_used"] = output["device"]
+                                elif isinstance(output, str):
+                                    text_output = output
+                                else:
+                                    text_output = str(output)
+                                
+                                # Truncate long outputs for readability
+                                if len(text_output) > 100:
+                                    results["cuda_output"] = text_output[:100] + "..."
+                                else:
+                                    results["cuda_output"] = text_output
+                                    
+                                results["cuda_output_length"] = len(text_output)
+                                results["cuda_timestamp"] = time.time()
+                                
+                                # Save structured example with enhanced metadata
+                                example = {
+                                    "input": self.test_input,
+                                    "output": text_output[:100] + "..." if len(text_output) > 100 else text_output,
+                                    "timestamp": time.time(),
+                                    "implementation": implementation_type,
+                                    "platform": "CUDA",
+                                    "generation_config": generation_config
+                                }
+                                
+                                # Add performance metrics to example if available
+                                if isinstance(output, dict):
+                                    for key in ["total_time", "generation_time", "gpu_memory_used_gb", 
+                                               "gpu_memory_allocated_gb", "generated_tokens", 
+                                               "tokens_per_second", "device"]:
+                                        if key in output:
+                                            example[key] = output[key]
+                                
+                                results["cuda_output_example"] = example
+                    else:
+                        # Transformers is mocked, so we'll use mock implementation
+                        print("Transformers module is mocked - using mock implementation for CUDA test")
+                        raise ImportError("Transformers module is mocked")
+                    
+                except Exception as real_impl_error:
+                    # Something went wrong with the real implementation, fall back to mock
+                    print(f"Error using real implementation: {real_impl_error}")
+                    print("Falling back to mock implementation")
+                    
+                    # Use mocks for reliable testing
+                    with patch('transformers.T5Tokenizer.from_pretrained') as mock_tokenizer, \
+                         patch('transformers.T5ForConditionalGeneration.from_pretrained') as mock_model:
+                        
+                        # Set up mock behavior
+                        mock_tokenizer.return_value = MagicMock()
+                        mock_model.return_value = MagicMock()
+                        mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
+                        mock_tokenizer.batch_decode.return_value = ["Le renard brun rapide saute par-dessus le chien paresseux"]
+                        mock_tokenizer.decode = lambda *args, **kwargs: "Le renard brun rapide saute par-dessus le chien paresseux"
+                        
+                        # Add to/eval methods to the mock model
+                        mock_model.return_value.to = lambda device: mock_model.return_value
+                        mock_model.return_value.eval = lambda: None
+                        
+                        # Initialize with mocks
+                        endpoint, tokenizer, handler, queue, batch_size = self.t5.init_cuda(
+                            self.model_name,
+                            "cuda",
+                            "cuda:0"
+                        )
+                        
+                        valid_init = endpoint is not None and tokenizer is not None and handler is not None
+                        results["cuda_init"] = "Success (MOCK)" if valid_init else "Failed CUDA initialization"
+                        
+                        # Use handler directly from initialization
+                        # Create generation config with parameters for mock test
+                        generation_config = {
+                            "max_new_tokens": 50,
+                            "do_sample": True,
+                            "temperature": 0.7,
+                            "top_p": 0.9,
+                            "num_beams": 1
                         }
+                        
+                        # Call handler with generation config
+                        output = handler(self.test_input, generation_config=generation_config)
+                        results["cuda_handler"] = "Success (MOCK)" if output is not None else "Failed CUDA handler"
+                        
+                        # Include sample output for verification
+                        if output is not None:
+                            # Handle different output formats
+                            if isinstance(output, dict) and "text" in output:
+                                text_output = output["text"]
+                                
+                                # Record performance metrics if available
+                                if "total_time" in output:
+                                    results["cuda_total_time"] = output["total_time"]
+                                if "generation_time" in output:
+                                    results["cuda_generation_time"] = output["generation_time"]
+                            elif isinstance(output, str):
+                                text_output = output
+                            else:
+                                text_output = str(output)
+                                
+                            # Truncate long outputs
+                            if len(text_output) > 100:
+                                results["cuda_output"] = text_output[:100] + "..."
+                            else:
+                                results["cuda_output"] = text_output
+                                
+                            results["cuda_output_length"] = len(text_output)
+                            results["cuda_timestamp"] = time.time()
+                            
+                            # Save structured example with enhanced metadata
+                            results["cuda_output_example"] = {
+                                "input": self.test_input,
+                                "output": text_output[:100] + "..." if len(text_output) > 100 else text_output,
+                                "timestamp": time.time(),
+                                "implementation": "(MOCK)",
+                                "platform": "CUDA",
+                                "generation_config": generation_config
+                            }
+                
             except Exception as e:
+                print(f"Error in CUDA tests: {e}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
                 results["cuda_tests"] = f"Error: {str(e)}"
         else:
             results["cuda_tests"] = "CUDA not available"
@@ -241,12 +627,34 @@ class test_hf_t5:
                 endpoint = MockOpenVINOModel()
                 tokenizer = MockTokenizer()
                 
-                # Create a handler function using mocks
+                # Create a handler function using mocks but with realistic performance metrics
                 def mock_handler(input_text):
-                    # Simply return a fixed response
+                    # Track time for realistic performance metrics
+                    start_time = time.time()
+                    
+                    # Simulate some processing time
+                    time.sleep(0.05)
+                    
+                    # Calculate processing time
+                    elapsed_time = time.time() - start_time
+                    
+                    # Count input and output tokens for metrics
+                    input_tokens = len(input_text.split())
+                    output_tokens = 10  # Fixed length for mock response
+                    
+                    # Return a fixed response with comprehensive performance metrics
                     return {
                         "text": "Le renard brun rapide saute par-dessus le chien paresseux",
-                        "implementation_type": "(MOCK)"
+                        "implementation_type": "MOCK",
+                        "total_time": elapsed_time,
+                        "preprocessing_time": elapsed_time * 0.2,  # 20% of time
+                        "inference_time": elapsed_time * 0.7,      # 70% of time
+                        "postprocessing_time": elapsed_time * 0.1, # 10% of time
+                        "tokens_per_second": output_tokens / (elapsed_time * 0.7),
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "memory_usage_mb": 256.0,                  # Mock memory usage
+                        "device": "CPU (OpenVINO)"
                     }
                 
                 # Set up test components with mocks

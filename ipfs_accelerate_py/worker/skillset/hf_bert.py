@@ -305,7 +305,7 @@ class hf_bert:
             return self._create_mock_endpoint(model_name, cpu_label)
 
     def init_cuda(self, model_name, device, cuda_label):
-        """Initialize BERT model for CUDA (GPU) inference.
+        """Initialize BERT model for CUDA (GPU) inference with enhanced memory management.
         
         Args:
             model_name (str): HuggingFace model name or path (e.g., 'bert-base-uncased')
@@ -317,17 +317,47 @@ class hf_bert:
         """
         self.init()
         
+        # Import CUDA utilities
+        try:
+            from ipfs_accelerate_py.worker.cuda_utils import cuda_utils
+            cuda_utils_available = True
+            cuda_tools = cuda_utils(resources=self.resources, metadata=self.metadata)
+            print("CUDA utilities imported successfully")
+        except ImportError:
+            cuda_utils_available = False
+            cuda_tools = None
+            print("CUDA utilities not available, using basic CUDA support")
+        
         # Check if CUDA is available
         if not hasattr(self.torch, 'cuda') or not self.torch.cuda.is_available():
             print(f"CUDA is not available, falling back to CPU for model '{model_name}'")
             return self.init_cpu(model_name, "cpu", "cpu")
         
+        # Get CUDA device information and validate device
+        if cuda_utils_available:
+            cuda_device = cuda_tools.get_cuda_device(cuda_label)
+            if cuda_device is None:
+                print(f"Invalid CUDA device specified in {cuda_label}, falling back to CPU")
+                return self.init_cpu(model_name, "cpu", "cpu")
+            device = cuda_device
+        else:
+            # Fallback to basic validation
+            if ":" in cuda_label:
+                device_index = int(cuda_label.split(":")[1])
+                if device_index >= self.torch.cuda.device_count():
+                    print(f"Invalid CUDA device index {device_index}, falling back to device 0")
+                    device = "cuda:0"
+                else:
+                    device = cuda_label
+            else:
+                device = "cuda:0"
+            
+            # Clean GPU cache before loading
+            self.torch.cuda.empty_cache()
+        
         print(f"Loading {model_name} for CUDA inference on {device}...")
         
         try:
-            # Clean GPU cache before loading
-            self.torch.cuda.empty_cache()
-            
             # Add local cache directory for testing environments without internet
             cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
             os.makedirs(cache_dir, exist_ok=True)
@@ -347,40 +377,65 @@ class hf_bert:
                 cache_dir=cache_dir
             )
             
+            # Determine max batch size based on available memory (if cuda_utils available)
+            if cuda_utils_available and hasattr(self.torch.cuda, 'mem_get_info'):
+                try:
+                    free_memory, total_memory = self.torch.cuda.mem_get_info()
+                    free_memory_gb = free_memory / (1024**3)
+                    batch_size = max(1, min(16, int(free_memory_gb / 0.5)))  # Heuristic: 0.5GB per batch item
+                    print(f"Dynamic batch size based on available memory: {batch_size}")
+                except Exception as mem_error:
+                    print(f"Error determining memory-based batch size: {mem_error}")
+                    batch_size = 8  # Default fallback
+            else:
+                batch_size = 8  # Default batch size for CUDA
+            
             # Try loading with FP16 precision first for better performance
+            use_half_precision = True  # Default for GPUs
+            
             try:
                 endpoint = self.transformers.AutoModel.from_pretrained(
                     model_name, 
-                    torch_dtype=self.torch.float16,  # Use half precision for GPU
+                    torch_dtype=self.torch.float16 if use_half_precision else self.torch.float32,
                     trust_remote_code=True,
                     config=config,
                     low_cpu_mem_usage=True,
                     return_dict=True,
                     cache_dir=cache_dir
-                ).to(device)
-                endpoint.eval()  # Set to evaluation mode
-                print(f"(REAL) Model loaded with FP16 precision")
-            except Exception as e:
-                print(f"Failed to load with FP16 precision: {e}")
-                print("Falling back to FP32 precision")
+                )
                 
-                # Fallback to full precision
-                endpoint = self.transformers.AutoModel.from_pretrained(
-                    model_name, 
-                    trust_remote_code=True,
-                    config=config,
-                    low_cpu_mem_usage=True,
-                    return_dict=True,
-                    cache_dir=cache_dir
-                ).to(device)
-                endpoint.eval()  # Set to evaluation mode
-                print(f"(REAL) Model loaded with FP32 precision")
+                # Use CUDA utils for memory optimization if available
+                if cuda_utils_available:
+                    endpoint = cuda_tools.optimize_cuda_memory(
+                        model=endpoint,
+                        device=device,
+                        use_half_precision=use_half_precision
+                    )
+                else:
+                    # Manual optimization
+                    endpoint = endpoint.to(device)
+                    endpoint.eval()
+                
+                precision_type = "FP16" if use_half_precision else "FP32"
+                print(f"(REAL) Model loaded with {precision_type} precision")
+                is_real_impl = True
+                
+            except Exception as e:
+                print(f"Failed to load model: {e}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                
+                # Fall back to mock implementation
+                print("Falling back to mock implementation")
+                endpoint = self._create_mock_openvino_model(model_name)
+                is_real_impl = False
             
-            # Print model and device information
-            print(f"Device: {device}")
-            print(f"Model type: {config.model_type if hasattr(config, 'model_type') else 'bert'}")
-            print(f"Hidden size: {config.hidden_size}")
-            print(f"Model precision: {endpoint.dtype}")
+            if is_real_impl:
+                # Print model and device information
+                print(f"Device: {device}")
+                print(f"Model type: {config.model_type if hasattr(config, 'model_type') else 'bert'}")
+                print(f"Hidden size: {config.hidden_size}")
+                print(f"Model precision: {endpoint.dtype}")
             
             # Create the handler function
             endpoint_handler = self.create_cuda_text_embedding_endpoint_handler(
@@ -388,19 +443,26 @@ class hf_bert:
                 device=device,
                 hardware_label=cuda_label,
                 endpoint=endpoint,
-                tokenizer=tokenizer
+                tokenizer=tokenizer,
+                is_real_impl=is_real_impl,
+                batch_size=batch_size
             )
             
             # Clean up memory after initialization
-            self.torch.cuda.empty_cache()
+            if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+                self.torch.cuda.empty_cache()
             
-            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(64), 0
+            return endpoint, tokenizer, endpoint_handler, asyncio.Queue(batch_size), batch_size
             
         except Exception as e:
             print(f"Error loading CUDA model: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            
             # Clean up GPU memory on error
             if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
                 self.torch.cuda.empty_cache()
+                
             # Return mock objects for graceful degradation
             return self._create_mock_endpoint(model_name, cuda_label)
 
@@ -905,8 +967,8 @@ class hf_bert:
             
         return handler
 
-    def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):
-        """Create endpoint handler for CUDA backend.
+    def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, is_real_impl=True, batch_size=8):
+        """Create endpoint handler for CUDA backend with advanced memory management.
         
         Args:
             endpoint_model (str): The model name or path
@@ -914,12 +976,26 @@ class hf_bert:
             hardware_label (str): Label to identify this endpoint
             endpoint: The model endpoint
             tokenizer: The tokenizer for the model
+            is_real_impl (bool): Flag indicating if we're using real implementation or mock
+            batch_size (int): Batch size to use for processing
             
         Returns:
             A handler function for the CUDA endpoint
         """
-        def handler(text_input, endpoint_model=endpoint_model, device=device, hardware_label=hardware_label, endpoint=endpoint, tokenizer=tokenizer):
-            """Process text input to generate BERT embeddings on CUDA.
+        # Import CUDA utilities if available
+        try:
+            from ipfs_accelerate_py.worker.cuda_utils import cuda_utils
+            cuda_utils_available = True
+            cuda_tools = cuda_utils(resources=self.resources, metadata=self.metadata)
+            print("CUDA utilities imported successfully for handler")
+        except ImportError:
+            cuda_utils_available = False
+            cuda_tools = None
+            print("CUDA utilities not available for handler, using basic implementation")
+        
+        def handler(text_input, endpoint_model=endpoint_model, device=device, hardware_label=hardware_label, 
+                   endpoint=endpoint, tokenizer=tokenizer, is_real_impl=is_real_impl, batch_size=batch_size):
+            """Process text input to generate BERT embeddings on CUDA with optimized memory handling.
             
             Args:
                 text_input: Input text (string or list of strings)
@@ -927,9 +1003,38 @@ class hf_bert:
             Returns:
                 Embedding tensor (mean pooled from last hidden state)
             """
-            # Set model to evaluation mode
-            if hasattr(endpoint, 'eval'):
+            # Start performance tracking
+            import time
+            start_time = time.time()
+            
+            # Record input stats
+            if isinstance(text_input, str):
+                input_size = 1
+                input_type = "string"
+            elif isinstance(text_input, list):
+                input_size = len(text_input)
+                input_type = "list"
+            else:
+                input_size = 1
+                input_type = str(type(text_input))
+                
+            print(f"Processing {input_type} input with {input_size} items")
+            
+            # Set implementation type based on parameter
+            using_mock = not is_real_impl
+            
+            # Set model to evaluation mode if it's a real model
+            if hasattr(endpoint, 'eval') and not using_mock:
                 endpoint.eval()
+            
+            # Early return for mock implementation
+            if using_mock:
+                mock_embedding = self.torch.rand((input_size, 768))
+                mock_embedding.mock_implementation = True
+                mock_embedding.implementation_type = "MOCK"
+                mock_embedding.device = str(device)
+                mock_embedding.model_name = endpoint_model
+                return mock_embedding
             
             try:
                 with self.torch.no_grad():
@@ -937,11 +1042,22 @@ class hf_bert:
                     if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
                         self.torch.cuda.empty_cache()
                     
+                    # Get CUDA memory information for tracking if available
+                    free_memory_start = None
+                    if hasattr(self.torch.cuda, 'mem_get_info'):
+                        try:
+                            free_memory_start, total_memory = self.torch.cuda.mem_get_info()
+                            free_memory_start_gb = free_memory_start / (1024**3)
+                            print(f"CUDA memory available before processing: {free_memory_start_gb:.2f}GB")
+                        except Exception as mem_error:
+                            print(f"Error getting CUDA memory info: {mem_error}")
+                    
                     # Handle different input types
                     max_length = 512  # Default max length
                     if hasattr(endpoint, 'config') and hasattr(endpoint.config, 'max_position_embeddings'):
                         max_length = endpoint.config.max_position_embeddings
                     
+                    # Process inputs based on type
                     if isinstance(text_input, str):
                         # Single text input
                         tokens = tokenizer(
@@ -952,19 +1068,112 @@ class hf_bert:
                             max_length=max_length
                         )
                     elif isinstance(text_input, list):
-                        # Batch of texts
-                        tokens = tokenizer(
-                            text_input,
-                            return_tensors='pt',
-                            padding=True,
-                            truncation=True,
-                            max_length=max_length
-                        )
+                        # Process in batches if input is larger than batch_size
+                        if len(text_input) > batch_size and cuda_utils_available:
+                            print(f"Processing input in batches (size: {batch_size})")
+                            # Process in batches with CUDA utilities
+                            batches = [text_input[i:i+batch_size] for i in range(0, len(text_input), batch_size)]
+                            results = []
+                            
+                            for i, batch in enumerate(batches):
+                                print(f"Processing batch {i+1}/{len(batches)}")
+                                # Tokenize batch
+                                batch_tokens = tokenizer(
+                                    batch,
+                                    return_tensors='pt',
+                                    padding=True,
+                                    truncation=True,
+                                    max_length=max_length
+                                )
+                                
+                                # Move tokens to the correct device
+                                if isinstance(device, str):
+                                    cuda_device = device
+                                else:
+                                    cuda_device = device.type + ":" + str(device.index)
+                                
+                                input_ids = batch_tokens['input_ids'].to(cuda_device)
+                                attention_mask = batch_tokens['attention_mask'].to(cuda_device)
+                                
+                                # Include token_type_ids if present
+                                model_inputs = {
+                                    'input_ids': input_ids,
+                                    'attention_mask': attention_mask,
+                                    'return_dict': True
+                                }
+                                
+                                if 'token_type_ids' in batch_tokens:
+                                    model_inputs['token_type_ids'] = batch_tokens['token_type_ids'].to(cuda_device)
+                                
+                                # Run model inference
+                                outputs = endpoint(**model_inputs)
+                                
+                                # Process outputs
+                                if hasattr(outputs, 'last_hidden_state'):
+                                    # Apply attention mask to last_hidden_state
+                                    last_hidden = outputs.last_hidden_state
+                                    masked_hidden = last_hidden.masked_fill(
+                                        ~attention_mask.bool().unsqueeze(-1), 
+                                        0.0
+                                    )
+                                    
+                                    # Mean pooling for sentence embeddings
+                                    pooled_embeddings = masked_hidden.sum(dim=1) / attention_mask.sum(dim=1, keepdim=True)
+                                    
+                                    # Move results to CPU
+                                    batch_result = pooled_embeddings.cpu()
+                                    results.append(batch_result)
+                                else:
+                                    # Skip batch on error
+                                    print(f"Error processing batch {i+1}")
+                                    continue
+                                
+                                # Clean up batch memory
+                                if hasattr(self.torch, 'cuda') and hasattr(self.torch.cuda, 'empty_cache'):
+                                    self.torch.cuda.empty_cache()
+                            
+                            # Combine batch results
+                            if results:
+                                result = self.torch.cat(results, dim=0)
+                            else:
+                                # Fallback if all batches failed
+                                print("All batches failed to process")
+                                mock_embedding = self.torch.rand((len(text_input), 768))
+                                mock_embedding.mock_implementation = True
+                                return mock_embedding
+                                
+                            # Add implementation markers
+                            result.real_implementation = True
+                            result.is_cuda = True
+                            result.implementation_type = "REAL"
+                            result.device = str(device)
+                            result.model_name = endpoint_model
+                            
+                            # Performance metrics
+                            end_time = time.time()
+                            elapsed_time = end_time - start_time
+                            result.elapsed_time = elapsed_time
+                            
+                            return result
+                            
+                        else:
+                            # Process small batch normally
+                            tokens = tokenizer(
+                                text_input,
+                                return_tensors='pt',
+                                padding=True,
+                                truncation=True,
+                                max_length=max_length
+                            )
                     else:
                         raise ValueError(f"Unsupported input type: {type(text_input)}")
                     
                     # Move tokens to the correct device
-                    cuda_device = endpoint.device
+                    if isinstance(device, str):
+                        cuda_device = device
+                    else:
+                        cuda_device = device.type + ":" + str(device.index)
+                    
                     input_ids = tokens['input_ids'].to(cuda_device)
                     attention_mask = tokens['attention_mask'].to(cuda_device)
                     
@@ -978,8 +1187,24 @@ class hf_bert:
                     if 'token_type_ids' in tokens:
                         model_inputs['token_type_ids'] = tokens['token_type_ids'].to(cuda_device)
                     
+                    # Track inference time
+                    inference_start = time.time()
+                    
                     # Run model inference
                     outputs = endpoint(**model_inputs)
+                    
+                    # Calculate inference time
+                    inference_time = time.time() - inference_start
+                    
+                    # Get CUDA memory usage after inference if available
+                    if hasattr(self.torch.cuda, 'mem_get_info') and free_memory_start is not None:
+                        try:
+                            free_memory_after, _ = self.torch.cuda.mem_get_info()
+                            memory_used_gb = (free_memory_start - free_memory_after) / (1024**3)
+                            if memory_used_gb > 0:
+                                print(f"CUDA memory used for inference: {memory_used_gb:.2f}GB")
+                        except Exception as mem_error:
+                            print(f"Error getting CUDA memory usage after inference: {mem_error}")
                     
                     # Process outputs to create embeddings
                     if hasattr(outputs, 'last_hidden_state'):
@@ -996,9 +1221,16 @@ class hf_bert:
                         # Move results to CPU
                         result = pooled_embeddings.cpu()
                         
-                        # Add REAL implementation marker
+                        # Add REAL implementation markers
                         result.real_implementation = True
                         result.is_cuda = True
+                        result.implementation_type = "REAL"
+                        result.device = str(device)
+                        result.model_name = endpoint_model
+                        
+                        # Add performance metrics
+                        result.inference_time = inference_time
+                        result.total_time = time.time() - start_time
                         
                     else:
                         # Fallback for models with different output structure
@@ -1006,6 +1238,7 @@ class hf_bert:
                         batch_size = 1 if isinstance(text_input, str) else len(text_input)
                         result = self.torch.rand((batch_size, 768))
                         result.mock_implementation = True
+                        result.implementation_type = "MOCK"
 
                     # Cleanup GPU memory
                     for var in ['tokens', 'input_ids', 'attention_mask', 'outputs', 'last_hidden', 
@@ -1024,8 +1257,8 @@ class hf_bert:
                     self.torch.cuda.empty_cache()
                 
                 print(f"Error in CUDA text embedding handler: {e}")
-                import time
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
                 
                 # Generate a mock embedding with error info
                 batch_size = 1 if isinstance(text_input, str) else len(text_input) 
@@ -1033,6 +1266,8 @@ class hf_bert:
                 
                 # Add signal this is a mock for testing
                 mock_embedding.mock_implementation = True
+                mock_embedding.implementation_type = "MOCK"
+                mock_embedding.error = str(e)
                 
                 return mock_embedding
                 
