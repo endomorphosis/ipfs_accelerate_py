@@ -4,11 +4,8 @@ dist
 *.pyc
 test/*.json
 build/
-<<<<<<< HEAD
 .venv/
-=======
-.lizard_person_install.sh
-.lizard_person_test.sh
-venv/
-.test.json
->>>>>>> 2a3b97965cf4339c88cd540a7e72f0054ccd9d25
+.locks
+model_cache/
+model_cache/*
+*_results_*

@@ -1,168 +1,25 @@
 {
   "status": {
-    "init": "Success (REAL)",
-    "cpu_init": "Success (MOCK)",
-    "cpu_standard": "Success (REAL)",
-    "cpu_standard_output": "Once upon a time...",
-    "cpu_standard_output_length": 19,
-    "cpu_config": "Success (REAL)",
-    "cpu_config_output": "Once upon a time in a land far away, there was a magical kingdom...",
-    "cpu_config_output_length": 67,
-    "cpu_batch": "Success (REAL)",
-    "cpu_batch_output_count": 2,
-    "cpu_batch_first_output": "Once upon a time...",
-    "cuda_init": "Success (REAL)",
-    "cuda_handler": "Success (REAL)",
-    "cuda_output": "(MOCK) Once upon a time... Once upon a time",
-    "cuda_output_length": 43,
-    "cuda_config": "Success (MOCK)",
-    "cuda_config_output": "(MOCK) Once upon a time... Once upon a time",
-    "cuda_config_output_length": 43,
-    "cuda_batch": "Success (MOCK)",
-    "cuda_batch_output_count": 2,
-    "cuda_batch_first_output": "(MOCK) Once upon a time... Once upon a time",
-    "openvino_implementation_capability": "REAL - optimum.intel.openvino available",
-    "openvino_init": "Success (REAL)",
-    "openvino_implementation_type": "(REAL)",
-    "apple_tests": "Apple Silicon not available",
-    "qualcomm_init": "Success (MOCK)",
-    "qualcomm_handler": "Success (MOCK)",
-    "qualcomm_output": "Once upon a time... Once upon a time",
-    "qualcomm_output_length": 36,
-    "qualcomm_config": "Success (MOCK)",
-    "qualcomm_config_output": "Once upon a time... Once upon a time",
-    "qualcomm_batch": "Success (MOCK)",
-    "qualcomm_batch_output_count": 2,
-    "qualcomm_batch_first_output": "Once upon a time... Once upon a time"
+    "test_error": "'transformers'"
   },
-  "examples": [
-    {
-      "input": "Once upon a time",
-      "output": "Once upon a time...",
-      "timestamp": "2025-02-28T01:33:47.347133",
-      "elapsed_time": 4.291534423828125e-06,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "standard"
-    },
-    {
-      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
-      "output": "Once upon a time in a land far away, there was a magical kingdom...",
-      "timestamp": "2025-02-28T01:33:47.347158",
-      "elapsed_time": 3.5762786865234375e-06,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "config"
-    },
-    {
-      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
-      "output": {
-        "count": 2,
-        "first_output": "Once upon a time..."
-      },
-      "timestamp": "2025-02-28T01:33:47.347167",
-      "elapsed_time": 4.291534423828125e-06,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "batch"
-    },
-    {
-      "input": "Once upon a time",
-      "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-28T01:33:48.724903",
-      "elapsed_time": 1.7881393432617188e-05,
-      "implementation_type": "(MOCK)",
-      "platform": "CUDA",
-      "test_type": "standard",
-      "metadata": null
-    },
-    {
-      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
-      "output": "(MOCK) Once upon a time... Once upon a time",
-      "timestamp": "2025-02-28T01:33:48.724951",
-      "elapsed_time": 9.775161743164062e-06,
-      "implementation_type": "(MOCK)",
-      "platform": "CUDA",
-      "test_type": "config",
-      "metadata": null
-    },
-    {
-      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
-      "output": {
-        "count": 2,
-        "first_output": "(MOCK) Once upon a time... Once upon a time"
-      },
-      "timestamp": "2025-02-28T01:33:48.724967",
-      "elapsed_time": 6.198883056640625e-06,
-      "implementation_type": "(MOCK)",
-      "platform": "CUDA",
-      "test_type": "batch"
-    },
-    {
-      "input": "Once upon a time",
-      "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-28T01:34:02.869432",
-      "elapsed_time": 1.5974044799804688e-05,
-      "implementation_type": "(MOCK)",
-      "platform": "Qualcomm",
-      "test_type": "standard"
-    },
-    {
-      "input": "Once upon a time (with config: {'max_new_tokens': 20, 'temperature': 0.7, 'top_p': 0.9, 'do_sample': True})",
-      "output": "Once upon a time... Once upon a time",
-      "timestamp": "2025-02-28T01:34:02.869582",
-      "elapsed_time": 1.5020370483398438e-05,
-      "implementation_type": "(MOCK)",
-      "platform": "Qualcomm",
-      "test_type": "config"
-    },
-    {
-      "input": "Batch of 2 prompts: [Once upon a time, Once upon a time]",
-      "output": {
-        "count": 2,
-        "first_output": "Once upon a time... Once upon a time"
-      },
-      "timestamp": "2025-02-28T01:34:02.869626",
-      "elapsed_time": 1.239776611328125e-05,
-      "implementation_type": "(MOCK)",
-      "platform": "Qualcomm",
-      "test_type": "batch"
-    }
-  ],
+  "examples": [],
   "metadata": {
-    "model_name": "gpt2",
-    "test_timestamp": "2025-02-28T01:34:02.869707",
-    "timestamp": 1740735242.8697104,
-    "torch_version": "2.4.0+cu121",
-    "numpy_version": "1.26.4",
-    "transformers_version": "4.49.0",
-    "cuda_available": true,
-    "cuda_device_count": 1,
-    "mps_available": false,
-    "transformers_mocked": false,
-    "test_prompt": "Once upon a time",
-    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "platform_status": {
-      "cpu": "Ready (MOCK)",
-      "cuda": "Ready (REAL)",
-      "openvino": "Ready (REAL)",
-      "apple": "Apple Silicon not available",
-      "qualcomm": "Ready (MOCK)"
-    },
-    "test_run_id": "lm-test-1740735242",
+    "error": "'transformers'",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 1827, in __test__\n    best_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_lm.py\", line 218, in test\n    transformers_available = not isinstance(self.resources[\"transformers\"], MagicMock)\n                                            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^\nKeyError: 'transformers'\n",
+    "timestamp": 1740799845.8368623,
     "model_testing": {
       "tested_models": [
         "gpt2",
         "distilgpt2",
         "::simple_model::"
       ],
-      "best_model": "gpt2",
+      "best_model": null,
       "model_success_counts": {
-        "gpt2": 14,
-        "distilgpt2": 14,
-        "::simple_model::": 14
+        "gpt2": 0,
+        "distilgpt2": 0,
+        "::simple_model::": 0
       },
-      "test_timestamp": "2025-02-28T01:34:25.107291"
+      "test_timestamp": "2025-02-28T19:30:45.836868"
     }
   }
 }

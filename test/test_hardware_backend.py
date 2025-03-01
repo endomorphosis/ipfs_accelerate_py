@@ -219,8 +219,22 @@ class TestHardwareBackend:
         
         return results
     
-    def __test__(self):
-        """Run tests on all hardware platforms"""
+    def __test__(self, resources=None, metadata=None):
+        """Run tests on all hardware platforms
+        
+        Args:
+            resources (dict, optional): Dictionary containing resources. Defaults to None.
+            metadata (dict, optional): Dictionary containing metadata. Defaults to None.
+            
+        Returns:
+            dict: Test results for all hardware platforms
+        """
+        # Update resources and metadata if provided
+        if resources is not None:
+            self.resources = resources
+        if metadata is not None:
+            self.metadata = metadata
+            
         all_results = {}
         overall_success = True
         

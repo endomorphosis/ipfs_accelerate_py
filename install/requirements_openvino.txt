@@ -26,6 +26,9 @@ openvino-tokenizers>=2024.6
 openvino-genai>=2024.6
 Pillow
 nncf>=2.14.0
+openvino>=2024.6 
+openvino-tokenizers>=2024.6
+openvino-genai>=2024.6
 optimum[exporters]
 optimum[intel]
 onnxruntime>=1.19.2

@@ -1,207 +1,12 @@
 {
   "status": {
-    "init": "Success (REAL)",
-    "cpu_init": "Success (REAL)",
-    "cpu_single": "Success (REAL)",
-    "cpu_single_shape": [
-      1,
-      384
-    ],
-    "cpu_single_type": "torch.float32",
-    "cpu_batch": "Success (REAL)",
-    "cpu_batch_shape": [
-      2,
-      384
-    ],
-    "cpu_similarity": "Success (REAL)",
-    "cpu_similarity_in_range": true,
-    "cuda_init": "Success (REAL)",
-    "cuda_single": "Success (REAL)",
-    "cuda_batch": "Success (REAL)",
-    "cuda_similarity": "Success (REAL)",
-    "cuda_similarity_in_range": true,
-    "cuda_device": "Quadro P4000",
-    "cuda_memory_allocated_mb": 0.0,
-    "cuda_memory_reserved_mb": 2.0,
-    "openvino_init": "Success (REAL)",
-    "openvino_single": "Success (REAL)",
-    "openvino_single_shape": [
-      1,
-      384
-    ],
-    "openvino_single_type": "torch.float32",
-    "openvino_batch": "Success (REAL)",
-    "openvino_batch_shape": [
-      2,
-      384
-    ],
-    "openvino_similarity": "Success (REAL)",
-    "openvino_similarity_in_range": true,
-    "apple_tests": "Apple Silicon not available",
-    "qualcomm_init": "Success (MOCK)",
-    "qualcomm_handler": "Success (MOCK)"
+    "test_error": "'transformers'"
   },
-  "examples": [
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          384
-        ],
-        "embedding_type": "torch.float32"
-      },
-      "timestamp": "2025-02-28T01:49:26.185636",
-      "elapsed_time": 0.0003457069396972656,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "single"
-    },
-    {
-      "input": "Batch of 2 texts",
-      "output": {
-        "embedding_shape": [
-          2,
-          384
-        ],
-        "embedding_type": "torch.float32"
-      },
-      "timestamp": "2025-02-28T01:49:26.185879",
-      "elapsed_time": 0.0002334117889404297,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "batch"
-    },
-    {
-      "input": "Similarity test between single and first batch embedding",
-      "output": {
-        "similarity_value": 0.9823696613311768,
-        "in_range": true
-      },
-      "timestamp": "2025-02-28T01:49:26.185964",
-      "elapsed_time": 0.001,
-      "implementation_type": "(REAL)",
-      "platform": "CPU",
-      "test_type": "similarity"
-    },
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          384
-        ]
-      },
-      "timestamp": "2025-02-28T01:49:26.357462",
-      "elapsed_time": 0.0028047561645507812,
-      "implementation_type": "(REAL)",
-      "platform": "CUDA",
-      "test_type": "single"
-    },
-    {
-      "input": "Batch of 2 texts",
-      "output": {
-        "embedding_shape": [
-          2,
-          384
-        ]
-      },
-      "timestamp": "2025-02-28T01:49:26.360889",
-      "elapsed_time": 0.0033833980560302734,
-      "implementation_type": "(REAL)",
-      "platform": "CUDA",
-      "test_type": "batch"
-    },
-    {
-      "input": "Similarity test between single and first batch embedding",
-      "output": {
-        "similarity_value": 0.9835167527198792,
-        "in_range": true
-      },
-      "timestamp": "2025-02-28T01:49:26.361026",
-      "elapsed_time": 0.001,
-      "implementation_type": "(REAL)",
-      "platform": "CUDA",
-      "test_type": "similarity"
-    },
-    {
-      "input": "The quick brown fox jumps over the lazy dog",
-      "output": {
-        "embedding_shape": [
-          1,
-          384
-        ],
-        "embedding_type": "torch.float32"
-      },
-      "timestamp": "2025-02-28T01:49:26.538005",
-      "elapsed_time": 0.0011866092681884766,
-      "implementation_type": "(REAL)",
-      "platform": "OpenVINO",
-      "test_type": "single"
-    },
-    {
-      "input": "Batch of 2 texts",
-      "output": {
-        "embedding_shape": [
-          2,
-          384
-        ],
-        "embedding_type": "torch.float32"
-      },
-      "timestamp": "2025-02-28T01:49:26.538956",
-      "elapsed_time": 0.0009362697601318359,
-      "implementation_type": "(REAL)",
-      "platform": "OpenVINO",
-      "test_type": "batch"
-    },
-    {
-      "input": "Similarity test between single and first batch embedding",
-      "output": {
-        "similarity_value": 0.9815189242362976,
-        "in_range": true
-      },
-      "timestamp": "2025-02-28T01:49:26.539496",
-      "elapsed_time": 0.001,
-      "implementation_type": "(REAL)",
-      "platform": "OpenVINO",
-      "test_type": "similarity"
-    },
-    {
-      "input": "Batch of 2 texts",
-      "output": {
-        "embedding_shape": null
-      },
-      "timestamp": "2025-02-28T01:49:26.630758",
-      "elapsed_time": 0.0016074180603027344,
-      "implementation_type": "(MOCK)",
-      "platform": "Qualcomm",
-      "test_type": "batch"
-    }
-  ],
+  "examples": [],
   "metadata": {
-    "model_name": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
-    "test_timestamp": "2025-02-28T01:49:26.630777",
-    "timestamp": 1740736166.6307802,
-    "torch_version": "2.4.0+cu121",
-    "numpy_version": "1.26.4",
-    "transformers_version": "4.49.0",
-    "cuda_available": true,
-    "cuda_device_count": 1,
-    "mps_available": false,
-    "transformers_mocked": false,
-    "test_texts": [
-      "The quick brown fox jumps over the lazy dog",
-      "A fast auburn canine leaps above the sleepy hound"
-    ],
-    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "platform_status": {
-      "cpu": "Ready (REAL)",
-      "cuda": "Ready (REAL)",
-      "openvino": "Ready (REAL)",
-      "apple": "Apple Silicon not available",
-      "qualcomm": "Ready (MOCK)"
-    },
-    "test_run_id": "embed-test-1740736166",
+    "error": "'transformers'",
+    "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py\", line 1651, in __test__\n    best_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_default_embed.py\", line 269, in test\n    transformers_available = not isinstance(self.resources[\"transformers\"], MagicMock)\n                                            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^\nKeyError: 'transformers'\n",
+    "timestamp": 1740799825.8235998,
     "model_testing": {
       "tested_models": [
         "/tmp/embed_test_model",
@@ -213,18 +18,18 @@
         "sentence-transformers/all-mpnet-base-v2",
         "sentence-transformers/multi-qa-mpnet-base-dot-v1"
       ],
-      "best_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "best_model": null,
       "model_success_counts": {
-        "/tmp/embed_test_model": 15,
-        "sentence-transformers/paraphrase-MiniLM-L3-v2": 15,
-        "prajjwal1/bert-tiny": 15,
-        "sentence-transformers/all-MiniLM-L6-v2": 15,
-        "distilbert/distilbert-base-uncased": 15,
-        "BAAI/bge-small-en-v1.5": 15,
-        "sentence-transformers/all-mpnet-base-v2": 15,
-        "sentence-transformers/multi-qa-mpnet-base-dot-v1": 15
+        "/tmp/embed_test_model": 0,
+        "sentence-transformers/paraphrase-MiniLM-L3-v2": 0,
+        "prajjwal1/bert-tiny": 0,
+        "sentence-transformers/all-MiniLM-L6-v2": 0,
+        "distilbert/distilbert-base-uncased": 0,
+        "BAAI/bge-small-en-v1.5": 0,
+        "sentence-transformers/all-mpnet-base-v2": 0,
+        "sentence-transformers/multi-qa-mpnet-base-dot-v1": 0
       },
-      "test_timestamp": "2025-02-28T01:49:26.630893"
+      "test_timestamp": "2025-02-28T19:30:25.823608"
     }
   }
 }
