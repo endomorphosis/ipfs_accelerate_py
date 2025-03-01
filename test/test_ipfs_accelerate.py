@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import json 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 class test_ipfs_accelerate:
     def __init__(self, resources=None, metadata=None):
@@ -26,7 +27,7 @@ class test_ipfs_accelerate:
         
         if "test_hardware_backend" not in dir(self):
             if "test_hardware_backend" not in list(self.resources.keys()):
-                from ipfs_accelerate_py.test.test_hardware_backend import test_hardware_backend
+                from test_hardware_backend import test_hardware_backend
                 self.resources["test_backend"] = test_hardware_backend(resources, metadata)
                 self.test_backend = self.resources["test_backend"]
             else:
@@ -34,7 +35,7 @@ class test_ipfs_accelerate:
                 
         if "test_api_backend" not in dir(self):
             if "test_api_backend" not in list(self.resources.keys()):
-                from ipfs_accelerate_py.test.test_api_backend import test_api_backend
+                from test_api_backend import test_api_backend
                 self.resources["test_api_backend"] = test_api_backend(resources, metadata)
                 self.test_api_backend = self.resources["test_api_backend"]
             else:

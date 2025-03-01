@@ -14,6 +14,11 @@ requests
 boto3
 sentence_transformers
 trio
+requests
+torch
+torchvision
+torchaudio
+torchtext
 optimum
 FlagEmbedding
 InstructorEmbedding
@@ -37,3 +42,15 @@ opencv-python
 decord
 websocket
 websocket-client
+websockets
+pydantic
+einops
+timm
+Pillow
+nncf>=2.14.0
+onnxruntime==1.19.2
+onnx==1.16.1
+multiformats
+pydub
+openai
+tiktoken        
