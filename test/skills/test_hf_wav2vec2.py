@@ -661,6 +661,10 @@ class test_hf_wav2vec2:
 
     def test(self):
         """Run all tests for the Wav2Vec2 model (both transcription and embedding extraction)"""
+        # Ensure we have MagicMock imported for use in this method
+        from unittest.mock import MagicMock
+        import traceback
+        
         results = {}
         
         # Test basic initialization
@@ -1106,6 +1110,10 @@ class test_hf_wav2vec2:
 
         # Test OpenVINO if installed
         try:
+            # Ensure MagicMock is imported here to avoid local variable error
+            from unittest.mock import MagicMock
+            import traceback
+            
             try:
                 import openvino
                 print("OpenVINO import successful")
@@ -1216,7 +1224,6 @@ class test_hf_wav2vec2:
                             )
                         
                         # Check if we got real components
-                        from unittest.mock import MagicMock
                         is_mock = isinstance(endpoint, MagicMock) or isinstance(processor, MagicMock)
                         
                         if not is_mock and handler is not None:
@@ -1285,6 +1292,16 @@ class test_hf_wav2vec2:
                     
                     # Create model instance
                     endpoint = OpenVINOWav2Vec2Model(processor, ie)
+                    
+                    # Define function to load audio at 16kHz
+                    def load_audio_16khz(audio_path):
+                        """Load audio at 16kHz sample rate"""
+                        try:
+                            audio, sr = load_audio(audio_path)
+                            return audio, 16000
+                        except Exception as e:
+                            print(f"Error loading audio at 16kHz: {e}")
+                            return np.zeros(16000, dtype=np.float32), 16000
                     
                     # Define the handler function
                     def direct_openvino_handler(audio_path=None, audio_array=None):
@@ -1359,9 +1376,6 @@ class test_hf_wav2vec2:
                 print(f"Error creating real OpenVINO implementation: {e}")
                 print(f"Traceback: {traceback.format_exc()}")
                 print("Creating minimal OpenVINO implementation...")
-                
-                # Import required components
-                from unittest.mock import MagicMock
                 
                 # Create minimal components that mark themselves properly
                 class MinimalOpenVINOWav2Vec2:
@@ -1617,7 +1631,10 @@ class test_hf_wav2vec2:
         try:
             test_results = self.test()
         except Exception as e:
-            test_results = {"test_error": str(e)}
+            import traceback
+            tb = traceback.format_exc()
+            print(f"Detailed traceback: {tb}")
+            test_results = {"test_error": str(e), "traceback": tb}
         
         # Create directories if they don't exist
         base_dir = os.path.dirname(os.path.abspath(__file__))

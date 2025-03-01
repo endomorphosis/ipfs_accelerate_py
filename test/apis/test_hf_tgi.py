@@ -12,7 +12,8 @@ class test_hf_tgi:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {
-            "hf_api_key": os.environ.get("HF_API_KEY", "")
+            "hf_api_key": os.environ.get("HF_API_KEY", ""),
+            "model_id": os.environ.get("HF_MODEL_ID", "google/t5-efficient-tiny")
         }
         self.hf_tgi = hf_tgi(resources=self.resources, metadata=self.metadata)
         return None
@@ -23,7 +24,8 @@ class test_hf_tgi:
         
         # Test endpoint handler creation
         try:
-            endpoint_url = "https://api-inference.huggingface.co/models/gpt2"
+            model_id = self.metadata.get("model_id", "google/t5-efficient-tiny")
+            endpoint_url = f"https://api-inference.huggingface.co/models/{model_id}"
             api_key = self.metadata.get("hf_api_key", "")
             
             endpoint_handler = self.hf_tgi.create_remote_text_generation_endpoint_handler(
@@ -41,7 +43,7 @@ class test_hf_tgi:
                 test_result = self.hf_tgi.test_tgi_endpoint(
                     endpoint_url=endpoint_url,
                     api_key=api_key,
-                    model_name="gpt2"
+                    model_name=model_id
                 )
                 results["test_endpoint"] = "Success" if test_result else "Failed endpoint test"
                 

@@ -1,5 +1,12 @@
 
 import time
+import threading
+import logging
+import hashlib
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if present
+load_dotenv()
 import re
 import os
 import openai
@@ -22,6 +29,10 @@ import inspect
 from pathlib import Path
 import tqdm
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+
 class TestError(Exception):
     pass
 
@@ -29,6 +40,7 @@ max_tokens = {
     'o1': 100000,
     'o1-mini': 65536,
     'o1-preview': 32768,
+    'o3': 128000,   # Added latest model
     'o3-mini': 100000,
     'gpt-4o': 16384,
     'gpt-4o-audio-preview': 16384,
@@ -51,6 +63,7 @@ max_tokens = {
 
 assistants_models = [ # /v1/assistants
     "o1", # 100,000
+    "o3", # 128,000
     "o3-mini", # 100,000
     "gpt-4o", # 16,384
     "gpt-4o-mini", # 16,384
@@ -77,16 +90,19 @@ embedding_models = [ # /v1/embeddings
     "text-embedding-ada-002"
 ]
 
-"gpt-4o-audio-preview",
-"gpt-4o-mini-audio-preview",
-"gpt-4o-mini-realtime-preview",
-"gpt-3.5-turbo-instruct",
+# Additional audio-capable models
+audio_models = [
+    "gpt-4o-audio-preview",
+    "gpt-4o-mini-audio-preview",
+    "gpt-4o-mini-realtime-preview"
+]
 
 chat_completion_models = [ # /v1/chat/completions
     "o1", # 100,000
     "o1-mini", # 100,000
     "o1-preview", # 32,768
-    "o3-mini",
+    "o3", # 128,000
+    "o3-mini", # 100,000
     "gpt-4o",
     "gpt-4o-mini", # 16,384
     "gpt-4",
@@ -109,6 +125,11 @@ image_models = [ # /v1/images/generations
     "dall-e-2"
 ]
 
+video_models = [ # /v1/videos/generations
+    "sora-1.0",
+    "sora-1.1"  # Future version placeholder
+]
+
 moderation_models = [ # /v1/moderations
     "omni-moderation-latest",
     "text-moderation-latest",
@@ -124,6 +145,7 @@ text_to_speech = [ #/v1/audio/speech
     "tts-1-hd-1106",
     "tts-1-1106",
     "tts-1-hd",
+    "tts-1-hd-v2", # Latest high-definition model
 ]
 
 translation_models = [ # /v1/audio/translations
@@ -132,6 +154,7 @@ translation_models = [ # /v1/audio/translations
 
 vision_models = [ # https://platform.openai.com/docs/guides/vision
     "o1",
+    "o3",
     "gpt-4o",
     "gpt-4o-mini",
     "gpt-4-turbo"
@@ -162,6 +185,8 @@ class openai_api:
         speech_to_text
         text_to_image
         moderated_text_to_image
+        text_to_video
+        moderated_text_to_video
         text_to_speech
         moderated_text_to_speech
         tokenize
@@ -205,7 +230,235 @@ class openai_api:
         self.test_openai_api_endpoint = self.test_openai_api_endpoint
         self.make_post_request_openai_api = self.make_post_request_openai_api
         self.init()
+        
+        # Environment variable handling for API key
+        if not self.api_key and "openai_api_key" not in metadata:
+            # Try to get API key from environment
+            self.api_key = os.environ.get("OPENAI_API_KEY", "")
+            if self.api_key:
+                logger.info("Using OpenAI API key from environment variable")
+            else:
+                logger.warning("No OpenAI API key found in metadata or environment variables")
+        
+        # Retry and backoff settings
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 60  # Maximum delay in seconds
+        
+        # Request queue settings
+        self.queue_enabled = True
+        self.queue_size = 100
+        self.queue_processing = False
+        self.current_requests = 0
+        self.max_concurrent_requests = 5
+        self.request_queue = []
+        self.queue_lock = threading.RLock()
         return None
+
+    def _with_queue_and_backoff(self, func):
+        '''Decorator to handle queue and backoff for API requests'''
+        def wrapper(*args, **kwargs):
+            # Generate request ID if not provided
+            request_id = kwargs.get("request_id")
+            if request_id is None:
+                request_id = f"req_{int(time.time())}_{hashlib.md5(str(args).encode()).hexdigest()[:8]}"
+                kwargs["request_id"] = request_id
+            
+            # If queue is enabled and we're at capacity, add to queue
+            if hasattr(self, "queue_enabled") and self.queue_enabled:
+                with self.queue_lock:
+                    if self.current_requests >= self.max_concurrent_requests:
+                        # Create a future to store the result
+                        result_future = {"result": None, "error": None, "completed": False}
+                        
+                        # Add to queue with all necessary info to process later
+                        request_info = {
+                            "function": func,
+                            "args": args,
+                            "kwargs": kwargs,
+                            "future": result_future,
+                            "request_id": request_id
+                        }
+                        
+                        # Check if queue is full
+                        if len(self.request_queue) >= self.queue_size:
+                            raise ValueError(f"Request queue is full ({self.queue_size} items). Try again later.")
+                        
+                        # Add to queue
+                        self.request_queue.append(request_info)
+                        logger.info(f"Request queued. Queue size: {len(self.request_queue)}")
+                        
+                        # Start queue processing if not already running
+                        if not self.queue_processing:
+                            threading.Thread(target=self._process_queue).start()
+                        
+                        # Wait for result with timeout
+                        wait_start = time.time()
+                        max_wait = 300  # 5 minutes
+                        
+                        while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                            time.sleep(0.1)
+                        
+                        # Check if completed or timed out
+                        if not result_future["completed"]:
+                            raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                        
+                        # Propagate error if any
+                        if result_future["error"]:
+                            raise result_future["error"]
+                        
+                        return result_future["result"]
+                    
+                    # If we're not at capacity, increment counter
+                    self.current_requests += 1
+            
+            # Use exponential backoff retry mechanism
+            retries = 0
+            retry_delay = self.initial_retry_delay if hasattr(self, "initial_retry_delay") else 1
+            max_retries = self.max_retries if hasattr(self, "max_retries") else 3
+            backoff_factor = self.backoff_factor if hasattr(self, "backoff_factor") else 2
+            max_retry_delay = self.max_retry_delay if hasattr(self, "max_retry_delay") else 60
+            
+            while True:
+                try:
+                    # Make the actual API call
+                    result = func(*args, **kwargs)
+                    
+                    # Decrement counter if queue enabled
+                    if hasattr(self, "queue_enabled") and self.queue_enabled:
+                        with self.queue_lock:
+                            self.current_requests = max(0, self.current_requests - 1)
+                    
+                    return result
+                    
+                except openai.RateLimitError as e:
+                    # Handle rate limit errors with backoff
+                    if retries < max_retries:
+                        # Check if the API returned a retry-after header
+                        retry_after = e.headers.get("retry-after") if hasattr(e, "headers") else None
+                        if retry_after and retry_after.isdigit():
+                            retry_delay = int(retry_after)
+                        
+                        logger.warning(f"Rate limit exceeded. Retrying in {retry_delay} seconds (attempt {retries+1}/{max_retries})...")
+                        time.sleep(retry_delay)
+                        retries += 1
+                        retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                    else:
+                        logger.error(f"Rate limit exceeded after {max_retries} attempts: {str(e)}")
+                        
+                        # Decrement counter if queue enabled
+                        if hasattr(self, "queue_enabled") and self.queue_enabled:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        
+                        raise
+                
+                except openai.APIError as e:
+                    # Handle transient API errors with backoff
+                    if retries < max_retries:
+                        logger.warning(f"API error: {str(e)}. Retrying in {retry_delay} seconds (attempt {retries+1}/{max_retries})...")
+                        time.sleep(retry_delay)
+                        retries += 1
+                        retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                    else:
+                        logger.error(f"API error after {max_retries} attempts: {str(e)}")
+                        
+                        # Decrement counter if queue enabled
+                        if hasattr(self, "queue_enabled") and self.queue_enabled:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        
+                        raise
+                
+                except Exception as e:
+                    # For other exceptions, don't retry
+                    logger.error(f"Request error: {str(e)}")
+                    
+                    # Decrement counter if queue enabled
+                    if hasattr(self, "queue_enabled") and self.queue_enabled:
+                        with self.queue_lock:
+                            self.current_requests = max(0, self.current_requests - 1)
+                    
+                    raise
+        
+        return wrapper
+
+    def _process_queue(self):
+        '''Process requests in the queue in FIFO order'''
+        with self.queue_lock:
+            if self.queue_processing:
+                return  # Another thread is already processing the queue
+            self.queue_processing = True
+        
+        logger.info("Starting queue processing thread")
+        
+        try:
+            while True:
+                # Get the next request from the queue
+                with self.queue_lock:
+                    if not self.request_queue:
+                        self.queue_processing = False
+                        break
+                        
+                    # Check if we're at the concurrent request limit
+                    if self.current_requests >= self.max_concurrent_requests:
+                        # Sleep briefly then check again
+                        time.sleep(0.1)
+                        continue
+                        
+                    # Get the next request and increase counter
+                    request_info = self.request_queue.pop(0)
+                    self.current_requests += 1
+                
+                # Process the request outside the lock
+                try:
+                    # Extract request details
+                    request_function = request_info["function"]
+                    args = request_info["args"]
+                    kwargs = request_info["kwargs"]
+                    future = request_info["future"]
+                    request_id = request_info.get("request_id")
+                    
+                    # Make the request (without queueing again)
+                    # Save original queue_enabled value
+                    original_queue_enabled = self.queue_enabled
+                    self.queue_enabled = False  # Disable queueing to prevent recursion
+                    
+                    try:
+                        # Make the request
+                        result = request_function(*args, **kwargs)
+                        
+                        # Store result in future
+                        future["result"] = result
+                        future["completed"] = True
+                        
+                    except Exception as e:
+                        # Store error in future
+                        future["error"] = e
+                        future["completed"] = True
+                        logger.error(f"Error processing queued request: {str(e)}")
+                    
+                    finally:
+                        # Restore original queue_enabled value
+                        self.queue_enabled = original_queue_enabled
+                
+                finally:
+                    # Decrement counter
+                    with self.queue_lock:
+                        self.current_requests = max(0, self.current_requests - 1)
+                
+                # Brief pause to prevent CPU hogging
+                time.sleep(0.01)
+                
+        except Exception as e:
+            logger.error(f"Error in queue processing thread: {str(e)}")
+            
+        finally:
+            with self.queue_lock:
+                self.queue_processing = False
+                
+            logger.info("Queue processing thread finished")
 
     def make_post_request_openai_api(self, model, endpoint, endpoint_type, batch):
         return None
@@ -251,6 +504,8 @@ class openai_api:
             return self.embedding(**kwargs)
         elif method == 'text_to_image':
             return self.text_to_image(**kwargs)
+        elif method == 'text_to_video':
+            return self.text_to_video(**kwargs)
         elif method == 'image_to_text':
             return self.image_to_text(**kwargs)
         elif method == 'text_to_speech':
@@ -387,6 +642,87 @@ class openai_api:
                         'text': json.dumps(images),
                         'done': True
                     }
+                    
+    def text_to_video(self, model, prompt, dimensions=None, duration=None, quality=None, **kwargs):
+        """
+        Generate a video from a text prompt using models like Sora.
+        
+        Args:
+            model (str): The model to use (e.g., 'sora-1.0')
+            prompt (str): The prompt describing the video to generate
+            dimensions (str, optional): Video dimensions (e.g., '1920x1080')
+            duration (float, optional): Video duration in seconds
+            quality (str, optional): Video quality setting (e.g., 'standard', 'hd')
+            
+        Returns:
+            dict: Contains 'video_url' and other metadata
+        """
+        if model not in video_models:
+            raise Exception('bad model: %s' % model)
+            
+        self.model = model
+        self.prompt = prompt
+        self.method = 'text_to_video'
+        
+        # Default settings if not provided
+        if dimensions is None:
+            dimensions = "1024x576"  # Default 16:9 ratio
+        if duration is None:
+            duration = 5.0  # Default 5 seconds
+        if quality is None:
+            quality = "standard"
+            
+        # Apply content moderation before generating video
+        return self.moderated_text_to_video(model, prompt, dimensions, duration, quality)
+        
+    def moderated_text_to_video(self, model, prompt, dimensions, duration, quality, **kwargs):
+        """Apply moderation to the prompt before generating video"""
+        json_messages = json.dumps(prompt)
+        requested_model = self.model
+        original_method = self.method
+        moderation_model = 'text-moderation-stable'
+        
+        # Check prompt for policy violations
+        check_messages = self.moderation(moderation_model, json_messages)
+        self.method = original_method
+        self.model = requested_model
+        
+        if len(check_messages.results) > 0:
+            results_keys = list(check_messages.results[0].__dict__.keys())
+            if "flagged" in results_keys:
+                if check_messages.results[0].flagged == True:
+                    raise Exception('bad prompt: %s' % prompt)
+                else:
+                    try:
+                        # Note: As of the current release, the OpenAI Sora API is not yet publicly available
+                        # When it becomes available, this will need to be updated with the correct endpoint
+                        # For now, we'll raise an exception to indicate it's not available
+                        raise Exception("Sora API is not publicly available yet")
+                        
+                        # Extract video metadata
+                        video_data = {
+                            'url': video_response.data[0].url,
+                            'revised_prompt': video_response.data[0].revised_prompt if hasattr(video_response.data[0], 'revised_prompt') else prompt,
+                            'dimensions': dimensions,
+                            'duration': duration
+                        }
+                        
+                        return {
+                            'text': json.dumps(video_data),
+                            'done': True
+                        }
+                    except Exception as e:
+                        # Special handling for API not available yet
+                        if "not available" in str(e).lower() or "coming soon" in str(e).lower():
+                            return {
+                                'text': json.dumps({
+                                    'error': 'Sora API is not publicly available yet',
+                                    'message': 'The Sora text-to-video API is currently in limited preview.'
+                                }),
+                                'done': False,
+                                'error': str(e)
+                            }
+                        raise e
 
 
     def text_to_speech(self, model, text, voice, response_format="mp3", speed=1, **kwargs):

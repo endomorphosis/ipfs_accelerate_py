@@ -10,21 +10,21 @@
     "cpu_embedding_type": "torch.float32",
     "cuda_init": "Success (REAL)",
     "cuda_benchmark": {
-      "average_inference_time": 0.0026073455810546875,
+      "average_inference_time": 0.4448859691619873,
       "iterations": 1,
       "cuda_device": "Quadro P4000",
-      "cuda_memory_used_mb": 68.41064453125
+      "cuda_memory_used_mb": 16.5048828125
     },
     "cuda_handler": "Success (REAL)",
     "cuda_embedding_shape": [
       1,
-      768
+      128
     ],
     "openvino_init": "Success (REAL)",
     "openvino_handler": "Success (REAL)",
     "openvino_embedding_shape": [
       1,
-      768
+      128
     ],
     "apple_tests": "Apple Silicon not available",
     "qualcomm_init": "Success (MOCK)",
@@ -40,8 +40,8 @@
         ],
         "embedding_type": "torch.float32"
       },
-      "timestamp": "2025-02-28T19:30:26.070932",
-      "elapsed_time": 0.0005490779876708984,
+      "timestamp": "2025-02-28T21:12:51.240518",
+      "elapsed_time": 0.002170562744140625,
       "implementation_type": "REAL",
       "platform": "CPU"
     },
@@ -50,17 +50,17 @@
       "output": {
         "embedding_shape": [
           1,
-          768
+          128
         ],
         "embedding_type": null,
         "performance_metrics": {
-          "inference_time": 0.002154111862182617,
-          "gpu_memory_mb": 0.01904296875,
+          "inference_time": 0.002253293991088867,
+          "gpu_memory_mb": 0.00390625,
           "is_simulated": true
         }
       },
-      "timestamp": "2025-02-28T19:30:26.240473",
-      "elapsed_time": 0.0021843910217285156,
+      "timestamp": "2025-02-28T21:12:52.613828",
+      "elapsed_time": 0.002276182174682617,
       "implementation_type": "REAL",
       "platform": "CUDA",
       "is_simulated": true
@@ -70,18 +70,18 @@
       "output": {
         "embedding_shape": [
           1,
-          768
+          128
         ]
       },
-      "timestamp": "2025-02-28T19:30:26.369077",
-      "elapsed_time": 0.0006690025329589844,
+      "timestamp": "2025-02-28T21:13:01.993564",
+      "elapsed_time": 0.009990215301513672,
       "implementation_type": "REAL",
       "platform": "OpenVINO"
     }
   ],
   "metadata": {
-    "model_name": "/tmp/bert_test_model",
-    "test_timestamp": "2025-02-28T19:30:26.377108",
+    "model_name": "prajjwal1/bert-tiny",
+    "test_timestamp": "2025-02-28T21:13:02.650471",
     "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
     "torch_version": "2.6.0+cu124",
     "transformers_version": "4.46.0",

@@ -45,3 +45,4 @@ openvino
 openvino-tokenizers
 openvino-genai
 onnxruntime
+sseclient-py

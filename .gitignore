@@ -9,3 +9,4 @@ build/
 model_cache/
 model_cache/*
 *_results_*
+*.env*

@@ -112,7 +112,7 @@ def check_model_info(model_name):
         }
 
 # Function to test if a model requires API token
-def test_model_access(model_name):
+def test_model_access(model_name, resources=None, metadata=None):
     """Test if a model can be accessed without API token"""
     print(f"Checking model info for {model_name}...")
     

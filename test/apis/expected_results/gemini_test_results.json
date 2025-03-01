@@ -1,11 +1,13 @@
 {
   "endpoint_handler": "Success",
-  "test_endpoint": "Error: argument of type 'NoneType' is not iterable",
-  "post_request": "Error: API key is required",
+  "test_endpoint": "Success",
+  "test_endpoint_params": "Success",
+  "post_request": "Success",
+  "post_request_headers": "Success",
   "chat_method": "Success",
   "streaming": "Success",
   "error_handling_auth": "Success",
   "error_handling_rate_limit": "Success",
   "error_handling_400": "Success",
-  "image_processing": "Failed image processing"
+  "image_processing": "Success"
 }

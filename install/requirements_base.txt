@@ -44,3 +44,14 @@ huggingface-hub
 # onnxruntime==1.19.2
 # onnx==1.16.1
 # FlagEmbedding
+# openai
+# tiktoken
+# open_clip_torch
+# librosa
+# pysbd
+# ffmpeg-python
+# opencv-python
+# decord
+# websocket
+# websocket-client
+sseclient-py

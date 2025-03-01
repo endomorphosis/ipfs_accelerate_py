@@ -1,10 +1,98 @@
 {
   "status": {
-    "test_error": "cannot access local variable 'sys' where it is not associated with a value"
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_handler": "Success (REAL)",
+    "cpu_output": "Valid (REAL)",
+    "cpu_sample_text": "Invalid inputs format or missing input_ids",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "cuda_output": "Valid (REAL)",
+    "cuda_sample_text": "Write a short story about a fox and a dog. You can't tell me to write something about a fox and a do...",
+    "cuda_batch": "Success but unexpected format",
+    "cuda_config": "Success (REAL)",
+    "cuda_config_sample": "Error in CUDA generation: 'dict' object has no att...",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)",
+    "openvino_output": "Valid (REAL)",
+    "openvino_sample_text": "Failed to properly tokenize input: Write a short story about a fo...",
+    "apple_tests": "Apple Silicon not available",
+    "qualcomm_init": "Success (MOCK)",
+    "qualcomm_handler": "Success (MOCK)",
+    "qualcomm_output": "Valid (MOCK)",
+    "qualcomm_sample_text": "(MOCK) Qualcomm SNPE output: Write a short story about a fox and a dog.\u00e9r\u00e9r\u00e9r\u00e9r"
   },
-  "examples": [],
+  "examples": [
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
+        "generated_text": "Invalid inputs format or missing input_ids"
+      },
+      "timestamp": "2025-02-28T21:13:29.845671",
+      "elapsed_time": 0.004436492919921875,
+      "implementation_type": "REAL",
+      "platform": "CPU"
+    },
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
+        "text": "Write a short story about a fox and a dog. You can't tell me to write something about a fox and a dog, because I don't know how to write a story about a fox and a dog.\nI can't tell you how to write a ...",
+        "device": "cuda:0"
+      },
+      "timestamp": "2025-02-28T21:13:32.366323",
+      "elapsed_time": 1.3952195644378662,
+      "implementation_type": "REAL",
+      "platform": "CUDA"
+    },
+    {
+      "input": "Write a short story about a fox and a dog. (with custom generation settings)",
+      "output": {
+        "text": "Error in CUDA generation: 'dict' object has no attribute 'bos_token_id'",
+        "config": {
+          "max_new_tokens": 30,
+          "temperature": 0.8,
+          "top_p": 0.95
+        }
+      },
+      "timestamp": "2025-02-28T21:13:32.375722",
+      "elapsed_time": 0.004441976547241211,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "test_type": "config"
+    },
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
+        "generated_text": "Failed to properly tokenize input: Write a short story about a fo..."
+      },
+      "timestamp": "2025-02-28T21:14:06.240204",
+      "elapsed_time": 0.0013480186462402344,
+      "implementation_type": "REAL",
+      "platform": "OpenVINO"
+    },
+    {
+      "input": "Write a short story about a fox and a dog.",
+      "output": {
+        "generated_text": "Once upon a time in the forest, there lived a cunning fox named Rusty and a loyal dog named Max."
+      },
+      "timestamp": "2025-02-28T21:14:06.552091",
+      "elapsed_time": 0.009961128234863281,
+      "implementation_type": "MOCK",
+      "platform": "Qualcomm"
+    }
+  ],
   "metadata": {
-    "error": "cannot access local variable 'sys' where it is not associated with a value",
-    "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 1420, in __test__\n    test_results = self.test()\n                   ^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 1396, in test\n    \"python_version\": sys.version,\n                      ^^^\nUnboundLocalError: cannot access local variable 'sys' where it is not associated with a value\n"
+    "model_name": "facebook/opt-125m",
+    "test_timestamp": "2025-02-28T21:14:06.552118",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.46.0",
+    "platform_status": {
+      "apple": "Apple Silicon not available"
+    },
+    "cuda_available": true,
+    "cuda_device_count": 1,
+    "mps_available": false,
+    "transformers_mocked": false
   }
 }

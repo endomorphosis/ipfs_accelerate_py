@@ -40,3 +40,4 @@ ffmpeg-python
 onnxruntime
 qnnxruntime-qnn
 onnx_graphsurgeon
+sseclient-py

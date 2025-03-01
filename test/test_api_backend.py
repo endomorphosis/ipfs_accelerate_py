@@ -1,8 +1,13 @@
 import os 
 import sys
+import importlib.util
+import importlib
 
-# Update imports to reference the test.apis submodule instead of a top-level apis module
-from test.apis import (
+# Add the parent directory to sys.path
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# Import from apis directory within the test directory
+from apis import (
     test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm,
     test_openai_api, test_ovms, test_ollama, test_s3_kit,
     test_gemini, test_opea

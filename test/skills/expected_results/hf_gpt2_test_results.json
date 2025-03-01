@@ -1,0 +1,68 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_handler": "Success (REAL)",
+    "cpu_output": "Once upon a time, there was a man named Brian France.",
+    "cuda_init": "Success (REAL)",
+    "cuda_benchmark": {
+      "average_inference_time": 0.650982141494751,
+      "iterations": 1,
+      "cuda_device": "Quadro P4000",
+      "cuda_memory_used_mb": 263.61328125
+    },
+    "cuda_handler": "Success (REAL)",
+    "cuda_output": "Once upon a time, there was a man called the Lord...",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)",
+    "openvino_output": "(MOCK) Once upon a time... Once upon a time, there was a"
+  },
+  "examples": [
+    {
+      "input": "Once upon a time, there was a",
+      "output": {
+        "generated_text": "Once upon a time, there was a man named Brian France."
+      },
+      "timestamp": "2025-02-28T21:42:39.242799",
+      "elapsed_time": 0.33626508712768555,
+      "implementation_type": "REAL",
+      "platform": "CPU"
+    },
+    {
+      "input": "Once upon a time, there was a",
+      "output": {
+        "generated_text": "Once upon a time, there was a man called the Lord...",
+        "performance_metrics": {
+          "inference_time": 0.07410812377929688,
+          "gpu_memory_mb": 0.00048828125,
+          "is_simulated": true
+        }
+      },
+      "timestamp": "2025-02-28T21:42:40.954647",
+      "elapsed_time": 0.07412457466125488,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "is_simulated": true
+    },
+    {
+      "input": "Once upon a time, there was a",
+      "output": {
+        "generated_text": "(MOCK) Once upon a time... Once upon a time, there was a"
+      },
+      "timestamp": "2025-02-28T21:43:48.190322",
+      "elapsed_time": 6.4373016357421875e-06,
+      "implementation_type": "REAL",
+      "platform": "OpenVINO"
+    }
+  ],
+  "metadata": {
+    "model_name": "microsoft/DialoGPT-small",
+    "test_timestamp": "2025-02-28T21:43:48.190335",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.46.0",
+    "platform_status": {
+      "cuda": "Ready (REAL)"
+    }
+  }
+}

@@ -3,7 +3,7 @@ import io
 import sys
 import json
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, patch
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
 from api_backends import apis, openai_api
@@ -297,6 +297,138 @@ class test_openai_api:
                     api_key_error_caught = True
                     
                 results["error_handling_api_key"] = "Success" if api_key_error_caught else "Failed to catch API key error"
+
+        # Test queue and backoff functionality
+        try:
+            # Test queueing by creating multiple concurrent requests
+            with patch('threading.Thread') as mock_thread:
+                # Create a mock function to track calls to _process_queue
+                def track_thread(*args, **kwargs):
+                    pass
+                
+                mock_thread.return_value.start.side_effect = track_thread
+                
+                # Simulate reaching the concurrent request limit
+                self.openai_api.current_requests = self.openai_api.max_concurrent_requests
+                
+                # Attempt a request - should queue
+                with patch('openai.chat.completions.create') as mock_chat:
+                    mock_chat.return_value = MagicMock(
+                        id="chatcmpl-123",
+                        object="chat.completion",
+                        created=1677825464,
+                        model="gpt-4o",
+                        choices=[
+                            MagicMock(
+                                index=0,
+                                message=MagicMock(
+                                    role="assistant",
+                                    content="Queued response"
+                                ),
+                                finish_reason="stop"
+                            )
+                        ],
+                        usage=MagicMock(
+                            prompt_tokens=20,
+                            completion_tokens=10,
+                            total_tokens=30
+                        )
+                    )
+                    
+                    # Mock future completion to avoid actual waiting
+                    with patch.object(self.openai_api, '_process_queue') as mock_process:
+                        def process_side_effect():
+                            # Simulate processing by emptying the queue
+                            if self.openai_api.request_queue:
+                                request = self.openai_api.request_queue[0]
+                                # Complete the request instantly
+                                request["future"]["result"] = {"text": "Processed from queue"}
+                                request["future"]["completed"] = True
+                                self.openai_api.request_queue.pop(0)
+                        
+                        mock_process.side_effect = process_side_effect
+                        
+                        self.openai_api.messages = [{"role": "user", "content": "Test queueing"}]
+                        self.openai_api.model = "gpt-4o"
+                        self.openai_api.method = "chat"
+                        result = self.openai_api.request_complete()
+                        
+                        # Queue should have been used (thread.start called)
+                        results["queue_functionality"] = "Success" if mock_thread.return_value.start.called else "Failed - queue not used"
+                        assert mock_thread.return_value.start.called, "Queue processing thread should have been started"
+                
+            # Test backoff retry mechanism 
+            with patch('openai.chat.completions.create') as mock_chat:
+                # Mock a rate limit error, then success
+                mock_chat.side_effect = [
+                    openai.RateLimitError("Rate limit exceeded", headers={"retry-after": "2"}),
+                    MagicMock(
+                        id="chatcmpl-123",
+                        object="chat.completion",
+                        created=1677825464,
+                        model="gpt-4o",
+                        choices=[
+                            MagicMock(
+                                index=0,
+                                message=MagicMock(
+                                    role="assistant",
+                                    content="Retry successful"
+                                ),
+                                finish_reason="stop"
+                            )
+                        ],
+                        usage=MagicMock(
+                            prompt_tokens=20,
+                            completion_tokens=10,
+                            total_tokens=30
+                        )
+                    )
+                ]
+                
+                # Reset request counter
+                self.openai_api.current_requests = 0
+                
+                # Mock sleep to avoid actual waiting
+                with patch('time.sleep') as mock_sleep:
+                    self.openai_api.messages = [{"role": "user", "content": "Test backoff"}]
+                    self.openai_api.model = "gpt-4o"
+                    self.openai_api.method = "chat"
+                    
+                    result = self.openai_api.request_complete()
+                    
+                    # Backoff should have been used (sleep called with the retry-after value)
+                    results["backoff_retry"] = "Success" if mock_sleep.called and mock_sleep.call_args[0][0] == 2 else "Failed - backoff not used correctly"
+                    assert mock_sleep.called and mock_sleep.call_args[0][0] == 2, "Backoff mechanism should have used the retry-after header"
+                    
+            # Test environment variable handling
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "test_env_key"}):
+                with patch.object(self.openai_api, '__init__', return_value=None) as mock_init:
+                    api = openai_api(resources={}, metadata={})
+                    # Call mock_init with our api instance and args
+                    mock_init(api, resources={}, metadata={})
+                    
+                    results["env_variable_handling"] = "Success" if hasattr(api, 'api_key') else "Failed - environment variable not checked"
+                    
+        except Exception as e:
+            results["queue_backoff_tests"] = str(e)
+            print(f"Error testing queue and backoff: {str(e)}")
+            
+        # Test error handling
+        try:
+            # Test API key error
+            with patch('openai.chat.completions.create') as mock_chat:
+                mock_chat.side_effect = Exception("Invalid API key")
+                
+                api_key_error_caught = False
+                try:
+                    self.openai_api.messages = [{"role": "user", "content": "Hello"}]
+                    self.openai_api.model = "gpt-4o"
+                    self.openai_api.method = "chat"
+                    self.openai_api.request_complete()
+                except Exception:
+                    api_key_error_caught = True
+                    
+                results["error_handling_api_key"] = "Success" if api_key_error_caught else "Failed to catch API key error"
                 assert api_key_error_caught, "Should catch API key errors"
                     
             # Test rate limit error
@@ -395,7 +527,9 @@ if __name__ == "__main__":
             "speech_to_text": "Success",
             "chat_completion": "Success",
             "error_handling_api_key": "Success",
-            "error_handling_rate_limit": "Success"
+            "error_handling_rate_limit": "Success"            \"queue_functionality\": \"Success\",
+            \"backoff_retry\": \"Success\",
+            \"env_variable_handling\": \"Success\",
         }
         
         # Save the collected results to match expected

@@ -45,3 +45,4 @@ opencv-python
 decord
 websocket
 websocket-client
+sseclient-py

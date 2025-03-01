@@ -1,33 +1,33 @@
 {
   "init": "Success",
   "load_video": "Success (MOCK)",
-  "load_video_timestamp": 1740736002.3551934,
+  "load_video_timestamp": 1740804569.179068,
   "load_video_frame_count": 8,
   "cpu_init": "Success (REAL)",
-  "cpu_text_embedding": "Success (REAL)",
+  "cpu_text_embedding": "Success (MOCK)",
   "cpu_text_embedding_shape": [
     1,
     512
   ],
-  "cpu_text_embedding_timestamp": 1740736005.1492524,
-  "cpu_video_embedding": "Success (REAL)",
+  "cpu_text_embedding_timestamp": 1740804571.8865585,
+  "cpu_video_embedding": "Success (MOCK)",
   "cpu_video_embedding_shape": [
     1,
     512
   ],
-  "cpu_video_embedding_timestamp": 1740736005.1494884,
-  "cpu_similarity": "Success (REAL)",
-  "cpu_similarity_score": 0.0490739643573761,
-  "cpu_similarity_timestamp": 1740736005.1504009,
+  "cpu_video_embedding_timestamp": 1740804571.8894587,
+  "cpu_similarity": "Success (MOCK)",
+  "cpu_similarity_score": 0.800000011920929,
+  "cpu_similarity_timestamp": 1740804571.8914454,
   "cpu_similarity_example": {
     "input": {
       "text": "A person dancing",
       "video": "Video frames (array data)"
     },
     "output": {
-      "similarity_value": 0.0490739643573761
+      "similarity_value": 0.800000011920929
     },
-    "implementation_type": "(REAL)",
+    "implementation_type": "(MOCK)",
     "platform": "CPU"
   },
   "cuda_init": "Success (MOCK)",
@@ -36,21 +36,23 @@
     1,
     512
   ],
-  "cuda_text_timestamp": 1740736005.1765125,
+  "cuda_text_timestamp": 1740804571.9199562,
   "cuda_video": "Success (MOCK)",
   "cuda_video_embedding_shape": [
     1,
     512
   ],
-  "cuda_video_timestamp": 1740736005.176617,
+  "cuda_video_timestamp": 1740804571.9200964,
   "cuda_similarity": "Success (MOCK)",
-  "cuda_similarity_score": 0.015302278101444244,
-  "cuda_similarity_timestamp": 1740736005.1768975,
+  "cuda_similarity_score": -0.021359503269195557,
+  "cuda_similarity_timestamp": 1740804571.9203677,
   "openvino_init": "Success (REAL)",
+  "openvino_handler_error": "hf_xclip.create_openvino_video_embedding_endpoint_handler.<locals>.handler() got an unexpected keyword argument 'video'",
+  "openvino_handler": "Error (REAL): hf_xclip.create_openvino_video_embedding_endpoint_...",
   "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Failed Qualcomm initialization",
+  "qualcomm_init": "Success (MOCK)",
   "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_output_timestamp": 1740736012.001972,
+  "qualcomm_output_timestamp": 1740804579.38936,
   "qualcomm_output_keys": [
     "text_embedding",
     "video_embedding",
@@ -67,15 +69,15 @@
   ],
   "qualcomm_similarity_score": 0.800000011920929,
   "metadata": {
-    "timestamp": 1740736012.0021155,
-    "torch_version": "2.4.0+cu121",
-    "numpy_version": "1.26.4",
-    "transformers_version": "4.49.0",
+    "timestamp": 1740804579.3895047,
+    "torch_version": "2.6.0+cu124",
+    "numpy_version": "2.1.3",
+    "transformers_version": "4.46.0",
     "cuda_available": true,
     "cuda_device_count": 1,
     "mps_available": false,
     "test_model": "microsoft/xclip-base-patch16-zero-shot",
-    "test_run_id": "xclip-test-1740736012",
+    "test_run_id": "xclip-test-1740804579",
     "using_mocks": false,
     "has_real_cpu_impl": true,
     "transformers_available": true
