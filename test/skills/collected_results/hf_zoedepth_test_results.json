@@ -1,0 +1,54 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_handler": "Success (REAL)",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)"
+  },
+  "examples": [
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'torch.Tensor'>",
+        "implementation_type": "UNKNOWN"
+      },
+      "timestamp": "2025-03-01T15:15:08.478854",
+      "elapsed_time": 0.00012969970703125,
+      "implementation_type": "REAL",
+      "platform": "CPU"
+    },
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'dict'>",
+        "implementation_type": "REAL"
+      },
+      "timestamp": "2025-03-01T15:15:08.819890",
+      "elapsed_time": 1.2636184692382812e-05,
+      "implementation_type": "REAL",
+      "platform": "CUDA"
+    },
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'torch.Tensor'>",
+        "implementation_type": "UNKNOWN"
+      },
+      "timestamp": "2025-03-01T15:15:08.907866",
+      "elapsed_time": 6.985664367675781e-05,
+      "implementation_type": "REAL",
+      "platform": "OpenVINO"
+    }
+  ],
+  "metadata": {
+    "model_name": "zoedepth",
+    "test_timestamp": "2025-03-01T15:15:08.907886",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.46.0",
+    "platform_status": {}
+  }
+}

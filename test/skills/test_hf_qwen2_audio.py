@@ -86,7 +86,7 @@ except ImportError:
             # Mock implementation
             return MagicMock(), MagicMock(), lambda x: torch.zeros((1, 768)), None, 1
     
-    print(f"Warning: {class_name} module not found, using mock implementation")
+    print(f"Warning: hf_qwen2_audio module not found, using mock implementation")
 
 # Define required methods to add to hf_qwen2_audio
 def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
@@ -808,8 +808,7 @@ class test_hf_qwen2_audio:
                     print("Test results differ from expected results!")
                     for mismatch in mismatches:
                         print(f"- {mismatch}")
-                    print("
-Would you like to update the expected results? (y/n)")
+                    print("Would you like to update the expected results? (y/n)")
                     user_input = input().strip().lower()
                     if user_input == 'y':
                         with open(expected_file, 'w') as ef:

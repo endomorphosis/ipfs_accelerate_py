@@ -229,7 +229,8 @@ def generate_report(results, output_file):
     report += f"- **Total Models**: {total}\n"
     report += f"- **Tested**: {tested} ({tested/total*100:.1f}% of total)\n"
     report += f"- **Passed**: {passed} ({pass_rate} of tested)\n"
-    report += f"- **Failed**: {failed} ({failed/tested*100:.1f}% of tested if tested > 0 else 0}%)\n"
+    failed_pct = failed/tested*100 if tested > 0 else 0.0
+    report += f"- **Failed**: {failed} ({failed_pct:.1f}% of tested)\n"
     report += f"- **Missing Tests**: {missing} ({missing/total*100:.1f}% of total)\n\n"
     
     # Add results table

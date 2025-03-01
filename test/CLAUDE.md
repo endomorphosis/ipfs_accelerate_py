@@ -18,106 +18,29 @@
 - ✅ Implement proper handler creation with both sync and async support
 - ✅ Add dictionary structure validation to ensure expected keys are present
 
-### Endpoint Handler Fix Implementation
+### Phase 7: Queue and Backoff System Implementation
+- ✅ Implement comprehensive queue system for all API backends:
+  - Thread-safe request queueing with concurrency limits
+  - Dynamic queue size configuration
+  - Priority-based queue processing
+  - Queue status monitoring and metrics
+- ✅ Implement exponential backoff system for error handling:
+  - Automatic retry with configurable parameters
+  - Error classification for different backoff strategies
+  - Rate limit detection and handling
+  - Timeout and connection error recovery
+- ✅ Add API key multiplexing capabilities:
+  - Multiple API key management for each provider
+  - Automatic round-robin key rotation
+  - Least-loaded key selection strategy
+  - Per-key usage tracking and metrics
+- ✅ Create comprehensive test suite for queue and backoff:
+  - API-specific tests for all 11 backend types
+  - High-concurrency stress testing
+  - Performance comparisons with/without queue
+  - Failure recovery verification
 
-The main issue with the local endpoints was that the endpoint_handler method was returning a dictionary instead of a callable function, causing "'dict' object is not callable" errors. This has been fixed with:
-
-1. **Dynamic Fix (implement_endpoint_handler_fix.py)**:
-   - Creates a class that can apply the fix to any ipfs_accelerate_py instance
-   - Applies the fix at runtime using property overriding
-   - Works with existing code without modifying the module
-   - Implements proper handler support for all model types
-   - Adds both async and sync function compatibility
-
-2. **Permanent Fix (apply_endpoint_handler_fix.py)**:
-   - Applies the fix by patching the ipfs_accelerate.py module directly
-   - Makes a backup of the original file before applying the fix
-   - Contains complete implementation with model-type detection for responses
-   - Provides proper async/sync detection and execution
-   - Implements model-specific mock responses when needed
-   - Maintains backward compatibility for dictionary access
-
-3. **Fix Structure**:
-   - The fix uses a property that returns a method, making it both callable and subscriptable
-   - Supports direct access `endpoint_handler[model][type]` for backward compatibility
-   - Supports function calls `endpoint_handler(model, type)` for proper handler access
-   - Creates appropriate mock handlers when needed, based on the model type
-   - Ensures proper handling for embedded models, LLMs, audio, vision, and multimodal models
-
-4. **Implementation Details**:
-   ```python
-   @property
-   def endpoint_handler(self):
-       """Property that provides access to endpoint handlers.
-       
-       This can be used in two ways:
-       1. When accessed without arguments: returns the resources dictionary
-          for direct attribute access (self.endpoint_handler[model][type])
-       2. When called with arguments: returns a callable function
-          for the specific model and endpoint type (self.endpoint_handler(model, type))
-       """
-       return self.get_endpoint_handler
-
-   def get_endpoint_handler(self, model=None, endpoint_type=None):
-       """Get an endpoint handler for the specified model and endpoint type."""
-       if model is None or endpoint_type is None:
-           # Return the dictionary for direct access
-           return self.resources.get("endpoint_handler", {})
-       
-       # Get handler and return callable function
-       try:
-           handlers = self.resources.get("endpoint_handler", {})
-           if model in handlers and endpoint_type in handlers[model]:
-               handler = handlers[model][endpoint_type]
-               if callable(handler):
-                   return handler
-               else:
-                   # Create a wrapper function for dictionary handlers
-                   async def handler_wrapper(*args, **kwargs):
-                       # Implementation depends on model type
-                       model_lower = model.lower()
-                       
-                       if any(name in model_lower for name in ["bert", "roberta", "embed"]):
-                           # Embedding model
-                           return {
-                               "embedding": [0.1, 0.2, 0.3, 0.4] * 96,
-                               "implementation_type": "(MOCK-WRAPPER)"
-                           }
-                       elif any(name in model_lower for name in ["llama", "gpt", "qwen"]):
-                           # LLM
-                           return {
-                               "generated_text": f"This is a mock response from {model}",
-                               "implementation_type": "(MOCK-WRAPPER)"
-                           }
-                       else:
-                           # Generic
-                           return {
-                               "text": f"Response from {model} using {endpoint_type}",
-                               "implementation_type": "(MOCK-WRAPPER)"
-                           }
-                   return handler_wrapper
-           else:
-               return self._create_mock_handler(model, endpoint_type)
-       except Exception as e:
-           print(f"Error getting endpoint handler: {e}")
-           return self._create_mock_handler(model, endpoint_type)
-           
-   def _create_mock_handler(self, model, endpoint_type):
-       """Create a mock handler function for testing."""
-       async def mock_handler(*args, **kwargs):
-           # Create appropriate mock response based on model type
-           model_lower = model.lower()
-           
-           if any(name in model_lower for name in ["bert", "roberta"]):
-               return {"embedding": [0.1, 0.2, 0.3, 0.4] * 96,
-                      "implementation_type": "(MOCK)"}
-           else:
-               return {"text": f"Mock response from {model}",
-                      "implementation_type": "(MOCK)"}
-       return mock_handler
-   ```
-
-### Phase 7: Low Priority API Implementation
+### Phase 8: Low Priority API Implementation
 - ✅ Complete OVMS (OpenVINO Model Server) API with all features:
   - Thread-safe request queue with concurrency limits
   - Exponential backoff for error handling
@@ -128,53 +51,62 @@ The main issue with the local endpoints was that the endpoint_handler method was
 - ⏳ Implement OPEA API integration
 - ⏳ Add S3 Kit API for model storage
 
-### Phase 8: Model Integration Improvements
+### Phase 9: Model Integration Improvements
 - ⏳ Implement batch processing for all 48 models
 - ⏳ Add quantization support for memory-constrained environments
 - ⏳ Create comprehensive benchmarking across CPU, CUDA, and OpenVINO
 - ⏳ Finalize multi-GPU support with custom device mapping
 
-### Phase 9: Complete Test Coverage for All Model Types
+### Phase 10: Complete Test Coverage for All Model Types
 - ⏳ Create test implementations for every model type listed in huggingface_model_types.json
 - ⏳ Structure tests consistently with standardized CPU/CUDA/OpenVINO implementations
 - ⏳ Implement result collection with performance metrics for all model types
 - ⏳ Generate comprehensive model compatibility matrix across hardware platforms
 - ⏳ Add automated test discovery and parallel execution for all model types
 
-## Recent Achievements - February/March 2025
+## Recent Achievements - March 2025
+
+### Queue and Backoff System Implementation
+- ✅ Comprehensive queue system for all API backends
+- ✅ Exponential backoff with configurable retry parameters
+- ✅ API key multiplexing with multiple selection strategies
+- ✅ Complete test suite for verification
 
 ### API Backend Implementation Status
 - ✅ OpenAI API: REAL implementation (comprehensive with all endpoints)
 - ✅ Claude API: REAL implementation (verified complete)
 - ✅ Groq API: REAL implementation (newly implemented with streaming)
-- ⚠️ Ollama API: MOCK implementation (needs real integration)
+- ✅ Ollama API: REAL implementation with queue and backoff
 - ⚠️ HF TGI API: MOCK implementation (needs real integration)
 - ⚠️ HF TEI API: MOCK implementation (needs real integration)
 - ⚠️ Gemini API: MOCK implementation (needs real integration)
 - ⚠️ Others (LLVM, OVMS, S3 Kit, OPEA): MOCK implementation (lower priority)
 
-### OpenAI API Implementation Improvements
-- ✅ Environment variable handling for API keys
-- ✅ Python-dotenv integration for .env file support
-- ✅ Thread-safe request queueing system
-- ✅ Exponential backoff for transient errors and rate limits
-- ✅ Configuration parameters for fine-tuning behavior
+### Queue and Backoff Features
+- ✅ Thread-safe request queueing with proper locking
+- ✅ Configurable concurrency limits per API
+- ✅ Configurable queue sizes with overflow protection
+- ✅ Exponential backoff with jitter for distributed systems
+- ✅ Rate limit detection and automatic handling
+- ✅ Error classification and response-based retry decisions
+- ✅ API key rotation for higher throughput
+- ✅ Per-key usage metrics and tracking
+- ✅ Priority-based queue processing
 
-### Groq API Implementation Features
-- ✅ Chat completions with streaming
-- ✅ Robust error handling with retries
-- ✅ Authentication and rate limit management
-- ✅ Model compatibility checking
-- ✅ System prompts support
-- ✅ Temperature and sampling controls
-- ✅ Usage tracking with cost estimation
-- ✅ Client-side token counting
+### API Key Multiplexing Features
+- ✅ Multiple API key support for all major providers
+- ✅ Round-robin key selection strategy
+- ✅ Least-loaded key selection strategy
+- ✅ Automatic fallback between providers
+- ✅ Per-key usage metrics and tracking
+- ✅ Environment variable and dotenv file support
+- ✅ Thread-safe key management
 
 ## Local Endpoints Status
 
 ✅ Fixed: All 47 models defined in mapped_models.json can now be properly accessed through endpoint handlers.
 
-The previous issue where endpoints were failing with the error "'dict' object is not callable" has been resolved with the endpoint_handler implementation described above. With the fix applied:
+The previous issue where endpoints were failing with the error "'dict' object is not callable" has been resolved with the endpoint_handler implementation described below. With the fix applied:
 
 1. All endpoints are now callable functions that can be accessed with `endpoint_handler(model, type)`
 2. Both synchronous and asynchronous execution is supported
@@ -253,30 +185,9 @@ The permanent fix will make a backup of your ipfs_accelerate.py file before maki
 | Sentence Embeddings | CUDA | 0.85ms/sentence | 85MB | 384 |
 | Sentence Embeddings | CPU | 5.0ms/sentence | 100MB | 384 |
 
-## Current Development Priorities
-
-1. ✅ **Endpoint Handler Fix** (Completed):
-   - ✅ Updated endpoint_handler property to support callable pattern
-   - ✅ Added proper implementation detection and return type validation
-   - ✅ Fixed async/sync function detection and execution 
-   - ✅ Added support for both dictionary and function access patterns
-   - ✅ Implemented model-specific response formatting based on model type
-
-2. **Medium Priority API Implementations**:
-   - Complete Ollama API for local LLM deployment
-   - Implement Hugging Face TGI integration for open-source models
-   - Add Hugging Face TEI support for embeddings
-   - Implement Gemini API for multimodal capabilities
-
-3. **Model Performance Optimizations**:
-   - Fix CUDA compatibility for Vision-T5, MobileViT, and UPerNet
-   - Enhance OpenVINO compatibility for LLaVA-Next and others
-   - Implement quantization support for all models
-   - Add batch processing optimization
-
 ## Implementation Patterns
 
-### API Backend Pattern
+### API Backend Pattern with Queue and Backoff
 ```python
 def __init__(self, resources=None, metadata=None):
     # Initialize with credentials from environment or metadata
@@ -366,6 +277,105 @@ def _process_queue(self):
             print(f"Error in queue processor: {e}")
 ```
 
+### API Key Multiplexing Pattern
+```python
+class ApiKeyMultiplexer:
+    """
+    Class to manage multiple API keys for different API providers
+    with separate queues for each key.
+    """
+    
+    def __init__(self):
+        # Initialize API client dictionaries - each key will have its own client
+        self.openai_clients = {}
+        self.groq_clients = {}
+        self.claude_clients = {}
+        self.gemini_clients = {}
+        
+        # Initialize locks for thread safety
+        self.openai_lock = threading.RLock()
+        self.groq_lock = threading.RLock()
+        self.claude_lock = threading.RLock()
+        self.gemini_lock = threading.RLock()
+    
+    def add_openai_key(self, key_name, api_key, max_concurrent=5):
+        """Add a new OpenAI API key with its own client instance"""
+        with self.openai_lock:
+            # Create a new OpenAI client with this API key
+            client = openai_api(
+                resources={},
+                metadata={"openai_api_key": api_key}
+            )
+            
+            # Configure queue settings for this client
+            client.max_concurrent_requests = max_concurrent
+            
+            # Store in our dictionary
+            self.openai_clients[key_name] = {
+                "client": client,
+                "api_key": api_key,
+                "usage": 0,
+                "last_used": 0
+            }
+    
+    def get_openai_client(self, key_name=None, strategy="round-robin"):
+        """
+        Get an OpenAI client by key name or using a selection strategy
+        
+        Strategies:
+        - "specific": Return the client for the specified key_name
+        - "round-robin": Select the least recently used client
+        - "least-loaded": Select the client with the smallest queue
+        """
+        with self.openai_lock:
+            if len(self.openai_clients) == 0:
+                raise ValueError("No OpenAI API keys have been added")
+            
+            if key_name and key_name in self.openai_clients:
+                # Update usage stats
+                self.openai_clients[key_name]["usage"] += 1
+                self.openai_clients[key_name]["last_used"] = time.time()
+                return self.openai_clients[key_name]["client"]
+            
+            if strategy == "round-robin":
+                # Find the least recently used client
+                selected_key = min(self.openai_clients.keys(), 
+                                 key=lambda k: self.openai_clients[k]["last_used"])
+            elif strategy == "least-loaded":
+                # Find the client with the smallest queue
+                selected_key = min(self.openai_clients.keys(),
+                                 key=lambda k: self.openai_clients[k]["client"].current_requests)
+            else:
+                # Default to first key
+                selected_key = list(self.openai_clients.keys())[0]
+            
+            # Update usage stats
+            self.openai_clients[selected_key]["usage"] += 1
+            self.openai_clients[selected_key]["last_used"] = time.time()
+            
+            return self.openai_clients[selected_key]["client"]
+    
+    def get_usage_stats(self):
+        """Get usage statistics for all API keys"""
+        stats = {
+            "openai": {key: {
+                "usage": data["usage"],
+                "queue_size": len(data["client"].request_queue) if hasattr(data["client"], "request_queue") else 0,
+                "current_requests": data["client"].current_requests if hasattr(data["client"], "current_requests") else 0
+            } for key, data in self.openai_clients.items()},
+            
+            "groq": {key: {
+                "usage": data["usage"],
+                "queue_size": len(data["client"].request_queue) if hasattr(data["client"], "request_queue") else 0,
+                "current_requests": data["client"].current_requests if hasattr(data["client"], "current_requests") else 0
+            } for key, data in self.groq_clients.items()},
+            
+            # Similar implementations for other API providers
+        }
+        
+        return stats
+```
+
 ### Endpoint Handler Implementation Pattern
 ```python
 @property
@@ -431,42 +441,47 @@ def _create_mock_handler(self, model, endpoint_type):
 
 ## Test Commands
 
-- Test the endpoint handler fix:
-  ```
-  # Apply and test the endpoint handler fix
-  python3 implement_endpoint_handler_fix.py
-  
-  # Apply the permanent fix to the module
-  python3 apply_endpoint_handler_fix.py
-  
-  # Test local endpoints after applying the fix
-  python3 test_local_endpoints.py
-  ```
+### Queue and Backoff Tests
+```bash
+# Run all queue and backoff tests with default settings
+python run_queue_backoff_tests.py
 
-- Run a comprehensive API implementation check:
-  ```
-  python3 check_api_implementation.py
-  ```
+# Test specific APIs only
+python run_queue_backoff_tests.py --apis openai groq claude
 
-- Test a specific API:
-  ```
-  python3 test_single_api.py [api_name]
-  ```
+# Skip specific APIs
+python run_queue_backoff_tests.py --skip-apis llvm opea ovms
 
-- Test local endpoints:
-  ```
-  python3 test_local_endpoints.py
-  ```
+# Run comprehensive Ollama tests with specific model
+python test_ollama_backoff_comprehensive.py --model llama3 --host http://localhost:11434
 
-- Test hardware backends:
-  ```
-  python3 test_hardware_backend.py --backend [cpu|cuda|openvino] --model [model_name]
-  ```
+# Run enhanced API multiplexing tests
+python test_api_multiplexing_enhanced.py
+```
 
-- Test performance metrics:
-  ```
-  python3 run_performance_tests.py --batch_size 8 --models all
-  ```
+### API Tests
+```bash
+# Run all API tests
+python check_api_implementation.py
+
+# Test a specific API
+python test_single_api.py [api_name]
+
+# Test with specific model
+python test_api_backoff_queue.py --api openai --model gpt-3.5-turbo
+```
+
+### Endpoint and Hardware Tests
+```bash
+# Test local endpoints
+python test_local_endpoints.py
+
+# Test hardware backends
+python test_hardware_backend.py --backend [cpu|cuda|openvino] --model [model_name]
+
+# Test performance metrics
+python run_performance_tests.py --batch_size 8 --models all
+```
 
 ## Credential Management
 - For OpenAI API: `OPENAI_API_KEY` environment variable
@@ -476,6 +491,14 @@ def _create_mock_handler(self, model, endpoint_type):
 - For Google Gemini: `GOOGLE_API_KEY` environment variable
 
 For secure storage during testing, create `~/.ipfs_api_credentials` from the template.
+
+## API Key Multiplexing Environment Variables
+You can set up multiple API keys for each provider for testing multiplexing:
+
+- OpenAI keys: `OPENAI_API_KEY_1`, `OPENAI_API_KEY_2`, `OPENAI_API_KEY_3`
+- Groq keys: `GROQ_API_KEY_1`, `GROQ_API_KEY_2`
+- Claude keys: `ANTHROPIC_API_KEY_1`, `ANTHROPIC_API_KEY_2`
+- Gemini keys: `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2`
 
 ## Code Style Guidelines
 - Snake_case for variables, functions, methods, modules

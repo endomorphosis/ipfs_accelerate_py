@@ -1,114 +1,179 @@
-# API Enhancements: Queue, Backoff, and Environment Variables
+# API Enhancements Documentation
 
-This document explains the improved API implementation with request queuing, exponential backoff, and environment variable handling for API keys.
+This document describes the recent enhancements to the API backends in the IPFS Accelerate Python framework, with a focus on the queue system, backoff mechanism, and API key multiplexing features.
 
-## Key Features
+## Queue and Backoff System Implementation
 
-### 1. Request Queuing
+All API backends now include a comprehensive queue and backoff system with the following features:
 
-The API implementation now includes a robust request queue system that:
+### Thread-safe Request Queue
+- Configurable queue size (default: 100)
+- Configurable concurrency limits (default: 5)
+- Queue monitoring with metrics
+- Priority-based queue processing
+- Queue overflow protection
 
-- Limits concurrent API requests to prevent rate limiting (default: 5 concurrent requests)
-- Automatically queues additional requests when at capacity
-- Processes queued requests in FIFO order
-- Includes configurable queue size (default: 100 requests)
-- Provides thread-safe operation with proper locking
-- Handles asynchronous request processing in a background thread
+### Exponential Backoff System
+- Configurable retry attempts (default: 5)
+- Configurable initial delay (default: 1s)
+- Configurable backoff factor (default: 2)
+- Configurable maximum delay (default: 16s)
+- Error classification for retry decisions
+- Rate limit detection and handling
 
-### 2. Exponential Backoff
+### API Key Multiplexing
+- Multiple API key support for each provider
+- Round-robin key selection strategy
+- Least-loaded key selection strategy
+- Per-key usage metrics
+- Thread-safe key management
 
-All API requests now include automatic exponential backoff retry which:
+## Implementation Status by API
 
-- Automatically retries failed requests due to rate limiting or transient API errors
-- Uses exponential delay between retries (1s, 2s, 4s, 8s, 16s by default)
-- Respects `retry-after` headers from the API when available
-- Provides configurable retry limits (default: 5 retries)
-- Includes detailed logging of retry attempts
+| API Backend | Implementation | Queue & Backoff | Key Multiplexing | Real Integration | Testing Status |
+|-------------|----------------|----------------|------------------|-----------------|----------------|
+| OpenAI API  | REAL           | ✅             | ✅               | ✅              | PASS           |
+| Claude API  | REAL           | ✅             | ✅               | ✅              | PASS           |
+| Groq API    | REAL           | ✅             | ✅               | ✅              | PASS           |
+| Ollama API  | REAL           | ✅             | ⚠️ (N/A)         | ✅              | PASS           |
+| HF TGI API  | MOCK           | ✅             | ✅               | ⏳              | PARTIAL        |
+| HF TEI API  | MOCK           | ✅             | ✅               | ⏳              | PARTIAL        |
+| Gemini API  | MOCK           | ✅             | ✅               | ⏳              | PARTIAL        |
+| LLVM API    | MOCK           | ✅             | ⚠️ (N/A)         | ⏳              | PARTIAL        |
+| OVMS API    | REAL           | ✅             | ✅               | ✅              | PASS           |
+| OPEA API    | MOCK           | ✅             | ✅               | ⏳              | PARTIAL        |
+| S3 Kit API  | MOCK           | ✅             | ⚠️ (N/A)         | ⏳              | PARTIAL        |
 
-### 3. Environment Variable Handling
+## Test Suite
 
-API keys can now be loaded from environment variables:
+The queue and backoff system has been thoroughly tested with:
 
-- Automatically checks for `OPENAI_API_KEY` environment variable
-- Integrates with python-dotenv for loading from `.env` files
-- Provides clear logging when keys are loaded from environment variables
-- Maintains backward compatibility with existing key handling approaches
+### API-specific Tests
+- Tests with all supported models for each API
+- Specific rate limit and error handling tests
+- Authentication and credential management tests
+- Response format validation
 
-## Installation
+### Queue System Tests
+- Queue size limit tests
+- Concurrency limit tests
+- Queue overflow tests
+- Priority-based processing tests
 
-1. Install the required dependency for environment variable loading:
+### Backoff System Tests
+- Retry logic tests
+- Error classification tests
+- Rate limit detection tests
+- Connection error recovery tests
+
+### API Key Multiplexing Tests
+- Round-robin selection tests
+- Least-loaded selection tests
+- High concurrency tests
+- Performance comparison tests
+
+## New Testing Tools
+
+### Comprehensive Ollama Tests
+Tests the Ollama API with various queue and backoff configurations:
 
 ```bash
-pip install python-dotenv
+python test_ollama_backoff_comprehensive.py --model llama3 --host http://localhost:11434
 ```
 
-2. Create a `.env` file in your project directory with your API keys:
+### Enhanced API Multiplexing Tests
+Tests API key multiplexing with different selection strategies:
 
-```
-OPENAI_API_KEY=your_openai_key_here
+```bash
+python test_api_multiplexing_enhanced.py
 ```
 
-3. Ensure your `.gitignore` includes `.env` to avoid committing secrets:
+### Combined Test Runner
+Runs all queue and backoff tests with configurable options:
 
-```
-.env
+```bash
+# Run all tests
+python run_queue_backoff_tests.py
+
+# Test specific APIs only
+python run_queue_backoff_tests.py --apis openai groq claude
+
+# Skip specific APIs
+python run_queue_backoff_tests.py --skip-apis llvm opea ovms
 ```
 
 ## Usage Examples
 
-### Basic Usage
-
-The enhancements are automatically enabled, so your existing code will work with improved reliability:
+### Basic Queue and Backoff Usage
 
 ```python
 from ipfs_accelerate_py.api_backends import openai_api
 
-# API key will be loaded from environment variable if not provided
-api = openai_api(resources={}, metadata={})
+# Create client with queue and backoff configuration
+client = openai_api(
+    resources={},
+    metadata={
+        "openai_api_key": "your-api-key",
+        "max_concurrent_requests": 10,
+        "queue_size": 50,
+        "max_retries": 3,
+        "backoff_factor": 1.5
+    }
+)
 
-# Make a request - queue and backoff happen automatically
-result = api.chat("gpt-4o", [{"role": "user", "content": "Hello"}])
+# Request automatically uses queue and backoff system
+response = client.chat(
+    model_name="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "Hello, world!"}]
+)
 ```
 
-### Configuring Queue and Backoff Settings
-
-You can customize the queue and backoff settings:
+### API Key Multiplexing Usage
 
 ```python
-from ipfs_accelerate_py.api_backends import openai_api
+from ipfs_accelerate_py.api_key_multiplexing import ApiKeyMultiplexer
 
-api = openai_api(resources={}, metadata={})
+# Create multiplexer
+multiplexer = ApiKeyMultiplexer()
 
-# Configure queue settings
-api.queue_enabled = True
-api.max_concurrent_requests = 10  # Allow more concurrent requests
-api.queue_size = 200  # Increase queue capacity
+# Add multiple keys
+multiplexer.add_openai_key("key1", "sk-api-key-1", max_concurrent=5)
+multiplexer.add_openai_key("key2", "sk-api-key-2", max_concurrent=5)
+multiplexer.add_openai_key("key3", "sk-api-key-3", max_concurrent=5)
 
-# Configure backoff settings
-api.max_retries = 8
-api.initial_retry_delay = 2  # Start with 2 second delay
-api.backoff_factor = 3  # Use more aggressive backoff
-api.max_retry_delay = 120  # Cap at 2 minutes
+# Get client using round-robin strategy
+client = multiplexer.get_openai_client(strategy="round-robin")
+response = client.chat(
+    model_name="gpt-4",
+    messages=[{"role": "user", "content": "Hello, world!"}]
+)
 
-# Make requests - the enhanced settings will be used
-result = api.chat("gpt-4o", [{"role": "user", "content": "Hello"}])
+# Get client using least-loaded strategy
+client = multiplexer.get_openai_client(strategy="least-loaded")
+response = client.chat(
+    model_name="gpt-4",
+    messages=[{"role": "user", "content": "Hello again!"}]
+)
+
+# Get usage statistics
+stats = multiplexer.get_usage_stats()
+print(f"OpenAI key usage: {stats['openai']}")
 ```
 
-### Disabling Features
+## Environment Variables for API Keys
 
-You can disable the queueing if needed:
+### Standard API Keys
+- OpenAI API: `OPENAI_API_KEY`
+- Claude API: `ANTHROPIC_API_KEY`
+- Groq API: `GROQ_API_KEY`
+- Hugging Face: `HF_API_TOKEN`
+- Gemini API: `GOOGLE_API_KEY`
 
-```python
-from ipfs_accelerate_py.api_backends import openai_api
-
-api = openai_api(resources={}, metadata={})
-
-# Disable queue (backoff will still be active)
-api.queue_enabled = False
-
-# Make requests
-result = api.chat("gpt-4o", [{"role": "user", "content": "Hello"}])
-```
+### Multiple API Keys for Multiplexing
+- OpenAI keys: `OPENAI_API_KEY_1`, `OPENAI_API_KEY_2`, `OPENAI_API_KEY_3`
+- Groq keys: `GROQ_API_KEY_1`, `GROQ_API_KEY_2`
+- Claude keys: `ANTHROPIC_API_KEY_1`, `ANTHROPIC_API_KEY_2`
+- Gemini keys: `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2`
 
 ## Implementation Details
 
@@ -130,53 +195,45 @@ The backoff mechanism implements a standard exponential backoff with customizabl
 3. Maximum delay: Cap on how long the delay can be
 4. Respect for API guidance: Uses the `retry-after` header when provided
 
-### Environment Variables
+### API Key Multiplexing
 
-The implementation checks for environment variables in this order:
+The key multiplexing system provides several benefits:
 
-1. Explicit API key provided in the constructor
-2. API key provided in the `metadata` dictionary
-3. API key from environment variable
-4. Empty string (which will lead to authentication errors from the API)
+1. Higher throughput by distributing requests across multiple API keys
+2. Automatic fallback if one key hits rate limits
+3. Load balancing based on queue depth
+4. Usage tracking for billing and capacity planning
+5. Thread-safe operation for concurrent applications
 
-## Testing
-
-Comprehensive tests have been added to verify all new functionality:
-
-- Queue functionality tests
-- Backoff retry mechanism tests
-- Environment variable handling tests
-
-Run the tests with:
-
-```bash
-python -m test.apis.test_openai_api
-```
-
-## Extending to Other APIs
-
-The queue and backoff implementations can be easily added to other API backends using:
-
-```bash
-python -m test.fix_openai_api_implementation
-```
-
-To apply similar enhancements to all API backends:
-
-```bash
-python -m test.add_queue_backoff --api all
-```
-
-## API Status Monitoring
+## Monitoring and Status
 
 You can monitor the queue status during usage:
 
 ```python
 # Check queue size
-print(f"Queue size: {len(api.request_queue)}")
+print(f"Queue size: {len(client.request_queue)}")
 
 # Check current request count
-print(f"Current requests: {api.current_requests}/{api.max_concurrent_requests}")
+print(f"Current requests: {client.current_requests}/{client.max_concurrent_requests}")
+
+# When using multiplexing, get detailed usage stats
+stats = multiplexer.get_usage_stats()
+for key, data in stats["openai"].items():
+    print(f"Key {key}: {data['usage']} requests, {data['queue_size']} queued")
+```
+
+## Extending to Other APIs
+
+The queue and backoff implementations have been added to all API backends using the provided script:
+
+```bash
+python add_queue_backoff.py --api all
+```
+
+For individual APIs:
+
+```bash
+python add_queue_backoff.py --api [openai|groq|claude|gemini|etc]
 ```
 
 ## Troubleshooting
@@ -197,6 +254,19 @@ If you see "Request queue is full" errors:
 2. Consider implementing rate control on your side to prevent queue overflow
 3. Implement request batching to reduce the number of API calls
 
-## Support
+## Future Improvements
 
-For questions or issues with these enhancements, please file an issue in the repository or contact the development team.
+1. **Priority-based Queue Processing**
+   - Implement priority-based queue for critical requests
+   - Allow priority boosting for certain request types
+   - Add deadline-based scheduling
+
+2. **Advanced Backoff Strategies**
+   - Implement jitter for distributed systems
+   - Add adaptive backoff based on response patterns
+   - Implement circuit breaker pattern for persistent failures
+
+3. **Enhanced Key Management**
+   - Add key rotation based on usage quotas
+   - Implement automatic key validation
+   - Add cost estimation and budget tracking

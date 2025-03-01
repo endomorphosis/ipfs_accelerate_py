@@ -1,0 +1,54 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_handler": "Success (REAL)",
+    "cuda_init": "Success (REAL)",
+    "cuda_handler": "Success (REAL)",
+    "openvino_init": "Success (REAL)",
+    "openvino_handler": "Success (REAL)"
+  },
+  "examples": [
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'torch.Tensor'>",
+        "implementation_type": "UNKNOWN"
+      },
+      "timestamp": "2025-03-01T15:15:02.575019",
+      "elapsed_time": 0.00011515617370605469,
+      "implementation_type": "REAL",
+      "platform": "CPU"
+    },
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'dict'>",
+        "implementation_type": "REAL"
+      },
+      "timestamp": "2025-03-01T15:15:03.223390",
+      "elapsed_time": 2.0503997802734375e-05,
+      "implementation_type": "REAL",
+      "platform": "CUDA"
+    },
+    {
+      "input": "Test input appropriate for this model",
+      "output": {
+        "output_type": "<class 'torch.Tensor'>",
+        "implementation_type": "UNKNOWN"
+      },
+      "timestamp": "2025-03-01T15:15:03.331273",
+      "elapsed_time": 8.130073547363281e-05,
+      "implementation_type": "REAL",
+      "platform": "OpenVINO"
+    }
+  ],
+  "metadata": {
+    "model_name": "canine",
+    "test_timestamp": "2025-03-01T15:15:03.331294",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.46.0",
+    "platform_status": {}
+  }
+}

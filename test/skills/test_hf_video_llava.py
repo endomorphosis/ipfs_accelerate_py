@@ -26,12 +26,18 @@ except ImportError:
     transformers = MagicMock()
     print("Warning: transformers not available, using mock implementation")
 
+# Handle PIL import
+PIL = None
+Image = None
 try:
     import PIL
     from PIL import Image
+    PIL_AVAILABLE = True
 except ImportError:
+    # Create mock objects
     PIL = MagicMock()
     Image = MagicMock()
+    PIL_AVAILABLE = False
     print("Warning: PIL not available, using mock implementation")
 
 # Import the module to test (create a mock if not available)
@@ -365,10 +371,13 @@ class test_hf_video_llava:
         self.resources = resources if resources else {
             "torch": torch,
             "numpy": np,
-            "transformers": transformers,
-            "PIL": PIL,
-            "Image": Image
+            "transformers": transformers
         }
+        # Add PIL resources if available
+        if PIL is not None:
+            self.resources["PIL"] = PIL
+        if Image is not None:
+            self.resources["Image"] = Image
         self.metadata = metadata if metadata else {}
         self.model = hf_video_llava(resources=self.resources, metadata=self.metadata)
         
@@ -414,34 +423,39 @@ class test_hf_video_llava:
         
         # Create simulated video frames for testing
         self.test_video_frames = []
-        try:
-            from PIL import Image, ImageDraw
-            # Create a series of simple frames with different content
-            for i in range(8):  # 8 frames
-                # Create a blank image
-                img = Image.new('RGB', (320, 240), color=(240, 240, 240))
-                draw = ImageDraw.Draw(img)
-                
-                # Add some dynamic elements that change across frames
-                # Draw rectangle that moves across the frame
-                rect_x = 40 + i * 30
-                draw.rectangle([rect_x, 80, rect_x + 40, 120], fill=(255, 0, 0))
-                
-                # Draw circle that changes size
-                circle_radius = 20 + i * 2
-                draw.ellipse([160-circle_radius, 120-circle_radius, 
-                              160+circle_radius, 120+circle_radius], 
-                             fill=(0, 0, 255))
-                
-                # Add frame number text
-                draw.text((10, 10), f"Frame {i+1}", fill=(0, 0, 0))
-                
-                self.test_video_frames.append(img)
-            print(f"Created {len(self.test_video_frames)} test video frames")
-        except Exception as e:
-            print(f"Error creating test video frames: {e}")
-            # Create empty placeholder frames
-            self.test_video_frames = [None] * 8
+        if PIL_AVAILABLE:
+            try:
+                from PIL import ImageDraw
+                # Create a series of simple frames with different content
+                for i in range(8):  # 8 frames
+                    # Create a blank image
+                    img = Image.new('RGB', (320, 240), color=(240, 240, 240))
+                    draw = ImageDraw.Draw(img)
+                    
+                    # Add some dynamic elements that change across frames
+                    # Draw rectangle that moves across the frame
+                    rect_x = 40 + i * 30
+                    draw.rectangle([rect_x, 80, rect_x + 40, 120], fill=(255, 0, 0))
+                    
+                    # Draw circle that changes size
+                    circle_radius = 20 + i * 2
+                    draw.ellipse([160-circle_radius, 120-circle_radius, 
+                                  160+circle_radius, 120+circle_radius], 
+                                 fill=(0, 0, 255))
+                    
+                    # Add frame number text
+                    draw.text((10, 10), f"Frame {i+1}", fill=(0, 0, 0))
+                    
+                    self.test_video_frames.append(img)
+                print(f"Created {len(self.test_video_frames)} test video frames")
+            except Exception as e:
+                print(f"Error creating test video frames: {e}")
+                # Create empty placeholder frames
+                self.test_video_frames = ["frame1", "frame2", "frame3", "frame4", "frame5", "frame6", "frame7", "frame8"]
+        else:
+            print("PIL not available, using placeholder frames")
+            # Create placeholder frames as strings since PIL is not available
+            self.test_video_frames = ["frame1", "frame2", "frame3", "frame4", "frame5", "frame6", "frame7", "frame8"]
         
         # Test input for video processing
         self.test_input = {

@@ -1,0 +1,34 @@
+{
+  "test_timestamp": "2025-03-01T15:09:24.215290",
+  "summary": {
+    "total": 3,
+    "tested": 3,
+    "passed": 0,
+    "failed": 3,
+    "missing": 0,
+    "pass_rate": "0.0%"
+  },
+  "model_results": {
+    "canine": {
+      "status": "failed",
+      "return_code": 1,
+      "elapsed_time": 4.510389,
+      "stdout": "connecting to master\nconnecting to master\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_canine.py\", line 69, in <module>\n    from ipfs_accelerate_py.worker.skillset.hf_canine import hf_canine\nModuleNotFoundError: No module named 'ipfs_accelerate_py.worker.skillset.hf_canine'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_canine.py\", line 89, in <module>\n    print(f\"Warning: {class_name} module not found, using mock implementation\")\n                      ^^^^^^^^^^\nNameError: name 'class_name' is not defined\n"
+    },
+    "zoedepth": {
+      "status": "failed",
+      "return_code": 1,
+      "elapsed_time": 4.593057,
+      "stdout": "connecting to master\nconnecting to master\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_zoedepth.py\", line 69, in <module>\n    from ipfs_accelerate_py.worker.skillset.hf_zoedepth import hf_zoedepth\nModuleNotFoundError: No module named 'ipfs_accelerate_py.worker.skillset.hf_zoedepth'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_zoedepth.py\", line 89, in <module>\n    print(f\"Warning: {class_name} module not found, using mock implementation\")\n                      ^^^^^^^^^^\nNameError: name 'class_name' is not defined\n"
+    },
+    "visual_bert": {
+      "status": "failed",
+      "return_code": 1,
+      "elapsed_time": 4.634282,
+      "stdout": "connecting to master\nconnecting to master\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_visual_bert.py\", line 69, in <module>\n    from ipfs_accelerate_py.worker.skillset.hf_visual_bert import hf_visual_bert\nModuleNotFoundError: No module named 'ipfs_accelerate_py.worker.skillset.hf_visual_bert'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_visual_bert.py\", line 89, in <module>\n    print(f\"Warning: {class_name} module not found, using mock implementation\")\n                      ^^^^^^^^^^\nNameError: name 'class_name' is not defined\n"
+    }
+  }
+}

@@ -5,38 +5,38 @@
 ## Implementation Status
 
 - **Total Model Types**: 299
-- **Implemented Tests**: 104 (34.8%)
-- **Remaining to Implement**: 195 (65.2%)
+- **Implemented Tests**: 115 (38.5%)
+- **Remaining to Implement**: 184 (61.5%)
 
 ## Pipeline Task Coverage
 
 | Pipeline Task | Implemented | Total | Coverage | Key Missing Models |
 |---------------|-------------|-------|----------|-------------------|
 | object-detection | 2 | 13 | 15.4% | vitdet, conditional_detr, deformable_detr |
-| image-classification | 14 | 51 | 27.5% | resnet, flava, swinv2 |
-| document-question-answering | 3 | 10 | 30.0% | donut-swin, markuplm, bros |
-| text-generation | 25 | 74 | 33.8% | gpt_neox, rwkv, gpt_neox_japanese |
-| image-segmentation | 4 | 11 | 36.4% | oneformer, clipseg, maskformer |
-| image-to-text | 12 | 32 | 37.5% | donut-swin, align, blip-2 |
-| text-classification | 14 | 36 | 38.9% | canine, megatron-bert, rembert |
-| visual-question-answering | 14 | 35 | 40.0% | visual_bert, flava, altclip |
+| image-classification | 15 | 51 | 29.4% | flava, swinv2, vit_mae |
+| text-generation | 27 | 74 | 36.5% | gpt_neox_japanese, bert-generation, biogpt |
 | text2text-generation | 8 | 20 | 40.0% | longt5, switch_transformers, bigbird_pegasus |
-| text-to-audio | 6 | 15 | 40.0% | qwen2_audio, univnet, clvp |
-| fill-mask | 13 | 32 | 40.6% | big_bird, megatron-bert, rembert |
+| image-to-text | 13 | 32 | 40.6% | align, blip-2, chameleon |
+| text-classification | 15 | 36 | 41.7% | megatron-bert, rembert, convbert |
+| visual-question-answering | 15 | 35 | 42.9% | flava, altclip, blip-2 |
 | audio-classification | 6 | 14 | 42.9% | audio-spectrogram-transformer, unispeech-sat, dac |
-| automatic-speech-recognition | 9 | 21 | 42.9% | qwen2_audio, speech_to_text, unispeech-sat |
+| fill-mask | 14 | 32 | 43.8% | megatron-bert, rembert, convbert |
+| image-segmentation | 5 | 11 | 45.5% | oneformer, clipseg, maskformer |
 | translation_XX_to_YY | 6 | 13 | 46.2% | nllb-moe, fsmt, lilt |
+| text-to-audio | 7 | 15 | 46.7% | univnet, clvp, fastspeech2_conformer |
+| automatic-speech-recognition | 10 | 21 | 47.6% | speech_to_text, unispeech-sat, mctct |
 | feature-extraction | 14 | 29 | 48.3% | flava, realm, align |
-| depth-estimation | 2 | 4 | 50.0% | zoedepth, glpn |
+| document-question-answering | 5 | 10 | 50.0% | bros, layoutlmv2, nougat |
 | summarization | 6 | 12 | 50.0% | longt5, bigbird_pegasus, pegasus_x |
-| question-answering | 12 | 20 | 60.0% | big_bird, realm, luke |
-| token-classification | 13 | 21 | 61.9% | canine, markuplm, funnel |
+| question-answering | 13 | 20 | 65.0% | realm, luke, qdqbert |
+| token-classification | 15 | 21 | 71.4% | funnel, graphormer, layoutlmv2 |
+| depth-estimation | 3 | 4 | 75.0% | glpn |
 | time-series-prediction | 4 | 5 | 80.0% | patchtsmixer |
-| table-question-answering | 1 | 1 | 100.0% | None |
-| sentiment-analysis | 3 | 3 | 100.0% | None |
-| conversational | 2 | 2 | 100.0% | None |
-| protein-folding | 1 | 1 | 100.0% | None |
 | zero-shot-classification | 4 | 4 | 100.0% | None |
+| protein-folding | 1 | 1 | 100.0% | None |
+| conversational | 2 | 2 | 100.0% | None |
+| sentiment-analysis | 3 | 3 | 100.0% | None |
+| table-question-answering | 1 | 1 | 100.0% | None |
 
 ## Next Steps
 
@@ -44,16 +44,6 @@
 
 The following models should be implemented first as they provide unique capabilities or fill gaps in pipeline coverage:
 
-- **big_bird**: fill-mask, question-answering
-- **canine**: token-classification, text-classification
-- **donut-swin**: document-question-answering, image-to-text
-- **gpt_neox**: text-generation
-- **markuplm**: token-classification, document-question-answering
-- **qwen2_audio**: automatic-speech-recognition, text-to-audio
-- **resnet**: image-classification
-- **rwkv**: text-generation
-- **visual_bert**: visual-question-answering
-- **zoedepth**: depth-estimation
 
 ### High Priority Models
 
