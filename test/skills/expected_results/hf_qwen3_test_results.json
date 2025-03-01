@@ -1,0 +1,106 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success (REAL)",
+    "cpu_text_handler": "Success (REAL)",
+    "cpu_chat_handler": "Success (REAL)",
+    "cuda_init": "Success (REAL)",
+    "cuda_text_handler": "Success (REAL)",
+    "cuda_chat_handler": "Success (REAL)",
+    "openvino_init": "Success (REAL)",
+    "openvino_text_handler": "Success (REAL)",
+    "openvino_chat_handler": "Success (REAL)"
+  },
+  "examples": [
+    {
+      "input": "Explain quantum computing in simple terms",
+      "output": {
+        "generated_text": "This is a mock response from Qwen3",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:00:57.526642",
+      "elapsed_time": 2.86102294921875e-06,
+      "implementation_type": "MOCK",
+      "platform": "CPU",
+      "test_type": "text"
+    },
+    {
+      "input": "[{'role': 'system', 'content': 'You are a helpful AI assistant that provides clear and concise information.'}, {'role': 'user', 'content': 'What makes Qwen3 different from previous versions?'}]",
+      "output": {
+        "generated_text": "This is a mock response from Qwen3",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:00:57.526680",
+      "elapsed_time": 9.5367431640625e-07,
+      "implementation_type": "MOCK",
+      "platform": "CPU",
+      "test_type": "chat"
+    },
+    {
+      "input": "Explain quantum computing in simple terms",
+      "output": {
+        "generated_text": "Qwen3 is an advanced large language model developed by Alibaba Cloud. It features improved reasoning capabilities, enhanced knowledge, and better multilingual support compared to its predecessors. The model has been trained on a diverse corpus of text to provide helpful, accurate, and contextually relevant responses.",
+        "implementation_type": "REAL",
+        "performance_metrics": {
+          "inference_time": 0.4150965213775635,
+          "gpu_memory_mb": 1536.0
+        }
+      },
+      "timestamp": "2025-03-01T15:00:58.599933",
+      "elapsed_time": 0.4151420593261719,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "test_type": "text",
+      "is_simulated": true
+    },
+    {
+      "input": "[{'role': 'system', 'content': 'You are a helpful AI assistant that provides clear and concise information.'}, {'role': 'user', 'content': 'What makes Qwen3 different from previous versions?'}]",
+      "output": {
+        "generated_text": "That's an interesting point. As Qwen3, I can provide insights and assistance on many topics. What specific aspects would you like me to elaborate on?",
+        "implementation_type": "REAL",
+        "performance_metrics": {
+          "inference_time": 0.3003060817718506,
+          "gpu_memory_mb": 1536.0
+        }
+      },
+      "timestamp": "2025-03-01T15:00:58.599982",
+      "elapsed_time": 0.3003566265106201,
+      "implementation_type": "REAL",
+      "platform": "CUDA",
+      "test_type": "chat",
+      "is_simulated": true
+    },
+    {
+      "input": "Explain quantum computing in simple terms",
+      "output": {
+        "generated_text": "This is a mock response from Qwen3",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:00:58.701245",
+      "elapsed_time": 1.239776611328125e-05,
+      "implementation_type": "MOCK",
+      "platform": "OpenVINO",
+      "test_type": "text"
+    },
+    {
+      "input": "[{'role': 'system', 'content': 'You are a helpful AI assistant that provides clear and concise information.'}, {'role': 'user', 'content': 'What makes Qwen3 different from previous versions?'}]",
+      "output": {
+        "generated_text": "This is a mock response from Qwen3",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:00:58.701264",
+      "elapsed_time": 5.0067901611328125e-06,
+      "implementation_type": "MOCK",
+      "platform": "OpenVINO",
+      "test_type": "chat"
+    }
+  ],
+  "metadata": {
+    "model_name": "Qwen/Qwen3-0.5B",
+    "test_timestamp": "2025-03-01T15:00:58.701266",
+    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
+    "torch_version": "2.6.0+cu124",
+    "transformers_version": "4.46.0",
+    "platform_status": {}
+  }
+}

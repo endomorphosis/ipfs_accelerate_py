@@ -1,0 +1,113 @@
+{
+  "summary": {
+    "total": 17,
+    "success": 1,
+    "failure": 16,
+    "success_rate": "5.9%"
+  },
+  "tests": [
+    {
+      "status": "success",
+      "model": "blip",
+      "elapsed_time": 0.09353804588317871,
+      "platform_status": {},
+      "timestamp": "2025-03-01T15:07:50.471360"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_data2vec_audio.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_data2vec_audio.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "data2vec_audio"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_data2vec_vision.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_data2vec_vision.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "data2vec_vision"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_dpt.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_dpt.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "dpt"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_encodec.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_encodec.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "encodec"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_fuyu.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_fuyu.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "fuyu"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_layoutlmv3.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_layoutlmv3.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "layoutlmv3"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_mask2former.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_mask2former.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "mask2former"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_mobilevit.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_mobilevit.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "mobilevit"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_owlvit.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_owlvit.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "owlvit"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_pix2struct.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_pix2struct.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "pix2struct"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_seamless_m4t.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_seamless_m4t.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "seamless_m4t"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_segformer.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_segformer.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "segformer"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_speecht5.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_speecht5.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "speecht5"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_vilt.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vilt.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "vilt"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_vision_encoder_decoder.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vision_encoder_decoder.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "vision_encoder_decoder"
+    },
+    {
+      "status": "error",
+      "error": "unterminated string literal (detected at line 565) (test_hf_wavlm.py, line 565)",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_new_model_tests.py\", line 70, in run_test\n    spec.loader.exec_module(test_module)\n  File \"<frozen importlib._bootstrap_external>\", line 991, in exec_module\n  File \"<frozen importlib._bootstrap_external>\", line 1129, in get_code\n  File \"<frozen importlib._bootstrap_external>\", line 1059, in source_to_code\n  File \"<frozen importlib._bootstrap>\", line 488, in _call_with_frames_removed\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wavlm.py\", line 565\n    print(\"\n          ^\nSyntaxError: unterminated string literal (detected at line 565)\n",
+      "model": "wavlm"
+    }
+  ]
+}

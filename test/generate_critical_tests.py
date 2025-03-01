@@ -1,45 +1,47 @@
 #!/usr/bin/env python3
 """
-Script to generate test files for missing HuggingFace model tests.
-This script compares the available model types in huggingface_model_types.json
-with existing test implementations, and generates templates for missing tests.
+Script to generate test files for critical missing HuggingFace model tests.
+This script focuses on models that provide unique capabilities or represent 
+important pipeline tasks that currently have no test coverage.
 """
 
 import os
 import sys
 import json
-import glob
 import datetime
+import traceback
 from pathlib import Path
 
-# Models with highest priority for implementation
-HIGH_PRIORITY_MODELS = [
-    "vision-encoder-decoder",
-    "data2vec-audio", 
-    "speecht5",
-    "seamless_m4t",
-    "owlvit",
-    "segformer",
-    "dpt",
-    "pix2struct",
-    "fuyu",
-    "blip",
-    "encodec",
-    "dinov2",
-    "data2vec-vision",
-    "mobilevit",
-    "mask2former",
-    "layoutlmv3",
-    "chinese_clip",
-    "wavlm",
-    "vilt",
-    "stable-diffusion"
+# Models that provide completely unique capabilities or cover
+# pipeline tasks with zero coverage
+CRITICAL_MODELS = [
+    # Unique pipeline tasks with no coverage
+    "tapas",              # table-question-answering (only model)
+    "esm",                # protein-folding (only model)
+    "patchtst",           # time-series-prediction (most efficient model)
+    "informer",           # time-series-prediction (popular forecasting model)
+    "autoformer",         # time-series-prediction (alternative architecture)
+    
+    # Popular foundational models
+    "resnet",             # image-classification (extremely widely used)
+    "gpt_neox",           # text-generation (popular open-source LLM)
+    "rwkv",               # text-generation (unique RNN-like architecture)
+    
+    # Specialized capabilities
+    "visual_bert",        # visual-question-answering (popular foundation)
+    "instructblip",       # image-to-text & visual-question-answering (instruction-tuned)
+    "markuplm",           # document-question-answering & token-classification
+    "donut-swin",         # document-question-answering & image-to-text
+    "canine",             # token-classification & text-classification (character-level)
+    "big_bird",           # fill-mask & question-answering (long-context)
+    
+    # Advanced multimodal models
+    "video_llava",        # image-to-text & visual-question-answering (video)
+    "qwen2_audio",        # automatic-speech-recognition & text-to-audio
+    "seamless_m4t_v2",    # translation_XX_to_YY, ASR & text-to-audio (improved)
+    "siglip",             # image-classification & feature-extraction (state-of-the-art)
+    "zoedepth",           # depth-estimation (state-of-the-art monocular depth)
 ]
-
-def load_model_types():
-    """Load all model types from JSON file."""
-    with open('huggingface_model_types.json', 'r') as f:
-        return json.load(f)
 
 def load_pipeline_maps():
     """Load model-pipeline mappings from JSON files."""
@@ -51,62 +53,22 @@ def load_pipeline_maps():
         
     return model_to_pipeline, pipeline_to_model
 
-def get_existing_tests():
-    """Get list of existing test files in skills directory."""
-    test_files = glob.glob('skills/test_hf_*.py')
-    
-    # Extract model names from test file names
-    existing_tests = []
-    for test_file in test_files:
-        model_name = test_file.replace('skills/test_hf_', '').replace('.py', '')
-        existing_tests.append(model_name)
-    
-    return existing_tests
-
 def normalize_model_name(name):
     """Normalize model name to match file naming conventions."""
     return name.replace('-', '_').replace('.', '_').lower()
 
-def get_missing_tests(all_models, existing_tests, model_to_pipeline):
-    """Identify models missing test implementations."""
-    missing_tests = []
-    
-    for model in all_models:
-        normalized_name = normalize_model_name(model)
-        
-        # Skip if test already exists
-        if normalized_name in existing_tests:
-            continue
-            
-        # Get associated pipeline tasks
-        pipeline_tasks = model_to_pipeline.get(model, [])
-        
-        # Determine priority
-        priority = "HIGH" if model in HIGH_PRIORITY_MODELS else "MEDIUM"
-        
-        missing_tests.append({
-            "model": model,
-            "normalized_name": normalized_name,
-            "pipeline_tasks": pipeline_tasks,
-            "priority": priority
-        })
-        
-    return missing_tests
-
-def generate_test_template(model_info):
+def generate_test_template(model, pipeline_tasks):
     """
     Generate test file template for a specific model.
     
     Args:
-        model_info (dict): Model information including name and pipeline tasks
+        model (str): Model name
+        pipeline_tasks (list): List of pipeline tasks this model can perform
     
     Returns:
         str: Generated test file content
     """
-    model = model_info["model"]
-    normalized_name = model_info["normalized_name"]
-    pipeline_tasks = model_info["pipeline_tasks"]
-    
+    normalized_name = normalize_model_name(model)
     class_name = f"hf_{normalized_name}"
     test_class_name = f"test_hf_{normalized_name}"
     
@@ -128,6 +90,12 @@ def generate_test_template(model_info):
         test_types.append("audio processing")
     if any(task in ["image-to-text", "visual-question-answering"] for task in pipeline_tasks):
         test_types.append("multimodal processing")
+    if "table-question-answering" in pipeline_tasks:
+        test_types.append("table question answering")
+    if "protein-folding" in pipeline_tasks:
+        test_types.append("protein structure prediction")
+    if "time-series-prediction" in pipeline_tasks:
+        test_types.append("time series forecasting")
     
     test_types_str = ", ".join(test_types) if test_types else "various capabilities"
     
@@ -139,6 +107,26 @@ def generate_test_template(model_info):
         test_examples.append('self.test_image = "test.jpg"  # Path to a test image file')
     if any(task in ["automatic-speech-recognition", "audio-classification", "text-to-audio"] for task in pipeline_tasks):
         test_examples.append('self.test_audio = "test.mp3"  # Path to a test audio file')
+    if "protein-folding" in pipeline_tasks:
+        test_examples.append('self.test_sequence = "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"')
+    if "table-question-answering" in pipeline_tasks:
+        table_example = '''self.test_table = {
+            "header": ["Name", "Age", "Occupation"],
+            "rows": [
+                ["John", "25", "Engineer"],
+                ["Alice", "32", "Doctor"],
+                ["Bob", "41", "Teacher"]
+            ]
+        }
+        self.test_question = "How old is Alice?"'''
+        test_examples.append(table_example)
+    if "time-series-prediction" in pipeline_tasks:
+        ts_example = '''self.test_time_series = {
+            "past_values": [100, 120, 140, 160, 180],
+            "past_time_features": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
+            "future_time_features": [[5, 0], [6, 0], [7, 0]]
+        }'''
+        test_examples.append(ts_example)
     
     test_examples_str = "\n        ".join(test_examples) if test_examples else 'self.test_input = "Test input appropriate for this model"'
     
@@ -151,6 +139,12 @@ def generate_test_template(model_info):
         example_model = '"openai/whisper-tiny"  # Small ASR model'
     elif "image-to-text" in pipeline_tasks:
         example_model = '"Salesforce/blip-image-captioning-base"  # Image captioning model'
+    elif "protein-folding" in pipeline_tasks:
+        example_model = '"facebook/esm2_t6_8M_UR50D"  # Small protein embedding model'
+    elif "table-question-answering" in pipeline_tasks:
+        example_model = '"google/tapas-base"  # Table question answering model'
+    elif "time-series-prediction" in pipeline_tasks:
+        example_model = '"huggingface/time-series-transformer-tourism-monthly"  # Time series model'
     else:
         example_model = f'"{model}"  # Default model identifier'
     
@@ -198,6 +192,28 @@ if "{primary_task}" in ["automatic-speech-recognition", "audio-classification", 
     except ImportError:
         librosa = MagicMock()
         print("Warning: librosa not available, using mock implementation")
+
+if "{primary_task}" == "protein-folding":
+    try:
+        from Bio import SeqIO
+    except ImportError:
+        SeqIO = MagicMock()
+        print("Warning: BioPython not available, using mock implementation")
+
+if "{primary_task}" == "table-question-answering":
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = MagicMock()
+        print("Warning: pandas not available, using mock implementation")
+
+if "{primary_task}" == "time-series-prediction":
+    try:
+        import pandas as pd
+        import numpy as np
+    except ImportError:
+        pd = MagicMock()
+        print("Warning: pandas or numpy not available, using mock implementation")
 
 # Import the module to test (create a mock if not available)
 try:
@@ -264,7 +280,7 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
             handler = lambda x: {{"output": None, "implementation_type": "MOCK"}}
             return endpoint, processor, handler, None, 0
             
-        # Try to import and initialize HuggingFace components
+        # Try to import and initialize HuggingFace components based on model type
         try:
             # Different imports based on model type
             if "{primary_task}" == "text-generation":
@@ -282,6 +298,41 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
                 print(f"Attempting to load speech recognition model {{model_name}} with CUDA support")
                 processor = AutoProcessor.from_pretrained(model_name)
                 model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+            elif "{primary_task}" == "protein-folding":
+                from transformers import EsmForProteinFolding, AutoTokenizer
+                print(f"Attempting to load protein folding model {{model_name}} with CUDA support")
+                processor = AutoTokenizer.from_pretrained(model_name)
+                model = EsmForProteinFolding.from_pretrained(model_name)
+            elif "{primary_task}" == "table-question-answering":
+                from transformers import AutoModelForTableQuestionAnswering, AutoTokenizer
+                print(f"Attempting to load table question answering model {{model_name}} with CUDA support")
+                processor = AutoTokenizer.from_pretrained(model_name)
+                model = AutoModelForTableQuestionAnswering.from_pretrained(model_name)
+            elif "{primary_task}" == "time-series-prediction":
+                from transformers import AutoModelForTimeSeriesPrediction, AutoProcessor
+                print(f"Attempting to load time series prediction model {{model_name}} with CUDA support")
+                processor = AutoProcessor.from_pretrained(model_name)
+                model = AutoModelForTimeSeriesPrediction.from_pretrained(model_name)
+            elif "{primary_task}" == "visual-question-answering":
+                from transformers import AutoProcessor, AutoModelForVisualQuestionAnswering
+                print(f"Attempting to load visual question answering model {{model_name}} with CUDA support")
+                processor = AutoProcessor.from_pretrained(model_name)
+                model = AutoModelForVisualQuestionAnswering.from_pretrained(model_name)
+            elif "{primary_task}" == "image-to-text":
+                from transformers import AutoProcessor, AutoModelForVision2Seq
+                print(f"Attempting to load image-to-text model {{model_name}} with CUDA support")
+                processor = AutoProcessor.from_pretrained(model_name)
+                model = AutoModelForVision2Seq.from_pretrained(model_name)
+            elif "{primary_task}" == "document-question-answering":
+                from transformers import AutoProcessor, AutoModelForDocumentQuestionAnswering
+                print(f"Attempting to load document QA model {{model_name}} with CUDA support")
+                processor = AutoProcessor.from_pretrained(model_name)
+                model = AutoModelForDocumentQuestionAnswering.from_pretrained(model_name)
+            elif "{primary_task}" == "depth-estimation":
+                from transformers import AutoProcessor, AutoModelForDepthEstimation
+                print(f"Attempting to load depth estimation model {{model_name}} with CUDA support")
+                processor = AutoProcessor.from_pretrained(model_name)
+                model = AutoModelForDepthEstimation.from_pretrained(model_name)
             else:
                 # Default handling for other model types
                 from transformers import AutoProcessor, AutoModel
@@ -304,19 +355,164 @@ def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
                     start_time = time.time()
                     
                     # Process input based on model type
-                    with torch.no_grad():
-                        if hasattr(torch.cuda, "synchronize"):
-                            torch.cuda.synchronize()
-                            
-                        # Implementation depends on the model type and task
-                        # This is a template that needs to be customized
-                        outputs = model(**inputs)
+                    if "{primary_task}" == "text-generation":
+                        inputs = processor(input_data, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model.generate(**inputs, max_length=50)
+                        result = processor.decode(output[0], skip_special_tokens=True)
                         
-                        if hasattr(torch.cuda, "synchronize"):
-                            torch.cuda.synchronize()
+                    elif "{primary_task}" == "image-classification":
+                        if isinstance(input_data, str):
+                            # Load image from file
+                            from PIL import Image
+                            image = Image.open(input_data)
+                        else:
+                            image = input_data
+                        inputs = processor(images=image, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        result = output.logits
+                        
+                    elif "{primary_task}" == "protein-folding":
+                        inputs = processor(input_data, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        result = output.positions
+                        
+                    elif "{primary_task}" == "table-question-answering":
+                        if isinstance(input_data, dict):
+                            # Handle table dictionary with question
+                            table = pd.DataFrame(input_data["rows"], columns=input_data["header"])
+                            question = input_data.get("question", "")
+                            inputs = processor(table=table, query=question, return_tensors="pt").to(device)
+                        else:
+                            # Fallback for string input
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        result = {{
+                            "answer": output.answer,
+                            "coordinates": output.coordinates,
+                            "cells": output.cells
+                        }}
+                        
+                    elif "{primary_task}" == "time-series-prediction":
+                        if isinstance(input_data, dict):
+                            # Handle time series input
+                            past_values = torch.tensor(input_data["past_values"]).float().unsqueeze(0).to(device)
+                            past_time_features = torch.tensor(input_data["past_time_features"]).float().unsqueeze(0).to(device)
+                            future_time_features = torch.tensor(input_data["future_time_features"]).float().unsqueeze(0).to(device)
+                            inputs = {{
+                                "past_values": past_values,
+                                "past_time_features": past_time_features,
+                                "future_time_features": future_time_features
+                            }}
+                        else:
+                            # Fallback for other inputs
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        result = output.predictions
+                    
+                    elif "{primary_task}" in ["visual-question-answering", "image-to-text"]:
+                        # Handle various multimodal inputs
+                        if isinstance(input_data, dict) and "image" in input_data and "question" in input_data:
+                            # Handle image+question dictionary
+                            image = input_data["image"]
+                            question = input_data["question"]
+                            if isinstance(image, str):
+                                from PIL import Image
+                                image = Image.open(image)
+                            inputs = processor(image=image, text=question, return_tensors="pt").to(device)
+                        elif isinstance(input_data, str) and os.path.exists(input_data):
+                            # Handle image file path
+                            from PIL import Image
+                            image = Image.open(input_data)
+                            # For image-to-text, use empty string as text
+                            text = "" if "{primary_task}" == "image-to-text" else "What is in this image?"
+                            inputs = processor(image=image, text=text, return_tensors="pt").to(device)
+                        else:
+                            # Fallback for other inputs
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                        
+                        with torch.no_grad():
+                            output = model(**inputs)
+                        
+                        if "{primary_task}" == "image-to-text":
+                            result = processor.decode(output.sequences[0], skip_special_tokens=True)
+                        else:
+                            # Visual QA
+                            result = {{
+                                "scores": output.logits.softmax(dim=1)[0].tolist(),
+                                "labels": processor.tokenizer.convert_ids_to_tokens(output.logits.argmax(dim=1)[0])
+                            }}
+                    
+                    elif "{primary_task}" == "document-question-answering":
+                        # Handle document QA
+                        if isinstance(input_data, dict) and "image" in input_data and "question" in input_data:
+                            image = input_data["image"]
+                            question = input_data["question"]
+                            if isinstance(image, str):
+                                from PIL import Image
+                                image = Image.open(image)
+                            inputs = processor(image=image, question=question, return_tensors="pt").to(device)
+                        elif isinstance(input_data, str) and os.path.exists(input_data):
+                            from PIL import Image
+                            image = Image.open(input_data)
+                            question = "What is this document about?"
+                            inputs = processor(image=image, question=question, return_tensors="pt").to(device)
+                        else:
+                            # Fallback
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                        
+                        with torch.no_grad():
+                            output = model(**inputs)
+                            
+                        if hasattr(output, "answer"):
+                            result = output.answer
+                        else:
+                            result = processor.decode(output.sequences[0], skip_special_tokens=True)
+                            
+                    elif "{primary_task}" == "depth-estimation":
+                        # Handle depth estimation
+                        if isinstance(input_data, str):
+                            from PIL import Image
+                            image = Image.open(input_data)
+                        else:
+                            image = input_data
+                            
+                        inputs = processor(images=image, return_tensors="pt").to(device)
+                        with torch.no_grad():
+                            output = model(**inputs)
+                            
+                        result = output.predicted_depth
+                    
+                    else:
+                        # Generic handling for other tasks
+                        if isinstance(input_data, str):
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                        else:
+                            inputs = processor(input_data, return_tensors="pt").to(device)
+                            
+                        with torch.no_grad():
+                            output = model(**inputs)
+                            
+                        # Return a generic result that should work for most models
+                        if hasattr(output, "logits"):
+                            result = output.logits
+                        elif hasattr(output, "last_hidden_state"):
+                            result = output.last_hidden_state
+                        else:
+                            # Just return the first tensor from the output
+                            for key, value in output.items():
+                                if isinstance(value, torch.Tensor):
+                                    result = value
+                                    break
+                            else:
+                                result = "Failed to extract output tensor"
                     
                     return {{
-                        "output": outputs,
+                        "output": result,
                         "implementation_type": "REAL",
                         "inference_time_seconds": time.time() - start_time,
                         "device": str(device)
@@ -405,13 +601,28 @@ class {test_class_name}:
             valid_init = endpoint is not None and processor is not None and handler is not None
             results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
             
+            # Prepare test input based on model type
+            test_input = None
+            if "{primary_task}" == "text-generation" and hasattr(self, 'test_text'):
+                test_input = self.test_text
+            elif "{primary_task}" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
+                test_input = self.test_image
+            elif "{primary_task}" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
+                test_input = self.test_audio
+            elif "{primary_task}" == "protein-folding" and hasattr(self, 'test_sequence'):
+                test_input = self.test_sequence
+            elif "{primary_task}" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
+                test_input = {{"table": self.test_table, "question": self.test_question}}
+            elif "{primary_task}" == "time-series-prediction" and hasattr(self, 'test_time_series'):
+                test_input = self.test_time_series
+            elif hasattr(self, 'test_input'):
+                test_input = self.test_input
+            else:
+                test_input = "Default test input"
+            
             # Run actual inference
             start_time = time.time()
-            output = handler(self.test_input if hasattr(self, 'test_input') else 
-                            self.test_text if hasattr(self, 'test_text') else
-                            self.test_image if hasattr(self, 'test_image') else
-                            self.test_audio if hasattr(self, 'test_audio') else
-                            "Default test input")
+            output = handler(test_input)
             elapsed_time = time.time() - start_time
             
             # Verify the output
@@ -421,14 +632,10 @@ class {test_class_name}:
             
             # Record example
             self.examples.append({{
-                "input": str(self.test_input if hasattr(self, 'test_input') else 
-                           self.test_text if hasattr(self, 'test_text') else
-                           self.test_image if hasattr(self, 'test_image') else
-                           self.test_audio if hasattr(self, 'test_audio') else
-                           "Default test input"),
+                "input": str(test_input),
                 "output": {{
                     "output_type": str(type(output)),
-                    "implementation_type": "REAL" if "implementation_type" not in output else output["implementation_type"]
+                    "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
                 }},
                 "timestamp": datetime.datetime.now().isoformat(),
                 "elapsed_time": elapsed_time,
@@ -456,13 +663,28 @@ class {test_class_name}:
                 valid_init = endpoint is not None and processor is not None and handler is not None
                 results["cuda_init"] = "Success (REAL)" if valid_init else "Failed CUDA initialization"
                 
+                # Prepare test input as above
+                test_input = None
+                if "{primary_task}" == "text-generation" and hasattr(self, 'test_text'):
+                    test_input = self.test_text
+                elif "{primary_task}" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
+                    test_input = self.test_image
+                elif "{primary_task}" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
+                    test_input = self.test_audio
+                elif "{primary_task}" == "protein-folding" and hasattr(self, 'test_sequence'):
+                    test_input = self.test_sequence
+                elif "{primary_task}" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
+                    test_input = {{"table": self.test_table, "question": self.test_question}}
+                elif "{primary_task}" == "time-series-prediction" and hasattr(self, 'test_time_series'):
+                    test_input = self.test_time_series
+                elif hasattr(self, 'test_input'):
+                    test_input = self.test_input
+                else:
+                    test_input = "Default test input"
+                
                 # Run actual inference
                 start_time = time.time()
-                output = handler(self.test_input if hasattr(self, 'test_input') else 
-                               self.test_text if hasattr(self, 'test_text') else
-                               self.test_image if hasattr(self, 'test_image') else
-                               self.test_audio if hasattr(self, 'test_audio') else
-                               "Default test input")
+                output = handler(test_input)
                 elapsed_time = time.time() - start_time
                 
                 # Verify the output
@@ -472,14 +694,10 @@ class {test_class_name}:
                 
                 # Record example
                 self.examples.append({{
-                    "input": str(self.test_input if hasattr(self, 'test_input') else 
-                              self.test_text if hasattr(self, 'test_text') else
-                              self.test_image if hasattr(self, 'test_image') else
-                              self.test_audio if hasattr(self, 'test_audio') else
-                              "Default test input"),
+                    "input": str(test_input),
                     "output": {{
                         "output_type": str(type(output)),
-                        "implementation_type": "REAL" if "implementation_type" not in output else output["implementation_type"]
+                        "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
                     }},
                     "timestamp": datetime.datetime.now().isoformat(),
                     "elapsed_time": elapsed_time,
@@ -529,13 +747,28 @@ class {test_class_name}:
                     valid_init = endpoint is not None and processor is not None and handler is not None
                     results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
                     
+                    # Prepare test input as above
+                    test_input = None
+                    if "{primary_task}" == "text-generation" and hasattr(self, 'test_text'):
+                        test_input = self.test_text
+                    elif "{primary_task}" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
+                        test_input = self.test_image
+                    elif "{primary_task}" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
+                        test_input = self.test_audio
+                    elif "{primary_task}" == "protein-folding" and hasattr(self, 'test_sequence'):
+                        test_input = self.test_sequence
+                    elif "{primary_task}" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
+                        test_input = {{"table": self.test_table, "question": self.test_question}}
+                    elif "{primary_task}" == "time-series-prediction" and hasattr(self, 'test_time_series'):
+                        test_input = self.test_time_series
+                    elif hasattr(self, 'test_input'):
+                        test_input = self.test_input
+                    else:
+                        test_input = "Default test input"
+                    
                     # Run actual inference
                     start_time = time.time()
-                    output = handler(self.test_input if hasattr(self, 'test_input') else 
-                                   self.test_text if hasattr(self, 'test_text') else
-                                   self.test_image if hasattr(self, 'test_image') else
-                                   self.test_audio if hasattr(self, 'test_audio') else
-                                   "Default test input")
+                    output = handler(test_input)
                     elapsed_time = time.time() - start_time
                     
                     # Verify the output
@@ -545,14 +778,10 @@ class {test_class_name}:
                     
                     # Record example
                     self.examples.append({{
-                        "input": str(self.test_input if hasattr(self, 'test_input') else 
-                                  self.test_text if hasattr(self, 'test_text') else
-                                  self.test_image if hasattr(self, 'test_image') else
-                                  self.test_audio if hasattr(self, 'test_audio') else
-                                  "Default test input"),
+                        "input": str(test_input),
                         "output": {{
                             "output_type": str(type(output)),
-                            "implementation_type": "REAL" if "implementation_type" not in output else output["implementation_type"]
+                            "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
                         }},
                         "timestamp": datetime.datetime.now().isoformat(),
                         "elapsed_time": elapsed_time,
@@ -584,13 +813,28 @@ class {test_class_name}:
                     valid_init = endpoint is not None and processor is not None and handler is not None
                     results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
                     
+                    # Prepare test input as above
+                    test_input = None
+                    if "{primary_task}" == "text-generation" and hasattr(self, 'test_text'):
+                        test_input = self.test_text
+                    elif "{primary_task}" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
+                        test_input = self.test_image
+                    elif "{primary_task}" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
+                        test_input = self.test_audio
+                    elif "{primary_task}" == "protein-folding" and hasattr(self, 'test_sequence'):
+                        test_input = self.test_sequence
+                    elif "{primary_task}" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
+                        test_input = {{"table": self.test_table, "question": self.test_question}}
+                    elif "{primary_task}" == "time-series-prediction" and hasattr(self, 'test_time_series'):
+                        test_input = self.test_time_series
+                    elif hasattr(self, 'test_input'):
+                        test_input = self.test_input
+                    else:
+                        test_input = "Default test input"
+                    
                     # Run actual inference
                     start_time = time.time()
-                    output = handler(self.test_input if hasattr(self, 'test_input') else 
-                                   self.test_text if hasattr(self, 'test_text') else
-                                   self.test_image if hasattr(self, 'test_image') else
-                                   self.test_audio if hasattr(self, 'test_audio') else
-                                   "Default test input")
+                    output = handler(test_input)
                     elapsed_time = time.time() - start_time
                     
                     # Verify the output
@@ -600,14 +844,10 @@ class {test_class_name}:
                     
                     # Record example
                     self.examples.append({{
-                        "input": str(self.test_input if hasattr(self, 'test_input') else 
-                                  self.test_text if hasattr(self, 'test_text') else
-                                  self.test_image if hasattr(self, 'test_image') else
-                                  self.test_audio if hasattr(self, 'test_audio') else
-                                  "Default test input"),
+                        "input": str(test_input),
                         "output": {{
                             "output_type": str(type(output)),
-                            "implementation_type": "MOCK" if "implementation_type" not in output else output["implementation_type"]
+                            "implementation_type": "MOCK" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
                         }},
                         "timestamp": datetime.datetime.now().isoformat(),
                         "elapsed_time": elapsed_time,
@@ -829,48 +1069,18 @@ if __name__ == "__main__":
     return template
 
 def main():
-    print(f"Starting test file generation at {datetime.datetime.now().isoformat()}")
+    """Main function to generate test files for critical models"""
+    print(f"Starting critical test file generation at {datetime.datetime.now().isoformat()}")
     
     # Load model types and pipeline mappings
     try:
-        all_models = load_model_types()
         model_to_pipeline, pipeline_to_model = load_pipeline_maps()
-        print(f"Loaded {len(all_models)} model types from huggingface_model_types.json")
-        print(f"Loaded pipeline mappings for {len(model_to_pipeline)} models")
+        print(f"Loaded pipeline mappings")
     except Exception as e:
         print(f"Error loading model information: {e}")
         sys.exit(1)
     
-    # Get existing tests
-    try:
-        existing_tests = get_existing_tests()
-        print(f"Found {len(existing_tests)} existing test implementations")
-    except Exception as e:
-        print(f"Error finding existing tests: {e}")
-        sys.exit(1)
-    
-    # Identify missing tests
-    try:
-        missing_tests = get_missing_tests(all_models, existing_tests, model_to_pipeline)
-        print(f"Identified {len(missing_tests)} missing test implementations")
-        
-        # Sort by priority
-        missing_tests.sort(key=lambda x: (0 if x["priority"] == "HIGH" else 1, x["model"]))
-        
-        # Print summary of high priority models
-        high_priority = [m for m in missing_tests if m["priority"] == "HIGH"]
-        print(f"\nHigh priority models to implement ({len(high_priority)}):")
-        for model in high_priority[:10]:  # Show top 10
-            tasks = ", ".join(model["pipeline_tasks"])
-            print(f"- {model['model']}: {tasks}")
-        
-        if len(high_priority) > 10:
-            print(f"... and {len(high_priority) - 10} more high priority models")
-    except Exception as e:
-        print(f"Error identifying missing tests: {e}")
-        sys.exit(1)
-    
-    # Generate test templates for high priority models
+    # Generate test templates for critical models
     generated_count = 0
     try:
         # Create output directory if it doesn't exist
@@ -879,19 +1089,24 @@ def main():
             skills_dir.mkdir(parents=True, exist_ok=True)
             print(f"Created directory: {skills_dir}")
         
-        # Generate test files for high priority models
-        for model_info in high_priority:
-            model = model_info["model"]
-            normalized_name = model_info["normalized_name"]
+        # Generate test files for critical models
+        for model in CRITICAL_MODELS:
+            normalized_name = normalize_model_name(model)
             
-            # Skip if test already exists (double check)
+            # Skip if test already exists
             test_file_path = skills_dir / f"test_hf_{normalized_name}.py"
             if test_file_path.exists():
                 print(f"Test file already exists for {model}, skipping")
                 continue
             
+            # Get pipeline tasks for this model
+            pipeline_tasks = model_to_pipeline.get(model, [])
+            if not pipeline_tasks:
+                print(f"Warning: No pipeline tasks found for {model}, skipping")
+                continue
+            
             # Generate test template
-            template = generate_test_template(model_info)
+            template = generate_test_template(model, pipeline_tasks)
             
             # Write to file
             with open(test_file_path, "w") as f:
@@ -900,16 +1115,16 @@ def main():
             generated_count += 1
             print(f"Generated test file for {model} at {test_file_path}")
             
-            # Limit number of files generated at once
-            if generated_count >= 10:
+            # Limit to first 5 models for initial run
+            if generated_count >= 5:
                 break
     except Exception as e:
         print(f"Error generating test templates: {e}")
         traceback.print_exc()
         sys.exit(1)
     
-    print(f"\nSummary: Generated {generated_count} test templates")
-    print(f"Remaining missing tests: {len(missing_tests) - generated_count}")
+    print(f"\nSummary: Generated {generated_count} critical test templates")
+    print(f"Remaining critical tests: {len(CRITICAL_MODELS) - generated_count}")
     print("Complete!")
 
 if __name__ == "__main__":
