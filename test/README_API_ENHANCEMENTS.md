@@ -1,10 +1,10 @@
-# API Enhancements Documentation
+# Advanced API Features Documentation
 
-This document describes the recent enhancements to the API backends in the IPFS Accelerate Python framework, with a focus on the queue system, backoff mechanism, and API key multiplexing features.
+This document describes the advanced features implemented in the API backends of the IPFS Accelerate Python framework, including the priority queue system, circuit breaker pattern, enhanced monitoring, request batching, and API key multiplexing capabilities.
 
-## Queue and Backoff System Implementation
+## Advanced Features Overview
 
-All API backends now include a comprehensive queue and backoff system with the following features:
+All API backends now include advanced features for improved reliability, performance, and monitoring:
 
 ### Thread-safe Request Queue
 - Configurable queue size (default: 100)

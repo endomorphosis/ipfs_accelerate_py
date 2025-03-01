@@ -3,9 +3,9 @@
 This document outlines a strategic plan for implementing tests for remaining Hugging Face model types, prioritized by importance, usage frequency, and pipeline coverage. The plan is divided into implementation phases to focus development efforts most efficiently.
 
 ## Current Implementation Status
-- **Models with Implemented Tests**: 109 out of 300
-- **Implementation Rate**: 36.3%
-- **Models Needing Implementation**: 191 models
+- **Models with Implemented Tests**: 127+ out of 300
+- **Implementation Rate**: 42.3%
+- **Models Needing Implementation**: 173 models
 
 ## Implementation Priorities by Pipeline
 
@@ -18,28 +18,28 @@ Text generation models are central to many applications and have high usage rate
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| falcon | text-generation | Critical | Not Implemented |
+| falcon | text-generation | Critical | ✅ Implemented |
 | gemma | text-generation | Critical | ✅ Implemented |
-| mamba | text-generation | Critical | Not Implemented |
+| mamba | text-generation | Critical | ✅ Implemented |
 | phi3 | text-generation | Critical | ✅ Implemented |
 | olmo | text-generation | Critical | Not Implemented |
-| starcoder2 | text-generation | Critical | Not Implemented |
-| codellama | text-generation | High | Not Implemented |
-| qwen3 | text-generation | High | Not Implemented |
-| phi4 | text-generation | High | Not Implemented |
+| starcoder2 | text-generation | Critical | ✅ Implemented |
+| codellama | text-generation | High | ✅ Implemented |
+| qwen3 | text-generation | High | ✅ Implemented |
+| phi4 | text-generation | High | ✅ Implemented |
 
 #### Multimodal Visual-Text Models
 Visual-language models represent cutting-edge AI capabilities with increasing adoption.
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| blip | image-to-text, visual-question-answering | Critical | Not Implemented |
-| blip-2 | image-to-text, visual-question-answering | Critical | Not Implemented |
-| fuyu | visual-question-answering | Critical | Not Implemented |
-| instructblip | image-to-text, visual-question-answering | High | Not Implemented |
-| paligemma | image-to-text, visual-question-answering | High | Not Implemented |
-| idefics2 | image-to-text, visual-question-answering | High | Not Implemented |
-| kosmos-2 | image-to-text, visual-question-answering | High | Not Implemented |
+| blip | image-to-text, visual-question-answering | Critical | ✅ Implemented |
+| blip-2 | image-to-text, visual-question-answering | Critical | ✅ Implemented |
+| fuyu | visual-question-answering | Critical | ✅ Implemented |
+| instructblip | image-to-text, visual-question-answering | High | ✅ Implemented |
+| paligemma | image-to-text, visual-question-answering | High | ✅ Implemented |
+| idefics2 | image-to-text, visual-question-answering | High | ✅ Implemented |
+| kosmos-2 | image-to-text, visual-question-answering | High | ✅ Implemented |
 | qwen3_vl | image-to-text, visual-question-answering | High | Not Implemented |
 
 #### Vision Models
@@ -47,27 +47,27 @@ Vision models provide essential capabilities for image understanding.
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| sam | image-segmentation | Critical | Not Implemented |
-| beit | image-classification | High | Not Implemented |
-| dinov2 | image-classification, feature-extraction | High | Not Implemented |
+| sam | image-segmentation | Critical | ✅ Implemented |
+| beit | image-classification | High | ✅ Implemented |
+| dinov2 | image-classification, feature-extraction | High | ✅ Implemented |
 | swinv2 | image-classification | High | Not Implemented |
 | vit_mae | image-classification | High | Not Implemented |
-| convnextv2 | image-classification | High | Not Implemented |
+| convnextv2 | image-classification | High | ✅ Implemented |
 | vitdet | object-detection | High | Not Implemented |
-| segformer | image-segmentation | High | Not Implemented |
-| owlvit | object-detection, visual-question-answering | High | Not Implemented |
+| segformer | image-segmentation | High | ✅ Implemented |
+| owlvit | object-detection, visual-question-answering | High | ✅ Implemented |
 
 #### Audio Models
 Audio processing is increasingly important for multimodal AI applications.
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| musicgen | text-to-audio | Critical | Not Implemented |
-| speech_to_text | automatic-speech-recognition | High | Not Implemented |
-| speecht5 | text-to-audio, automatic-speech-recognition | High | Not Implemented |
-| wavlm | automatic-speech-recognition | High | Not Implemented |
-| qwen2_audio | automatic-speech-recognition, text-to-audio | High | Not Implemented |
-| bark | text-to-audio | High | Not Implemented |
+| musicgen | text-to-audio | Critical | ✅ Implemented |
+| speech_to_text | automatic-speech-recognition | High | ✅ Implemented |
+| speecht5 | text-to-audio, automatic-speech-recognition | High | ✅ Implemented |
+| wavlm | automatic-speech-recognition | High | ✅ Implemented |
+| qwen2_audio | automatic-speech-recognition, text-to-audio | High | ✅ Implemented |
+| bark | text-to-audio | High | ✅ Implemented |
 
 ### Phase 2: Medium-Priority Models
 
@@ -106,26 +106,26 @@ These models have moderate usage or provide specialized capabilities:
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
 | layoutlmv2 | document-question-answering, token-classification | Medium | Not Implemented |
-| layoutlmv3 | document-question-answering, token-classification | Medium | Not Implemented |
+| layoutlmv3 | document-question-answering, token-classification | Medium | ✅ Implemented |
 | markuplm | token-classification, document-question-answering | Medium | Not Implemented |
-| donut-swin | document-question-answering, image-to-text | Medium | Not Implemented |
+| donut-swin | document-question-answering, image-to-text | Medium | ✅ Implemented |
 | nougat | document-question-answering, image-to-text | Medium | Not Implemented |
-| pix2struct | image-to-text, document-question-answering | Medium | Not Implemented |
+| pix2struct | image-to-text, document-question-answering | Medium | ✅ Implemented |
 | udop | document-question-answering, image-to-text | Medium | Not Implemented |
-| tapas | table-question-answering | Medium | Not Implemented |
+| tapas | table-question-answering | Medium | ✅ Implemented |
 
 #### Specialized Vision Models
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| depth_anything | depth-estimation | Medium | Not Implemented |
-| dpt | depth-estimation | Medium | Not Implemented |
-| zoedepth | depth-estimation | Medium | Not Implemented |
+| depth_anything | depth-estimation | Medium | ✅ Implemented |
+| dpt | depth-estimation | Medium | ✅ Implemented |
+| zoedepth | depth-estimation | Medium | ✅ Implemented |
 | conditional_detr | object-detection | Medium | Not Implemented |
 | deformable_detr | object-detection | Medium | Not Implemented |
-| mask2former | image-segmentation | Medium | Not Implemented |
+| mask2former | image-segmentation | Medium | ✅ Implemented |
 | maskformer | image-segmentation | Medium | Not Implemented |
-| upernet | image-segmentation | Medium | Not Implemented |
+| upernet | image-segmentation | Medium | ✅ Implemented |
 
 ### Phase 3: Lower-Priority Models
 
@@ -162,12 +162,12 @@ These models can be implemented after higher-priority models are completed:
 
 | Model Type | Pipeline Task | Priority | Implementation Status |
 |------------|---------------|----------|------------------------|
-| autoformer | time-series-prediction | Low | Not Implemented |
-| informer | time-series-prediction | Low | Not Implemented |
-| patchtsmixer | time-series-prediction | Low | Not Implemented |
-| patchtst | time-series-prediction | Low | Not Implemented |
-| time_series_transformer | time-series-prediction | Low | Not Implemented |
-| esm | feature-extraction, protein-folding | Low | Not Implemented |
+| autoformer | time-series-prediction | Low | ✅ Implemented |
+| informer | time-series-prediction | Low | ✅ Implemented |
+| patchtsmixer | time-series-prediction | Low | ✅ Implemented |
+| patchtst | time-series-prediction | Low | ✅ Implemented |
+| time_series_transformer | time-series-prediction | Low | ✅ Implemented |
+| esm | feature-extraction, protein-folding | Low | ✅ Implemented |
 
 ## Implementation Approach
 

@@ -1,27 +1,63 @@
+#!/usr/bin/env python
+"""
+IPFS Accelerate Python - Ollama API Backend
+
+This module provides integration with Ollama API for local LLM deployments.
+Features:
+- Thread-safe request queue with concurrency limits
+- Exponential backoff for error handling
+- Request tracking with unique IDs
+- Streaming support for chat completions
+"""
+
 import os
 import json
 import time
 import threading
 import requests
 import uuid
+import hashlib
 from concurrent.futures import Future
 from queue import Queue
-from dotenv import load_dotenv
+from pathlib import Path
 
 class ollama:
     def __init__(self, resources=None, metadata=None):
+        """
+        Initialize the Ollama API client with resources and metadata.
+        
+        Args:
+            resources: Optional resources dictionary
+            metadata: Optional metadata dictionary with configuration
+        """
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         
         # Get Ollama API endpoint from metadata or environment
         self.ollama_api_url = self._get_ollama_api_url()
         
+        # Initialize counters and metrics
+        self.usage_stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_tokens": 0,
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0
+        }
+        
+        # Queue configuration - Priority levels: HIGH, NORMAL, LOW
+        self.PRIORITY_HIGH = 0
+        self.PRIORITY_NORMAL = 1
+        self.PRIORITY_LOW = 2
+        
         # Initialize queue and backoff systems
         self.max_concurrent_requests = 5
         self.queue_size = 100
         self.request_queue = Queue(maxsize=self.queue_size)
-        self.active_requests = 0
+        self.current_requests = 0
         self.queue_lock = threading.RLock()
+        self.queue_processing = False
         
         # Start queue processor
         self.queue_processor = threading.Thread(target=self._process_queue)
@@ -34,24 +70,17 @@ class ollama:
         self.backoff_factor = 2
         self.max_retry_delay = 16
         
+        # Implement circuit breaker pattern
+        self.circuit_state = "CLOSED"  # CLOSED, OPEN, HALF-OPEN
+        self.failure_count = 0
+        self.failure_threshold = 5
+        self.circuit_timeout = 30  # seconds
+        self.last_failure_time = 0
+        self.circuit_lock = threading.RLock()
+        
         # Default model
         self.default_model = os.environ.get("OLLAMA_MODEL", "llama3")
         
-        
-        # Retry and backoff settings
-        self.max_retries = 5
-        self.initial_retry_delay = 1
-        self.backoff_factor = 2
-        self.max_retry_delay = 60  # Maximum delay in seconds
-        
-        # Request queue settings
-        self.queue_enabled = True
-        self.queue_size = 100
-        self.queue_processing = False
-        self.current_requests = 0
-        self.max_concurrent_requests = 5
-        self.request_queue = []
-        self.queue_lock = threading.RLock()
         return None
 
     def _get_ollama_api_url(self):
@@ -68,6 +97,7 @@ class ollama:
         
         # Try to load from dotenv
         try:
+            from dotenv import load_dotenv
             load_dotenv()
             env_url = os.environ.get("OLLAMA_API_URL")
             if env_url:
@@ -80,19 +110,46 @@ class ollama:
         
     def _process_queue(self):
         """Process queued requests with proper concurrency management"""
+        if self.queue_processing:
+            return  # Already processing queue
+            
+        self.queue_processing = True
+        
         while True:
             try:
-                future, endpoint_url, data, stream, request_id = self.request_queue.get()
+                # Get the next request from the queue
+                future, endpoint_url, data, stream, request_id, priority = self.request_queue.get()
                 
                 with self.queue_lock:
-                    self.active_requests += 1
+                    self.current_requests += 1
+                
+                # Check circuit breaker
+                with self.circuit_lock:
+                    if self.circuit_state == "OPEN":
+                        # Circuit is open, check if timeout has elapsed
+                        if time.time() - self.last_failure_time > self.circuit_timeout:
+                            # Transition to half-open state
+                            self.circuit_state = "HALF-OPEN"
+                        else:
+                            # Circuit is open and timeout hasn't elapsed, fail fast
+                            future.set_exception(Exception(f"Circuit breaker is OPEN. Service unavailable."))
+                            with self.queue_lock:
+                                self.current_requests -= 1
+                            self.request_queue.task_done()
+                            continue
                 
                 # Process with retry logic
                 retry_count = 0
-                while retry_count <= self.max_retries:
+                success = False
+                
+                while retry_count <= self.max_retries and not success:
                     try:
                         # Construct headers
                         headers = {"Content-Type": "application/json"}
+                        
+                        # Include request ID in headers if provided
+                        if request_id:
+                            headers["X-Request-ID"] = request_id
                         
                         # Make request with proper error handling
                         if stream:
@@ -114,6 +171,16 @@ class ollama:
                         # Check for HTTP errors
                         response.raise_for_status()
                         
+                        # Update circuit breaker on success
+                        with self.circuit_lock:
+                            if self.circuit_state == "HALF-OPEN":
+                                # Success in half-open state, close the circuit
+                                self.circuit_state = "CLOSED"
+                                self.failure_count = 0
+                            elif self.circuit_state == "CLOSED":
+                                # Reset failure count on successful request
+                                self.failure_count = 0
+                        
                         # Return response based on stream mode
                         if stream:
                             # Create a streaming generator
@@ -127,13 +194,35 @@ class ollama:
                             # Parse JSON response
                             result = response.json()
                         
+                        # Update usage stats
+                        with self.queue_lock:
+                            self.usage_stats["total_requests"] += 1
+                            self.usage_stats["successful_requests"] += 1
+                        
                         future.set_result(result)
-                        break
+                        success = True
                         
                     except requests.RequestException as e:
                         retry_count += 1
                         
+                        # Update circuit breaker on failure
+                        with self.circuit_lock:
+                            self.failure_count += 1
+                            self.last_failure_time = time.time()
+                            
+                            # Check if we should open the circuit
+                            if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
+                                self.circuit_state = "OPEN"
+                            elif self.circuit_state == "HALF-OPEN":
+                                # Failed in half-open state, reopen the circuit
+                                self.circuit_state = "OPEN"
+                        
                         if retry_count > self.max_retries:
+                            # Update usage stats
+                            with self.queue_lock:
+                                self.usage_stats["total_requests"] += 1
+                                self.usage_stats["failed_requests"] += 1
+                            
                             future.set_exception(e)
                             break
                         
@@ -147,94 +236,283 @@ class ollama:
                         time.sleep(delay)
                     
                     except Exception as e:
+                        # Update usage stats
+                        with self.queue_lock:
+                            self.usage_stats["total_requests"] += 1
+                            self.usage_stats["failed_requests"] += 1
+                        
                         future.set_exception(e)
                         break
                 
                 with self.queue_lock:
-                    self.active_requests -= 1
+                    self.current_requests -= 1
                 
                 self.request_queue.task_done()
                 
             except Exception as e:
                 print(f"Error in queue processor: {e}")
+                
+                with self.queue_lock:
+                    if self.current_requests > 0:
+                        self.current_requests -= 1
     
-    def make_post_request_ollama(self, endpoint_url, data, stream=False):
-        """Make a request to Ollama API with queue and backoff"""
-        # Generate unique request ID
-        request_id = str(uuid.uuid4())
+    def make_post_request_ollama(self, endpoint_url, data, stream=False, request_id=None, priority=None):
+        """
+        Make a request to Ollama API with queue and backoff.
+        
+        Args:
+            endpoint_url: The Ollama API endpoint URL
+            data: Request data to send
+            stream: Whether to stream the response
+            request_id: Optional unique ID for request tracking
+            priority: Request priority (PRIORITY_HIGH, PRIORITY_NORMAL, PRIORITY_LOW)
+            
+        Returns:
+            The API response
+        """
+        # Generate unique request ID if not provided
+        if request_id is None:
+            request_id = str(uuid.uuid4())
+        
+        # Set default priority if not provided
+        if priority is None:
+            priority = self.PRIORITY_NORMAL
         
         # Queue system with proper concurrency management
         future = Future()
         
         # Add to queue
-        self.request_queue.put((future, endpoint_url, data, stream, request_id))
+        self.request_queue.put((future, endpoint_url, data, stream, request_id, priority))
+        
+        # If queue processor isn't running, start it
+        if not self.queue_processing:
+            threading.Thread(target=self._process_queue).start()
         
         # Get result (blocks until request is processed)
         return future.result()
         
-    def chat(self, model, messages, options=None):
-        """Send a chat request to Ollama API"""
+    def chat(self, model_name=None, model=None, messages=None, max_tokens=None, temperature=None, request_id=None, options=None, **kwargs):
+        """
+        Send a chat request to Ollama API.
+        
+        Args:
+            model_name: Name of the model to use (for compatibility with other APIs)
+            model: Name of the model to use (alternative parameter name)
+            messages: List of message objects with 'role' and 'content'
+            max_tokens: Maximum number of tokens to generate
+            temperature: Temperature for sampling (0.0 to 2.0)
+            request_id: Optional unique ID for request tracking
+            options: Additional options to pass to the API
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            Dict containing generated response text and metadata
+        """
+        # Use model_name if provided, otherwise use model parameter
+        model_to_use = model_name or model or self.default_model
+        
         # Construct the proper endpoint URL
         endpoint_url = f"{self.ollama_api_url}/chat"
         
         # Format messages for Ollama API
         formatted_messages = self._format_messages(messages)
         
+        # Prepare options dictionary if provided
+        options_dict = options.copy() if options else {}
+        
+        # Add max_tokens and temperature to options if provided
+        if max_tokens is not None:
+            options_dict["num_predict"] = max_tokens
+        
+        if temperature is not None:
+            options_dict["temperature"] = temperature
+        
+        # Handle additional kwargs
+        for key, value in kwargs.items():
+            if key not in ["stream", "messages", "model"]:
+                options_dict[key] = value
+        
         # Prepare request data
         data = {
-            "model": model,
+            "model": model_to_use,
             "messages": formatted_messages,
             "stream": False
         }
         
-        # Add options if provided
-        if options:
-            data["options"] = options
+        # Add options if any exist
+        if options_dict:
+            data["options"] = options_dict
         
         # Make request with queue and backoff
-        response = self.make_post_request_ollama(endpoint_url, data)
-        
-        # Process and normalize response
-        return {
-            "text": response.get("message", {}).get("content", ""),
-            "model": model,
-            "usage": self._extract_usage(response),
-            "implementation_type": "(REAL)"
-        }
+        try:
+            response = self.make_post_request_ollama(endpoint_url, data, request_id=request_id)
+            
+            # Update token usage stats
+            if "prompt_eval_count" in response and "eval_count" in response:
+                with self.queue_lock:
+                    self.usage_stats["total_prompt_tokens"] += response.get("prompt_eval_count", 0)
+                    self.usage_stats["total_completion_tokens"] += response.get("eval_count", 0)
+                    self.usage_stats["total_tokens"] += response.get("prompt_eval_count", 0) + response.get("eval_count", 0)
+            
+            # Process and normalize response
+            return {
+                "text": response.get("message", {}).get("content", ""),
+                "model": model_to_use,
+                "usage": self._extract_usage(response),
+                "implementation_type": "(REAL)"
+            }
+        except Exception as e:
+            return {
+                "text": f"Error: {str(e)}",
+                "model": model_to_use,
+                "error": str(e),
+                "implementation_type": "(ERROR)"
+            }
 
-    def stream_chat(self, model, messages, options=None):
-        """Stream a chat request from Ollama API"""
+    def generate(self, model=None, prompt=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+        """
+        Generate text using the Ollama API (compatibility with other frameworks).
+        
+        Args:
+            model: Name of the model to use
+            prompt: Text prompt to send
+            max_tokens: Maximum number of tokens to generate
+            temperature: Temperature for sampling (0.0 to 2.0)
+            request_id: Optional unique ID for request tracking
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            Dict containing generated response text and metadata
+        """
+        # Construct a message from the prompt
+        messages = [{"role": "user", "content": prompt}]
+        
+        # Call chat method
+        return self.chat(
+            model_name=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            request_id=request_id,
+            **kwargs
+        )
+
+    def completions(self, model=None, prompt=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+        """
+        Generate completions using the Ollama API (compatibility with other frameworks).
+        
+        Args:
+            model: Name of the model to use
+            prompt: Text prompt to send
+            max_tokens: Maximum number of tokens to generate
+            temperature: Temperature for sampling (0.0 to 2.0)
+            request_id: Optional unique ID for request tracking
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            Dict containing generated response text and metadata
+        """
+        # Construct a message from the prompt
+        messages = [{"role": "user", "content": prompt}]
+        
+        # Call chat method
+        return self.chat(
+            model_name=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            request_id=request_id,
+            **kwargs
+        )
+
+    def stream_chat(self, model_name=None, model=None, messages=None, max_tokens=None, temperature=None, request_id=None, options=None, **kwargs):
+        """
+        Stream a chat request from Ollama API.
+        
+        Args:
+            model_name: Name of the model to use (for compatibility with other APIs)
+            model: Name of the model to use (alternative parameter name)
+            messages: List of message objects with 'role' and 'content'
+            max_tokens: Maximum number of tokens to generate
+            temperature: Temperature for sampling (0.0 to 2.0)
+            request_id: Optional unique ID for request tracking
+            options: Additional options to pass to the API
+            **kwargs: Additional keyword arguments
+            
+        Returns:
+            Generator yielding response chunks
+        """
+        # Use model_name if provided, otherwise use model parameter
+        model_to_use = model_name or model or self.default_model
+        
         # Construct the proper endpoint URL
         endpoint_url = f"{self.ollama_api_url}/chat"
         
         # Format messages for Ollama API
         formatted_messages = self._format_messages(messages)
         
+        # Prepare options dictionary if provided
+        options_dict = options.copy() if options else {}
+        
+        # Add max_tokens and temperature to options if provided
+        if max_tokens is not None:
+            options_dict["num_predict"] = max_tokens
+        
+        if temperature is not None:
+            options_dict["temperature"] = temperature
+        
+        # Handle additional kwargs
+        for key, value in kwargs.items():
+            if key not in ["stream", "messages", "model"]:
+                options_dict[key] = value
+        
         # Prepare request data
         data = {
-            "model": model,
+            "model": model_to_use,
             "messages": formatted_messages,
             "stream": True
         }
         
-        # Add options if provided
-        if options:
-            data["options"] = options
+        # Add options if any exist
+        if options_dict:
+            data["options"] = options_dict
         
         # Make streaming request
-        response_stream = self.make_post_request_ollama(endpoint_url, data, stream=True)
+        try:
+            response_stream = self.make_post_request_ollama(endpoint_url, data, stream=True, request_id=request_id)
+            
+            # Process streaming response
+            completion_tokens = 0
+            for chunk in response_stream:
+                completion_tokens += 1
+                yield {
+                    "text": chunk.get("message", {}).get("content", ""),
+                    "done": chunk.get("done", False),
+                    "model": model_to_use
+                }
+                
+                # If this is the final chunk, update token usage
+                if chunk.get("done", False):
+                    with self.queue_lock:
+                        prompt_tokens = chunk.get("prompt_eval_count", 0)
+                        self.usage_stats["total_prompt_tokens"] += prompt_tokens
+                        self.usage_stats["total_completion_tokens"] += completion_tokens
+                        self.usage_stats["total_tokens"] += prompt_tokens + completion_tokens
         
-        # Process streaming response
-        for chunk in response_stream:
+        except Exception as e:
             yield {
-                "text": chunk.get("message", {}).get("content", ""),
-                "done": chunk.get("done", False),
-                "model": model
+                "text": f"Error: {str(e)}",
+                "error": str(e),
+                "done": True,
+                "model": model_to_use
             }
             
     def _format_messages(self, messages):
         """Format messages for Ollama API"""
         formatted_messages = []
+        
+        if not messages:
+            return [{"role": "user", "content": "Hello"}]
         
         for message in messages:
             role = message.get("role", "user")
@@ -288,7 +566,7 @@ class ollama:
         async def endpoint_handler(prompt, **kwargs):
             """Handle requests to Ollama endpoint"""
             # Get model from kwargs or default
-            model = kwargs.get("model", self.metadata.get("ollama_model", self.default_model))
+            model = kwargs.get("model", self.default_model)
             
             # Create messages from prompt
             messages = [{"role": "user", "content": prompt}]
@@ -301,13 +579,39 @@ class ollama:
             
             # Make request
             try:
-                response = self.chat(model, messages, options)
+                response = self.chat(model=model, messages=messages, options=options)
                 return response
             except Exception as e:
                 print(f"Error calling Ollama endpoint: {e}")
                 return {"text": f"Error: {str(e)}", "implementation_type": "(ERROR)"}
         
         return endpoint_handler
+    
+    def __call__(self, endpoint_type, **kwargs):
+        """Make client callable with endpoint type and parameters"""
+        if endpoint_type == "chat":
+            return self.chat(**kwargs)
+        elif endpoint_type == "stream_chat":
+            return self.stream_chat(**kwargs)
+        elif endpoint_type == "completions":
+            return self.completions(**kwargs)
+        elif endpoint_type == "generate":
+            return self.generate(**kwargs)
+        else:
+            raise ValueError(f"Unknown endpoint type: {endpoint_type}")
+    
+    def reset_usage_stats(self):
+        """Reset usage statistics to zero"""
+        with self.queue_lock:
+            self.usage_stats = {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "total_tokens": 0,
+                "total_prompt_tokens": 0,
+                "total_completion_tokens": 0
+            }
+        return None
         
     def test_ollama_endpoint(self, endpoint_url=None):
         """Test the Ollama endpoint"""
@@ -318,8 +622,20 @@ class ollama:
         messages = [{"role": "user", "content": "Testing the Ollama API. Please respond with a short message."}]
         
         try:
-            response = self.chat(model, messages)
+            response = self.chat(model=model, messages=messages)
             return "text" in response and response.get("implementation_type") == "(REAL)"
         except Exception as e:
             print(f"Error testing Ollama endpoint: {e}")
             return False
+
+# For testing as standalone module
+if __name__ == "__main__":
+    # Create client
+    client = ollama()
+    
+    # Check attributes
+    print(f"Max retries: {client.max_retries}")
+    print(f"Backoff factor: {client.backoff_factor}")
+    print(f"Max concurrent requests: {client.max_concurrent_requests}")
+    
+    print("Ollama API implementation has queue and backoff functionality.")

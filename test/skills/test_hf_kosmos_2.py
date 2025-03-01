@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Test file for tapas
+# Test file for kosmos-2
 # Generated: 2025-03-01 15:39:30
-# Category: language
-# Primary task: table-question-answering
+# Category: multimodal
+# Primary task: image-to-text
 
 import os
 import sys
@@ -36,7 +36,7 @@ except ImportError:
     print("Warning: transformers not available, using mock")
 
 # Category-specific imports
-if "language" in ["vision", "multimodal"]:
+if "multimodal" in ["vision", "multimodal"]:
     try:
         from PIL import Image
         HAS_PIL = True
@@ -45,7 +45,7 @@ if "language" in ["vision", "multimodal"]:
         HAS_PIL = False
         print("Warning: PIL not available, using mock")
 
-if "language" == "audio":
+if "multimodal" == "audio":
     try:
         import librosa
         HAS_LIBROSA = True
@@ -56,11 +56,11 @@ if "language" == "audio":
 
 # Try to import the model implementation
 try:
-    from ipfs_accelerate_py.worker.skillset.hf_tapas import hf_tapas
+    from ipfs_accelerate_py.worker.skillset.hf_kosmos_2 import hf_kosmos_2
     HAS_IMPLEMENTATION = True
 except ImportError:
     # Create mock implementation
-    class hf_tapas:
+    class hf_kosmos_2:
         def __init__(self, resources=None, metadata=None):
             self.resources = resources or {}
             self.metadata = metadata or {}
@@ -78,9 +78,9 @@ except ImportError:
             return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
     
     HAS_IMPLEMENTATION = False
-    print(f"Warning: hf_tapas module not found, using mock implementation")
+    print(f"Warning: hf_kosmos_2 module not found, using mock implementation")
 
-class test_hf_tapas:
+class test_hf_kosmos_2:
     def __init__(self, resources=None, metadata=None):
         # Initialize resources
         self.resources = resources if resources else {
@@ -91,14 +91,13 @@ class test_hf_tapas:
         self.metadata = metadata if metadata else {}
         
         # Initialize model
-        self.model = hf_tapas(resources=self.resources, metadata=self.metadata)
+        self.model = hf_kosmos_2(resources=self.resources, metadata=self.metadata)
         
         # Use appropriate model for testing
-        self.model_name = "bert-base-uncased"
+        self.model_name = "Salesforce/blip-image-captioning-base"
         
         # Test inputs appropriate for this model type
-        self.test_text = "The quick brown fox jumps over the lazy dog"
-        self.test_batch = ["The quick brown fox jumps over the lazy dog", "The five boxing wizards jump quickly"]
+        self.test_image_path = "test.jpg"
         self.test_input = "Default test input"
         
         # Collection arrays for results
@@ -111,19 +110,19 @@ class test_hf_tapas:
             if hasattr(self, 'test_batch'):
                 return self.test_batch
         
-        if "language" == "language" and hasattr(self, 'test_text'):
+        if "multimodal" == "language" and hasattr(self, 'test_text'):
             return self.test_text
-        elif "language" == "vision":
+        elif "multimodal" == "vision":
             if hasattr(self, 'test_image_path'):
                 return self.test_image_path
             elif hasattr(self, 'test_image'):
                 return self.test_image
-        elif "language" == "audio":
+        elif "multimodal" == "audio":
             if hasattr(self, 'test_audio_path'):
                 return self.test_audio_path
             elif hasattr(self, 'test_audio'):
                 return self.test_audio
-        elif "language" == "multimodal":
+        elif "multimodal" == "multimodal":
             if hasattr(self, 'test_vqa'):
                 return self.test_vqa
             elif hasattr(self, 'test_document_qa'):
@@ -141,11 +140,11 @@ class test_hf_tapas:
         results = {}
         
         try:
-            print(f"Testing tapas on {platform.upper()}...")
+            print(f"Testing kosmos_2 on {platform.upper()}...")
             
             # Initialize for this platform
             endpoint, processor, handler, queue, batch_size = init_method(
-                self.model_name, "table-question-answering", device_arg
+                self.model_name, "image-to-text", device_arg
             )
             
             # Check initialization success
@@ -260,10 +259,10 @@ class test_hf_tapas:
             "examples": self.examples,
             "metadata": {
                 "model_name": self.model_name,
-                "model": "tapas",
-                "primary_task": "table-question-answering",
-                "pipeline_tasks": ["table-question-answering"],
-                "category": "language",
+                "model": "kosmos-2",
+                "primary_task": "image-to-text",
+                "pipeline_tasks": ["image-to-text", "visual-question-answering"],
+                "category": "multimodal",
                 "test_timestamp": datetime.datetime.now().isoformat(),
                 "has_implementation": HAS_IMPLEMENTATION,
                 "platform_status": self.status_messages
@@ -295,7 +294,7 @@ class test_hf_tapas:
                 os.makedirs(directory, mode=0o755, exist_ok=True)
         
         # Save test results
-        results_file = os.path.join(collected_dir, 'hf_tapas_test_results.json')
+        results_file = os.path.join(collected_dir, 'hf_kosmos_2_test_results.json')
         try:
             with open(results_file, 'w') as f:
                 json.dump(test_results, f, indent=2)
@@ -304,7 +303,7 @@ class test_hf_tapas:
             print(f"Error saving results: {e}")
         
         # Create expected results if they don't exist
-        expected_file = os.path.join(expected_dir, 'hf_tapas_test_results.json')
+        expected_file = os.path.join(expected_dir, 'hf_kosmos_2_test_results.json')
         if not os.path.exists(expected_file):
             try:
                 with open(expected_file, 'w') as f:
@@ -353,7 +352,7 @@ def extract_implementation_status(results):
 if __name__ == "__main__":
     # Parse command line arguments
     import argparse
-    parser = argparse.ArgumentParser(description='tapas model test')
+    parser = argparse.ArgumentParser(description='kosmos-2 model test')
     parser.add_argument('--platform', type=str, choices=['cpu', 'cuda', 'openvino', 'all'], 
                         default='all', help='Platform to test')
     parser.add_argument('--model', type=str, help='Override model name')
@@ -361,8 +360,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Run the tests
-    print(f"Starting tapas test...")
-    test_instance = test_hf_tapas()
+    print(f"Starting kosmos_2 test...")
+    test_instance = test_hf_kosmos_2()
     
     # Override model if specified
     if args.model:
@@ -374,7 +373,7 @@ if __name__ == "__main__":
     status = extract_implementation_status(results)
     
     # Print summary
-    print(f"\nTAPAS TEST RESULTS SUMMARY")
+    print(f"\nKOSMOS_2 TEST RESULTS SUMMARY")
     print(f"MODEL: {results.get('metadata', {}).get('model_name', 'Unknown')}")
     print(f"CPU STATUS: {status['cpu']}")
     print(f"CUDA STATUS: {status['cuda']}")

@@ -1,23 +1,32 @@
-# IPFS Accelerate Python Testing Framework
+# IPFS Accelerate Python - Test Framework
 
-This directory contains the comprehensive testing framework for the IPFS Accelerate Python library. The testing suite is designed to validate the functionality of all supported models, APIs, and hardware integrations.
+This directory contains the comprehensive testing framework for the IPFS Accelerate Python library, with a focus on validating model functionality, API integrations, and hardware acceleration capabilities.
 
-## Directory Structure
+## Overview
 
-- `test/` - Main testing directory
-  - `apis/` - Tests for API integrations (OpenAI, Claude, Groq, etc.)
-  - `skills/` - Tests for model implementations (BERT, LLaMA, CLIP, etc.)
-  - `performance_results/` - Performance test results and reports
-  - `api_check_results/` - API implementation validation results
-  - `collected_results/` - Hardware and model test results
+The test framework includes:
 
-## Documentation
+1. **Model Tests** - Validation for 127+ HuggingFace model types across different hardware platforms
+2. **API Tests** - Integration tests for various AI API providers
+3. **Hardware Tests** - Validation of CPU, CUDA, and OpenVINO acceleration
+4. **Endpoint Tests** - Tests for local inference endpoints
+5. **Performance Tests** - Benchmarking across hardware configurations
 
-- [MODEL_TESTING_README.md](MODEL_TESTING_README.md) - Comprehensive model testing documentation
-- [NEW_MODEL_TESTS_README.md](NEW_MODEL_TESTS_README.md) - Documentation for latest model implementations (March 2025)
+## Test Documentation
+
+- [MODEL_TESTING_GUIDE.md](MODEL_TESTING_GUIDE.md) - Complete guide to model testing
+- [MODEL_TESTING_README.md](MODEL_TESTING_README.md) - Detailed model test documentation
+- [MODEL_IMPLEMENTATION_PROGRESS.md](MODEL_IMPLEMENTATION_PROGRESS.md) - Implementation status tracker
 - [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
-- [ADVANCED_TESTS_README.md](ADVANCED_TESTS_README.md) - Advanced testing scenarios
-- [CLAUDE.md](CLAUDE.md) - Development guidelines and implementation status
+- [API_IMPLEMENTATION_STATUS.md](API_IMPLEMENTATION_STATUS.md) - API implementation status
+
+## Test Generation Tools
+
+The framework includes several tools for generating new tests:
+
+- [generate_model_tests.py](generate_model_tests.py) - Primary test generator for HuggingFace models
+- [generate_missing_test_files.py](generate_missing_test_files.py) - Older test generator
+- [generate_comprehensive_tests.py](generate_comprehensive_tests.py) - Advanced test generator (WIP)
 
 ## Running Tests
 
@@ -25,79 +34,73 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 ```bash
 # Run a specific model test
-python3 skills/test_hf_bert.py
+python skills/test_hf_bert.py
 
 # Run multiple tests in parallel
-python3 run_skills_tests.py --models bert,roberta,gpt2
+python run_skills_tests.py --models bert,roberta,gpt2
 
-# Run all model tests
-python3 run_skills_tests.py --all
-
-# Run tests for a specific type
-python3 run_skills_tests.py --type language  # Options: language, vision, audio, multimodal
+# Run tests for a specific category
+python run_skills_tests.py --category language
 ```
 
 ### API Tests
 
 ```bash
-# Check API implementation status
-python3 check_api_implementation.py
+# Run all API tests
+python check_api_implementation.py 
 
-# Test specific API
-python3 test_single_api.py [api_name]
-
-# Test all APIs
-python3 test_api_backend.py
+# Test a specific API
+python test_single_api.py [api_name]
 ```
 
 ### Hardware Tests
 
 ```bash
 # Test hardware backends
-python3 test_hardware_backend.py --backend [cpu|cuda|openvino] --model [model_name]
-
-# Run performance tests
-python3 run_performance_tests.py --batch_size 8 --models all
+python test_hardware_backend.py
 ```
 
-## Recent Updates (March 2025)
+## Current Test Coverage (March 2025)
 
-- Added new model test implementations:
-  - Qwen3 (`test_hf_qwen3.py`)
-  - Video-LLaVA (`test_hf_video_llava.py`)
-  - Time Series Transformer (`test_hf_time_series_transformer.py`)
+- **HuggingFace Models**: 127+ of 300 models (42.3%)
+- **API Backends**: 11 API types with comprehensive testing
+- **Hardware Support**: CPU (100%), CUDA (93.8%), OpenVINO (89.6%)
 
-- Improved API backend tests:
-  - Added request queue backoff testing
-  - Enhanced credential management
-  - Implemented comprehensive error handling validation
+## Generating New Tests
 
-- Enhanced local endpoint testing:
-  - Fixed endpoint handler to return callable functions
-  - Added support for 47 local model endpoints
-  - Implemented dictionary structure validation
+To generate tests for missing models:
+
+```bash
+# List all missing tests
+python generate_model_tests.py --list-only
+
+# Generate high-priority model tests
+python generate_model_tests.py --models layoutlmv2 nougat swinv2 vit_mae
+
+# Generate tests by category
+python generate_model_tests.py --category vision --limit 5
+```
+
+## Recent Improvements
+
+Recent improvements to the testing framework include:
+
+1. **Enhanced Test Generator** - The new test generator creates more comprehensive tests with better coverage
+2. **Batch Testing Support** - All generated tests now include batch processing validation
+3. **Advanced Error Handling** - Improved degradation mechanisms for handling missing dependencies
+4. **Performance Monitoring** - Added inference time and memory usage tracking
+5. **Documentation Updates** - Expanded documentation with usage guides and status tracking
 
 ## Contributing
 
-When adding new tests, please follow these guidelines:
+When adding new tests:
 
-1. Use the existing test structure and patterns
-2. Ensure tests have appropriate fallback mechanisms
-3. Include both REAL and MOCK implementation support
-4. Test across all supported hardware platforms
-5. Document your tests in the appropriate README file
+1. Use the `generate_model_tests.py` script when possible
+2. Follow the established test structure
+3. Include both single and batch testing
+4. Test on all available hardware platforms
+5. Update the documentation to reflect new tests
 
-## Test Reports
+## License
 
-Tests generate detailed reports that are saved in the appropriate results directories:
-
-- Model test results: `skills/collected_results/`
-- API test results: `apis/collected_results/`
-- Hardware test results: `collected_results/`
-- Performance test results: `performance_results/`
-
-These reports include detailed information about test performance, implementation status, and compatibility across platforms.
-
----
-
-For more information about the IPFS Accelerate Python framework, please refer to the main documentation.
+This test framework follows the same license as the main IPFS Accelerate Python library.

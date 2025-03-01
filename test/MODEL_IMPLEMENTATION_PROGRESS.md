@@ -5,21 +5,21 @@ This document provides a summary of our progress in implementing tests for Huggi
 ## Current Implementation Status (March 2025)
 
 - **Total Hugging Face model types**: 300
-- **Tests implemented**: 109 (36.3% coverage)
-- **Remaining models to implement**: 191 (63.7%)
+- **Tests implemented**: 127+ (42.3% coverage)
+- **Remaining models to implement**: 173 (57.7%)
 
 ## Progress Overview
 
-We've made significant progress in test coverage since the initial implementation plan, more than doubling the implementation rate from 17.3% to 36.3%. The project now has 109 test files covering a wide range of model types across language, vision, audio, and multimodal domains.
+We've made significant progress in test coverage since the initial implementation plan, increasing the implementation rate from 17.3% to 42.3%. The project now has 127+ test files covering a wide range of model types across language, vision, audio, and multimodal domains. Our recent additions include high-priority models like kosmos-2, grounding-dino, and tapas.
 
 ### Implementation by Category
 
 | Model Category | Implemented | Planned | Completion Rate |
 |----------------|-------------|---------|----------------|
-| Language Models | 58 | 92 | 63.0% |
-| Vision Models | 24 | 45 | 53.3% |
-| Audio Models | 12 | 20 | 60.0% |
-| Multimodal Models | 15 | 25 | 60.0% |
+| Language Models | 65+ | 92 | 70.7% |
+| Vision Models | 32+ | 51 | 62.7% |
+| Audio Models | 15+ | 20 | 75.0% |
+| Multimodal Models | 15+ | 19 | 78.9% |
 
 ### Pipeline Task Coverage
 

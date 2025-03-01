@@ -129,7 +129,7 @@ def add_priority_queue(content):
     # Add method to queue with priority
     queue_with_priority_method = """
     def queue_with_priority(self, request_info, priority=None):
-        """Queue a request with a specific priority level."""
+        # Queue a request with a specific priority level
         if priority is None:
             priority = self.PRIORITY_NORMAL
             
@@ -190,7 +190,7 @@ def add_circuit_breaker(content):
     # Add circuit breaker methods
     circuit_breaker_methods = """
     def check_circuit_breaker(self):
-        """Check if circuit breaker allows requests"""
+        # Check if circuit breaker allows requests to proceed
         with self.circuit_lock:
             now = time.time()
             
@@ -213,7 +213,7 @@ def add_circuit_breaker(content):
                 return True
 
     def track_request_result(self, success, error_type=None):
-        """Track the result of a request for circuit breaker logic"""
+        # Track the result of a request for circuit breaker logic tracking
         with self.circuit_lock:
             if success:
                 # Successful request
@@ -333,7 +333,7 @@ def add_monitoring(content):
     # Add monitoring methods
     monitoring_methods = """
     def update_stats(self, stats_update):
-        """Update request statistics in a thread-safe way"""
+        # Update request statistics in a thread-safe manner
         if not hasattr(self, "collect_metrics") or not self.collect_metrics:
             return
             
@@ -361,7 +361,7 @@ def add_monitoring(content):
                         self.request_stats[key] += value
 
     def get_stats(self):
-        """Get a copy of the current request statistics"""
+        # Get a copy of the current request statistics
         if not hasattr(self, "stats_lock") or not hasattr(self, "request_stats"):
             return {}
             
@@ -370,7 +370,7 @@ def add_monitoring(content):
             return dict(self.request_stats)
 
     def reset_stats(self):
-        """Reset all statistics"""
+        # Reset all statistics
         if not hasattr(self, "stats_lock") or not hasattr(self, "request_stats"):
             return
             
@@ -389,7 +389,7 @@ def add_monitoring(content):
             }
 
     def generate_report(self, include_details=False):
-        """Generate a report of API usage and performance"""
+        # Generate a report of API usage and performance
         if not hasattr(self, "get_stats") or not callable(self.get_stats):
             return {"error": "Statistics not available"}
             
@@ -517,7 +517,7 @@ def add_batching(content):
     # Add batching methods
     batching_methods = """
     def add_to_batch(self, model, request_info):
-        """Add a request to the batch queue for the specified model"""
+        # Add a request to the batch queue for the specified model
         if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
             # Either batching is disabled or model doesn't support it
             return False
@@ -558,7 +558,7 @@ def add_batching(content):
             return True
     
     def _process_batch(self, model):
-        """Process a batch of requests for the specified model"""
+        # Process a batch of requests for the specified model
         with self.batch_lock:
             # Get all requests for this model
             if model not in self.batch_queue:
@@ -604,7 +604,7 @@ def add_batching(content):
                     future["completed"] = True
     
     def _process_embedding_batch(self, model, batch_requests):
-        """Process a batch of embedding requests - override in subclasses"""
+        # Process a batch of embedding requests for improved throughput
         try:
             # Extract texts from requests
             texts = []
@@ -640,7 +640,7 @@ def add_batching(content):
                     future["completed"] = True
     
     def _process_completion_batch(self, model, batch_requests):
-        """Process a batch of completion requests - override in subclasses"""
+        # Process a batch of completion requests in one API call
         try:
             # Extract prompts from requests
             prompts = []

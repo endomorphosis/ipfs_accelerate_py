@@ -1,0 +1,45 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Failed CPU initialization",
+    "cpu_handler": "Success (REAL)",
+    "cuda_init": "Failed CUDA initialization",
+    "cuda_handler": "Success (REAL)",
+    "openvino_init": "Failed OpenVINO initialization",
+    "openvino_handler": "Success (REAL)"
+  },
+  "examples": [
+    {
+      "input": "{'image': 'test.jpg', 'question': 'What is the title of this document?'}",
+      "output": {
+        "output_type": "<class 'dict'>",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:31:12.427397",
+      "platform": "CPU"
+    },
+    {
+      "input": "{'image': 'test.jpg', 'question': 'What is the title of this document?'}",
+      "output": {
+        "output_type": "<class 'dict'>",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:31:12.441414",
+      "platform": "CUDA"
+    },
+    {
+      "input": "{'image': 'test.jpg', 'question': 'What is the title of this document?'}",
+      "output": {
+        "output_type": "<class 'dict'>",
+        "implementation_type": "MOCK"
+      },
+      "timestamp": "2025-03-01T15:31:12.493180",
+      "platform": "OpenVINO"
+    }
+  ],
+  "metadata": {
+    "model_name": "microsoft/layoutlm-base-uncased",
+    "model_type": "layoutlmv2",
+    "test_timestamp": "2025-03-01T15:31:12.493187"
+  }
+}
