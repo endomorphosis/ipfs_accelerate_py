@@ -1,987 +1,833 @@
-import asyncio
-import json
-import requests
 import os
-from typing import Dict, List, Optional, Union, Any, Callable
+import json
+import time
+import threading
+import hashlib
+import uuid
+import requests
+import numpy as np
+from concurrent.futures import Future
+from queue import Queue
+from dotenv import load_dotenv
 
 class ovms:
-    """OpenVINO Model Server (OVMS) API Backend Integration
-    
-    This class provides a comprehensive interface for interacting with OVMS endpoints.
-    It supports multiple types of operations including:
-    - Model inference with various input types
-    - Model metadata retrieval 
-    - Model list retrieval
-    - Dynamic model loading
-    - Async and sync inference
-    - Custom pre/post processing
-    
-    Features:
-    - Support for all OVMS model types (classification, detection, NLP, etc.)
-    - Automatic input tokenization for NLP models
-    - Both sync and async inference modes
-    - Batched inference support
-    - Multiple precision support (FP32, FP16, INT8)
-    - Custom preprocessing and postprocessing hooks
-    - Dynamic endpoint management
-    - Health monitoring and status tracking
-    
-    Supported model types:
-    - Text Generation Models (GPT, T5, etc.)
-    - Computer Vision Models (Classification, Detection, Segmentation)
-    - Speech Models (ASR, TTS)
-    - Multimodal Models (Vision + Language)
-    - Embedding Models (BERT, Sentence Transformers)
-    
-    Usage example for text generation:
-    ```python
-    from ipfs_accelerate_py.api_backends import ovms
-    
-    # Initialize backend
-    ovms_backend = ovms()
-    
-    # Configure endpoint for a text generation model
-    endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
-        endpoint_url="http://localhost:9000",
-        model_name="gpt2",
-        context_length=1024
-    )
-    
-    # Basic inference
-    response = handler("Explain quantum computing")
-    
-    # With custom parameters
-    response = handler(
-        "Explain quantum computing",
-        parameters={
-            "endpoint_path": "/v2/models/gpt2/infer",
-            "max_tokens": 100,
-            "raw": False  # Enable automatic tokenization
-        }
-    )
-    ```
-    
-    Usage example for computer vision:
-    ```python
-    # Configure endpoint for an image classification model
-    endpoint_url, api_key, handler, queue, batch_size = ovms_backend.init(
-        endpoint_url="http://localhost:9000",
-        model_name="resnet50"
-    )
-    
-    # Custom preprocessing for images
-    def preprocess_image(image_data):
-        # Convert image to model input format
-        return processed_data
-    
-    # Create handler with custom preprocessing
-    handler = ovms_backend.create_remote_ovms_endpoint_handler(
-        endpoint_url="http://localhost:9000",
-        model_name="resnet50",
-        preprocessing=preprocess_image
-    )
-    
-    # Perform inference
-    result = handler(image_data, parameters={"raw": True})
-    ```
-    """
-
     def __init__(self, resources=None, metadata=None):
-        """Initialize OVMS backend interface
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
         
-        Args:
-            resources: Resources configuration dictionary
-            metadata: Additional metadata dictionary
-        """
-        self.resources = resources
-        self.metadata = metadata
-        # Register method references
-        self.create_remote_ovms_endpoint_handler = self.create_remote_ovms_endpoint_handler
-        self.test_ovms_endpoint = self.test_ovms_endpoint
-        self.create_ovms_endpoint_handler = self.create_ovms_endpoint_handler
-        self.make_post_request_ovms = self.make_post_request_ovms
-        self.make_async_post_request_ovms = self.make_async_post_request_ovms
-        self.request_ovms_endpoint = self.request_ovms_endpoint
-        self.list_available_ovms_models = self.list_available_ovms_models
-        self.get_model_metadata = self.get_model_metadata
-        self.init = self.init
-        # Add endpoints tracking
+        # Get OVMS configuration from metadata or environment
+        self.api_url = self.metadata.get("ovms_api_url", os.environ.get("OVMS_API_URL", "http://localhost:9000"))
+        self.default_model = self.metadata.get("ovms_model", os.environ.get("OVMS_MODEL", "model"))
+        self.default_version = self.metadata.get("ovms_version", os.environ.get("OVMS_VERSION", "latest"))
+        self.default_precision = self.metadata.get("ovms_precision", os.environ.get("OVMS_PRECISION", "FP32"))
+        
+        # Initialize queue and backoff systems
+        self.max_concurrent_requests = 5
+        self.queue_size = 100
+        self.request_queue = Queue(maxsize=self.queue_size)
+        self.active_requests = 0
+        self.queue_lock = threading.RLock()
+        
+        # Start queue processor
+        self.queue_processor = threading.Thread(target=self._process_queue)
+        self.queue_processor.daemon = True
+        self.queue_processor.start()
+        
+        # Initialize backoff configuration
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 16
+        
+        # Request tracking
+        self.request_tracking = True
+        self.recent_requests = {}
+        
+        # Initialize per-endpoint settings
+        self.queue_enabled = True
         self.endpoints = {}
-        self.endpoint_status = {}
-        self.registered_models = {}
-        # Add queue for managing requests
-        self.request_queue = asyncio.Queue(64)
+        
+        # API authentication - OVMS may require authentication in some deployments
+        self.api_key = self.metadata.get("ovms_api_key", os.environ.get("OVMS_API_KEY", None))
+        
+        # Initialize thread pool for async processing
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+            self.thread_pool = ThreadPoolExecutor(max_workers=10)
+        except ImportError:
+            self.thread_pool = None
+        
         return None
-    
-    def init(self, endpoint_url=None, api_key=None, model_name=None, context_length=None):
-        """Initialize a connection to an OpenVINO Model Server (OVMS) endpoint
         
-        The init method sets up a connection to an OVMS endpoint and configures 
-        the appropriate handler for the specified model. It supports both synchronous
-        and asynchronous inference modes.
-        
-        Supported endpoints:
-        - Model Inference: /v2/models/{model_name}/infer
-        - Model Metadata: /v2/models/{model_name}/metadata
-        - Model Status: /v2/models/{model_name}/ready
-        - Server Status: /v2/health/ready
-        
-        Args:
-            endpoint_url: The URL of the OVMS server
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            context_length: Maximum context length for the model (for text models)
+    def _process_queue(self, endpoint_id=None):
+        """Process queued requests with proper concurrency management"""
+        # Process for specific endpoint queue or global queue
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            with endpoint["queue_lock"]:
+                if endpoint.get("queue_processing", False):
+                    return  # Another thread is already processing this endpoint's queue
+                endpoint["queue_processing"] = True
             
-        Returns:
-            tuple: (endpoint_url, api_key, handler, queue, batch_size)
-            
-        Example:
-            ```python
-            # Basic initialization
-            endpoint_url, api_key, handler, queue, batch_size = ovms.init(
-                endpoint_url="http://localhost:9000",
-                model_name="bert-base"
-            )
-            
-            # Initialize with context length for text models
-            endpoint_url, api_key, handler, queue, batch_size = ovms.init(
-                endpoint_url="http://localhost:9000",
-                model_name="gpt2",
-                context_length=1024
-            )
-            ```
-        """
-        # Create the endpoint handler
-        endpoint_handler = self.create_remote_ovms_endpoint_handler(endpoint_url, api_key, model_name, context_length)
-        
-        # Register the endpoint
-        if model_name not in self.endpoints:
-            self.endpoints[model_name] = []
-        
-        if endpoint_url not in self.endpoints[model_name]:
-            self.endpoints[model_name].append(endpoint_url)
-            self.endpoint_status[endpoint_url] = 32  # Default batch size
-            
-            # Register model in the registered_models dictionary
-            if model_name not in self.registered_models:
-                self.registered_models[model_name] = {
-                    "endpoints": [endpoint_url],
-                    "context_length": context_length
-                }
-            else:
-                if endpoint_url not in self.registered_models[model_name]["endpoints"]:
-                    self.registered_models[model_name]["endpoints"].append(endpoint_url)
-                if context_length and not self.registered_models[model_name].get("context_length"):
-                    self.registered_models[model_name]["context_length"] = context_length
-        
-        return endpoint_url, api_key, endpoint_handler, self.request_queue, self.endpoint_status[endpoint_url]
-    
-    def list_available_ovms_models(self, endpoint_url=None, api_key=None):
-        """List available models from an OVMS endpoint
-        
-        Queries the OVMS server to get a list of all available models and their status.
-        Supports both v1 and v2 of the OVMS API.
-        
-        Args:
-            endpoint_url: URL of the OVMS endpoint
-            api_key: API key for authentication, if required
-            
-        Returns:
-            list: List of available models with metadata
-            
-        Example:
-            ```python
-            # List all available models
-            models = ovms.list_available_ovms_models(
-                endpoint_url="http://localhost:9000"
-            )
-            
-            # Models info includes:
-            # - Name
-            # - Version
-            # - Status (loading/ready/error)
-            # - Input shapes and types
-            # - Supported precisions
-            ```
-        """
-        if not endpoint_url:
-            if self.endpoints:
-                # Use the first available endpoint
-                model_name = next(iter(self.endpoints))
-                endpoint_url = self.endpoints[model_name][0]
-            else:
-                return None
-                
-        try:
-            # OVMS typically uses a /v1/models or /v2/models endpoint for model listing
-            for models_path in ["/v2/models", "/v1/models", "/models"]:
-                models_endpoint = f"{endpoint_url.rstrip('/')}{models_path}"
-                headers = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
-                
-                response = requests.get(models_endpoint, headers=headers)
-                if response.status_code == 200:
-                    result = response.json()
-                    
-                    # Different OVMS versions might structure the response differently
-                    if "models" in result:
-                        return result["models"]
-                    elif "model_versions" in result:
-                        return result["model_versions"]
-                    else:
-                        return result
-            
-            # If all paths failed but didn't raise exceptions
-            return None
-        except Exception as e:
-            print(f"Failed to list OVMS models: {e}")
-            return None
-    
-    def get_model_metadata(self, model_name, endpoint_url=None, api_key=None):
-        """Get metadata and diagnostic information for a specific model
-        
-        Retrieves comprehensive model information for setup and debugging:
-        
-        1. Model Configuration:
-           - Model architecture
-           - Input/output specifications
-           - Supported precisions
-           - Hardware requirements
-           - Batch size limits
-           - Memory requirements
-        
-        2. Runtime Status:
-           - Loading status
-           - Instance count
-           - Resource utilization
-           - Error conditions
-           - Performance metrics
-        
-        3. Hardware Configuration:
-           - Device assignment
-           - Memory allocation
-           - Compute resources
-           - Optimization settings
-        
-        4. System Requirements:
-           - Minimum CPU/GPU specs
-           - Memory thresholds
-           - Disk space needs
-           - Network bandwidth
-        
-        Args:
-            model_name: Name of the model
-            endpoint_url: URL of the OVMS endpoint
-            api_key: API key for authentication
-            
-        Returns:
-            dict: Detailed model metadata and diagnostics
-            
-        Example:
-            ```python
-            # Get comprehensive model information
-            metadata = ovms.get_model_metadata(
-                model_name="bert-base",
-                endpoint_url="http://localhost:9000"
-            )
-            
-            # Access specific details
-            input_shape = metadata["inputs"][0]["shape"]
-            precision = metadata["precision"]
-            status = metadata["status"]
-            resources = metadata["resources"]
-            
-            # Check for warnings/errors
-            if "warnings" in metadata:
-                print("Model warnings:", metadata["warnings"])
-            ```
-        """
-        if not endpoint_url:
-            if model_name in self.endpoints and self.endpoints[model_name]:
-                endpoint_url = self.endpoints[model_name][0]
-            else:
-                return None
-                
-        try:
-            # Try different API versions
-            for api_version in ["v2", "v1"]:
-                metadata_endpoint = f"{endpoint_url.rstrip('/')}/{api_version}/models/{model_name}/metadata"
-                headers = {"Content-Type": "application/json"}
-                if api_key:
-                    headers["Authorization"] = f"Bearer {api_key}"
-                
-                response = requests.get(metadata_endpoint, headers=headers)
-                if response.status_code == 200:
-                    return response.json()
-            
-            # If all versions failed, try OVMS-specific endpoint
-            metadata_endpoint = f"{endpoint_url.rstrip('/')}/models/{model_name}/metadata"
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            
-            response = requests.get(metadata_endpoint, headers=headers)
-            if response.status_code == 200:
-                return response.json()
-                
-            return None
-        except Exception as e:
-            print(f"Failed to get metadata for model {model_name}: {e}")
-            return None
-    
-# This method has been replaced with test_ovms_endpoint and test_ovms_endpoints
-    
-    def make_post_request_ovms(self, endpoint_url, data, api_key=None):
-        """Make a POST request to an OVMS endpoint
-        
-        Handles the low-level communication with OVMS endpoints, including:
-        - Request formatting
-        - Data serialization
-        - Error handling
-        - Response parsing
-        
-        Args:
-            endpoint_url: URL of the endpoint
-            data: Data to send in the request
-            api_key: API key for authentication, if required
-            
-        Returns:
-            dict: Response from the endpoint
-            
-        The method automatically formats data according to OVMS expectations:
-        - Single inputs are wrapped in a batch
-        - Inputs are structured in the "instances" format
-        - Metadata is included when required
-        """
-        try:
-            headers = {"Content-Type": "application/json"}
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            
-            # Format data according to OVMS expectations
-            if isinstance(data, str):
-                formatted_data = {"instances": [{"data": data}]}
-            elif isinstance(data, dict):
-                formatted_data = {"instances": [data]}
-            elif isinstance(data, list):
-                formatted_data = {"instances": data}
-            else:
-                raise ValueError("Unsupported data format")
-            
-            response = requests.post(endpoint_url, headers=headers, json=formatted_data)
-            response.raise_for_status()
-            
-            return response.json()
-        
-        except Exception as e:
-            print(f"Error making request to OVMS endpoint: {e}")
-            return None
-    
-    async def make_async_post_request_ovms(self, endpoint_url, data, api_key=None):
-        """Make an asynchronous POST request to an OVMS endpoint
-        
-        Provides non-blocking request handling for high-throughput scenarios.
-        Automatically handles timeouts and connection management.
-        
-        Args:
-            endpoint_url: URL of the endpoint
-            data: Data to send in the request
-            api_key: API key for authentication, if required
-            
-        Returns:
-            dict: Response from the endpoint
-            
-        Example:
-            ```python
-            # Make async batch request
-            response = await ovms.make_async_post_request_ovms(
-                endpoint_url="http://localhost:9000/v2/models/bert/infer",
-                data={
-                    "instances": [
-                        {"data": "Sample text 1"},
-                        {"data": "Sample text 2"}
-                    ]
-                }
-            )
-            ```
-        """
-        import aiohttp
-        from aiohttp import ClientSession, ClientTimeout
-        
-        # Format data according to OVMS expectations
-        if isinstance(data, str):
-            formatted_data = {"instances": [{"data": data}]}
-        elif isinstance(data, dict):
-            formatted_data = {"instances": [data]}
-        elif isinstance(data, list):
-            formatted_data = {"instances": data}
+            request_queue = endpoint.get("request_queue", [])
+            using_endpoint = True
         else:
-            raise ValueError("Unsupported data format")
-        
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        timeout = ClientTimeout(total=300)
+            # Process global queue
+            with self.queue_lock:
+                if getattr(self, "queue_processing", False):
+                    return  # Another thread is already processing the queue
+                self.queue_processing = True
+            
+            request_queue = self.request_queue
+            using_endpoint = False
         
         try:
-            async with ClientSession(timeout=timeout) as session:
-                async with session.post(endpoint_url, headers=headers, json=formatted_data) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        raise ValueError(f"Error {response.status}: {error_text}")
-                    return await response.json()
+            while True:
+                # Get next request depending on queue type
+                if using_endpoint:
+                    with endpoint["queue_lock"]:
+                        if not request_queue:
+                            endpoint["queue_processing"] = False
+                            break
+                        
+                        # Check if we're at capacity
+                        if endpoint.get("current_requests", 0) >= endpoint.get("max_concurrent_requests", 5):
+                            time.sleep(0.1)  # Brief pause to prevent CPU spinning
+                            continue
+                        
+                        # Get the next request and update counter
+                        request_info = request_queue.pop(0)
+                        endpoint["current_requests"] = endpoint.get("current_requests", 0) + 1
+                        endpoint["total_requests"] = endpoint.get("total_requests", 0) + 1
+                        
+                    # Get request details
+                    future = request_info.get("future")
+                    endpoint_url = request_info.get("endpoint_url")
+                    data = request_info.get("data")
+                    api_key = request_info.get("api_key")
+                    request_id = request_info.get("request_id")
                     
-        except Exception as e:
-            print(f"Error in async request to OVMS endpoint: {e}")
-            raise e
-    
-    def test_ovms_endpoint(self, endpoint_url=None, api_key=None, model_name=None):
-        """Test an OVMS endpoint
-        
-        Tests a single OVMS endpoint for connectivity and basic functionality.
-        
-        Args:
-            endpoint_url: URL of the endpoint to test
-            api_key: API key for authentication (optional)
-            model_name: Name of the model to test (optional)
-            
-        Returns:
-            bool: True if the test passes, False otherwise
-        """
-        try:
-            # Create test data
-            test_data = {"instances": [{"data": [0, 1, 2, 3]}]}
-            
-            # Make a test request
-            response = self.make_post_request_ovms(endpoint_url, test_data, api_key)
-            
-            # Check if the response contains expected fields
-            if response and ("predictions" in response or "outputs" in response):
-                return True
-            
-            return False
-            
-        except Exception as e:
-            print(f"Error testing OVMS endpoint: {e}")
-            return False
-    
-    
-    async def test_ovms_endpoints(self, model=None, endpoint_url=None, api_key=None, endpoint_list=None):
-        """Test one or more OVMS endpoints
-        
-        Validates endpoint connectivity and model availability. Can test:
-        - Single specific endpoint
-        - List of endpoints
-        - All endpoints for a given model
-        
-        Tests performed:
-        - Basic connectivity
-        - Model availability
-        - Inference with test input
-        - Response format validation
-        
-        Args:
-            model: Name of the model
-            endpoint_url: URL of a specific endpoint to test
-            api_key: API key for authentication
-            endpoint_list: List of endpoints to test
-            
-        Returns:
-            dict: Results of endpoint tests with detailed status
-            
-        Example:
-            ```python
-            # Test specific endpoint
-            results = await ovms.test_ovms_endpoints(
-                model="bert-base",
-                endpoint_url="http://localhost:9000"
-            )
-            
-            # Test multiple endpoints
-            results = await ovms.test_ovms_endpoints(
-                model="bert-base",
-                endpoint_list=[
-                    "http://server1:9000",
-                    "http://server2:9000"
-                ]
-            )
-            ```
-        """
-        test_results = {}
-        
-        if endpoint_url and not endpoint_list:
-            endpoint_list = [endpoint_url]
-            
-        if not endpoint_list and model in self.endpoints:
-            endpoint_list = self.endpoints[model]
-            
-        if not endpoint_list:
-            return {"error": "No endpoints provided for testing"}
-            
-        for endpoint in endpoint_list:
-            try:
-                handler = self.create_remote_ovms_endpoint_handler(endpoint, api_key, model)
-                test_input = "The quick brown fox jumps over the lazy dog"
-                
-                if asyncio.iscoroutinefunction(handler):
-                    result = await handler(test_input)
+                    # Process the request with retries using the endpoint's settings
+                    max_retries = endpoint.get("max_retries", 5)
+                    initial_delay = endpoint.get("initial_retry_delay", 1)
+                    backoff_factor = endpoint.get("backoff_factor", 2)
+                    max_delay = endpoint.get("max_retry_delay", 16)
+                    
+                    # Track start time for metrics
+                    start_time = time.time()
                 else:
-                    result = handler(test_input)
-                    
-                test_results[endpoint] = {
-                    "status": "success" if result is not None else "failed",
-                    "result": result if result is not None else "No result"
-                }
+                    # Handle global queue
+                    try:
+                        if isinstance(request_queue, Queue):
+                            future, endpoint_url, data, request_id = request_queue.get(block=False)
+                        else:
+                            # If somehow request_queue is a list
+                            with self.queue_lock:
+                                if not request_queue:
+                                    self.queue_processing = False
+                                    break
+                                
+                                request_data = request_queue.pop(0)
+                                if isinstance(request_data, tuple) and len(request_data) >= 4:
+                                    future, endpoint_url, data, request_id = request_data
+                                else:
+                                    # Unexpected format, skip
+                                    continue
+                        
+                        with self.queue_lock:
+                            self.active_requests += 1
+                        
+                        # Use global settings for retries
+                        max_retries = self.max_retries
+                        initial_delay = self.initial_retry_delay
+                        backoff_factor = self.backoff_factor
+                        max_delay = self.max_retry_delay
+                        api_key = None  # No specific API key for global queue                       
+                        
+                        # Track start time for metrics
+                        start_time = time.time()
+                    except Exception as e:
+                        # Queue is empty or other error
+                        with self.queue_lock:
+                            self.queue_processing = False
+                        break
                 
+                # Process with retry logic
+                processed = False
+                retry_count = 0
+                
+                while not processed and retry_count <= max_retries:
+                    try:
+                        # Construct headers with authentication if provided
+                        headers = {"Content-Type": "application/json"}
+                        if api_key:
+                            # Add authentication header - format depends on OVMS configuration
+                            headers["X-API-Key"] = api_key
+                        
+                        # Make request with proper error handling
+                        response = requests.post(
+                            endpoint_url,
+                            json=data,
+                            headers=headers,
+                            timeout=self.metadata.get("timeout", 30)
+                        )
+                        
+                        # Check for HTTP errors
+                        response.raise_for_status()
+                        
+                        # Parse JSON response
+                        result = response.json()
+                        
+                        # Update tracking with response
+                        if self.request_tracking:
+                            self.recent_requests[request_id] = {
+                                "timestamp": time.time(),
+                                "endpoint": endpoint_url,
+                                "endpoint_id": endpoint_id if using_endpoint else None,
+                                "status": "success",
+                                "response_code": response.status_code,
+                                "processing_time": time.time() - start_time
+                            }
+                        
+                        # Set result based on queue type
+                        if using_endpoint:
+                            future["result"] = result
+                            future["completed"] = True
+                            
+                            # Update endpoint stats
+                            with endpoint["queue_lock"]:
+                                endpoint["successful_requests"] = endpoint.get("successful_requests", 0) + 1
+                                endpoint["last_request_at"] = time.time()
+                                endpoint["total_processing_time"] = endpoint.get("total_processing_time", 0) + (time.time() - start_time)
+                        else:
+                            future.set_result(result)
+                        
+                        processed = True
+                        
+                    except requests.RequestException as e:
+                        retry_count += 1
+                        
+                        if retry_count > max_retries:
+                            # Update tracking with error
+                            if self.request_tracking:
+                                self.recent_requests[request_id] = {
+                                    "timestamp": time.time(),
+                                    "endpoint": endpoint_url,
+                                    "endpoint_id": endpoint_id if using_endpoint else None,
+                                    "status": "error",
+                                    "error": str(e),
+                                    "processing_time": time.time() - start_time
+                                }
+                            
+                            # Set error based on queue type
+                            if using_endpoint:
+                                future["error"] = e
+                                future["completed"] = True
+                                
+                                # Update endpoint stats
+                                with endpoint["queue_lock"]:
+                                    endpoint["failed_requests"] = endpoint.get("failed_requests", 0) + 1
+                                    endpoint["last_request_at"] = time.time()
+                            else:
+                                future.set_exception(e)
+                            
+                            processed = True
+                            break
+                        
+                        # Calculate backoff delay
+                        delay = min(
+                            initial_delay * (backoff_factor ** (retry_count - 1)),
+                            max_delay
+                        )
+                        
+                        # Sleep with backoff
+                        time.sleep(delay)
+                    
+                    except Exception as e:
+                        # Update tracking with error
+                        if self.request_tracking:
+                            self.recent_requests[request_id] = {
+                                "timestamp": time.time(),
+                                "endpoint": endpoint_url,
+                                "endpoint_id": endpoint_id if using_endpoint else None,
+                                "status": "error",
+                                "error": str(e),
+                                "processing_time": time.time() - start_time
+                            }
+                        
+                        # Set error based on queue type
+                        if using_endpoint:
+                            future["error"] = e
+                            future["completed"] = True
+                            
+                            # Update endpoint stats
+                            with endpoint["queue_lock"]:
+                                endpoint["failed_requests"] = endpoint.get("failed_requests", 0) + 1
+                                endpoint["last_request_at"] = time.time()
+                        else:
+                            future.set_exception(e)
+                        
+                        processed = True
+                        break
+                
+                # Update counters after processing
+                if using_endpoint:
+                    with endpoint["queue_lock"]:
+                        endpoint["current_requests"] = max(0, endpoint.get("current_requests", 0) - 1)
+                else:
+                    with self.queue_lock:
+                        self.active_requests = max(0, self.active_requests - 1)
+                    
+                    if isinstance(request_queue, Queue):
+                        request_queue.task_done()
+                
+                # Brief pause to prevent CPU hogging
+                time.sleep(0.01)
+        
+        except Exception as e:
+            print(f"Error in queue processor: {e}")
+        
+        finally:
+            # Reset processing flag
+            if using_endpoint:
+                with endpoint["queue_lock"]:
+                    endpoint["queue_processing"] = False
+            else:
+                with self.queue_lock:
+                    self.queue_processing = False
+    
+    def make_post_request_ovms(self, endpoint_url, data, request_id=None, endpoint_id=None, api_key=None):
+        """Make a request to OVMS API with queue and backoff and endpoint-specific settings"""
+        # Use endpoint-specific settings if available
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Get endpoint settings
+            endpoint = self.endpoints[endpoint_id]
+            
+            # Generate unique request ID if not provided
+            if request_id is None:
+                request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+            
+            # Queue system with proper concurrency management
+            future = Future()
+            
+            # Create request info
+            request_info = {
+                "endpoint_url": endpoint_url,
+                "data": data,
+                "api_key": api_key or endpoint.get("api_key"),
+                "request_id": request_id,
+                "endpoint_id": endpoint_id,
+                "future": future
+            }
+            
+            # Check if endpoint queue is enabled and at capacity
+            if endpoint.get("queue_enabled", True) and endpoint.get("current_requests", 0) >= endpoint.get("max_concurrent_requests", 5):
+                with endpoint["queue_lock"]:
+                    # Check if queue is full
+                    if len(endpoint["request_queue"]) >= endpoint.get("queue_size", 100):
+                        raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
+                    
+                    # Add to endpoint queue
+                    endpoint["request_queue"].append(request_info)
+                    print(f"Request queued. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
+                    
+                    # Start queue processing if not already running
+                    if not endpoint.get("queue_processing", False):
+                        threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
+                
+                # Wait for result with timeout
+                wait_start = time.time()
+                max_wait = 300  # 5 minutes
+                
+                while not request_info["future"].get("completed", False) and (time.time() - wait_start) < max_wait:
+                    time.sleep(0.1)
+                
+                # Check if completed or timed out
+                if not request_info["future"].get("completed", False):
+                    raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                
+                # Propagate error if any
+                if request_info["future"].get("error"):
+                    raise request_info["future"]["error"]
+                
+                return request_info["future"]["result"]
+            else:
+                # Process request directly without queueing
+                with endpoint["queue_lock"]:
+                    endpoint["current_requests"] = endpoint.get("current_requests", 0) + 1
+                
+                # Add to regular queue
+                self.request_queue.put((future, endpoint_url, data, request_id))
+                
+                # Get result and update endpoint stats
+                try:
+                    result = future.result()
+                    
+                    # Update endpoint statistics
+                    with endpoint["queue_lock"]:
+                        endpoint["current_requests"] = max(0, endpoint.get("current_requests", 0) - 1)
+                        endpoint["successful_requests"] = endpoint.get("successful_requests", 0) + 1
+                        endpoint["last_request_at"] = time.time()
+                    
+                    return result
+                except Exception as e:
+                    # Update endpoint statistics
+                    with endpoint["queue_lock"]:
+                        endpoint["current_requests"] = max(0, endpoint.get("current_requests", 0) - 1)
+                        endpoint["failed_requests"] = endpoint.get("failed_requests", 0) + 1
+                        endpoint["last_request_at"] = time.time()
+                    
+                    raise
+        else:
+            # Use global settings
+            # Generate unique request ID if not provided
+            if request_id is None:
+                request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+            
+            # Queue system with proper concurrency management
+            future = Future()
+            
+            # Add to queue
+            self.request_queue.put((future, endpoint_url, data, request_id))
+            
+            # Get result (blocks until request is processed)
+            return future.result()
+    
+    def format_request(self, handler, data, model=None, version=None):
+        """Format a request for OVMS"""
+        # Use default model and version if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        
+        # Format data based on its type
+        if isinstance(data, dict):
+            # If data is already formatted as expected by OVMS, use it directly
+            if "instances" in data:
+                formatted_data = data
+            # If data has a 'data' field, wrap it in the OVMS format
+            elif "data" in data:
+                formatted_data = {"instances": [data]}
+            # Otherwise, create a standard format
+            else:
+                formatted_data = {"instances": [{"data": data}]}
+        elif isinstance(data, list):
+            # If it's a list of objects with 'data' field, format as instances
+            if len(data) > 0 and isinstance(data[0], dict) and "data" in data[0]:
+                formatted_data = {"instances": data}
+            # If it's a nested list (e.g., a batch of inputs)
+            elif len(data) > 0 and isinstance(data[0], list):
+                formatted_data = {"instances": [{"data": item} for item in data]}
+            # Otherwise, treat as a single data array
+            else:
+                formatted_data = {"instances": [{"data": data}]}
+        else:
+            # For other data types, convert to list and wrap in standard format
+            formatted_data = {"instances": [{"data": [data]}]}
+        
+        # Add model version if specified
+        if version and version != "latest":
+            formatted_data["version"] = version
+        
+        # Make the request
+        return handler(formatted_data)
+    
+    def infer(self, model=None, data=None, version=None, precision=None):
+        """Run inference on a model"""
+        # Use defaults if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        precision = precision or self.default_precision
+        
+        # Construct endpoint URL
+        endpoint_url = f"{self.api_url}/v1/models/{model}:predict"
+        
+        # Create a handler function for this request
+        def handler(formatted_data):
+            return self.make_post_request_ovms(endpoint_url, formatted_data)
+        
+        # Format and send the request
+        response = self.format_request(handler, data, model, version)
+        
+        # Process response
+        if "predictions" in response:
+            # Return just the predictions for simplicity
+            return response["predictions"]
+        else:
+            # Return the full response if not in expected format
+            return response
+    
+    def batch_infer(self, model=None, data_batch=None, version=None, precision=None):
+        """Run batch inference on a model"""
+        # Use defaults if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        precision = precision or self.default_precision
+        
+        # Construct endpoint URL
+        endpoint_url = f"{self.api_url}/v1/models/{model}:predict"
+        
+        # Format batch data
+        if isinstance(data_batch, list):
+            # Format each item in the batch
+            formatted_data = {"instances": []}
+            
+            for item in data_batch:
+                if isinstance(item, dict) and "data" in item:
+                    # Already in the right format
+                    formatted_data["instances"].append(item)
+                else:
+                    # Convert to standard format
+                    formatted_data["instances"].append({"data": item})
+        else:
+            # Not a batch, treat as single instance
+            formatted_data = {"instances": [{"data": data_batch}]}
+        
+        # Add version if specified
+        if version and version != "latest":
+            formatted_data["version"] = version
+        
+        # Make the request
+        response = self.make_post_request_ovms(endpoint_url, formatted_data)
+        
+        # Process response
+        if "predictions" in response:
+            # Return just the predictions for simplicity
+            return response["predictions"]
+        else:
+            # Return the full response if not in expected format
+            return response
+    
+    def get_model_metadata(self, model=None, version=None):
+        """Get model metadata"""
+        # Use defaults if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        
+        # Construct endpoint URL
+        endpoint_url = f"{self.api_url}/v1/models/{model}"
+        if version and version != "latest":
+            endpoint_url += f"/versions/{version}"
+        endpoint_url += "/metadata"
+        
+        # Make the request
+        try:
+            response = requests.get(
+                endpoint_url,
+                headers={"Content-Type": "application/json"},
+                timeout=self.metadata.get("timeout", 30)
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error getting model metadata: {e}")
+            return {"error": str(e)}
+    
+    def get_model_status(self, model=None, version=None):
+        """Get model status"""
+        # Use defaults if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        
+        # Construct endpoint URL
+        endpoint_url = f"{self.api_url}/v1/models/{model}"
+        if version and version != "latest":
+            endpoint_url += f"/versions/{version}"
+        
+        # Make the request
+        try:
+            response = requests.get(
+                endpoint_url,
+                headers={"Content-Type": "application/json"},
+                timeout=self.metadata.get("timeout", 30)
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error getting model status: {e}")
+            return {"error": str(e)}
+    
+    def get_server_statistics(self):
+        """Get server statistics"""
+        # Construct endpoint URL
+        endpoint_url = f"{self.api_url}/v1/statistics"
+        
+        # Make the request
+        try:
+            response = requests.get(
+                endpoint_url,
+                headers={"Content-Type": "application/json"},
+                timeout=self.metadata.get("timeout", 30)
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error getting server statistics: {e}")
+            return {"error": str(e)}
+            
+    def create_ovms_endpoint_handler(self, endpoint_url=None):
+        """Create an endpoint handler for OVMS"""
+        async def endpoint_handler(data, **kwargs):
+            """Handle requests to OVMS endpoint"""
+            try:
+                # Use specified model or default
+                model = kwargs.get("model", self.default_model)
+                
+                # Use specified version or default
+                version = kwargs.get("version", self.default_version)
+                
+                # Use specified endpoint or construct from model
+                if not endpoint_url:
+                    # Construct endpoint URL for the model
+                    actual_endpoint = f"{self.api_url}/v1/models/{model}:predict"
+                else:
+                    actual_endpoint = endpoint_url
+                
+                # Check if this is a batch request
+                is_batch = kwargs.get("batch", False)
+                
+                if is_batch:
+                    # Process as batch
+                    return self.batch_infer(model, data, version)
+                else:
+                    # Process as single inference
+                    return self.infer(model, data, version)
             except Exception as e:
-                test_results[endpoint] = {
-                    "status": "error",
-                    "message": str(e)
-                }
+                print(f"Error calling OVMS endpoint: {e}")
+                return {"error": str(e), "implementation_type": "(ERROR)"}
+        
+        return endpoint_handler
+        
+    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, initial_retry_delay=None, 
+                   backoff_factor=None, max_retry_delay=None, queue_enabled=None, 
+                   max_concurrent_requests=None, queue_size=None):
+        """Create a new endpoint with its own settings and counters"""
+        # Generate a unique endpoint ID if not provided
+        if endpoint_id is None:
+            endpoint_id = f"endpoint_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+            
+        # Use provided values or defaults
+        endpoint_settings = {
+            "api_key": api_key if api_key is not None else self.api_key,
+            "max_retries": max_retries if max_retries is not None else self.max_retries,
+            "initial_retry_delay": initial_retry_delay if initial_retry_delay is not None else self.initial_retry_delay,
+            "backoff_factor": backoff_factor if backoff_factor is not None else self.backoff_factor,
+            "max_retry_delay": max_retry_delay if max_retry_delay is not None else self.max_retry_delay,
+            "queue_enabled": queue_enabled if queue_enabled is not None else self.queue_enabled,
+            "max_concurrent_requests": max_concurrent_requests if max_concurrent_requests is not None else self.max_concurrent_requests,
+            "queue_size": queue_size if queue_size is not None else self.queue_size,
+            
+            # Initialize endpoint-specific counters and state
+            "current_requests": 0,
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_processing_time": 0,
+            "queue_processing": False,
+            "request_queue": [],
+            "queue_lock": threading.RLock(),
+            "created_at": time.time(),
+            "last_request_at": None
+        }
+        
+        # Store the endpoint settings
+        self.endpoints[endpoint_id] = endpoint_settings
+        
+        return endpoint_id
+        
+    def get_endpoint(self, endpoint_id=None):
+        """Get an endpoint's settings or create a default one if not found"""
+        # If no endpoint_id provided, use the first one or create a default
+        if endpoint_id is None:
+            if not self.endpoints:
+                endpoint_id = self.create_endpoint()
+            else:
+                endpoint_id = next(iter(self.endpoints))
                 
-        return test_results
+        # If endpoint doesn't exist, create it
+        if endpoint_id not in self.endpoints:
+            endpoint_id = self.create_endpoint(endpoint_id=endpoint_id)
+            
+        return self.endpoints[endpoint_id]
     
-    def request_ovms_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
-        """Request an OVMS endpoint
-        
-        Finds a suitable endpoint for inference based on:
-        - Model availability
-        - Batch size capacity
-        - Endpoint health
-        - Load balancing considerations
-        
-        The method implements smart endpoint selection considering:
-        - Current endpoint load
-        - Available batch capacity
-        - Historical performance
-        - Health status
-        
-        Args:
-            model: Name of the model
-            endpoint: Specific endpoint URL (optional)
-            endpoint_type: Type of endpoint (optional)
-            batch: Batch size (optional)
+    def update_endpoint(self, endpoint_id, **kwargs):
+        """Update an endpoint's settings"""
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
             
-        Returns:
-            str: URL of the selected endpoint
-            
-        Example:
-            ```python
-            # Get endpoint for small batch
-            endpoint = ovms.request_ovms_endpoint(
-                model="bert-base",
-                batch=["text1", "text2"]
-            )
-            
-            # Get endpoint for specific type
-            endpoint = ovms.request_ovms_endpoint(
-                model="bert-base",
-                endpoint_type="gpu",
-                batch=large_batch
-            )
-            ```
-        """
-        incoming_batch_size = len(batch) if batch else 1
-        
-        # If endpoint is specified and has sufficient capacity, use it
-        if endpoint in self.endpoint_status:
-            endpoint_batch_size = self.endpoint_status[endpoint]
-            if incoming_batch_size <= endpoint_batch_size:
-                return endpoint
-        
-        # Check in endpoints dictionary
-        if model in self.endpoints:
-            for e in self.endpoints[model]:
-                if e in self.endpoint_status and self.endpoint_status[e] >= incoming_batch_size:
-                    return e
-        
-        # No suitable endpoint found
-        return None
-
-    def create_ovms_endpoint_handler(self, model=None, endpoint=None, endpoint_type=None, batch=None, preprocessing=None, postprocessing=None):
-        """Create an endpoint handler for OVMS
-        
-        High-level method to create a handler with appropriate configuration.
-        Automatically determines optimal settings based on model and endpoint type.
-        
-        Features:
-        - Automatic model type detection
-        - Input/output format handling
-        - Batch size optimization
-        - Custom processing pipeline integration
-        
-        Args:
-            model: Name of the model
-            endpoint: Specific endpoint URL
-            endpoint_type: Type of endpoint (optional)
-            batch: Batch size (optional)
-            preprocessing: Custom preprocessing function (optional)
-            postprocessing: Custom postprocessing function (optional)
-            
-        Returns:
-            function: Handler for the endpoint
-            
-        Example:
-            ```python
-            # Create handler for NLP model
-            handler = ovms.create_ovms_endpoint_handler(
-                model="gpt2",
-                endpoint="http://localhost:9000",
-                preprocessing=tokenize_text
-            )
-            
-            # Create handler for vision model
-            handler = ovms.create_ovms_endpoint_handler(
-                model="resnet50",
-                endpoint="http://localhost:9000",
-                preprocessing=preprocess_image,
-                postprocessing=decode_predictions
-            )
-            ```
-        """
-        return self.create_remote_ovms_endpoint_handler(endpoint, None, model, preprocessing=preprocessing, postprocessing=postprocessing)
+        # Update only the provided settings
+        for key, value in kwargs.items():
+            if key in self.endpoints[endpoint_id]:
+                self.endpoints[endpoint_id][key] = value
+                
+        return self.endpoints[endpoint_id]
     
-    def create_remote_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, context_length=None, preprocessing=None, postprocessing=None):
-        """Create a handler for a remote OVMS endpoint
-        
-        Creates a handler function that manages all communication with the OVMS endpoint.
-        Supports custom preprocessing and postprocessing functions for flexible input/output handling.
-        
-        Model Types and Input Formats:
-        1. Text Generation Models:
-           - Input: Raw text or tokenized ids
-           - Parameters: max_length, temperature, top_p, etc.
-           Example models: GPT-2, T5, BART
-        
-        2. Computer Vision Models:
-           - Input: Image data (RGB/BGR arrays, tensors)
-           - Tasks: Classification, detection, segmentation
-           Example models: ResNet, YOLO, Mask R-CNN
-        
-        3. Speech Models:
-           - Input: Audio waveforms, spectrograms
-           - Tasks: ASR, TTS, audio classification
-           Example models: Wav2Vec, Whisper, CLAP
-           
-        4. Multimodal Models:
-           - Input: Combined text + image/audio
-           - Tasks: Image captioning, VQA
-           Example models: CLIP, LLaVA
-        
-        5. Embedding Models:
-           - Input: Text, images, or audio
-           - Output: Vector embeddings
-           Example models: BERT, Sentence-BERT
-
-        Configuration Options:
-        - endpoint_path: Custom inference endpoint path
-        - raw: Skip default tokenization/preprocessing
-        - batch_size: Number of inputs to process together
-        - execution_parameters:
-          - timeout: Request timeout in seconds
-          - client_name: Client identifier
-          - compression_level: gRPC compression
-          - credentials: Authentication details
-        
-        Hardware Configuration:
-        - cpu_thresh: CPU utilization threshold
-        - mem_thresh: Memory utilization threshold  
-        - batch_size: Maximum batch size
-        - instance_count: Number of model instances
-        - device: Target device (CPU/GPU/MYRIAD)
-
-        Args:
-            endpoint_url: URL of the endpoint
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            context_length: Maximum context length for text models
-            preprocessing: Custom preprocessing function (optional)
-            postprocessing: Custom postprocessing function (optional)
-        
-        Returns:
-            function: Handler for the endpoint
+    def get_stats(self, endpoint_id=None):
+        """Get usage statistics for an endpoint or global stats"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            stats = {
+                "endpoint_id": endpoint_id,
+                "total_requests": endpoint["total_requests"],
+                "successful_requests": endpoint["successful_requests"],
+                "failed_requests": endpoint["failed_requests"],
+                "total_processing_time": endpoint["total_processing_time"],
+                "created_at": endpoint["created_at"],
+                "last_request_at": endpoint["last_request_at"],
+                "current_queue_size": len(endpoint["request_queue"]),
+                "current_requests": endpoint["current_requests"]
+            }
+            return stats
+        else:
+            # Aggregate stats across all endpoints
+            total_requests = sum(e["total_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            successful_requests = sum(e["successful_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            failed_requests = sum(e["failed_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            total_processing_time = sum(e["total_processing_time"] for e in self.endpoints.values()) if self.endpoints else 0
             
-        Example for text generation:
-            ```python
-            handler = ovms.create_remote_ovms_endpoint_handler(
-                endpoint_url="http://localhost:9000",
-                model_name="gpt2",
-                context_length=1024
-            )
+            stats = {
+                "endpoints_count": len(self.endpoints),
+                "total_requests": total_requests,
+                "successful_requests": successful_requests,
+                "failed_requests": failed_requests,
+                "total_processing_time": total_processing_time,
+                "global_queue_size": self.request_queue.qsize() if hasattr(self.request_queue, 'qsize') else len(self.request_queue) if isinstance(self.request_queue, list) else 0,
+                "global_current_requests": self.active_requests
+            }
+            return stats
+    
+    def reset_stats(self, endpoint_id=None):
+        """Reset usage statistics for an endpoint or globally"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Reset stats just for this endpoint
+            endpoint = self.endpoints[endpoint_id]
+            endpoint["total_requests"] = 0
+            endpoint["successful_requests"] = 0
+            endpoint["failed_requests"] = 0
+            endpoint["total_processing_time"] = 0
+        elif endpoint_id is None:
+            # Reset stats for all endpoints
+            for endpoint in self.endpoints.values():
+                endpoint["total_requests"] = 0
+                endpoint["successful_requests"] = 0
+                endpoint["failed_requests"] = 0
+                endpoint["total_processing_time"] = 0
+        else:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
             
-            # Basic text generation
-            response = handler("Write a story about:")
-            
-            # With custom parameters
-            response = handler(
-                "Write a story about:",
-                parameters={
-                    "max_length": 200,
-                    "temperature": 0.7,
-                    "device": "GPU"
-                }
-            )
-            ```
-            
-        Example for computer vision:
-            ```python
-            # Custom image preprocessing
-            def preprocess_images(images):
-                # Normalize, resize, etc.
-                return processed_images
-                
-            handler = ovms.create_remote_ovms_endpoint_handler(
-                endpoint_url="http://localhost:9000",
-                model_name="resnet50",
-                preprocessing=preprocess_images
-            )
-            
-            # Run inference on batch of images
-            results = handler(
-                image_batch,
-                parameters={
-                    "batch_size": 32,
-                    "device": "GPU",
-                    "raw": True
-                }
-            )
-            ```
-            
-        Example for embeddings:
-            ```python
-            handler = ovms.create_remote_ovms_endpoint_handler(
-                endpoint_url="http://localhost:9000",
-                model_name="bert-base"
-            )
-            
-            # Get embeddings for text
-            embeddings = handler(
-                ["text1", "text2"],
-                parameters={
-                    "pooling": "mean",
-                    "normalize": True
-                }
-            )
-            ```
+    def make_request_with_endpoint(self, endpoint_id, data, model=None, version=None, endpoint_url=None):
+        """Make a request using a specific endpoint"""
+        # Get the endpoint
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
         
-        Error Handling:
-        The handler implements robust error handling for:
-        - Network connectivity issues
-        - Model loading errors
-        - Invalid input formats
-        - Resource constraints
-        - Timeout conditions
-        """
-        from transformers import AutoTokenizer
+        endpoint = self.endpoints[endpoint_id]
         
-        # Try to get or create a tokenizer for this model
-        tokenizer = None
-        if self.resources and "tokenizer" in self.resources:
-            if model_name in self.resources["tokenizer"]:
-                tokenizer = self.resources["tokenizer"][model_name].get("cpu")
-                
+        # Use default model and version if not provided
+        model = model or self.default_model
+        version = version or self.default_version
+        
+        # Construct endpoint URL if not provided
+        if not endpoint_url:
+            endpoint_url = f"{self.api_url}/v1/models/{model}:predict"
+        
+        # Generate a unique request ID
+        request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+        
+        # Track start time for performance metrics
+        start_time = time.time()
+        
         try:
-            if not tokenizer and model_name:
-                tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
-                if self.resources and "tokenizer" in self.resources:
-                    if model_name not in self.resources["tokenizer"]:
-                        self.resources["tokenizer"][model_name] = {}
-                    self.resources["tokenizer"][model_name]["cpu"] = tokenizer
+            # Make the request using this endpoint's settings
+            response = self.make_post_request_ovms(
+                endpoint_url=endpoint_url,
+                data=data,
+                request_id=request_id,
+                endpoint_id=endpoint_id,
+                api_key=endpoint.get("api_key")
+            )
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
+            
+            # Update endpoint statistics
+            with endpoint["queue_lock"]:
+                endpoint["total_processing_time"] += processing_time
+            
+            return response
         except Exception as e:
-            print(f"Could not load tokenizer for {model_name}: {e}")
-            # Continue without tokenizer
+            # Update stats in case of error
+            with endpoint["queue_lock"]:
+                endpoint["last_request_at"] = time.time()
+            
+            # Re-raise the exception
+            raise
+    
+    def test_ovms_endpoint(self, endpoint_url=None, model_name=None, endpoint_id=None, request_id=None):
+        """Test the OVMS endpoint"""
+        # Use provided values or defaults
+        model_name = model_name or self.default_model
         
-        def handler(inputs, parameters=None, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
+        if not endpoint_url:
+            endpoint_url = f"{self.api_url}/v1/models/{model_name}:predict"
+            
+        # Use endpoint-specific settings if provided
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Generate unique request ID for the test if not provided
+            if request_id is None:
+                request_id = f"test_{int(time.time())}_{hashlib.md5(model_name.encode()).hexdigest()[:8]}"
+                
+            # Simple test data
+            test_data = {"instances": [{"data": [1.0, 2.0, 3.0, 4.0]}]}
+            
             try:
-                # Apply custom preprocessing if provided
-                if preprocessing and callable(preprocessing):
-                    inputs = preprocessing(inputs)
+                # Make the request using the specified endpoint
+                response = self.make_request_with_endpoint(
+                    endpoint_id=endpoint_id,
+                    data=test_data,
+                    model=model_name,
+                    endpoint_url=endpoint_url
+                )
                 
-                tokens = None
-                data = None
+                # Check if the response contains predictions
+                success = "predictions" in response
                 
-                # If parameters contain the 'raw' flag, skip tokenization
-                if parameters and parameters.get("raw", False):
-                    data = inputs
-                # If we have a tokenizer, tokenize the input
-                elif tokenizer:
-                    if isinstance(inputs, str):
-                        tokens = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True)
-                        # Convert to standard Python types for JSON serialization
-                        data = {
-                            "input_ids": tokens["input_ids"].tolist(),
-                            "attention_mask": tokens["attention_mask"].tolist()
-                        }
-                    else:
-                        # Assume inputs is already tokenized or properly structured
-                        data = inputs
-                else:
-                    # If no tokenizer, pass raw input
-                    data = inputs
+                # Create detailed test result
+                result = {
+                    "success": success,
+                    "model": model_name,
+                    "implementation_type": "(REAL)" if success else "(ERROR)",
+                    "request_id": request_id,
+                    "endpoint_id": endpoint_id
+                }
                 
-                # Add model name to request if not already in data
-                if isinstance(data, dict) and "model_name" not in data and model_name:
-                    data["model_name"] = model_name
-                
-                # Extract specific endpoint path from parameters if provided
-                specific_path = None
-                if parameters and "endpoint_path" in parameters:
-                    specific_path = parameters.pop("endpoint_path")
+                if not success:
+                    result["message"] = "Response did not contain 'predictions' field"
                     
-                # Construct the full endpoint URL
-                full_url = endpoint_url
-                if specific_path:
-                    full_url = f"{endpoint_url.rstrip('/')}/{specific_path.lstrip('/')}"
+                return result
+            except Exception as e:
+                error_message = str(e)
+                print(f"Error testing OVMS endpoint: {error_message}")
+                
+                # Create error result
+                return {
+                    "success": False,
+                    "message": f"Error: {error_message}",
+                    "model": model_name,
+                    "implementation_type": "(ERROR)",
+                    "request_id": request_id,
+                    "endpoint_id": endpoint_id
+                }
+        else:
+            # Use global settings
+            try:
+                # Simple test data
+                test_data = {"instances": [{"data": [1.0, 2.0, 3.0, 4.0]}]}
                 
                 # Make the request
-                response = self.make_post_request_ovms(full_url, data, api_key)
+                response = self.make_post_request_ovms(endpoint_url, test_data)
                 
-                # Apply custom postprocessing if provided
-                if postprocessing and callable(postprocessing) and response:
-                    response = postprocessing(response)
-                    
-                if response:
-                    # Handle different possible response formats from OVMS
-                    if "predictions" in response:
-                        return response["predictions"]
-                    elif "outputs" in response:
-                        return response["outputs"]
-                    
-                return response
-                
+                # Check if the response contains predictions
+                return "predictions" in response
             except Exception as e:
-                print(f"Error in OVMS handler: {e}")
-                return None
-                
-        return handler
-        
-    async def create_async_ovms_endpoint_handler(self, endpoint_url, api_key=None, model_name=None, preprocessing=None, postprocessing=None):
-        """Create an asynchronous handler for an OVMS endpoint
-        
-        Creates an async handler for non-blocking inference requests.
-        Particularly useful for high-throughput scenarios or when managing multiple requests.
-        
-        Features:
-        - Non-blocking async inference
-        - Concurrent request handling
-        - Automatic request queuing
-        - Custom preprocessing/postprocessing
-        - Error handling with retries
-        
-        Args:
-            endpoint_url: URL of the endpoint
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            preprocessing: Custom preprocessing function (optional)
-            postprocessing: Custom postprocessing function (optional)
-            
-        Returns:
-            function: Async handler for the endpoint
-            
-        Example:
-            ```python
-            # Create async handler
-            handler = await ovms.create_async_ovms_endpoint_handler(
-                endpoint_url="http://localhost:9000",
-                model_name="bert-base"
-            )
-            
-            # Use handler asynchronously
-            async def process_inputs(inputs):
-                results = []
-                for input_batch in inputs:
-                    result = await handler(input_batch)
-                    results.append(result)
-                return results
-            
-            # Process multiple inputs concurrently
-            results = await asyncio.gather(
-                process_inputs(batch1),
-                process_inputs(batch2)
-            )
-            ```
-        """
-        from transformers import AutoTokenizer
-        
-        # Try to get or create a tokenizer for this model
-        tokenizer = None
-        if self.resources and "tokenizer" in self.resources:
-            if model_name in self.resources["tokenizer"]:
-                tokenizer = self.resources["tokenizer"][model_name].get("cpu")
-                
-        try:
-            if not tokenizer and model_name:
-                tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, trust_remote_code=True)
-                if self.resources and "tokenizer" in self.resources:
-                    if model_name not in self.resources["tokenizer"]:
-                        self.resources["tokenizer"][model_name] = {}
-                    self.resources["tokenizer"][model_name]["cpu"] = tokenizer
-        except Exception as e:
-            print(f"Could not load tokenizer for {model_name}: {e}")
-            # Continue without tokenizer
-            
-        async def handler(inputs, parameters=None, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
-            try:
-                # Apply custom preprocessing if provided
-                if preprocessing and callable(preprocessing):
-                    inputs = preprocessing(inputs)
-                
-                tokens = None
-                data = None
-                
-                # If parameters contain the 'raw' flag, skip tokenization
-                if parameters and parameters.get("raw", False):
-                    data = inputs
-                # If we have a tokenizer, tokenize the input
-                elif tokenizer:
-                    if isinstance(inputs, str):
-                        tokens = tokenizer(inputs, return_tensors="pt", padding=True, truncation=True)
-                        # Convert to standard Python types for JSON serialization
-                        data = {
-                            "input_ids": tokens["input_ids"].tolist(),
-                            "attention_mask": tokens["attention_mask"].tolist()
-                        }
-                    else:
-                        # Assume inputs is already tokenized or properly structured
-                        data = inputs
-                else:
-                    # If no tokenizer, pass raw input
-                    data = inputs
-                
-                # Add model name to request if not already in data
-                if isinstance(data, dict) and "model_name" not in data and model_name:
-                    data["model_name"] = model_name
-                
-                # Extract specific endpoint path from parameters if provided
-                specific_path = None
-                if parameters and "endpoint_path" in parameters:
-                    specific_path = parameters.pop("endpoint_path")
-                    
-                # Construct the full endpoint URL
-                full_url = endpoint_url
-                if specific_path:
-                    full_url = f"{endpoint_url.rstrip('/')}/{specific_path.lstrip('/')}"
-                    
-                # Make the async request
-                response = await self.make_async_post_request_ovms(full_url, data, api_key)
-                
-                # Apply custom postprocessing if provided
-                if postprocessing and callable(postprocessing) and response:
-                    response = postprocessing(response)
-                    
-                if response:
-                    # Handle different possible response formats from OVMS
-                    if "predictions" in response:
-                        return response["predictions"]
-                    elif "outputs" in response:
-                        return response["outputs"]
-                    
-                return response
-                
-            except Exception as e:
-                print(f"Error in async OVMS handler: {e}")
-                return None
-                
-        return handler
+                print(f"Error testing OVMS endpoint: {e}")
+                return False

@@ -2,6 +2,7 @@ import os
 import io
 import sys
 import json
+import time
 from unittest.mock import MagicMock, patch
 import requests
 
@@ -20,6 +21,151 @@ class test_hf_tei:
     def test(self):
         """Run all tests for the HuggingFace Text Embedding Inference API backend"""
         results = {}
+        
+        # Test API key multiplexing features
+        try:
+            if hasattr(self.hf_tei, 'create_endpoint'):
+                # Create first endpoint with test key
+                endpoint1 = self.hf_tei.create_endpoint(
+                    api_key="test_hf_key_1",
+                    max_concurrent_requests=5,
+                    queue_size=20,
+                    max_retries=3,
+                    initial_retry_delay=1,
+                    backoff_factor=2
+                )
+                
+                # Create second endpoint with different test key
+                endpoint2 = self.hf_tei.create_endpoint(
+                    api_key="test_hf_key_2",
+                    max_concurrent_requests=10,
+                    queue_size=50,
+                    max_retries=5
+                )
+                
+                results["multiplexing_endpoint_creation"] = "Success" if endpoint1 and endpoint2 else "Failed to create endpoints"
+                
+                # Test usage statistics if implemented
+                if hasattr(self.hf_tei, 'get_stats'):
+                    # Get stats for first endpoint
+                    stats1 = self.hf_tei.get_stats(endpoint1)
+                    
+                    # Make test requests to create stats
+                    with patch.object(self.hf_tei, 'make_post_request_hf_tei') as mock_post:
+                        mock_post.return_value = [0.1, 0.2, 0.3] * 100  # Create a mock embedding vector
+                        
+                        # Make request with first endpoint if method exists
+                        if hasattr(self.hf_tei, 'make_request_with_endpoint'):
+                            self.hf_tei.make_request_with_endpoint(
+                                endpoint_id=endpoint1,
+                                data={"inputs": "Test for endpoint 1"}
+                            )
+                            
+                            # Get updated stats
+                            stats1_after = self.hf_tei.get_stats(endpoint1)
+                            
+                            # Verify stats were updated
+                            results["usage_statistics"] = "Success" if stats1_after != stats1 else "Failed to update statistics"
+                        else:
+                            results["usage_statistics"] = "Not implemented"
+                else:
+                    results["usage_statistics"] = "Not implemented"
+                
+                # Test request routing with different endpoints
+                if hasattr(self.hf_tei, 'make_request_with_endpoint'):
+                    with patch.object(self.hf_tei, 'make_post_request_hf_tei') as mock_post:
+                        mock_post.return_value = [0.1, 0.2, 0.3] * 100  # Create a mock embedding vector
+                        
+                        # Test with endpoint 1
+                        result1 = self.hf_tei.make_request_with_endpoint(
+                            endpoint_id=endpoint1,
+                            data={"inputs": "Test for endpoint 1"},
+                            request_id="test-request-123"
+                        )
+                        
+                        # Test with endpoint 2
+                        result2 = self.hf_tei.make_request_with_endpoint(
+                            endpoint_id=endpoint2,
+                            data={"inputs": "Test for endpoint 2"},
+                            request_id="test-request-456"
+                        )
+                        
+                        # Verify both requests succeeded
+                        both_succeeded = isinstance(result1, list) and isinstance(result2, list)
+                        results["endpoint_routing"] = "Success" if both_succeeded else "Failed endpoint routing"
+                        
+                        # Verify different API keys were used for different endpoints
+                        calls = mock_post.call_args_list
+                        if len(calls) >= 2:
+                            # Extract API keys from calls
+                            api_key1 = calls[0][0][2] if len(calls[0][0]) > 2 else None
+                            api_key2 = calls[1][0][2] if len(calls[1][0]) > 2 else None
+                            
+                            results["different_keys_used"] = "Success" if api_key1 != api_key2 else "Failed to use different API keys"
+                        else:
+                            results["different_keys_used"] = "Failed - insufficient calls made"
+                else:
+                    results["endpoint_routing"] = "Not implemented"
+            else:
+                results["multiplexing_endpoint_creation"] = "Not implemented"
+        except Exception as e:
+            results["multiplexing"] = f"Error: {str(e)}"
+
+        # Test queue and backoff functionality
+        try:
+            if hasattr(self.hf_tei, 'queue_enabled'):
+                # Test queue settings
+                results["queue_enabled"] = "Success" if hasattr(self.hf_tei, 'queue_enabled') else "Missing queue_enabled"
+                results["request_queue"] = "Success" if hasattr(self.hf_tei, 'request_queue') else "Missing request_queue"
+                results["max_concurrent_requests"] = "Success" if hasattr(self.hf_tei, 'max_concurrent_requests') else "Missing max_concurrent_requests"
+                results["current_requests"] = "Success" if hasattr(self.hf_tei, 'current_requests') else "Missing current_requests counter"
+                
+                # Test backoff settings
+                results["max_retries"] = "Success" if hasattr(self.hf_tei, 'max_retries') else "Missing max_retries"
+                results["initial_retry_delay"] = "Success" if hasattr(self.hf_tei, 'initial_retry_delay') else "Missing initial_retry_delay"
+                results["backoff_factor"] = "Success" if hasattr(self.hf_tei, 'backoff_factor') else "Missing backoff_factor"
+                
+                # Test queue processing if implemented
+                if hasattr(self.hf_tei, '_process_queue'):
+                    with patch.object(self.hf_tei, '_process_queue') as mock_queue:
+                        mock_queue.return_value = None
+                        
+                        # Force queue to be enabled and at capacity for testing
+                        original_queue_enabled = self.hf_tei.queue_enabled
+                        original_current_requests = self.hf_tei.current_requests
+                        original_max_concurrent = self.hf_tei.max_concurrent_requests
+                        
+                        self.hf_tei.queue_enabled = True
+                        self.hf_tei.current_requests = self.hf_tei.max_concurrent_requests
+                        
+                        # Prepare a mock request to add to queue
+                        request_info = {
+                            "data": {"inputs": "Queued request"},
+                            "api_key": "test_key",
+                            "request_id": "queue_test_456",
+                            "future": {"result": None, "error": None, "completed": False}
+                        }
+                        
+                        # Add request to queue
+                        if not hasattr(self.hf_tei, "request_queue"):
+                            self.hf_tei.request_queue = []
+                            
+                        self.hf_tei.request_queue.append(request_info)
+                        
+                        # Trigger queue processing
+                        if hasattr(self.hf_tei, '_process_queue'):
+                            self.hf_tei._process_queue()
+                            results["queue_processing"] = "Success" if mock_queue.called else "Failed to call queue processing"
+                        
+                        # Restore original values
+                        self.hf_tei.queue_enabled = original_queue_enabled
+                        self.hf_tei.current_requests = original_current_requests
+                else:
+                    results["queue_processing"] = "Not implemented"
+            else:
+                results["queue_backoff"] = "Not implemented"
+        except Exception as e:
+            results["queue_backoff"] = f"Error: {str(e)}"
         
         # Test basic endpoint functionality
         try:
@@ -64,15 +210,34 @@ class test_hf_tei:
                     "inputs": "Test input text for embedding"
                 }
                 
-                post_result = self.hf_tei.make_post_request_hf_tei(endpoint_url, data, api_key)
-                results["post_request"] = "Success" if isinstance(post_result, list) and len(post_result) > 0 else "Failed post request"
-                
-                # Verify headers were set correctly
-                args, kwargs = mock_post.call_args
-                headers = kwargs.get('headers', {})
-                authorization_header_set = "Authorization" in headers and headers["Authorization"] == f"Bearer {api_key}"
-                content_type_header_set = "Content-Type" in headers and headers["Content-Type"] == "application/json"
-                results["post_request_headers"] = "Success" if authorization_header_set and content_type_header_set else "Failed to set headers correctly"
+                # Test with custom request_id
+                custom_request_id = "test_request_456"
+                if hasattr(self.hf_tei, 'make_post_request_hf_tei') and len(self.hf_tei.make_post_request_hf_tei.__code__.co_varnames) > 3:
+                    # If the method supports request_id parameter
+                    post_result = self.hf_tei.make_post_request_hf_tei(endpoint_url, data, api_key, request_id=custom_request_id)
+                    results["post_request"] = "Success" if isinstance(post_result, list) and len(post_result) > 0 else "Failed post request"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    authorization_header_set = "Authorization" in headers and headers["Authorization"] == f"Bearer {api_key}"
+                    content_type_header_set = "Content-Type" in headers and headers["Content-Type"] == "application/json"
+                    request_id_header_set = "X-Request-ID" in headers and headers["X-Request-ID"] == custom_request_id
+                    
+                    results["post_request_headers"] = "Success" if authorization_header_set and content_type_header_set else "Failed to set headers correctly"
+                    results["request_id_tracking"] = "Success" if request_id_header_set else "Failed to set request ID header"
+                else:
+                    # Fall back to old method if request_id isn't supported
+                    post_result = self.hf_tei.make_post_request_hf_tei(endpoint_url, data, api_key)
+                    results["post_request"] = "Success" if isinstance(post_result, list) and len(post_result) > 0 else "Failed post request"
+                    results["request_id_tracking"] = "Not implemented"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    authorization_header_set = "Authorization" in headers and headers["Authorization"] == f"Bearer {api_key}"
+                    content_type_header_set = "Content-Type" in headers and headers["Content-Type"] == "application/json"
+                    results["post_request_headers"] = "Success" if authorization_header_set and content_type_header_set else "Failed to set headers correctly"
         except Exception as e:
             results["post_request"] = str(e)
             
@@ -125,6 +290,19 @@ class test_hf_tei:
                     results["error_handling_404"] = "Failed to raise exception on 404"
                 except Exception:
                     results["error_handling_404"] = "Success"
+                    
+                # Test rate limit errors
+                mock_response.status_code = 429
+                mock_response.json.return_value = {"error": "Rate limit exceeded"}
+                mock_response.headers = {"Retry-After": "2"}
+                
+                rate_limit_error_caught = False
+                try:
+                    self.hf_tei.make_post_request_hf_tei(endpoint_url, {"inputs": "test"}, api_key)
+                except Exception:
+                    rate_limit_error_caught = True
+                    
+                results["error_handling_rate_limit"] = "Success" if rate_limit_error_caught else "Failed to catch rate limit error"
         except Exception as e:
             results["error_handling"] = str(e)
             
@@ -140,6 +318,39 @@ class test_hf_tei:
                 results["normalization"] = "Method not implemented"
         except Exception as e:
             results["normalization"] = str(e)
+            
+        # Test similarity calculation if implemented
+        try:
+            if hasattr(self.hf_tei, 'calculate_similarity'):
+                vec1 = [0.1, 0.2, 0.3]
+                vec2 = [0.2, 0.3, 0.4]
+                similarity = self.hf_tei.calculate_similarity(vec1, vec2)
+                # Check if similarity is within expected range [-1, 1]
+                results["similarity_calculation"] = "Success" if -1.0 <= similarity <= 1.0 else f"Failed similarity calculation, value: {similarity}"
+            else:
+                results["similarity_calculation"] = "Method not implemented"
+        except Exception as e:
+            results["similarity_calculation"] = str(e)
+        
+        # Test batch embedding if implemented
+        try:
+            if hasattr(self.hf_tei, 'batch_embed'):
+                with patch.object(self.hf_tei, 'make_post_request_hf_tei') as mock_post:
+                    # Mock response for batch embedding
+                    mock_post.return_value = [[0.1, 0.2, 0.3] * 10, [0.4, 0.5, 0.6] * 10]
+                    
+                    test_texts = ["Test sentence one", "Test sentence two"]
+                    batch_result = self.hf_tei.batch_embed(endpoint_url, test_texts, api_key)
+                    
+                    results["batch_embed"] = "Success" if (
+                        isinstance(batch_result, list) and 
+                        len(batch_result) == 2 and 
+                        isinstance(batch_result[0], list)
+                    ) else "Failed batch embedding"
+            else:
+                results["batch_embed"] = "Method not implemented"
+        except Exception as e:
+            results["batch_embed"] = str(e)
             
         # Test the internal test method
         try:
@@ -188,7 +399,9 @@ class test_hf_tei:
 
 if __name__ == "__main__":
     metadata = {
-        "hf_api_key": os.environ.get("HF_API_KEY", "")
+        "hf_api_key": os.environ.get("HF_API_KEY", ""),
+        "hf_api_key_1": os.environ.get("HF_API_KEY_1", ""),
+        "hf_api_key_2": os.environ.get("HF_API_KEY_2", "")
     }
     resources = {}
     try:

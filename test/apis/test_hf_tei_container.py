@@ -376,11 +376,116 @@ class test_hf_tei_container:
             print(f"Container shutdown error: {str(e)}")
             return False
     
+    def test_advanced_features(self):
+        """Test advanced features of the TEI container"""
+        advanced_results = {}
+        
+        # Test multiple input formats
+        try:
+            with patch.object(self.hf_tei, 'make_post_request_hf_tei') as mock_post:
+                # Mock response for embedding
+                mock_post.return_value = [0.1, 0.2, 0.3] * 100  # 300-dimensional vector
+                
+                container_url = self.metadata.get("hf_container_url")
+                
+                # Test with dictionary input with additional options
+                input_with_options = {
+                    "text": "Test sentence",
+                    "truncate": True,
+                    "normalize": True
+                }
+                
+                # If format_options method exists, test it
+                if hasattr(self.hf_tei, 'format_options'):
+                    formatted_data = self.hf_tei.format_options(input_with_options)
+                    advanced_results["format_options"] = "Success" if "inputs" in formatted_data else "Failed to format options"
+                else:
+                    advanced_results["format_options"] = "Method not implemented"
+                    
+                # Test with raw inputs (direct text)
+                if hasattr(self.hf_tei, 'raw_embed'):
+                    raw_result = self.hf_tei.raw_embed(container_url + "/embed", "Raw text input", None)
+                    advanced_results["raw_embed"] = "Success" if isinstance(raw_result, list) else "Failed raw embedding"
+                else:
+                    advanced_results["raw_embed"] = "Method not implemented"
+        except Exception as e:
+            advanced_results["input_format_tests"] = f"Error: {str(e)}"
+            
+        # Test pooling strategies if implemented
+        try:
+            with patch.object(requests, 'post') as mock_post:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = [0.1, 0.2, 0.3] * 100
+                mock_post.return_value = mock_response
+                
+                container_url = self.metadata.get("hf_container_url")
+                
+                # Test with different pooling strategies if supported
+                if hasattr(self.hf_tei, 'embed_with_pooling'):
+                    # Test CLS pooling
+                    cls_result = self.hf_tei.embed_with_pooling(container_url, "Test text", None, pooling="cls")
+                    advanced_results["cls_pooling"] = "Success" if isinstance(cls_result, list) else "Failed CLS pooling"
+                    
+                    # Test mean pooling
+                    mean_result = self.hf_tei.embed_with_pooling(container_url, "Test text", None, pooling="mean")
+                    advanced_results["mean_pooling"] = "Success" if isinstance(mean_result, list) else "Failed mean pooling"
+                else:
+                    advanced_results["pooling_strategies"] = "Method not implemented"
+        except Exception as e:
+            advanced_results["pooling_tests"] = f"Error: {str(e)}"
+        
+        # Test container health monitoring
+        try:
+            with patch.object(requests, 'get') as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = {"status": "ok", "load": 0.1}
+                mock_get.return_value = mock_response
+                
+                container_url = self.metadata.get("hf_container_url")
+                
+                # Test container health monitoring if implemented
+                if hasattr(self, 'check_container_health'):
+                    health_status = self.check_container_health(container_url)
+                    advanced_results["container_health"] = "Success" if health_status.get("status") == "ok" else "Failed health check"
+                else:
+                    # Simple implementation for testing
+                    def check_container_health(url):
+                        response = requests.get(f"{url}/health")
+                        if response.status_code == 200:
+                            return response.json()
+                        return {"status": "error", "code": response.status_code}
+                    
+                    health_status = check_container_health(container_url)
+                    advanced_results["basic_health_check"] = "Success" if health_status.get("status") == "ok" else "Failed basic health check"
+        except Exception as e:
+            advanced_results["health_monitoring"] = f"Error: {str(e)}"
+            
+        return advanced_results
+    
+    def check_container_health(self, container_url):
+        """Check the health status of the TEI container"""
+        try:
+            response = requests.get(f"{container_url}/health")
+            if response.status_code == 200:
+                return response.json()
+            return {"status": "error", "code": response.status_code}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
     def __test__(self):
         """Run tests and compare/save results"""
         test_results = {}
         try:
+            # Run standard tests
             test_results = self.test()
+            
+            # Run advanced tests
+            advanced_results = self.test_advanced_features()
+            
+            # Merge results
+            test_results.update(advanced_results)
         except Exception as e:
             test_results = {"test_error": str(e)}
         

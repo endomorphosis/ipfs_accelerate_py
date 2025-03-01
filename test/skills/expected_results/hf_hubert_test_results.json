@@ -1,0 +1,41 @@
+{
+  "timestamp": "20250228_205015",
+  "model": "facebook/hubert-base-ls960",
+  "tests": {
+    "cpu": {
+      "status": "Success (REAL)",
+      "model": "facebook/hubert-base-ls960",
+      "logits_shape": [1, 2],
+      "audio_duration": 3.0,
+      "platform": "CPU",
+      "timestamp": "20250228_205015"
+    },
+    "cuda": {
+      "status": "Success (REAL)",
+      "model": "facebook/hubert-base-ls960",
+      "logits_shape": [1, 2],
+      "inference_time": 0.2865,
+      "peak_memory_mb": 342.5,
+      "memory_increase_mb": 320.75,
+      "audio_duration": 3.0,
+      "realtime_factor": 10.47,
+      "platform": "CUDA",
+      "timestamp": "20250228_205016"
+    },
+    "openvino": {
+      "status": "Success (REAL)",
+      "model": "facebook/hubert-base-ls960",
+      "logits_shape": [1, 2],
+      "inference_time": 0.5123,
+      "audio_duration": 3.0,
+      "realtime_factor": 5.856,
+      "platform": "OpenVINO",
+      "timestamp": "20250228_205017"
+    }
+  },
+  "summary": {
+    "success_count": 3,
+    "total_count": 3,
+    "implementation_type": "REAL"
+  }
+}

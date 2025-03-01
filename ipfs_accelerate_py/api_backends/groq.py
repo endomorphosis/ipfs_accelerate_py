@@ -11,6 +11,10 @@ import threading
 from typing import Dict, List, Any, Optional, Iterator, Union, Callable
 from pydantic import BaseModel
 
+import queue
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("groq_api")
@@ -190,7 +194,7 @@ class APIUsageTracker:
         if len(self.request_history) > 100:
             self.request_history.pop(0)
             
-        return request_data
+        return
     
     def _calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
         """Calculate approximate cost based on model and token counts"""
@@ -370,95 +374,215 @@ class groq:
         """Reset API usage statistics"""
         self.usage_tracker.reset()
         return {"status": "reset", "message": "Usage statistics have been reset"}
+    
+    def count_tokens(self, text, model=None):
+        """Count tokens in a string using estimates or tiktoken if available
         
-    def _process_queue(self):
-        """Process requests in the queue in FIFO order"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing the queue
-            self.queue_processing = True
+        Args:
+            text: Text to count tokens in
+            model: Model to use for token counting
+            
+        Returns:
+            dict: Dictionary with token count estimation
+        """
+        if not model:
+            model = "llama3-8b-8192"  # default model
         
-        logger.info("Starting queue processing thread")
+        token_count = estimate_tokens(text, model)
         
+        # Determine the estimation method
+        if TIKTOKEN_AVAILABLE:
+            method = "tiktoken"
+        else:
+            method = "character_approximation"
+            
+        return {
+            "estimated_token_count": token_count,
+            "estimation_method": method,
+            "model": model
+        }
+    
+    def _process_queue(self, endpoint_id=None):
+        """Process requests in the queue for a specific endpoint or global queue"""
+        # Check if endpoint-specific queue or global queue
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            
+            # Check if already processing
+            if endpoint["queue_processing"]:
+                return  # Another thread is already processing this endpoint's queue
+                
+            endpoint["queue_processing"] = True
+            queue_to_process = endpoint["request_queue"]
+            is_global_queue = False
+        else:
+            # Use global queue if no endpoint specified or endpoint doesn't exist
+            with self.queue_lock:
+                if self.queue_processing:
+                    return  # Another thread is already processing the global queue
+                
+                self.queue_processing = True
+                queue_to_process = self.request_queue
+                is_global_queue = True
+            
         try:
             while True:
                 # Get the next request from the queue
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
+                request_info = None
+                
+                if is_global_queue:
+                    with self.queue_lock:
+                        if not queue_to_process:
+                            self.queue_processing = False
+                            break
                         
-                    # Check if we're at the concurrent request limit
-                    if self.current_requests >= self.max_concurrent_requests:
-                        # Sleep briefly then check again
-                        time.sleep(0.1)
-                        continue
+                        # Check if we're at the concurrent request limit
+                        if self.current_requests >= self.max_concurrent_requests:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
                         
-                    # Get the next request and increase counter
-                    request_info = self.request_queue.pop(0)
-                    self.current_requests += 1
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        self.current_requests += 1
+                else:
+                    with endpoint["queue_lock"]:
+                        if not queue_to_process:
+                            endpoint["queue_processing"] = False
+                            break
+                        
+                        # Check if we're at the concurrent request limit
+                        if endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                        
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        endpoint["current_requests"] += 1
                 
                 # Process the request outside the lock
-                try:
-                    # Extract request details
-                    endpoint_url = request_info["endpoint_url"]
-                    data = request_info["data"]
-                    api_key = request_info["api_key"]
-                    request_id = request_info["request_id"]
-                    future = request_info["future"]
-                    
-                    # Make the request (without queueing again)
-                    # Save original queue_enabled value
-                    original_queue_enabled = self.queue_enabled
-                    self.queue_enabled = False  # Disable queueing to prevent recursion
-                    
+                if request_info:
                     try:
-                        # Make the request
-                        result = self.make_post_request_groq(
-                            endpoint_url=endpoint_url,
-                            data=data,
-                            api_key=api_key,
-                            request_id=request_id
-                        )
+                        # Extract request details
+                        endpoint_url = request_info.get("endpoint_url")
+                        data = request_info.get("data")
+                        api_key = request_info.get("api_key")
+                        request_id = request_info.get("request_id")
+                        endpoint_id = request_info.get("endpoint_id")
+                        future = request_info.get("future")
+                        method_name = request_info.get("method", "make_request")
+                        method_args = request_info.get("args", [])
+                        method_kwargs = request_info.get("kwargs", {})
                         
-                        # Store result in future
-                        future["result"] = result
-                        future["completed"] = True
+                        # Make the request (without queueing again)
+                        # Save original queue_enabled value to prevent recursion
+                        if is_global_queue:
+                            original_queue_enabled = self.queue_enabled
+                            self.queue_enabled = False  # Disable queueing to prevent recursion
+                        else:
+                            original_queue_enabled = endpoint["queue_enabled"]
+                            endpoint["queue_enabled"] = False  # Disable queueing to prevent recursion
                         
-                    except Exception as e:
-                        # Store error in future
-                        future["error"] = e
-                        future["completed"] = True
-                        logger.error(f"Error processing queued request: {str(e)}")
+                        try:
+                            # Make the request based on method name
+                            if hasattr(self, method_name) and callable(getattr(self, method_name)):
+                                method = getattr(self, method_name)
+                                
+                                # Call the method with the provided arguments
+                                if method_name.startswith("make_"):
+                                    # Direct API request methods
+                                    result = method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    # Higher-level methods
+                                    method_kwargs.update({
+                                        "request_id": request_id,
+                                        "endpoint_id": endpoint_id,
+                                        "api_key": api_key
+                                    })
+                                    result = method(*method_args, **method_kwargs)
+                            else:
+                                # Fallback to make_request or similar method
+                                make_method = getattr(self, "make_request", None)
+                                if not make_method:
+                                    make_method = getattr(self, f"make_post_request_{self.__class__.__name__.lower()}", None)
+                                
+                                if make_method and callable(make_method):
+                                    result = make_method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    raise AttributeError(f"Method {method_name} not found")
+                            
+                            # Store result in future
+                            future["result"] = result
+                            future["completed"] = True
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["successful_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                                    
+                                    # Update token counts if present in result
+                                    if isinstance(result, dict) and "usage" in result:
+                                        usage = result["usage"]
+                                        endpoint["total_tokens"] += usage.get("total_tokens", 0)
+                                        endpoint["input_tokens"] += usage.get("prompt_tokens", 0)
+                                        endpoint["output_tokens"] += usage.get("completion_tokens", 0)
+                        
+                        except Exception as e:
+                            # Store error in future
+                            future["error"] = e
+                            future["completed"] = True
+                            print(f"Error processing queued request: {str(e)}")
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["failed_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                        
+                        finally:
+                            # Restore original queue_enabled value
+                            if is_global_queue:
+                                self.queue_enabled = original_queue_enabled
+                            else:
+                                endpoint["queue_enabled"] = original_queue_enabled
                     
                     finally:
-                        # Restore original queue_enabled value
-                        self.queue_enabled = original_queue_enabled
-                
-                finally:
-                    # Decrement counter
-                    with self.queue_lock:
-                        self.current_requests = max(0, self.current_requests - 1)
+                        # Decrement counter
+                        if is_global_queue:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        else:
+                            with endpoint["queue_lock"]:
+                                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
                 
                 # Brief pause to prevent CPU hogging
                 time.sleep(0.01)
-                
-        except Exception as e:
-            logger.error(f"Error in queue processing thread: {str(e)}")
-            
-        finally:
-            with self.queue_lock:
-                self.queue_processing = False
-                
-            logger.info("Queue processing thread finished")
         
-    def count_tokens(self, text, model=None):
-        """Count tokens for the given text using the specified model"""
-        return {
-            "text": text,
-            "estimated_token_count": estimate_tokens(text, model),
-            "estimation_method": "tiktoken" if TIKTOKEN_AVAILABLE else "character_based"
-        }
+        except Exception as e:
+            print(f"Error in queue processing thread: {str(e)}")
+        
+        finally:
+            # Reset queue processing flag
+            if is_global_queue:
+                with self.queue_lock:
+                    self.queue_processing = False
+            else:
+                with endpoint["queue_lock"]:
+                    endpoint["queue_processing"] = False
     
     def init(self, endpoint_url=None, api_key=None, model_name=None):
         """Initialize a connection to a Groq API endpoint
@@ -526,30 +650,17 @@ class groq:
             print(f"Groq API test failed for {endpoint_label}: {e}")
             return False
     
-    def make_post_request_groq(self, endpoint_url, data, api_key=None, request_id=None):
-        """Make a POST request to the Groq API with exponential backoff and queue
-        
-        Args:
-            endpoint_url: URL of the endpoint
-            data: Data to send in the request
-            api_key: API key for authentication
-            request_id: Optional unique ID for the request (for tracking)
-            
-        Returns:
-            dict: Response from the endpoint
-        
-        Raises:
-            ValueError: If API key is not provided
-            requests.exceptions.RequestException: If request fails
-        """
+    
+    def make_post_request_groq(self, endpoint_url, data, api_key=None, request_id=None, endpoint_id=None):
+        """Make a request with exponential backoff and queue"""
         if not api_key:
             api_key = self.api_key
             
         if not api_key:
-            raise ValueError("No Groq API key provided for authentication")
+            raise ValueError("No API key provided for authentication")
         
         # If queue is enabled and we're at capacity, add to queue
-        if self.queue_enabled:
+        if hasattr(self, "queue_enabled") and self.queue_enabled:
             with self.queue_lock:
                 if self.current_requests >= self.max_concurrent_requests:
                     # Create a future to store the result
@@ -597,84 +708,74 @@ class groq:
                 self.current_requests += 1
             
         # Generate request ID if not provided
-        if not request_id:
+        if request_id is None:
             request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
-            
-        # Prepare headers with enhanced tracking
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "X-Request-ID": request_id,
-            "User-Agent": self.user_agent
-        }
-        
-        # Add API version if available
-        if hasattr(self, "api_version") and self.api_version:
-            headers["Groq-Version"] = self.api_version
         
         # Use exponential backoff retry mechanism
         retries = 0
-        retry_delay = self.initial_retry_delay
+        retry_delay = self.initial_retry_delay if hasattr(self, "initial_retry_delay") else 1
+        max_retries = self.max_retries if hasattr(self, "max_retries") else 3
+        backoff_factor = self.backoff_factor if hasattr(self, "backoff_factor") else 2
+        max_retry_delay = self.max_retry_delay if hasattr(self, "max_retry_delay") else 60
         
-        while retries < self.max_retries:
+        while retries < max_retries:
             try:
-                response = requests.post(endpoint_url, headers=headers, json=data, timeout=60)
+                # Add request_id to headers if possible
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Request-ID": request_id
+                }
                 
-                # Handle HTTP errors
-                if response.status_code == 401:
-                    raise ValueError(f"Authentication error (401): {response.json().get('error', {}).get('message', 'Invalid API key')}")
-                elif response.status_code == 429:
-                    # Get retry-after header if available
-                    retry_after = int(response.headers.get("retry-after", retry_delay))
-                    
-                    # Use the larger of the suggested retry time or our calculated backoff
-                    wait_time = max(retry_after, retry_delay)
-                    logger.warning(f"Rate limit exceeded (429). Waiting {wait_time} seconds before retry (attempt {retries+1}/{self.max_retries}).")
-                    
-                    time.sleep(wait_time)
-                    retries += 1
-                    
-                    # Calculate next backoff duration with exponential increase
-                    retry_delay = min(retry_delay * self.backoff_factor, self.max_retry_delay)
-                    continue
-                    
-                elif response.status_code == 404:
-                    raise ValueError(f"Resource not found (404): {response.json().get('error', {}).get('message', 'Model or endpoint not found')}")
-                elif response.status_code >= 400:
-                    response_json = response.json() if response.headers.get("content-type") == "application/json" else {"error": {"message": response.text}}
-                    error_msg = response_json.get("error", {}).get("message", f"HTTP error {response.status_code}")
-                    
-                    # For server errors (5xx), we should retry
-                    if response.status_code >= 500 and retries < self.max_retries - 1:
-                        logger.warning(f"Server error ({response.status_code}): {error_msg}. Retrying in {retry_delay} seconds...")
-                        time.sleep(retry_delay)
-                        retries += 1
-                        retry_delay = min(retry_delay * self.backoff_factor, self.max_retry_delay)
-                        continue
-                    
-                    raise ValueError(f"API error ({response.status_code}): {error_msg}")
+                # Add API key to headers based on API type
+                api_type = self.__class__.__name__.lower()
+                if api_type == "claude":
+                    headers["x-api-key"] = api_key
+                    headers["anthropic-version"] = "2023-06-01"
+                elif api_type == "groq":
+                    headers["Authorization"] = f"Bearer {api_key}"
+                elif api_type in ["openai", "openai_api"]:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                elif api_type == "gemini":
+                    # Gemini API key is typically passed as a URL parameter, but we'll set a header too
+                    headers["x-goog-api-key"] = api_key
+                else:
+                    # Default to Bearer auth
+                    headers["Authorization"] = f"Bearer {api_key}"
                 
-                # Parse JSON response
-                result = response.json()
+                # Make the actual request
+                import requests
+                response = requests.post(
+                    endpoint_url,
+                    json=data,
+                    headers=headers,
+                    timeout=60
+                )
                 
-                # Decrement counter if queue enabled
-                if self.queue_enabled:
-                    with self.queue_lock:
-                        self.current_requests = max(0, self.current_requests - 1)
+                # Check response status
+                if response.status_code != 200:
+                    error_message = f"Request failed with status code {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_message = f"{error_message}: {error_data['error'].get('message', '')}"
+                    except:
+                        pass
+                        
+                    raise ValueError(error_message)
                 
-                return result
+                return response.json()
                 
             except requests.exceptions.RequestException as e:
-                if retries < self.max_retries - 1:
-                    logger.warning(f"Request failed: {str(e)}. Retrying in {retry_delay} seconds (attempt {retries+1}/{self.max_retries})...")
+                if retries < max_retries - 1:
+                    logger.warning(f"Request failed: {str(e)}. Retrying in {retry_delay} seconds (attempt {retries+1}/{max_retries})...")
                     time.sleep(retry_delay)
                     retries += 1
-                    retry_delay = min(retry_delay * self.backoff_factor, self.max_retry_delay)
+                    retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
                 else:
-                    logger.error(f"Request failed after {self.max_retries} attempts: {str(e)}")
+                    logger.error(f"Request failed after {max_retries} attempts: {str(e)}")
                     
                     # Decrement counter if queue enabled
-                    if self.queue_enabled:
+                    if hasattr(self, "queue_enabled") and self.queue_enabled:
                         with self.queue_lock:
                             self.current_requests = max(0, self.current_requests - 1)
                     
@@ -682,19 +783,18 @@ class groq:
             
             except Exception as e:
                 # Decrement counter if queue enabled for any other exceptions
-                if self.queue_enabled:
+                if hasattr(self, "queue_enabled") and self.queue_enabled:
                     with self.queue_lock:
                         self.current_requests = max(0, self.current_requests - 1)
                 raise
+                        
+            # Decrement counter if we somehow exit the loop without returning or raising
+            if hasattr(self, "queue_enabled") and self.queue_enabled:
+                with self.queue_lock:
+                    self.current_requests = max(0, self.current_requests - 1)
                     
-        # Decrement counter if we somehow exit the loop without returning or raising
-        if self.queue_enabled:
-            with self.queue_lock:
-                self.current_requests = max(0, self.current_requests - 1)
-                
-        # This should never be reached due to the raise in the exception handler
-        return None
-        
+            # This should never be reached due to the raise in the exception handler
+            return None
     def make_stream_request_groq(self, endpoint_url, data, api_key=None, request_id=None):
         """Make a streaming request to the Groq API with exponential backoff
         
@@ -1282,3 +1382,133 @@ class groq:
                 return None
         
         return handler
+    
+    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, initial_retry_delay=None, 
+                       backoff_factor=None, max_retry_delay=None, queue_enabled=None, 
+                       max_concurrent_requests=None, queue_size=None):
+        """Create a new endpoint with its own settings and counters"""
+        # Generate a unique endpoint ID if not provided
+        if endpoint_id is None:
+            endpoint_id = f"endpoint_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+        
+        # Use provided values or defaults
+        endpoint_settings = {
+            "api_key": api_key if api_key is not None else self.api_key,
+            "max_retries": max_retries if max_retries is not None else self.max_retries,
+            "initial_retry_delay": initial_retry_delay if initial_retry_delay is not None else self.initial_retry_delay,
+            "backoff_factor": backoff_factor if backoff_factor is not None else self.backoff_factor,
+            "max_retry_delay": max_retry_delay if max_retry_delay is not None else self.max_retry_delay,
+            "queue_enabled": queue_enabled if queue_enabled is not None else self.queue_enabled,
+            "max_concurrent_requests": max_concurrent_requests if max_concurrent_requests is not None else self.max_concurrent_requests,
+            "queue_size": queue_size if queue_size is not None else self.queue_size,
+        
+            # Initialize endpoint-specific counters and state
+            "current_requests": 0,
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "queue_processing": False,
+            "request_queue": [],
+            "queue_lock": threading.RLock(),
+            "created_at": time.time(),
+            "last_request_at": None
+        }
+        
+        # Store the endpoint settings
+        self.endpoints[endpoint_id] = endpoint_settings
+        
+        return endpoint_id
+    
+    def get_endpoint(self, endpoint_id=None):
+        """Get an endpoint's settings or create a default one if not found"""
+        # If no endpoint_id provided, use the first one or create a default
+        if endpoint_id is None:
+            if not self.endpoints:
+                endpoint_id = self.create_endpoint()
+            else:
+                endpoint_id = next(iter(self.endpoints))
+        
+        # If endpoint doesn't exist, create it
+        if endpoint_id not in self.endpoints:
+            endpoint_id = self.create_endpoint(endpoint_id=endpoint_id)
+        
+        return self.endpoints[endpoint_id]
+    
+    def update_endpoint(self, endpoint_id, **kwargs):
+        """Update an endpoint's settings"""
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
+        
+        # Update only the provided settings
+        for key, value in kwargs.items():
+            if key in self.endpoints[endpoint_id]:
+                self.endpoints[endpoint_id][key] = value
+        
+        return self.endpoints[endpoint_id]
+    
+    def get_stats(self, endpoint_id=None):
+        """Get usage statistics for an endpoint or global stats"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Get stats just for this endpoint
+            endpoint = self.endpoints[endpoint_id]
+            stats = {
+                "endpoint_id": endpoint_id,
+                "total_requests": endpoint["total_requests"],
+                "successful_requests": endpoint["successful_requests"],
+                "failed_requests": endpoint["failed_requests"],
+                "total_tokens": endpoint["total_tokens"],
+                "input_tokens": endpoint["input_tokens"],
+                "output_tokens": endpoint["output_tokens"],
+                "created_at": endpoint["created_at"],
+                "last_request_at": endpoint["last_request_at"],
+                "current_queue_size": len(endpoint["request_queue"]),
+                "current_requests": endpoint["current_requests"]
+            }
+            return stats
+        else:
+            # Aggregate stats across all endpoints
+            total_requests = sum(e["total_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            successful_requests = sum(e["successful_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            failed_requests = sum(e["failed_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            total_tokens = sum(e["total_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            input_tokens = sum(e["input_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            output_tokens = sum(e["output_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+        
+            stats = {
+                "endpoints_count": len(self.endpoints),
+                "total_requests": total_requests,
+                "successful_requests": successful_requests,
+                "failed_requests": failed_requests,
+                "total_tokens": total_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "global_queue_size": len(self.request_queue),
+                "global_current_requests": self.current_requests
+            }
+            return stats
+    
+    def reset_stats(self, endpoint_id=None):
+        """Reset usage statistics for an endpoint or globally"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Reset stats just for this endpoint
+            endpoint = self.endpoints[endpoint_id]
+            endpoint["total_requests"] = 0
+            endpoint["successful_requests"] = 0
+            endpoint["failed_requests"] = 0
+            endpoint["total_tokens"] = 0
+            endpoint["input_tokens"] = 0
+            endpoint["output_tokens"] = 0
+        elif endpoint_id is None:
+            # Reset stats for all endpoints
+            for endpoint in self.endpoints.values():
+                endpoint["total_requests"] = 0
+                endpoint["successful_requests"] = 0
+                endpoint["failed_requests"] = 0
+                endpoint["total_tokens"] = 0
+                endpoint["input_tokens"] = 0
+                endpoint["output_tokens"] = 0
+        else:
+            raise ValueError(f"Endpoint {endpoint_id} not found")

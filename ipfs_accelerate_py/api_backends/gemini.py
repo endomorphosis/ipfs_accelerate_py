@@ -1,1742 +1,1213 @@
 import os
-import sys
 import json
-import base64
 import time
-import hashlib
 import uuid
 import threading
 import requests
-from typing import List, Dict, Union, Any, Iterator, Optional
-from collections import OrderedDict
+import base64
+from concurrent.futures import Future
+from queue import Queue
+from dotenv import load_dotenv
+
+import hashlib
+import queue
+from concurrent.futures import ThreadPoolExecutor
 
 class gemini:
-    """
-    Google Gemini API implementation.
-    
-    Supports:
-    - Text generation with Gemini Pro
-    - Chat interactions with multi-turn conversations
-    - Streaming responses for real-time output
-    - Image processing with Gemini Pro Vision
-    - Embedding generation with Google's embedding models
-    - Batch content generation for multiple prompts
-    - Safety settings customization
-    - Caching for improved performance
-    - Token usage tracking
-    - Reliable API interaction with retries and error handling
-    """
-    
     def __init__(self, resources=None, metadata=None):
-        """Initialize the Gemini API client with resources and metadata."""
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         
-        # Set default API key from metadata or environment variables
-        self.default_api_key = self.metadata.get("gemini_api_key", os.environ.get("GEMINI_API_KEY", ""))
-        if not self.default_api_key:
-            # Try alternative env var names
-            self.default_api_key = os.environ.get("GOOGLE_API_KEY", "")
+        # Get API key from metadata or environment
+        self.api_key = self._get_api_key()
         
-        # For testing purposes, provide a default fake API key if none is found
-        if not self.default_api_key and "test" in sys.argv[0]:
-            self.default_api_key = "AIza_TEST_KEY_FOR_UNIT_TESTING_ONLY"
+        # Set API base URL
+        self.api_base = "https://generativelanguage.googleapis.com/v1"
         
-        # Collect all available API keys (for multiplexing)
-        self.api_keys = []
-        if self.default_api_key:
-            self.api_keys.append(self.default_api_key)
-            
-        # Add numbered API keys from environment variables
-        for i in range(1, 10):  # Try keys numbered 1-9
-            key = os.environ.get(f"GEMINI_API_KEY_{i}")
-            if key and key not in self.api_keys:
-                self.api_keys.append(key)
+        # Default model
+        self.default_model = "gemini-1.5-pro"
         
-        # Set model - default to Gemini Pro
-        self.model = self.metadata.get("gemini_model", "gemini-pro")
+        # Initialize queue and backoff systems
+        self.max_concurrent_requests = 5
+        self.queue_size = 100
+        self.request_queue = Queue(maxsize=self.queue_size)
+        self.active_requests = 0
+        self.queue_lock = threading.RLock()
         
-        # API base URL and version
-        self.api_version = self.metadata.get("gemini_api_version", "v1beta")
-        self.api_base = f"https://generativelanguage.googleapis.com/{self.api_version}/models"
+        # Start queue processor
+        self.queue_processor = threading.Thread(target=self._process_queue)
+        self.queue_processor.daemon = True
+        self.queue_processor.start()
         
-        # For multimodal support, use gemini-pro-vision
-        self.vision_model = self.metadata.get("gemini_vision_model", "gemini-pro-vision")
+        # Initialize backoff configuration
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 16
         
-        # Safety settings (defaults to balanced)
-        self.safety_settings = self.metadata.get("safety_settings", [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
-        ])
+        # Request tracking
+        self.request_tracking = True
+        self.recent_requests = {}
         
-        # Initialize counters for token usage tracking
-        self.total_prompt_tokens = 0
-        self.total_completion_tokens = 0
-        self.total_tokens = 0
+        return
+
+        # Initialize counters, queues, and settings for each endpoint 
+        self.endpoints = {}  # Dictionary to store per-endpoint data
         
-        # Cache for responses to improve performance (disabled by default)
-        self.use_cache = self.metadata.get("use_cache", False)
-        self.cache = {} if self.use_cache else None
-        self.cache_max_size = self.metadata.get("cache_max_size", 100)  # Max number of cached items
+        # Retry and backoff settings (global defaults)
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 60  # Maximum delay in seconds
         
-        # Initialize endpoint registry
-        self.endpoints = {}
+        # Global request queue settings
+        self.queue_enabled = True
+        self.queue_size = 100
+        self.queue_processing = False
+        self.current_requests = 0
+        self.max_concurrent_requests = 5
+        self.request_queue = []
+        self.queue_lock = threading.RLock()
         
-        # Track active requests for each endpoint
-        self.active_requests = {}
+        # Initialize thread pool for async processing
+        self.thread_pool = ThreadPoolExecutor(max_workers=10)
+
+    def _get_api_key(self):
+        """Get Gemini API key from metadata or environment"""
+        # Try to get from metadata
+        api_key = self.metadata.get("gemini_api_key") or self.metadata.get("google_api_key")
+        if api_key:
+            return api_key
         
-        # Request tracking (for debugging and monitoring)
-        self.request_history = {}
-        self.max_history_size = self.metadata.get("max_history_size", 100)
+        # Try to get from environment
+        env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if env_key:
+            return env_key
         
-    def create_endpoint(self, model, api_key=None, endpoint_name=None):
-        """
-        Create a dedicated endpoint for a specific model and API key.
+        # Try to load from dotenv
+        try:
+            load_dotenv()
+            env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            if env_key:
+                return env_key
+        except ImportError:
+            pass
         
-        Args:
-            model: The model to use for this endpoint (e.g., "gemini-pro")
-            api_key: Optional API key for this endpoint (defaults to primary key)
-            endpoint_name: Optional custom name for this endpoint
-            
-        Returns:
-            endpoint_id: Unique identifier for this endpoint
-        """
-        import queue
-        import time
-        import uuid
+        # Raise error if no key found
+        raise ValueError("No Gemini API key found in metadata or environment")
         
-        # Generate endpoint ID if not provided
-        endpoint_id = endpoint_name or f"{model}-{uuid.uuid4().hex[:8]}"
-        
-        # Use provided API key or default
-        endpoint_api_key = api_key or self.default_api_key
-        
-        # Create endpoint config
-        endpoint = {
-            "model": model,
-            "api_key": endpoint_api_key,
-            "queue": queue.Queue(),
-            "backoff": {
-                "current_delay": 0,
-                "base_delay": 1,  # Start with 1 second
-                "max_delay": 60,  # Maximum 60 seconds
-                "last_request_time": time.time(),
-                "consecutive_errors": 0
-            },
-            "created_at": time.time(),
-            "request_count": 0,
-            "error_count": 0,
-            "active": True
-        }
-        
-        # Register in the resources if available
-        if self.resources:
-            # Ensure the necessary structures exist
-            if "endpoints" not in self.resources:
-                self.resources["endpoints"] = {}
-            if "queues" not in self.resources:
-                self.resources["queues"] = {}
-            if "gemini" not in self.resources["endpoints"]:
-                self.resources["endpoints"]["gemini"] = {}
+    
+    def _process_queue(self, endpoint_id=None):
+        """Process requests in the queue for a specific endpoint or global queue"""
+        # Get the endpoint or use global settings
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            with endpoint["queue_lock"]:
+                if endpoint["queue_processing"]:
+                    return  # Another thread is already processing this endpoint's queue
+                endpoint["queue_processing"] = True
                 
-            # Register the endpoint and its queue
-            self.resources["endpoints"]["gemini"][endpoint_id] = endpoint
-            self.resources["queues"][endpoint_id] = endpoint["queue"]
-        
-        # Register in local tracking
-        self.endpoints[endpoint_id] = endpoint
-        
-        return endpoint_id
-        
-    def get_endpoint(self, endpoint_id):
-        """Get an endpoint by its ID."""
-        # Check local endpoints first
-        if endpoint_id in self.endpoints:
-            return self.endpoints[endpoint_id]
-            
-        # Check resources if available
-        if (self.resources and "endpoints" in self.resources and 
-            "gemini" in self.resources["endpoints"] and
-            endpoint_id in self.resources["endpoints"]["gemini"]):
-            return self.resources["endpoints"]["gemini"][endpoint_id]
-            
-        return None
-        
-    def remove_endpoint(self, endpoint_id):
-        """Remove an endpoint by its ID."""
-        endpoint = self.get_endpoint(endpoint_id)
-        if not endpoint:
-            return False
-            
-        # Mark as inactive
-        endpoint["active"] = False
-        
-        # Remove from resources if possible
-        if self.resources and "endpoints" in self.resources and "gemini" in self.resources["endpoints"]:
-            if endpoint_id in self.resources["endpoints"]["gemini"]:
-                del self.resources["endpoints"]["gemini"][endpoint_id]
+            queue_to_process = endpoint["request_queue"]
+            is_global_queue = False
+        else:
+            # Use global queue if no endpoint specified or endpoint doesn't exist
+            with self.queue_lock:
+                if self.queue_processing:
+                    return  # Another thread is already processing the global queue
+                self.queue_processing = True
                 
-        # Remove from local tracking
-        if endpoint_id in self.endpoints:
-            del self.endpoints[endpoint_id]
-            
-        return True
-        
-    def create_gemini_endpoint_handler(self):
-        """Create and return an endpoint handler for the Gemini API."""
-        def endpoint_handler(messages=None, model=None, endpoint_id=None, request_id=None, **kwargs):
-            """
-            Handle requests to the Gemini API endpoint with flexible parameters.
-            
-            Args:
-                messages: A list of message dictionaries with 'role' and 'content'
-                model: Optional model override (defaults to the instance model)
-                endpoint_id: Optional specific endpoint to use for this request
-                request_id: Optional tracking ID for the request
-                **kwargs: Additional parameters
-                
-            Returns:
-                API response
-            """
-            # Use explicit endpoint if provided, otherwise create or use default for model
-            use_endpoint_id = endpoint_id
-            
-            # Create a model-specific endpoint if model is specified without an endpoint_id
-            if model and not endpoint_id:
-                # Check if we already have an endpoint for this model
-                for existing_id, endpoint in self.endpoints.items():
-                    if endpoint["model"] == model and endpoint["active"]:
-                        use_endpoint_id = existing_id
-                        break
-                        
-                # Create new endpoint if needed
-                if not use_endpoint_id:
-                    use_endpoint_id = self.create_endpoint(model)
-            
-            # Handle different types of calls
-            if not messages and "prompt" in kwargs:
-                # Handle direct prompt
-                return self.generate_content(
-                    kwargs["prompt"], 
-                    endpoint_id=use_endpoint_id, 
-                    request_id=request_id, 
-                    **kwargs
-                )
-            elif isinstance(messages, str):
-                # Handle string input (direct prompt)
-                return self.generate_content(
-                    messages, 
-                    endpoint_id=use_endpoint_id, 
-                    request_id=request_id, 
-                    **kwargs
-                )
-            elif "texts" in kwargs and "embeddings" in kwargs.get("type", ""):
-                # Handle embedding requests
-                embed_model = kwargs.get("model", "embedding-001")
-                
-                # Create embedding-specific endpoint if needed
-                if not use_endpoint_id:
-                    for existing_id, endpoint in self.endpoints.items():
-                        if endpoint["model"] == embed_model and endpoint["active"]:
-                            use_endpoint_id = existing_id
-                            break
-                    
-                    if not use_endpoint_id:
-                        use_endpoint_id = self.create_endpoint(embed_model)
-                
-                return self.generate_embeddings(
-                    kwargs["texts"], 
-                    model=embed_model, 
-                    endpoint_id=use_endpoint_id, 
-                    request_id=request_id, 
-                    **kwargs
-                )
-            elif "prompts" in kwargs and "batch" in kwargs.get("type", ""):
-                # Handle batch processing (with individual request IDs for each prompt)
-                return self.batch_generate_content(
-                    kwargs["prompts"], 
-                    endpoint_id=use_endpoint_id, 
-                    parent_request_id=request_id, 
-                    **kwargs
-                )
-            else:
-                # Default to chat
-                return self.chat(
-                    messages, 
-                    model=model, 
-                    endpoint_id=use_endpoint_id, 
-                    request_id=request_id, 
-                    **kwargs
-                )
-        
-        return endpoint_handler
-        
-    def get_token_usage(self):
-        """
-        Get the current token usage statistics.
-        
-        Returns:
-            Dictionary with token usage information
-        """
-        return {
-            "prompt_tokens": self.total_prompt_tokens,
-            "completion_tokens": self.total_completion_tokens,
-            "total_tokens": self.total_tokens
-        }
-        
-    def reset_token_usage(self):
-        """Reset the token usage counters."""
-        self.total_prompt_tokens = 0
-        self.total_completion_tokens = 0
-        self.total_tokens = 0
-        
-    def clear_cache(self):
-        """Clear the response cache."""
-        if self.cache:
-            self.cache.clear()
-        
-    def test_gemini_endpoint(self):
-        """Test the Gemini API endpoint with a simple query."""
-        test_prompt = "Hello, what can you tell me about the Gemini API?"
-        test_messages = [{"role": "user", "content": test_prompt}]
-        
-        # Prepare request data in the format expected by make_post_request_gemini
-        contents = self._format_messages_for_gemini(test_messages)
-        data = {
-            "contents": contents,
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 1024
-            }
-        }
+            queue_to_process = self.request_queue
+            is_global_queue = True
         
         try:
-            response = self.make_post_request_gemini(data)
-            return True if response else False
-        except Exception as e:
-            print(f"Gemini endpoint test failed: {str(e)}")
-            return False
-            
-    def make_post_request_gemini(self, data, stream=False, endpoint_id=None, request_id=None):
-        """
-        Make a POST request to the Gemini API.
-        
-        Args:
-            data: Request payload
-            stream: Whether to stream the response
-            endpoint_id: Optional endpoint ID to use for this request
-            request_id: Optional request ID for tracking
-            
-        Returns:
-            API response as a dictionary
-        """
-        import time
-        import uuid
-        
-        # Generate request ID if not provided
-        if not request_id:
-            request_id = str(uuid.uuid4())
-            
-        # For unit testing, we need to modify the behavior when being tested
-        # to ensure the test_endpoint_params check passes
-        if "test" in sys.argv[0] and "test_gemini.py" in sys.argv[0]:
-            # If this is being tested by test_gemini.py, ensure 'contents' key is in data
-            if not isinstance(data, dict):
-                data = {"contents": [{"parts": [{"text": "Test prompt"}], "role": "user"}]}
-            elif "contents" not in data:
-                data["contents"] = [{"parts": [{"text": "Test prompt"}], "role": "user"}]
-        
-        # Track request start time
-        start_time = time.time()
-        
-        # Get the endpoint to use
-        endpoint = None
-        endpoint_api_key = None
-        
-        if endpoint_id:
-            # Use specified endpoint
-            endpoint = self.get_endpoint(endpoint_id)
-            if not endpoint:
-                raise ValueError(f"Endpoint {endpoint_id} not found")
-            endpoint_api_key = endpoint["api_key"]
-        else:
-            # Use default API key
-            endpoint_api_key = self.default_api_key
-            
-        if not endpoint_api_key:
-            raise ValueError("API key is required")
-            
-        # Check cache first if enabled
-        if self.use_cache and not stream:
-            cache_key = self._generate_cache_key(data)
-            if cache_key in self.cache:
+            while True:
+                # Get the next request from the queue
+                request_info = None
                 
-                # Record request in history
-                self._record_request(request_id, {
-                    "endpoint_id": endpoint_id,
-                    "model": self.model,
-                    "type": "cached",
-                    "stream": stream,
-                    "start_time": start_time,
-                    "end_time": time.time(),
-                    "duration": time.time() - start_time,
-                    "status": "success",
-                    "from_cache": True
-                })
-                
-                return self.cache[cache_key]
-            
-        # Determine which model to use
-        if endpoint:
-            model_name = endpoint["model"]
-        else:
-            # Determine model based on content
-            model_name = self.model
-            if any(isinstance(part, dict) and part.get("mime_type", "").startswith("image/") 
-                   for content in data.get("contents", []) 
-                   for part in content.get("parts", [])):
-                model_name = self.vision_model
-            
-        # Add safety settings if not already present
-        if "safetySettings" not in data and self.safety_settings:
-            data["safetySettings"] = self.safety_settings
-        
-        # Record in active requests
-        self.active_requests[request_id] = {
-            "endpoint_id": endpoint_id,
-            "model": model_name,
-            "start_time": start_time,
-            "status": "pending"
-        }
-            
-        # Apply backoff if needed for this endpoint
-        if endpoint:
-            # Check if we need to wait due to backoff
-            backoff = endpoint["backoff"]
-            current_time = time.time()
-            time_since_last = current_time - backoff["last_request_time"]
-            
-            if backoff["current_delay"] > 0 and time_since_last < backoff["current_delay"]:
-                # Need to wait the remaining backoff time
-                wait_time = backoff["current_delay"] - time_since_last
-                time.sleep(wait_time)
-                
-            # Update last request time
-            endpoint["backoff"]["last_request_time"] = time.time()
-            endpoint["request_count"] += 1
-        
-        # Construct URL with API key
-        url = f"{self.api_base}/{model_name}:generateContent?key={endpoint_api_key}"
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        # Add X-Request-ID header for tracking
-        if request_id:
-            headers["X-Request-ID"] = request_id
-        
-        # Add retries for reliability
-        max_retries = 3
-        retry_delay = 1  # seconds
-        
-        for retry in range(max_retries):
-            try:
-                # Make the request
-                if stream:
-                    # Streaming request
-                    params = {"alt": "sse"}  # Server-Sent Events
-                    response = requests.post(
-                        url, 
-                        headers=headers,
-                        json=data,
-                        params=params,
-                        stream=True,
-                        timeout=30  # Add timeout
-                    )
+                if is_global_queue:
+                    with self.queue_lock:
+                        if not queue_to_process:
+                            self.queue_processing = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if self.current_requests >= self.max_concurrent_requests:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        self.current_requests += 1
                 else:
-                    # Standard request
-                    response = requests.post(
-                        url,
-                        headers=headers,
-                        json=data,
-                        timeout=20  # Add timeout
-                    )
+                    with endpoint["queue_lock"]:
+                        if not queue_to_process:
+                            endpoint["queue_processing"] = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        endpoint["current_requests"] += 1
                 
-                # Handle error responses
+                # Process the request outside the lock
+                if request_info:
+                    try:
+                        # Extract request details
+                        endpoint_url = request_info.get("endpoint_url")
+                        data = request_info.get("data")
+                        api_key = request_info.get("api_key")
+                        request_id = request_info.get("request_id")
+                        endpoint_id = request_info.get("endpoint_id")
+                        future = request_info.get("future")
+                        method_name = request_info.get("method", "make_request")
+                        method_args = request_info.get("args", [])
+                        method_kwargs = request_info.get("kwargs", {})
+                        
+                        # Make the request (without queueing again)
+                        # Save original queue_enabled value to prevent recursion
+                        if is_global_queue:
+                            original_queue_enabled = self.queue_enabled
+                            self.queue_enabled = False  # Disable queueing to prevent recursion
+                        else:
+                            original_queue_enabled = endpoint["queue_enabled"]
+                            endpoint["queue_enabled"] = False  # Disable queueing to prevent recursion
+                        
+                        try:
+                            # Make the request based on method name
+                            if hasattr(self, method_name) and callable(getattr(self, method_name)):
+                                method = getattr(self, method_name)
+                                
+                                # Call the method with the provided arguments
+                                if method_name.startswith("make_"):
+                                    # Direct API request methods
+                                    result = method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    # Higher-level methods
+                                    method_kwargs.update({
+                                        "request_id": request_id,
+                                        "endpoint_id": endpoint_id,
+                                        "api_key": api_key
+                                    })
+                                    result = method(*method_args, **method_kwargs)
+                            else:
+                                # Fallback to make_request or similar method
+                                make_method = getattr(self, "make_request", None)
+                                if not make_method:
+                                    make_method = getattr(self, f"make_post_request_{self.__class__.__name__.lower()}", None)
+                                    
+                                if make_method and callable(make_method):
+                                    result = make_method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    raise AttributeError(f"Method {method_name} not found")
+                            
+                            # Store result in future
+                            future["result"] = result
+                            future["completed"] = True
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["successful_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                                    
+                                    # Update token counts if present in result
+                                    if isinstance(result, dict) and "usage" in result:
+                                        usage = result["usage"]
+                                        endpoint["total_tokens"] += usage.get("total_tokens", 0)
+                                        endpoint["input_tokens"] += usage.get("prompt_tokens", 0)
+                                        endpoint["output_tokens"] += usage.get("completion_tokens", 0)
+                            
+                        except Exception as e:
+                            # Store error in future
+                            future["error"] = e
+                            future["completed"] = True
+                            print(f"Error processing queued request: {str(e)}")
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["failed_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                        
+                        finally:
+                            # Restore original queue_enabled value
+                            if is_global_queue:
+                                self.queue_enabled = original_queue_enabled
+                            else:
+                                endpoint["queue_enabled"] = original_queue_enabled
+                    
+                    finally:
+                        # Decrement counter
+                        if is_global_queue:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        else:
+                            with endpoint["queue_lock"]:
+                                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                    
+                    # Brief pause to prevent CPU hogging
+                    time.sleep(0.01)
+                    
+        except Exception as e:
+            print(f"Error in queue processing thread: {str(e)}")
+            
+        finally:
+            # Reset queue processing flag
+            if is_global_queue:
+                with self.queue_lock:
+                    self.queue_processing = False
+            else:
+                with endpoint["queue_lock"]:
+                    endpoint["queue_processing"] = False
+
+    def _cleanup_old_requests(self):
+        """Clean up old request tracking data"""
+        current_time = time.time()
+        # Keep requests from last 30 minutes
+        cutoff_time = current_time - 1800
+        
+        keys_to_remove = []
+        for request_id, request_data in self.recent_requests.items():
+            if request_data.get("timestamp", 0) < cutoff_time:
+                keys_to_remove.append(request_id)
+        
+        for key in keys_to_remove:
+            del self.recent_requests[key]
+    
+    
+    def make_post_request_gemini(self, endpoint_url, data, api_key=None, request_id=None, endpoint_id=None):
+        """Make a request with endpoint-specific settings for queue, backoff, and API key"""
+        # Get endpoint settings or use global defaults
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            is_endpoint_request = True
+        else:
+            endpoint = {
+                "api_key": self.api_key,
+                "max_retries": self.max_retries,
+                "initial_retry_delay": self.initial_retry_delay,
+                "backoff_factor": self.backoff_factor,
+                "max_retry_delay": self.max_retry_delay,
+                "queue_enabled": self.queue_enabled,
+                "max_concurrent_requests": self.max_concurrent_requests,
+                "current_requests": self.current_requests,
+                "queue_processing": self.queue_processing,
+                "request_queue": self.request_queue,
+                "queue_lock": self.queue_lock,
+                "queue_size": self.queue_size
+            }
+            is_endpoint_request = False
+            
+        # Use endpoint's API key if not explicitly provided
+        if not api_key:
+            api_key = endpoint["api_key"]
+            
+        if not api_key:
+            raise ValueError("No API key provided for authentication")
+            
+        # Generate request ID if not provided
+        if request_id is None:
+            request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+            
+        # If queue is enabled and we're at capacity, add to queue
+        if endpoint["queue_enabled"]:
+            with endpoint["queue_lock"]:
+                if endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                    # Create a future to store the result
+                    result_future = {"result": None, "error": None, "completed": False}
+                    
+                    # Add to queue with all necessary info to process later
+                    request_info = {
+                        "endpoint_url": endpoint_url,
+                        "data": data,
+                        "api_key": api_key,
+                        "request_id": request_id,
+                        "endpoint_id": endpoint_id if is_endpoint_request else None,
+                        "future": result_future
+                    }
+                    
+                    # Check if queue is full
+                    if len(endpoint["request_queue"]) >= endpoint["queue_size"]:
+                        raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
+                    
+                    # Add to queue
+                    endpoint["request_queue"].append(request_info)
+                    print(f"Request queued. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
+                    
+                    # Start queue processing if not already running
+                    if not endpoint["queue_processing"]:
+                        threading.Thread(target=self._process_queue, 
+                                         args=(endpoint_id,) if is_endpoint_request else ()).start()
+                    
+                    # Wait for result with timeout
+                    wait_start = time.time()
+                    max_wait = 300  # 5 minutes
+                    
+                    while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                        time.sleep(0.1)
+                    
+                    # Check if completed or timed out
+                    if not result_future["completed"]:
+                        raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                    
+                    # Propagate error if any
+                    if result_future["error"]:
+                        raise result_future["error"]
+                    
+                    return result_future["result"]
+                
+                # If we're not at capacity, increment counter
+                endpoint["current_requests"] += 1
+                
+                # Update total request counter for endpoint-specific requests
+                if is_endpoint_request:
+                    endpoint["total_requests"] += 1
+                    endpoint["last_request_at"] = time.time()
+            
+        # Use exponential backoff retry mechanism
+        retries = 0
+        retry_delay = endpoint["initial_retry_delay"]
+        max_retries = endpoint["max_retries"]
+        backoff_factor = endpoint["backoff_factor"]
+        max_retry_delay = endpoint["max_retry_delay"]
+        
+        while retries < max_retries:
+            try:
+                # Add request_id to headers if possible
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Request-ID": request_id
+                }
+                
+                # Add API key to headers based on API type
+                api_type = self.__class__.__name__.lower()
+                if api_type == "claude":
+                    headers["x-api-key"] = api_key
+                    headers["anthropic-version"] = "2023-06-01"
+                elif api_type == "groq":
+                    headers["Authorization"] = f"Bearer {api_key}"
+                elif api_type in ["openai", "openai_api"]:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                elif api_type == "gemini":
+                    # Gemini API key is typically passed as a URL parameter, but we'll set a header too
+                    headers["x-goog-api-key"] = api_key
+                else:
+                    # Default to Bearer auth
+                    headers["Authorization"] = f"Bearer {api_key}"
+                
+                # Make the actual request
+                import requests
+                response = requests.post(
+                    endpoint_url,
+                    json=data,
+                    headers=headers,
+                    timeout=60
+                )
+                
+                # Check response status
                 if response.status_code != 200:
+                    error_message = f"Request failed with status code {response.status_code}"
                     try:
                         error_data = response.json()
-                        error_message = error_data.get('error', {}).get('message', 'Unknown error')
-                        error_code = error_data.get('error', {}).get('code', 0)
+                        if "error" in error_data:
+                            error_message = f"{error_message}: {error_data['error'].get('message', '')}"
                     except:
-                        error_message = f"Request failed with status code {response.status_code}"
-                        error_code = response.status_code
+                        error_message = f"{error_message}: {response.text[:100]}"
                     
-                    # Update backoff for endpoint if applicable
-                    if endpoint:
-                        endpoint["error_count"] += 1
-                        backoff = endpoint["backoff"]
-                        
-                        if response.status_code in [429, 500, 502, 503, 504]:
-                            # Rate limit or server error - increase backoff
-                            backoff["consecutive_errors"] += 1
-                            backoff["current_delay"] = min(
-                                backoff["max_delay"],
-                                backoff["base_delay"] * (2 ** backoff["consecutive_errors"])
-                            )
-                        else:
-                            # Other errors - don't increase backoff
-                            backoff["consecutive_errors"] = 0
-                    
-                    # Handle specific error codes
+                    # For specific error codes, handle differently
                     if response.status_code == 401:
-                        self._record_request(request_id, {
-                            "endpoint_id": endpoint_id,
-                            "model": model_name,
-                            "type": "error",
-                            "stream": stream,
-                            "start_time": start_time,
-                            "end_time": time.time(),
-                            "duration": time.time() - start_time,
-                            "status": "auth_error",
-                            "error": error_message
-                        })
+                        # Decrement counter
+                        if is_endpoint_request:
+                            with endpoint["queue_lock"]:
+                                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                                endpoint["failed_requests"] += 1
+                                endpoint["last_request_at"] = time.time()
+                        else:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        
                         raise ValueError(f"Authentication error: {error_message}")
+                        
                     elif response.status_code == 429:
-                        # If rate limited, wait and retry if we have retries left
-                        if retry < max_retries - 1:
-                            time.sleep(retry_delay * (2 ** retry))  # Exponential backoff
-                            continue
+                        # Rate limit error - check for Retry-After header
+                        retry_after = response.headers.get("retry-after", None)
+                        if retry_after:
+                            try:
+                                retry_delay = float(retry_after)
+                            except:
+                                # Use exponential backoff if Retry-After isn't a number
+                                retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                        else:
+                            # Use exponential backoff if Retry-After isn't present
+                            retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                            
+                        print(f"Rate limit exceeded. Retrying in {retry_delay} seconds... (Request ID: {request_id})")
+                        time.sleep(retry_delay)
+                        retries += 1
+                        continue
                         
-                        self._record_request(request_id, {
-                            "endpoint_id": endpoint_id,
-                            "model": model_name,
-                            "type": "error",
-                            "stream": stream,
-                            "start_time": start_time,
-                            "end_time": time.time(),
-                            "duration": time.time() - start_time,
-                            "status": "rate_limit",
-                            "error": error_message
-                        })
-                        raise ValueError(f"Rate limit exceeded: {error_message}")
-                    elif response.status_code == 400:
-                        self._record_request(request_id, {
-                            "endpoint_id": endpoint_id,
-                            "model": model_name,
-                            "type": "error",
-                            "stream": stream,
-                            "start_time": start_time,
-                            "end_time": time.time(),
-                            "duration": time.time() - start_time,
-                            "status": "bad_request",
-                            "error": error_message
-                        })
-                        raise ValueError(f"Invalid request: {error_message}")
-                    elif response.status_code >= 500:
-                        # Server error, retry if we have retries left
-                        if retry < max_retries - 1:
-                            time.sleep(retry_delay * (2 ** retry))  # Exponential backoff
-                            continue
+                    # For other error codes, just raise an exception
+                    raise ValueError(error_message)
+                
+                # Parse and return successful response
+                result = response.json()
+                
+                # Update token usage for endpoint-specific requests
+                if is_endpoint_request:
+                    with endpoint["queue_lock"]:
+                        endpoint["successful_requests"] += 1
                         
-                        self._record_request(request_id, {
-                            "endpoint_id": endpoint_id,
-                            "model": model_name,
-                            "type": "error",
-                            "stream": stream,
-                            "start_time": start_time,
-                            "end_time": time.time(),
-                            "duration": time.time() - start_time,
-                            "status": "server_error",
-                            "error": error_message
-                        })
-                        raise ValueError(f"Server error: {error_message}")
-                    else:
-                        self._record_request(request_id, {
-                            "endpoint_id": endpoint_id,
-                            "model": model_name,
-                            "type": "error",
-                            "stream": stream,
-                            "start_time": start_time,
-                            "end_time": time.time(),
-                            "duration": time.time() - start_time,
-                            "status": f"error_{response.status_code}",
-                            "error": error_message
-                        })
-                        raise ValueError(f"API request failed ({error_code}): {error_message}")
+                        # Update token counts if present in result
+                        if "usage" in result:
+                            usage = result["usage"]
+                            endpoint["total_tokens"] += usage.get("total_tokens", 0)
+                            endpoint["input_tokens"] += usage.get("prompt_tokens", 0) 
+                            endpoint["output_tokens"] += usage.get("completion_tokens", 0)
                 
-                # Reset backoff for successful requests
-                if endpoint and response.status_code == 200:
-                    endpoint["backoff"]["consecutive_errors"] = 0
-                    endpoint["backoff"]["current_delay"] = 0
+                return result
                 
-                # Successfully received response
-                if stream:
-                    # Update active request status
-                    if request_id in self.active_requests:
-                        self.active_requests[request_id]["status"] = "streaming"
-                    
-                    # Return streaming response with tracking wrapper
-                    return self._process_stream_response(response, request_id, endpoint_id, model_name, start_time)
+            except requests.exceptions.RequestException as e:
+                if retries < max_retries - 1:
+                    print(f"Request failed: {str(e)}. Retrying in {retry_delay} seconds (attempt {retries+1}/{max_retries}, Request ID: {request_id})...")
+                    time.sleep(retry_delay)
+                    retries += 1
+                    retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
                 else:
-                    # Regular response
-                    result = response.json()
+                    print(f"Request failed after {max_retries} attempts: {str(e)} (Request ID: {request_id})")
                     
-                    # Update token usage counters
-                    self._update_token_counters(result)
+                    # Decrement counter and update stats
+                    if is_endpoint_request:
+                        with endpoint["queue_lock"]:
+                            endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                            endpoint["failed_requests"] += 1
+                            endpoint["last_request_at"] = time.time()
+                    else:
+                        with self.queue_lock:
+                            self.current_requests = max(0, self.current_requests - 1)
                     
-                    # Cache the result if caching is enabled
-                    if self.use_cache:
-                        self._add_to_cache(cache_key, result)
-                        
-                    # Record successful request
-                    self._record_request(request_id, {
-                        "endpoint_id": endpoint_id,
-                        "model": model_name,
-                        "type": "request",
-                        "stream": stream,
-                        "start_time": start_time,
-                        "end_time": time.time(),
-                        "duration": time.time() - start_time,
-                        "status": "success",
-                        "token_count": self._get_token_count_from_result(result)
-                    })
-                    
-                    # Remove from active requests
-                    if request_id in self.active_requests:
-                        del self.active_requests[request_id]
-                        
-                    return result
-                    
-            except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
-                # Update backoff for endpoint if applicable
-                if endpoint:
-                    endpoint["error_count"] += 1
-                    backoff = endpoint["backoff"]
-                    backoff["consecutive_errors"] += 1
-                    backoff["current_delay"] = min(
-                        backoff["max_delay"],
-                        backoff["base_delay"] * (2 ** backoff["consecutive_errors"])
-                    )
-                
-                # Network error, retry if we have retries left
-                if retry < max_retries - 1:
-                    time.sleep(retry_delay * (2 ** retry))  # Exponential backoff
-                    continue
-                
-                # Record failed request
-                self._record_request(request_id, {
-                    "endpoint_id": endpoint_id,
-                    "model": model_name,
-                    "type": "error",
-                    "stream": stream,
-                    "start_time": start_time,
-                    "end_time": time.time(),
-                    "duration": time.time() - start_time,
-                    "status": "network_error",
-                    "error": str(e)
-                })
-                
-                # Remove from active requests
-                if request_id in self.active_requests:
-                    del self.active_requests[request_id]
-                    
-                raise ValueError(f"Network error: {str(e)}")
-        
-        # If we get here, all retries failed
-        self._record_request(request_id, {
-            "endpoint_id": endpoint_id,
-            "model": model_name,
-            "type": "error",
-            "stream": stream,
-            "start_time": start_time,
-            "end_time": time.time(),
-            "duration": time.time() - start_time,
-            "status": "max_retries_exceeded",
-            "error": "Request failed after multiple retries"
-        })
-        
-        # Remove from active requests
-        if request_id in self.active_requests:
-            del self.active_requests[request_id]
+                    raise
             
-        raise ValueError("Request failed after multiple retries")
-        
-    def _record_request(self, request_id, data):
-        """Record request details in history."""
-        self.request_history[request_id] = data
-        
-        # Trim history if needed
-        if len(self.request_history) > self.max_history_size:
-            # Remove oldest entries
-            oldest_keys = sorted(self.request_history.keys(), 
-                                key=lambda k: self.request_history[k].get("start_time", 0))[:10]
-            for key in oldest_keys:
-                del self.request_history[key]
+            except Exception as e:
+                # Decrement counter for any other exceptions
+                if is_endpoint_request:
+                    with endpoint["queue_lock"]:
+                        endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                        endpoint["failed_requests"] += 1
+                        endpoint["last_request_at"] = time.time()
+                else:
+                    with self.queue_lock:
+                        self.current_requests = max(0, self.current_requests - 1)
+                raise
                 
-    def _get_token_count_from_result(self, result):
-        """Extract token count from a result object."""
-        if not result:
-            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            
-        candidates = result.get("candidates", [])
-        if not candidates:
-            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            
-        for candidate in candidates:
-            if "tokenCount" in candidate:
-                token_count = candidate["tokenCount"]
-                return {
-                    "prompt_tokens": token_count.get("inputTokens", 0),
-                    "completion_tokens": token_count.get("outputTokens", 0),
-                    "total_tokens": token_count.get("totalTokens", 0)
-                }
+        # Decrement counter if we somehow exit the loop without returning or raising
+        if is_endpoint_request:
+            with endpoint["queue_lock"]:
+                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+        else:
+            with self.queue_lock:
+                self.current_requests = max(0, self.current_requests - 1)
                 
-        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        # This should never be reached due to the raise in the exception handler
+        return None
+
+    def chat(self, messages, model=None, request_id=None, endpoint_id=None, **kwargs):
+        """Send a chat request to Gemini API"""
+        # Check if we should use queue system
+        endpoint = None
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
             
-    def _process_stream_response(self, response, request_id=None, endpoint_id=None, model_name=None, start_time=None):
-        """
-        Process a streaming response from the Gemini API.
-        
-        Args:
-            response: The streaming response object
-            request_id: Optional request ID for tracking
-            endpoint_id: Optional endpoint ID
-            model_name: The model being used
-            start_time: When the request started
-        
-        Yields:
-            Processed response chunks
-        """
-        end_time = None
-        token_count = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-        chunks_yielded = 0
-        
-        for line in response.iter_lines():
-            if line:
-                # Remove "data: " prefix if present
-                if line.startswith(b'data: '):
-                    line = line[6:]
-                    
-                # Skip empty lines or "done" messages
-                if not line or line.strip() == b'[DONE]':
-                    continue
-                    
+            # Handle queueing if enabled and at capacity
+            if endpoint["queue_enabled"] and endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
                 try:
-                    # Parse JSON data
-                    chunk = json.loads(line)
+                    # Create a future to store the result
+                    result_future = {"result": None, "error": None, "completed": False}
                     
-                    # Update token counters for streaming too
-                    self._update_token_counters_streaming(chunk)
-                    
-                    # Track tokens for this response
-                    chunk_tokens = self._get_token_count_from_chunk(chunk)
-                    token_count["prompt_tokens"] = max(token_count["prompt_tokens"], chunk_tokens["prompt_tokens"])
-                    token_count["completion_tokens"] += chunk_tokens["completion_tokens"]
-                    token_count["total_tokens"] = token_count["prompt_tokens"] + token_count["completion_tokens"]
-                    
-                    # Update active request status if tracking
-                    if request_id and request_id in self.active_requests:
-                        self.active_requests[request_id]["chunks_received"] = chunks_yielded + 1
-                    
-                    # Check if this is final chunk
-                    is_final = False
-                    candidates = chunk.get("candidates", [])
-                    if candidates and candidates[0].get("finishReason"):
-                        is_final = True
-                        end_time = time.time()
+                    # Add to queue with all necessary info to process later
+                    method_kwargs = locals().copy()
+                    # Remove 'self' from kwargs
+                    if 'self' in method_kwargs:
+                        del method_kwargs['self']
                         
-                        # Record completion of streaming request
-                        if request_id:
-                            self._record_request(request_id, {
-                                "endpoint_id": endpoint_id,
-                                "model": model_name,
-                                "type": "stream",
-                                "stream": True,
-                                "start_time": start_time,
-                                "end_time": end_time,
-                                "duration": end_time - start_time,
-                                "status": "success",
-                                "chunks": chunks_yielded + 1,
-                                "token_count": token_count
-                            })
-                            
-                            # Remove from active requests on completion
-                            if request_id in self.active_requests:
-                                del self.active_requests[request_id]
+                    request_info = {
+                        "method": "chat",
+                        "args": [],
+                        "kwargs": method_kwargs,
+                        "endpoint_id": endpoint_id,
+                        "request_id": request_id,
+                        "api_key": None,
+                        "future": result_future
+                    }
                     
-                    chunks_yielded += 1
-                    yield chunk
+                    # Check if queue is full
+                    with endpoint["queue_lock"]:
+                        if len(endpoint["request_queue"]) >= endpoint["queue_size"]:
+                            raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
+                        
+                        # Add to queue
+                        endpoint["request_queue"].append(request_info)
+                        print(f"Request queued for chat. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
+                        
+                        # Start queue processing if not already running
+                        if not endpoint["queue_processing"]:
+                            threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
                     
-                except json.JSONDecodeError:
-                    print(f"Failed to decode JSON from chunk: {line}")
+                    # Wait for result with timeout
+                    wait_start = time.time()
+                    max_wait = 300  # 5 minutes
+                    
+                    while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                        time.sleep(0.1)
+                    
+                    # Check if completed or timed out
+                    if not result_future["completed"]:
+                        raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                    
+                    # Propagate error if any
+                    if result_future["error"]:
+                        raise result_future["error"]
+                    
+                    return result_future["result"]
+                except Exception as e:
+                    print(f"Error in chat queue handling: {e}")
+                    # Fall through to regular processing
         
-        # If we didn't find a final chunk but finished streaming
-        if not end_time and request_id:
-            end_time = time.time()
-            self._record_request(request_id, {
-                "endpoint_id": endpoint_id,
-                "model": model_name,
-                "type": "stream",
-                "stream": True,
-                "start_time": start_time,
-                "end_time": end_time,
-                "duration": end_time - start_time,
-                "status": "incomplete_stream",
-                "chunks": chunks_yielded,
-                "token_count": token_count
-            })
-            
-            # Remove from active requests
-            if request_id in self.active_requests:
-                del self.active_requests[request_id]
+        # Update stats if using an endpoint
+        if endpoint:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] += 1
+                self.endpoints[endpoint_id]["total_requests"] += 1
+                self.endpoints[endpoint_id]["last_request_at"] = time.time()
+
+        # Use specified model or default
+        model = model or self.default_model
+        
+        # Format messages for Gemini API
+        formatted_messages = self._format_messages(messages)
+        
+        # Prepare request data
+        data = {
+            "model": model,
+            "contents": formatted_messages
+        }
+        
+        # Add generation config if provided
+        generation_config = {}
+        for key in ["temperature", "topP", "topK", "maxOutputTokens"]:
+            if key in kwargs:
+                generation_config[key] = kwargs[key]
+            elif key.lower() in kwargs:  # Handle snake_case keys too
+                # Convert snake_case to camelCase
+                snake_key = key.lower()
+                generation_config[key] = kwargs[snake_key]
+        
+        if generation_config:
+            data["generationConfig"] = generation_config
+        
+        # Make request with queue and backoff
+        response = self.make_post_request_gemini(data, request_id=request_id, endpoint_id=endpoint_id)
+        
+        # Process and normalize response to match other APIs
+       
+        except Exception as e:
+            # Update stats on error if using an endpoint
+            if endpoint_id and endpoint_id in self.endpoints:
+                with self.endpoints[endpoint_id]["queue_lock"]:
+                    self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                    self.endpoints[endpoint_id]["failed_requests"] += 1
+            raise
+ 
+        # Update stats if using an endpoint
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                self.endpoints[endpoint_id]["successful_requests"] += 1
+                # Update token counts if present in result (assuming result variable is named 'result')
+                if 'result' in locals() and isinstance(result, dict) and "usage" in result:
+                    usage = result["usage"]
+                    self.endpoints[endpoint_id]["total_tokens"] += usage.get("total_tokens", 0)
+                    self.endpoints[endpoint_id]["input_tokens"] += usage.get("prompt_tokens", 0)
+                    self.endpoints[endpoint_id]["output_tokens"] += usage.get("completion_tokens", 0)
+return {
+            "text": self._extract_text(response),
+            "model": model,
+            "usage": self._extract_usage(response),
+            "implementation_type": "(REAL)",
+            "raw_response": response  # Include raw response for advanced use
+        }
+
+    def stream_chat(self, messages, model=None, **kwargs, request_id=None, endpoint_id=None):
+        """Stream a chat request from Gemini API"""
+        try:
+        # Handle queueing if enabled and at capacity
+        if endpoint_id and endpoint_id in self.endpoints:
+                endpoint = self.endpoints[endpoint_id]
+            if endpoint["queue_enabled"] and endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                # Create a future to store the result
+                result_future = {"result": None, "error": None, "completed": False}
                 
-    def _get_token_count_from_chunk(self, chunk):
-        """Extract token count from a streaming chunk."""
-        if not chunk:
-            return {"prompt_tokens": 0, "completion_tokens": 0}
-            
-        candidates = chunk.get("candidates", [])
-        if not candidates:
-            return {"prompt_tokens": 0, "completion_tokens": 0}
-            
-        # If the chunk has token count (usually final chunk)
-        for candidate in candidates:
-            if "tokenCount" in candidate:
-                token_count = candidate["tokenCount"]
-                return {
-                    "prompt_tokens": token_count.get("inputTokens", 0),
-                    "completion_tokens": token_count.get("outputTokens", 0)
+                # Add to queue with all necessary info to process later
+                method_kwargs = locals().copy()
+                # Remove 'self' from kwargs
+                if 'self' in method_kwargs:
+                    del method_kwargs['self']
+                    
+                request_info = {
+                    "method": "stream_chat",
+                    "args": [],
+                    "kwargs": method_kwargs,
+                    "endpoint_id": endpoint_id,
+                    "request_id": request_id,
+                    "api_key": api_key if 'api_key' in locals() else None,
+                    "future": result_future
                 }
-        
-        # For intermediate chunks, estimate from content
-        content_parts = []
-        for candidate in candidates:
-            if "content" in candidate:
-                content = candidate["content"]
-                if "parts" in content:
-                    parts = content["parts"]
-                    for part in parts:
-                        if "text" in part:
-                            content_parts.append(part["text"])
-                            
-        # Roughly estimate token count (very approximate)
-        completion_tokens = sum(len(text.split()) for text in content_parts) // 3
-        return {"prompt_tokens": 0, "completion_tokens": max(1, completion_tokens)}
-        
-    #
-    # Endpoint and Request Management Methods
-    #
-    
-    def list_endpoints(self):
-        """List all registered endpoints with their status."""
-        result = []
-        for endpoint_id, endpoint in self.endpoints.items():
-            result.append({
-                "id": endpoint_id,
-                "model": endpoint.get("model", "unknown"),
-                "active": endpoint.get("active", False),
-                "created_at": endpoint.get("created_at", 0),
-                "request_count": endpoint.get("request_count", 0),
-                "error_count": endpoint.get("error_count", 0),
-                "backoff": {
-                    "current_delay": endpoint.get("backoff", {}).get("current_delay", 0),
-                    "consecutive_errors": endpoint.get("backoff", {}).get("consecutive_errors", 0)
-                }
-            })
-        return sorted(result, key=lambda x: x["created_at"], reverse=True)
-        
-    def get_endpoint_status(self, endpoint_id):
-        """Get detailed status for a specific endpoint."""
-        endpoint = self.get_endpoint(endpoint_id)
-        if not endpoint:
-            return None
-            
-        # Count active requests for this endpoint
-        active_requests = 0
-        for request_id, request in self.active_requests.items():
-            if request.get("endpoint_id") == endpoint_id:
-                active_requests += 1
                 
-        # Calculate requests per minute
-        if endpoint.get("created_at", 0) > 0:
-            uptime = time.time() - endpoint["created_at"]
-            if uptime > 0:
-                requests_per_minute = (endpoint.get("request_count", 0) / uptime) * 60
-            else:
-                requests_per_minute = 0
-        else:
-            uptime = 0
-            requests_per_minute = 0
-            
-        # Calculate error rate
-        total_requests = endpoint.get("request_count", 0)
-        error_count = endpoint.get("error_count", 0)
-        if total_requests > 0:
-            error_rate = error_count / total_requests
-        else:
-            error_rate = 0
-            
-        return {
-            "id": endpoint_id,
-            "model": endpoint.get("model", "unknown"),
-            "active": endpoint.get("active", False),
-            "created_at": endpoint.get("created_at", 0),
-            "uptime_seconds": uptime,
-            "request_count": total_requests,
-            "error_count": error_count,
-            "error_rate": error_rate,
-            "requests_per_minute": requests_per_minute,
-            "active_requests": active_requests,
-            "queue_size": endpoint.get("queue", {}).qsize() if hasattr(endpoint.get("queue", {}), "qsize") else 0,
-            "backoff": {
-                "current_delay": endpoint.get("backoff", {}).get("current_delay", 0),
-                "consecutive_errors": endpoint.get("backoff", {}).get("consecutive_errors", 0),
-                "last_request_time": endpoint.get("backoff", {}).get("last_request_time", 0)
+                # Check if queue is full
+                with endpoint["queue_lock"]:
+                    if len(endpoint["request_queue"]) >= endpoint["queue_size"]:
+                        raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
+                    
+                    # Add to queue
+                    endpoint["request_queue"].append(request_info)
+                    print(f"Request queued for stream_chat. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
+                    
+                    # Start queue processing if not already running
+                    if not endpoint["queue_processing"]:
+                        threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
+                
+                # Wait for result with timeout
+                wait_start = time.time()
+                max_wait = 300  # 5 minutes
+                
+                while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                    time.sleep(0.1)
+                
+                # Check if completed or timed out
+                if not result_future["completed"]:
+                    raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                
+                # Propagate error if any
+                if result_future["error"]:
+                    raise result_future["error"]
+                
+               
+        except Exception as e:
+            # Update stats on error if using an endpoint
+            if endpoint_id and endpoint_id in self.endpoints:
+                with self.endpoints[endpoint_id]["queue_lock"]:
+                    self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                    self.endpoints[endpoint_id]["failed_requests"] += 1
+            raise
+ 
+        # Update stats if using an endpoint
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                self.endpoints[endpoint_id]["successful_requests"] += 1
+                # Update token counts if present in result (assuming result variable is named 'result')
+                if 'result' in locals() and isinstance(result, dict) and "usage" in result:
+                    usage = result["usage"]
+                    self.endpoints[endpoint_id]["total_tokens"] += usage.get("total_tokens", 0)
+                    self.endpoints[endpoint_id]["input_tokens"] += usage.get("prompt_tokens", 0)
+                    self.endpoints[endpoint_id]["output_tokens"] += usage.get("completion_tokens", 0)
+return result_future["result"]
+                
+        # Update stats if using an endpoint
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] += 1
+                self.endpoints[endpoint_id]["total_requests"] += 1
+                self.endpoints[endpoint_id]["last_request_at"] = time.time()
+
+        # Use specified model or default
+        model = model or self.default_model
+        
+        # Format messages for Gemini API
+        formatted_messages = self._format_messages(messages)
+        
+        # Prepare request data
+        data = {
+            "model": model,
+            "contents": formatted_messages
+        }
+        
+        # Add generation config if provided
+        generation_config = {}
+        for key in ["temperature", "topP", "topK", "maxOutputTokens"]:
+            if key in kwargs:
+                generation_config[key] = kwargs[key]
+            elif key.lower() in kwargs:  # Handle snake_case keys too
+                # Convert snake_case to camelCase
+                snake_key = key.lower()
+                generation_config[key] = kwargs[snake_key]
+        
+        if generation_config:
+            data["generationConfig"] = generation_config
+        
+        # Make streaming request
+        response_stream = self.make_post_request_gemini(data, stream=True, request_id=request_id, endpoint_id=endpoint_id)
+        
+        # Process streaming response
+        for chunk in response_stream:
+            yield {
+                "text": self._extract_text(chunk),
+                "done": self._is_done(chunk),
+                "model": model,
+                "raw_chunk": chunk  # Include raw chunk for advanced use
             }
-        }
-        
-    def get_active_requests(self):
-        """Get all active requests."""
-        return {
-            request_id: {
-                "endpoint_id": info.get("endpoint_id"),
-                "model": info.get("model", "unknown"),
-                "start_time": info.get("start_time", 0),
-                "duration": time.time() - info.get("start_time", time.time()),
-                "status": info.get("status", "unknown")
-            } for request_id, info in self.active_requests.items()
-        }
-        
-    def get_request_history(self, limit=10, filter_status=None):
-        """Get recent request history with optional filtering."""
-        history = list(self.request_history.items())
-        history.sort(key=lambda x: x[1].get("end_time", 0), reverse=True)
-        
-        if filter_status:
-            history = [item for item in history if item[1].get("status") == filter_status]
-            
-        return {
-            request_id: info for request_id, info in history[:limit]
-        }
-        
-    def get_endpoint_metrics(self):
-        """Get performance metrics for all endpoints."""
-        metrics = {}
-        
-        for endpoint_id, endpoint in self.endpoints.items():
-            if not endpoint.get("active", False):
-                continue
+
+    def process_image(self, image_data, prompt, model=None, **kwargs, request_id=None, endpoint_id=None):
+        """Process an image with Gemini API"""
+        try:
+        # Handle queueing if enabled and at capacity
+        if endpoint_id and endpoint_id in self.endpoints:
+                endpoint = self.endpoints[endpoint_id]
+            if endpoint["queue_enabled"] and endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                # Create a future to store the result
+                result_future = {"result": None, "error": None, "completed": False}
                 
-            model = endpoint.get("model", "unknown")
-            
-            # Calculate requests per minute
-            uptime = time.time() - endpoint.get("created_at", time.time())
-            if uptime > 0:
-                requests_per_minute = (endpoint.get("request_count", 0) / uptime) * 60
-            else:
-                requests_per_minute = 0
-                
-            # Calculate success/error rates
-            total_requests = endpoint.get("request_count", 0)
-            error_count = endpoint.get("error_count", 0)
-            
-            if total_requests > 0:
-                success_rate = (total_requests - error_count) / total_requests
-                error_rate = error_count / total_requests
-            else:
-                success_rate = 0
-                error_rate = 0
-                
-            # Add to metrics
-            if model not in metrics:
-                metrics[model] = {
-                    "endpoints": 0,
-                    "total_requests": 0,
-                    "error_count": 0,
-                    "requests_per_minute": 0,
-                    "success_rate": 0,
-                    "error_rate": 0
+                # Add to queue with all necessary info to process later
+                method_kwargs = locals().copy()
+                # Remove 'self' from kwargs
+                if 'self' in method_kwargs:
+                    del method_kwargs['self']
+                    
+                request_info = {
+                    "method": "process_image",
+                    "args": [],
+                    "kwargs": method_kwargs,
+                    "endpoint_id": endpoint_id,
+                    "request_id": request_id,
+                    "api_key": api_key if 'api_key' in locals() else None,
+                    "future": result_future
                 }
                 
-            # Update metrics for this model
-            model_metrics = metrics[model]
-            model_metrics["endpoints"] += 1
-            model_metrics["total_requests"] += total_requests
-            model_metrics["error_count"] += error_count
-            model_metrics["requests_per_minute"] += requests_per_minute
-            
-            # Recalculate rates with updated totals
-            if model_metrics["total_requests"] > 0:
-                model_metrics["success_rate"] = (model_metrics["total_requests"] - model_metrics["error_count"]) / model_metrics["total_requests"]
-                model_metrics["error_rate"] = model_metrics["error_count"] / model_metrics["total_requests"]
-                
-        return metrics
+                # Check if queue is full
+                with endpoint["queue_lock"]:
+                    if len(endpoint["request_queue"]) >= endpoint["queue_size"]:
+                        raise ValueError(f"Request queue is full ({endpoint['queue_size']} items). Try again later.")
                     
-    def _generate_cache_key(self, data):
-        """Generate a unique cache key for the request data."""
-        # Create a stable string representation of the data
-        data_str = json.dumps(data, sort_keys=True)
-        # Create a hash of the data to use as the cache key
-        return hashlib.md5(data_str.encode()).hexdigest()
+                    # Add to queue
+                    endpoint["request_queue"].append(request_info)
+                    print(f"Request queued for process_image. Queue size: {len(endpoint['request_queue'])}. Request ID: {request_id}")
+                    
+                    # Start queue processing if not already running
+                    if not endpoint["queue_processing"]:
+                        threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
+                
+                # Wait for result with timeout
+                wait_start = time.time()
+                max_wait = 300  # 5 minutes
+                
+                while not result_future["completed"] and (time.time() - wait_start) < max_wait:
+                    time.sleep(0.1)
+                
+                # Check if completed or timed out
+                if not result_future["completed"]:
+                    raise TimeoutError(f"Request timed out after {max_wait} seconds in queue")
+                
+                # Propagate error if any
+                if result_future["error"]:
+                    raise result_future["error"]
+                
+                return result_future["result"]
+                
+        # Update stats if using an endpoint
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] += 1
+                self.endpoints[endpoint_id]["total_requests"] += 1
+                self.endpoints[endpoint_id]["last_request_at"] = time.time()
+
+        # Use specified model or multimodal default
+        model = model or "gemini-1.5-pro-vision"
         
-    def _add_to_cache(self, key, value):
-        """Add a result to the cache with LRU functionality."""
-        if not self.use_cache or not self.cache:
-            return
-            
-        # If cache is full, remove the least recently used item
-        if len(self.cache) >= self.cache_max_size:
-            # Convert to OrderedDict if it's a regular dict
-            if not isinstance(self.cache, OrderedDict):
-                self.cache = OrderedDict(self.cache)
-                
-            # Remove the oldest item
-            self.cache.popitem(last=False)
-            
-        # Add new item to cache
-        self.cache[key] = value
+        # Encode image data to base64
+        if isinstance(image_data, bytes):
+            encoded_image = base64.b64encode(image_data).decode('utf-8')
+        else:
+            # Assume it's already encoded
+            encoded_image = image_data
         
-    def _update_token_counters(self, result):
-        """Update token usage counters from API response."""
-        if not result:
-            return
-            
-        candidates = result.get("candidates", [])
-        if not candidates:
-            return
-            
-        # Extract token counts if available
-        for candidate in candidates:
-            if "tokenCount" in candidate:
-                token_count = candidate["tokenCount"]
-                
-                # Update counters
-                prompt_tokens = token_count.get("inputTokens", 0)
-                completion_tokens = token_count.get("outputTokens", 0)
-                total_tokens = token_count.get("totalTokens", 0)
-                
-                self.total_prompt_tokens += prompt_tokens
-                self.total_completion_tokens += completion_tokens
-                self.total_tokens += total_tokens
-                
-                # Only need to process one candidate
-                break
-                
-    def _update_token_counters_streaming(self, chunk):
-        """Update token counters for streaming responses."""
-        # For streaming, we typically only get token counts in the final chunk
-        candidates = chunk.get("candidates", [])
-        if not candidates:
-            return
-            
-        for candidate in candidates:
-            # Only update if this has token counts and has a finishReason
-            # (indicating it's the final chunk)
-            if "tokenCount" in candidate and candidate.get("finishReason"):
-                token_count = candidate["tokenCount"]
-                
-                # Update counters
-                prompt_tokens = token_count.get("inputTokens", 0)
-                completion_tokens = token_count.get("outputTokens", 0)
-                total_tokens = token_count.get("totalTokens", 0)
-                
-                self.total_prompt_tokens += prompt_tokens
-                self.total_completion_tokens += completion_tokens
-                self.total_tokens += total_tokens
-    
-    def make_stream_request_gemini(self, data, endpoint_id=None, request_id=None):
-        """
-        Make a streaming request to the Gemini API.
+        # Prepare content with text and image
+        content = [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": kwargs.get("mime_type", "image/jpeg"),
+                            "data": encoded_image
+                        }
+                    }
+                ]
+            }
+        ]
         
-        Args:
-            data: Request payload
-            endpoint_id: Optional endpoint ID to use
-            request_id: Optional request ID for tracking
-            
-        Returns:
-            Iterator yielding response chunks
-        """
-        return self.make_post_request_gemini(data, stream=True, endpoint_id=endpoint_id, request_id=request_id)
+        # Prepare request data
+        data = {
+            "model": model,
+            "contents": content
+        }
         
-    def _format_messages_for_gemini(self, messages):
-        """
-        Convert messages from standardized format to Gemini API format.
+        # Add generation config if provided
+        generation_config = {}
+        for key in ["temperature", "topP", "topK", "maxOutputTokens"]:
+            if key in kwargs:
+                generation_config[key] = kwargs[key]
+            elif key.lower() in kwargs:  # Handle snake_case keys too
+                # Convert snake_case to camelCase
+                snake_key = key.lower()
+                generation_config[key] = kwargs[snake_key]
         
-        Args:
-            messages: List of message dictionaries with 'role' and 'content'
+        if generation_config:
+            data["generationConfig"] = generation_config
+        
+        # Make request with queue and backoff
+        response = self.make_post_request_gemini(data, request_id=request_id, endpoint_id=endpoint_id)
+        
+        # Process and normalize response to match other APIs
+       
+        except Exception as e:
+            # Update stats on error if using an endpoint
+            if endpoint_id and endpoint_id in self.endpoints:
+                with self.endpoints[endpoint_id]["queue_lock"]:
+                    self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                    self.endpoints[endpoint_id]["failed_requests"] += 1
+            raise
+ 
+        # Update stats if using an endpoint
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                self.endpoints[endpoint_id]["current_requests"] = max(0, self.endpoints[endpoint_id]["current_requests"] - 1)
+                self.endpoints[endpoint_id]["successful_requests"] += 1
+                # Update token counts if present in result (assuming result variable is named 'result')
+                if 'result' in locals() and isinstance(result, dict) and "usage" in result:
+                    usage = result["usage"]
+                    self.endpoints[endpoint_id]["total_tokens"] += usage.get("total_tokens", 0)
+                    self.endpoints[endpoint_id]["input_tokens"] += usage.get("prompt_tokens", 0)
+                    self.endpoints[endpoint_id]["output_tokens"] += usage.get("completion_tokens", 0)
+return {
+            "text": self._extract_text(response),
+            "model": model,
+            "usage": self._extract_usage(response),
+            "implementation_type": "(REAL)",
+            "raw_response": response  # Include raw response for advanced use
+        }
             
-        Returns:
-            Formatted contents for Gemini API
-        """
-        contents = []
+    def _format_messages(self, messages):
+        """Format messages for Gemini API"""
+        formatted_messages = []
+        current_role = None
+        current_parts = []
         
         for message in messages:
             role = message.get("role", "user")
             content = message.get("content", "")
             
-            # Map roles to Gemini format
+            # Map standard roles to Gemini roles
             if role == "assistant":
                 gemini_role = "model"
             elif role == "system":
-                # System messages are handled differently in Gemini
-                # Add as a user message with a special prefix
+                # For system messages, we add to user context
                 gemini_role = "user"
-                content = f"System instruction: {content}"
             else:
                 gemini_role = "user"
-                
-            # Handle multimodal content (image + text)
-            if isinstance(content, list):
-                parts = []
-                for item in content:
-                    if isinstance(item, dict) and "type" in item:
-                        if item["type"] == "text":
-                            parts.append({"text": item.get("text", "")})
-                        elif item["type"] == "image_url":
-                            # Handle image URL
-                            image_url = item.get("image_url", {}).get("url", "")
-                            if image_url.startswith("data:image/"):
-                                # Handle base64 encoded images
-                                mime_type = image_url.split(";")[0].replace("data:", "")
-                                base64_data = image_url.split(",")[1]
-                                parts.append({
-                                    "inline_data": {
-                                        "mime_type": mime_type,
-                                        "data": base64_data
-                                    }
-                                })
-                    elif isinstance(item, str):
-                        parts.append({"text": item})
-                
-                if parts:
-                    contents.append({"role": gemini_role, "parts": parts})
-            else:
-                # Simple text content
-                contents.append({
-                    "role": gemini_role,
-                    "parts": [{"text": content}]
+            
+            # If role changes, add previous message
+            if current_role and current_role != gemini_role and current_parts:
+                formatted_messages.append({
+                    "role": current_role,
+                    "parts": current_parts
                 })
-                
-        return contents
-        
-    def generate_content(self, prompt, endpoint_id=None, request_id=None, **kwargs):
-        """
-        Generate content with the Gemini API.
-        
-        Args:
-            prompt: Text prompt or list of content parts
-            endpoint_id: Optional specific endpoint to use
-            request_id: Optional request ID for tracking
-            **kwargs: Additional parameters including:
-                - temperature: Controls randomness (0.0 to 1.0)
-                - top_p: Nucleus sampling parameter (0.0 to 1.0)
-                - top_k: Top-k sampling parameter (1 to 40)
-                - max_tokens: Maximum number of tokens to generate
-                - safety_settings: Custom safety settings to override defaults
-                - stream: Whether to stream the response
-                - stop_sequences: Custom stop sequences
-                - model: Override model (takes precedence over endpoint's model)
+                current_parts = []
             
-        Returns:
-            API response with generated content
-        """
-        # If model is specified but no endpoint, create one
-        model_override = kwargs.get("model")
-        if model_override and not endpoint_id:
-            # Check if we have an existing endpoint for this model
-            for existing_id, endpoint in self.endpoints.items():
-                if endpoint["model"] == model_override and endpoint["active"]:
-                    endpoint_id = existing_id
-                    break
-                    
-            # Create new endpoint if needed
-            if not endpoint_id:
-                endpoint_id = self.create_endpoint(model_override)
+            # Add content to parts
+            current_role = gemini_role
+            current_parts.append({"text": content})
         
-        if isinstance(prompt, str):
-            contents = [{"role": "user", "parts": [{"text": prompt}]}]
-        elif isinstance(prompt, list):
-            # Handle multimodal prompt with images
-            parts = []
-            for item in prompt:
-                if isinstance(item, dict):
-                    if "text" in item:
-                        parts.append({"text": item["text"]})
-                    elif "image" in item and item["image"]:
-                        # Determine image mime type
-                        mime_type = kwargs.get("mime_type", "image/jpeg")
-                        if isinstance(item.get("mime_type"), str):
-                            mime_type = item["mime_type"]
-                            
-                        # Base64 encoded image
-                        parts.append({
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": item["image"]
-                            }
-                        })
-                elif isinstance(item, str):
-                    parts.append({"text": item})
-            
-            contents = [{"role": "user", "parts": parts}]
-        else:
-            raise ValueError("Prompt must be a string or list of content parts")
-            
-        # Build generation config
-        generation_config = {
-            "temperature": kwargs.get("temperature", 0.7),
-            "topP": kwargs.get("top_p", 0.95),
-            "topK": kwargs.get("top_k", 40),
-            "maxOutputTokens": kwargs.get("max_tokens", 1024),
-            "stopSequences": kwargs.get("stop_sequences", []),
-            "candidateCount": kwargs.get("candidate_count", 1),
-            "presencePenalty": kwargs.get("presence_penalty", None),
-            "frequencyPenalty": kwargs.get("frequency_penalty", None),
-        }
+        # Add final message
+        if current_role and current_parts:
+            formatted_messages.append({
+                "role": current_role,
+                "parts": current_parts
+            })
         
-        # Remove None values from generation config
-        generation_config = {k: v for k, v in generation_config.items() if v is not None}
-        
-        # Build request data
-        data = {
-            "contents": contents,
-            "generationConfig": generation_config
-        }
-        
-        # Add custom safety settings if provided
-        if "safety_settings" in kwargs:
-            data["safetySettings"] = kwargs["safety_settings"]
-            
-        # Check if streaming is requested
-        stream = kwargs.get("stream", False)
-        
-        # Make the request (streaming or regular)
-        if stream:
-            return self.make_post_request_gemini(data, stream=True, endpoint_id=endpoint_id, request_id=request_id)
-        else:
-            return self.make_post_request_gemini(data, endpoint_id=endpoint_id, request_id=request_id)
-            
-    def generate_embeddings(self, texts, model="embedding-001", **kwargs):
-        """
-        Generate embeddings for text using Google's embedding model.
-        
-        Args:
-            texts: A list of strings to generate embeddings for
-            model: The embedding model to use (default is "embedding-001")
-            **kwargs: Additional parameters
-            
-        Returns:
-            Dictionary containing embeddings for each input text
-        """
-        if not isinstance(texts, list):
-            # Convert single text to a list
-            texts = [texts]
-            
-        # Create URL for embeddings
-        url = f"{self.api_base}/{model}:embedContent?key={self.api_key}"
-        
-        # Prepare headers
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        embeddings = []
-        
-        # Process texts in batches of 10 (API limitation)
-        batch_size = 10
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i+batch_size]
-            
-            batch_results = []
-            for text in batch:
-                # Create request data for each text
-                data = {
-                    "content": {
-                        "parts": [{"text": text}]
-                    },
-                    "taskType": kwargs.get("task_type", "RETRIEVAL_QUERY")
-                }
-                
-                # Make request
-                max_retries = 3
-                for retry in range(max_retries):
-                    try:
-                        response = requests.post(
-                            url,
-                            headers=headers,
-                            json=data,
-                            timeout=10
-                        )
-                        
-                        if response.status_code != 200:
-                            if retry < max_retries - 1:
-                                time.sleep(1 * (2 ** retry))  # Exponential backoff
-                                continue
-                            else:
-                                raise ValueError(f"Embedding request failed: {response.text}")
-                        
-                        result = response.json()
-                        
-                        # Extract embedding values
-                        embedding = result.get("embedding", {}).get("values", [])
-                        batch_results.append(embedding)
-                        break
-                        
-                    except Exception as e:
-                        if retry < max_retries - 1:
-                            time.sleep(1 * (2 ** retry))
-                            continue
-                        else:
-                            raise ValueError(f"Embedding request failed: {str(e)}")
-            
-            embeddings.extend(batch_results)
-            
-            # Small delay between batches to avoid rate limits
-            if i + batch_size < len(texts):
-                time.sleep(0.5)
-                
-        # Format response similar to OpenAI
-        return {
-            "data": [{"embedding": emb, "index": i, "object": "embedding"} for i, emb in enumerate(embeddings)],
-            "model": model,
-            "object": "list",
-            "usage": {
-                "prompt_tokens": sum(len(t.split()) for t in texts) * 4,  # Approximation
-                "total_tokens": sum(len(t.split()) for t in texts) * 4    # Approximation
-            }
-        }
-        
-    def batch_generate_content(self, prompts, **kwargs):
-        """
-        Generate content for multiple prompts in parallel.
-        
-        Args:
-            prompts: List of prompts to process
-            **kwargs: Additional parameters for generation
-            
-        Returns:
-            List of responses for each prompt
-        """
-        if not isinstance(prompts, list):
-            raise ValueError("Prompts must be a list")
-            
-        # Prepare individual requests
-        results = []
-        
-        # Process in batches to avoid rate limits
-        batch_size = kwargs.get("batch_size", 5)
-        for i in range(0, len(prompts), batch_size):
-            batch = prompts[i:i+batch_size]
-            
-            # Process batch in parallel - future enhancement could use asyncio
-            batch_results = []
-            for prompt in batch:
-                try:
-                    response = self.generate_content(prompt, **kwargs)
-                    batch_results.append(response)
-                except Exception as e:
-                    batch_results.append({"error": str(e)})
-                    
-            results.extend(batch_results)
-            
-            # Small delay between batches to avoid rate limits
-            if i + batch_size < len(prompts):
-                time.sleep(1)
-                
-        return results
-        
-    def chat(self, messages, model=None, endpoint_id=None, request_id=None, **kwargs):
-        """
-        Chat with the Gemini API.
-        
-        Args:
-            messages: List of message dictionaries
-            model: Optional model override 
-            endpoint_id: Optional endpoint ID to use
-            request_id: Optional request ID for tracking
-            **kwargs: Additional parameters including:
-                - temperature: Controls randomness (0.0 to 1.0)
-                - top_p: Nucleus sampling parameter (0.0 to 1.0)
-                - top_k: Top-k sampling parameter (1 to 40)
-                - max_tokens: Maximum number of tokens to generate
-                - safety_settings: Custom safety settings
-                - stream: Whether to stream the response
-                - stop_sequences: Custom stop sequences
-            
-        Returns:
-            API response with chat completion
-        """
-        # If model is specified but no endpoint, create one
-        if model and not endpoint_id:
-            # Check if we have an existing endpoint for this model
-            for existing_id, endpoint in self.endpoints.items():
-                if endpoint["model"] == model and endpoint["active"]:
-                    endpoint_id = existing_id
-                    break
-                    
-            # Create new endpoint if needed
-            if not endpoint_id:
-                endpoint_id = self.create_endpoint(model)
-        
-        # Format messages for Gemini API
-        contents = self._format_messages_for_gemini(messages)
-        
-        # Build generation config
-        generation_config = {
-            "temperature": kwargs.get("temperature", 0.7),
-            "topP": kwargs.get("top_p", 0.95),
-            "topK": kwargs.get("top_k", 40),
-            "maxOutputTokens": kwargs.get("max_tokens", 1024),
-            "stopSequences": kwargs.get("stop_sequences", []),
-            "candidateCount": kwargs.get("candidate_count", 1),
-            "presencePenalty": kwargs.get("presence_penalty", None),
-            "frequencyPenalty": kwargs.get("frequency_penalty", None),
-        }
-        
-        # Remove None values from generation config
-        generation_config = {k: v for k, v in generation_config.items() if v is not None}
-        
-        # Build request data
-        data = {
-            "contents": contents,
-            "generationConfig": generation_config
-        }
-        
-        # Add custom safety settings if provided
-        if "safety_settings" in kwargs:
-            data["safetySettings"] = kwargs["safety_settings"]
-            
-        # Check if streaming is requested
-        stream = kwargs.get("stream", False)
-        
-        # Make the request
-        if stream:
-            # Return streaming response directly
-            return self.stream_chat(messages, model=model, endpoint_id=endpoint_id, request_id=request_id, **kwargs)
-        else:
-            # Make regular request
-            response = self.make_post_request_gemini(data, endpoint_id=endpoint_id, request_id=request_id)
-            
-            # Extract text response
-            try:
-                candidates = response.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    text_parts = [part.get("text", "") for part in parts if "text" in part]
-                    text = " ".join(text_parts)
-                    
-                    # Format response like OpenAI for consistency
-                    formatted_response = {
-                        "choices": [
-                            {
-                                "message": {
-                                    "role": "assistant",
-                                    "content": text
-                                },
-                                "finish_reason": candidates[0].get("finishReason", "").lower() or "stop",
-                                "index": 0
-                            }
-                        ],
-                        "model": model or self.model,
-                        "id": request_id or "gemini-" + str(int(time.time()))
-                    }
-                    
-                    # Add token count if available
-                    if "tokenCount" in candidates[0]:
-                        tokens = candidates[0].get("tokenCount", {})
-                        formatted_response["usage"] = {
-                            "prompt_tokens": tokens.get("inputTokens", 0),
-                            "completion_tokens": tokens.get("outputTokens", 0),
-                            "total_tokens": tokens.get("totalTokens", 0)
-                        }
-                        
-                    return formatted_response
-            except Exception as e:
-                print(f"Error formatting Gemini response: {str(e)}")
-                
-            # Return raw response if formatting fails
-            return response
-        
-    def stream_chat(self, messages, model=None, endpoint_id=None, request_id=None, **kwargs):
-        """
-        Stream chat responses from the Gemini API.
-        
-        Args:
-            messages: List of message dictionaries
-            model: Optional model override
-            endpoint_id: Optional endpoint ID to use
-            request_id: Optional request ID for tracking
-            **kwargs: Additional parameters including:
-                - temperature: Controls randomness (0.0 to 1.0)
-                - top_p: Nucleus sampling parameter (0.0 to 1.0)
-                - top_k: Top-k sampling parameter (1 to 40)
-                - max_tokens: Maximum number of tokens to generate
-                - safety_settings: Custom safety settings
-                - stop_sequences: Custom stop sequences
-            
-        Returns:
-            Iterator yielding response chunks
-        """
-        # If model is specified but no endpoint, create one
-        if model and not endpoint_id:
-            # Check if we have an existing endpoint for this model
-            for existing_id, endpoint in self.endpoints.items():
-                if endpoint["model"] == model and endpoint["active"]:
-                    endpoint_id = existing_id
-                    break
-                    
-            # Create new endpoint if needed
-            if not endpoint_id:
-                endpoint_id = self.create_endpoint(model)
-        
-        # Format messages for Gemini API
-        contents = self._format_messages_for_gemini(messages)
-        
-        # Build generation config
-        generation_config = {
-            "temperature": kwargs.get("temperature", 0.7),
-            "topP": kwargs.get("top_p", 0.95),
-            "topK": kwargs.get("top_k", 40),
-            "maxOutputTokens": kwargs.get("max_tokens", 1024),
-            "stopSequences": kwargs.get("stop_sequences", []),
-            "candidateCount": kwargs.get("candidate_count", 1),
-            "presencePenalty": kwargs.get("presence_penalty", None),
-            "frequencyPenalty": kwargs.get("frequency_penalty", None),
-        }
-        
-        # Remove None values from generation config
-        generation_config = {k: v for k, v in generation_config.items() if v is not None}
-        
-        # Build request data
-        data = {
-            "contents": contents,
-            "generationConfig": generation_config
-        }
-        
-        # Add custom safety settings if provided
-        if "safety_settings" in kwargs:
-            data["safetySettings"] = kwargs["safety_settings"]
-        
-        # Generate a unique ID for this streaming response
-        response_id = request_id or f"gemini-stream-{str(int(time.time()))}-{uuid.uuid4().hex[:6]}"
-        chunk_index = 0
-        
-        # Make the streaming request
-        for chunk in self.make_post_request_gemini(data, stream=True, endpoint_id=endpoint_id, request_id=request_id):
-            # Format chunk like OpenAI for consistency
-            try:
-                candidates = chunk.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    text_parts = [part.get("text", "") for part in parts if "text" in part]
-                    text = " ".join(text_parts)
-                    
-                    # Get finish reason (if any)
-                    finish_reason = candidates[0].get("finishReason")
-                    if finish_reason:
-                        finish_reason = finish_reason.lower()
-                    
-                    # Format response with OpenAI-like structure
-                    formatted_chunk = {
-                        "id": response_id,
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": model or self.model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {
-                                    "role": "assistant" if chunk_index == 0 else None,
-                                    "content": text
-                                },
-                                "finish_reason": finish_reason
-                            }
-                        ]
-                    }
-                    
-                    chunk_index += 1
-                    yield formatted_chunk
-                    
-                    # Send final empty chunk if we have a finish reason (like OpenAI)
-                    if finish_reason:
-                        final_chunk = {
-                            "id": response_id,
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": model or self.model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {},
-                                    "finish_reason": finish_reason
-                                }
-                            ]
-                        }
-                        yield final_chunk
-                        
-            except Exception as e:
-                print(f"Error formatting Gemini stream chunk: {str(e)}")
-                # Return raw chunk if formatting fails
-                yield chunk
-                
-    def process_image(self, image_data, prompt, **kwargs):
-        """
-        Process an image with Gemini Pro Vision.
-        
-        Args:
-            image_data: Base64 encoded image data or raw bytes
-            prompt: Text prompt describing what to do with the image
-            **kwargs: Additional parameters including:
-                - temperature: Controls randomness (default 0.4 for image analysis)
-                - top_p: Nucleus sampling parameter
-                - top_k: Top-k sampling parameter
-                - max_tokens: Maximum output tokens
-                - mime_type: Image MIME type (default: image/jpeg)
-                - safety_settings: Custom safety settings
-                - stream: Whether to stream the response
-            
-        Returns:
-            API response with image analysis
-        """
-        # For testing purposes, handle the case where this is called from the test file
-        # with mock data that might not be processable in a real implementation
-        if "test" in sys.argv[0] and (image_data == b"fake image data" or image_data == "fake image data"):
-            return {
-                "analysis": "This is a test image analysis response",
-                "raw_response": {
-                    "candidates": [
-                        {
-                            "content": {
-                                "parts": [{"text": "This is a test image analysis response"}],
-                                "role": "model"
-                            },
-                            "finishReason": "STOP"
-                        }
-                    ]
-                }
-            }
-        
-        # Convert bytes to base64 if needed
-        if isinstance(image_data, bytes):
-            image_base64 = base64.b64encode(image_data).decode('utf-8')
-        else:
-            # Assume already base64 encoded
-            image_base64 = image_data
-            
-        # Determine mime type (default to jpeg)
-        mime_type = kwargs.get("mime_type", "image/jpeg")
-        
-        # Create multimodal prompt
-        parts = [
-            {
-                "inline_data": {
-                    "mime_type": mime_type,
-                    "data": image_base64
-                }
-            },
-            {
-                "text": prompt
-            }
-        ]
-        
-        contents = [{"role": "user", "parts": parts}]
-        
-        # Build generation config
-        generation_config = {
-            "temperature": kwargs.get("temperature", 0.4),  # Lower temperature for image analysis
-            "topP": kwargs.get("top_p", 0.95),
-            "topK": kwargs.get("top_k", 40),
-            "maxOutputTokens": kwargs.get("max_tokens", 1024),
-            "stopSequences": kwargs.get("stop_sequences", []),
-        }
-        
-        # Remove None values from generation config
-        generation_config = {k: v for k, v in generation_config.items() if v is not None}
-        
-        # Build request data
-        data = {
-            "contents": contents,
-            "generationConfig": generation_config
-        }
-        
-        # Add custom safety settings if provided
-        if "safety_settings" in kwargs:
-            data["safetySettings"] = kwargs["safety_settings"]
-        
-        # Use vision model
-        model_backup = self.model
-        self.model = self.vision_model
-        
+        return formatted_messages
+
+    def _extract_text(self, response):
+        """Extract text from Gemini API response"""
         try:
-            # Check if streaming is requested
-            stream = kwargs.get("stream", False)
+            # Get candidates from response
+            candidates = response.get("candidates", [])
+            if not candidates:
+                return ""
             
-            # Make the request (streaming or regular)
-            if stream:
-                # For streaming, return a streaming response
-                stream_response = self.make_post_request_gemini(data, stream=True)
+            # Get content from first candidate
+            content = candidates[0].get("content", {})
+            
+            # Extract text from parts
+            parts = content.get("parts", [])
+            texts = [part.get("text", "") for part in parts if "text" in part]
+            
+            # Join all text parts
+            return "".join(texts)
+        except Exception as e:
+            print(f"Error extracting text from response: {e}")
+            return ""
+
+    def _extract_usage(self, response):
+        """Extract usage information from response"""
+        try:
+            # Get usage information from response
+            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            
+            # Get candidates from response
+            candidates = response.get("candidates", [])
+            if not candidates:
+                return usage
+            
+            # Get token count from first candidate
+            token_count = candidates[0].get("tokenCount", {})
+            
+            # Extract token counts
+            usage["prompt_tokens"] = token_count.get("inputTokens", 0)
+            usage["completion_tokens"] = token_count.get("outputTokens", 0)
+            usage["total_tokens"] = token_count.get("totalTokens", 0)
+            
+            return usage
+        except Exception as e:
+            print(f"Error extracting usage from response: {e}")
+            return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def _is_done(self, chunk):
+        """Check if a streaming chunk indicates completion"""
+        try:
+            # Get candidates from chunk
+            candidates = chunk.get("candidates", [])
+            if not candidates:
+                return False
+            
+            # Check finish reason from first candidate
+            finish_reason = candidates[0].get("finishReason", None)
+            
+            # If finish reason is set, generation is done
+            return finish_reason is not None
+        except Exception:
+            return False
+            
+    def create_gemini_endpoint_handler(self):
+        """Create an endpoint handler for Gemini"""
+        async def endpoint_handler(prompt, **kwargs):
+            """Handle requests to Gemini endpoint"""
+            try:
+                # Extract model from kwargs or use default
+                model = kwargs.get("model", self.default_model)
                 
-                # Format each streaming chunk
-                def format_stream_chunks():
-                    full_text = ""
-                    for chunk in stream_response:
-                        try:
-                            candidates = chunk.get("candidates", [])
-                            if candidates:
-                                content = candidates[0].get("content", {})
-                                parts = content.get("parts", [])
-                                text_parts = [part.get("text", "") for part in parts if "text" in part]
-                                text = " ".join(text_parts)
-                                full_text += text
-                                
-                                yield {
-                                    "analysis_chunk": text,
-                                    "analysis_so_far": full_text,
-                                    "raw_chunk": chunk,
-                                    "finish_reason": candidates[0].get("finishReason")
-                                }
-                        except Exception as e:
-                            yield {"error": str(e), "raw_chunk": chunk}
-                            
-                return format_stream_chunks()
-            else:
-                # Regular response
-                response = self.make_post_request_gemini(data)
-                
-                # Format response
-                candidates = response.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    text_parts = [part.get("text", "") for part in parts if "text" in part]
-                    text = " ".join(text_parts)
+                # Check if prompt contains an image
+                if isinstance(prompt, dict) and "image" in prompt:
+                    # Process as image request
+                    image_data = prompt["image"]
+                    text_prompt = prompt.get("text", "Describe this image")
                     
-                    # Include detailed response formatting
-                    formatted_response = {
-                        "analysis": text,
-                        "raw_response": response,
-                        "finish_reason": candidates[0].get("finishReason", "STOP").lower(),
-                        "model": self.vision_model
-                    }
+                    response = self.process_image(image_data, text_prompt, model, **kwargs)
+                    return response
+                else:
+                    # Create messages from prompt
+                    if isinstance(prompt, list):
+                        # Already formatted as messages
+                        messages = prompt
+                    else:
+                        # Create a simple user message
+                        messages = [{"role": "user", "content": prompt}]
                     
-                    # Add token usage if available
-                    if "tokenCount" in candidates[0]:
-                        tokens = candidates[0].get("tokenCount", {})
-                        formatted_response["usage"] = {
-                            "prompt_tokens": tokens.get("inputTokens", 0),
-                            "completion_tokens": tokens.get("outputTokens", 0),
-                            "total_tokens": tokens.get("totalTokens", 0)
-                        }
+                    # Use streaming if requested
+                    if kwargs.get("stream", False):
+                        # For async streaming, need special handling
+                        stream_response = self.stream_chat(messages, model, **kwargs)
                         
-                    return formatted_response
+                        # Convert generator to async generator if needed
+                        async def async_generator():
+                            for chunk in stream_response:
+                                yield chunk
+                        
+                        return async_generator()
+                    else:
+                        # Standard synchronous response
+                        response = self.chat(messages, model, **kwargs)
+                        return response
+            except Exception as e:
+                print(f"Error calling Gemini endpoint: {e}")
+                return {"text": f"Error: {str(e)}", "implementation_type": "(ERROR)"}
+        
+        return endpoint_handler
+        
+    def test_gemini_endpoint(self, model=None):
+        """Test the Gemini endpoint"""
+        try:
+            # Use specified model or default
+            model = model or self.default_model
+            
+            # Create a simple message
+            messages = [{"role": "user", "content": "Testing the Gemini API. Please respond with a short message."}]
+            
+            # Make the request
+            response = self.chat(messages, model)
+            
+            # Check if the response contains text
+            return "text" in response and response.get("implementation_type") == "(REAL)"
+        except Exception as e:
+            print(f"Error testing Gemini endpoint: {e}")
+            return False
+
+    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, initial_retry_delay=None, 
+                       backoff_factor=None, max_retry_delay=None, queue_enabled=None, 
+                       max_concurrent_requests=None, queue_size=None):
+        """Create a new endpoint with its own settings and counters"""
+        # Generate a unique endpoint ID if not provided
+        if endpoint_id is None:
+            endpoint_id = f"endpoint_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+            
+        # Use provided values or defaults
+        endpoint_settings = {
+            "api_key": api_key if api_key is not None else self.api_key,
+            "max_retries": max_retries if max_retries is not None else self.max_retries,
+            "initial_retry_delay": initial_retry_delay if initial_retry_delay is not None else self.initial_retry_delay,
+            "backoff_factor": backoff_factor if backoff_factor is not None else self.backoff_factor,
+            "max_retry_delay": max_retry_delay if max_retry_delay is not None else self.max_retry_delay,
+            "queue_enabled": queue_enabled if queue_enabled is not None else self.queue_enabled,
+            "max_concurrent_requests": max_concurrent_requests if max_concurrent_requests is not None else self.max_concurrent_requests,
+            "queue_size": queue_size if queue_size is not None else self.queue_size,
+            
+            # Initialize endpoint-specific counters and state
+            "current_requests": 0,
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "queue_processing": False,
+            "request_queue": [],
+            "queue_lock": threading.RLock(),
+            "created_at": time.time(),
+            "last_request_at": None
+        }
+        
+        # Store the endpoint settings
+        self.endpoints[endpoint_id] = endpoint_settings
+        
+        return endpoint_id
+
+
+    def get_endpoint(self, endpoint_id=None):
+        """Get an endpoint's settings or create a default one if not found"""
+        # If no endpoint_id provided, use the first one or create a default
+        if endpoint_id is None:
+            if not self.endpoints:
+                endpoint_id = self.create_endpoint()
+            else:
+                endpoint_id = next(iter(self.endpoints))
                 
-                return {"analysis": "", "raw_response": response}
-        finally:
-            # Restore original model
-            self.model = model_backup
+        # If endpoint doesn't exist, create it
+        if endpoint_id not in self.endpoints:
+            endpoint_id = self.create_endpoint(endpoint_id=endpoint_id)
+            
+        return self.endpoints[endpoint_id]
+
+
+    def update_endpoint(self, endpoint_id, **kwargs):
+        """Update an endpoint's settings"""
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
+            
+        # Update only the provided settings
+        for key, value in kwargs.items():
+            if key in self.endpoints[endpoint_id]:
+                self.endpoints[endpoint_id][key] = value
+                
+        return self.endpoints[endpoint_id]
+
+
+    def get_stats(self, endpoint_id=None):
+        """Get usage statistics for an endpoint or global stats"""
+        if endpoint_id and endpoint_id in self.endpoints:
+                endpoint = self.endpoints[endpoint_id]
+            stats = {
+                "endpoint_id": endpoint_id,
+                "total_requests": endpoint["total_requests"],
+                "successful_requests": endpoint["successful_requests"],
+                "failed_requests": endpoint["failed_requests"],
+                "total_tokens": endpoint["total_tokens"],
+                "input_tokens": endpoint["input_tokens"],
+                "output_tokens": endpoint["output_tokens"],
+                "created_at": endpoint["created_at"],
+                "last_request_at": endpoint["last_request_at"],
+                "current_queue_size": len(endpoint["request_queue"]),
+                "current_requests": endpoint["current_requests"]
+            }
+            return stats
+        else:
+            # Aggregate stats across all endpoints
+            total_requests = sum(e["total_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            successful_requests = sum(e["successful_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            failed_requests = sum(e["failed_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            total_tokens = sum(e["total_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            input_tokens = sum(e["input_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            output_tokens = sum(e["output_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            
+            stats = {
+                "endpoints_count": len(self.endpoints),
+                "total_requests": total_requests,
+                "successful_requests": successful_requests,
+                "failed_requests": failed_requests,
+                "total_tokens": total_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "global_queue_size": len(self.request_queue),
+                "global_current_requests": self.current_requests
+            }
+            return stats
+
+
+    def reset_stats(self, endpoint_id=None):
+        """Reset usage statistics for an endpoint or globally"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Reset stats just for this endpoint
+                endpoint = self.endpoints[endpoint_id]
+            endpoint["total_requests"] = 0
+            endpoint["successful_requests"] = 0
+            endpoint["failed_requests"] = 0
+            endpoint["total_tokens"] = 0
+            endpoint["input_tokens"] = 0
+            endpoint["output_tokens"] = 0
+        elif endpoint_id is None:
+            # Reset stats for all endpoints
+            for endpoint in self.endpoints.values():
+                endpoint["total_requests"] = 0
+                endpoint["successful_requests"] = 0
+                endpoint["failed_requests"] = 0
+                endpoint["total_tokens"] = 0
+                endpoint["input_tokens"] = 0
+                endpoint["output_tokens"] = 0
+        else:
+            raise ValueError(f"Endpoint {endpoint_id} not found")

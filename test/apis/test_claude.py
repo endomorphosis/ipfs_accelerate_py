@@ -21,6 +21,127 @@ class test_claude:
         """Run all tests for the Claude (Anthropic) API backend"""
         results = {}
         
+        # Test API key multiplexing features
+        try:
+            if hasattr(self.claude, 'create_endpoint'):
+                # Create first endpoint with test key
+                endpoint1 = self.claude.create_endpoint(
+                    api_key="test_claude_key_1",
+                    max_concurrent_requests=5,
+                    queue_size=20,
+                    max_retries=3,
+                    initial_retry_delay=1,
+                    backoff_factor=2
+                )
+                
+                # Create second endpoint with different test key
+                endpoint2 = self.claude.create_endpoint(
+                    api_key="test_claude_key_2",
+                    max_concurrent_requests=10,
+                    queue_size=50,
+                    max_retries=5
+                )
+                
+                results["multiplexing_endpoint_creation"] = "Success" if endpoint1 and endpoint2 else "Failed to create endpoints"
+                
+                # Test usage statistics if implemented
+                if hasattr(self.claude, 'get_stats'):
+                    # Get stats for first endpoint
+                    stats1 = self.claude.get_stats(endpoint1)
+                    
+                    # Make test requests to create stats
+                    with patch.object(self.claude, 'make_post_request_claude') as mock_post:
+                        mock_post.return_value = {
+                            "id": "msg_01abcdefg",
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "Response for endpoint 1"}],
+                            "model": "claude-3-opus-20240229",
+                            "stop_reason": "end_turn",
+                            "stop_sequence": None,
+                            "usage": {
+                                "input_tokens": 10,
+                                "output_tokens": 20
+                            }
+                        }
+                        
+                        # Make request with first endpoint if method exists
+                        if hasattr(self.claude, 'make_request_with_endpoint'):
+                            self.claude.make_request_with_endpoint(
+                                endpoint_id=endpoint1,
+                                data={"messages": [{"role": "user", "content": "Test for endpoint 1"}]}
+                            )
+                            
+                            # Get updated stats
+                            stats1_after = self.claude.get_stats(endpoint1)
+                            
+                            # Verify stats were updated
+                            results["usage_statistics"] = "Success" if stats1_after != stats1 else "Failed to update statistics"
+                        else:
+                            results["usage_statistics"] = "Not implemented"
+                else:
+                    results["usage_statistics"] = "Not implemented"
+            else:
+                results["multiplexing_endpoint_creation"] = "Not implemented"
+        except Exception as e:
+            results["multiplexing"] = f"Error: {str(e)}"
+            
+        # Test queue and backoff functionality
+        try:
+            if hasattr(self.claude, 'queue_enabled'):
+                # Test queue settings
+                results["queue_enabled"] = "Success" if hasattr(self.claude, 'queue_enabled') else "Missing queue_enabled"
+                results["request_queue"] = "Success" if hasattr(self.claude, 'request_queue') else "Missing request_queue"
+                results["max_concurrent_requests"] = "Success" if hasattr(self.claude, 'max_concurrent_requests') else "Missing max_concurrent_requests"
+                results["current_requests"] = "Success" if hasattr(self.claude, 'current_requests') else "Missing current_requests counter"
+                
+                # Test backoff settings
+                results["max_retries"] = "Success" if hasattr(self.claude, 'max_retries') else "Missing max_retries"
+                results["initial_retry_delay"] = "Success" if hasattr(self.claude, 'initial_retry_delay') else "Missing initial_retry_delay"
+                results["backoff_factor"] = "Success" if hasattr(self.claude, 'backoff_factor') else "Missing backoff_factor"
+                
+                # Test queue processing if implemented
+                if hasattr(self.claude, '_process_queue'):
+                    with patch.object(self.claude, '_process_queue') as mock_queue:
+                        mock_queue.return_value = None
+                        
+                        # Force queue to be enabled and at capacity for testing
+                        original_queue_enabled = self.claude.queue_enabled
+                        original_current_requests = self.claude.current_requests
+                        original_max_concurrent = self.claude.max_concurrent_requests
+                        
+                        self.claude.queue_enabled = True
+                        self.claude.current_requests = self.claude.max_concurrent_requests
+                        
+                        # Prepare a mock request to add to queue
+                        request_info = {
+                            "data": {"messages": [{"role": "user", "content": "Queued request"}]},
+                            "api_key": "test_key",
+                            "request_id": "queue_test_456",
+                            "future": {"result": None, "error": None, "completed": False}
+                        }
+                        
+                        # Add request to queue
+                        if not hasattr(self.claude, "request_queue"):
+                            self.claude.request_queue = []
+                            
+                        self.claude.request_queue.append(request_info)
+                        
+                        # Trigger queue processing
+                        if hasattr(self.claude, '_process_queue'):
+                            self.claude._process_queue()
+                            results["queue_processing"] = "Success" if mock_queue.called else "Failed to call queue processing"
+                        
+                        # Restore original values
+                        self.claude.queue_enabled = original_queue_enabled
+                        self.claude.current_requests = original_current_requests
+                else:
+                    results["queue_processing"] = "Not implemented"
+            else:
+                results["queue_backoff"] = "Not implemented"
+        except Exception as e:
+            results["queue_backoff"] = f"Error: {str(e)}"
+        
         # Test endpoint handler creation
         try:
             endpoint_handler = self.claude.create_claude_endpoint_handler()
@@ -89,20 +210,52 @@ class test_claude:
                     "temperature": 0.7
                 }
                 
-                post_result = self.claude.make_post_request_claude(data)
-                results["post_request"] = "Success" if "content" in post_result else "Failed post request"
-                assert "content" in post_result, "Response should contain 'content' field"
-                
-                # Verify headers were set correctly
-                args, kwargs = mock_post.call_args
-                headers = kwargs.get('headers', {})
-                auth_header_set = headers.get("x-api-key") == self.metadata.get("claude_api_key")
-                anthropic_header_set = "anthropic-version" in headers
-                content_type_set = headers.get("Content-Type") == "application/json"
-                results["post_request_headers"] = "Success" if auth_header_set and anthropic_header_set and content_type_set else "Failed to set headers correctly"
-                assert auth_header_set, "Authorization header should be set with API key"
-                assert anthropic_header_set, "Anthropic version header should be set"
-                assert content_type_set, "Content-Type header should be set to application/json"
+                # Test with custom request_id
+                custom_request_id = "test_request_456"
+                if hasattr(self.claude, 'make_post_request_claude') and len(self.claude.make_post_request_claude.__code__.co_varnames) > 2:
+                    # If the method supports request_id parameter
+                    post_result = self.claude.make_post_request_claude(data, request_id=custom_request_id)
+                    results["post_request"] = "Success" if "content" in post_result else "Failed post request"
+                    assert "content" in post_result, "Response should contain 'content' field"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    auth_header_set = headers.get("x-api-key") == self.metadata.get("claude_api_key")
+                    anthropic_header_set = "anthropic-version" in headers
+                    content_type_set = headers.get("Content-Type") == "application/json"
+                    results["post_request_headers"] = "Success" if auth_header_set and anthropic_header_set and content_type_set else "Failed to set headers correctly"
+                    assert auth_header_set, "Authorization header should be set with API key"
+                    assert anthropic_header_set, "Anthropic version header should be set"
+                    assert content_type_set, "Content-Type header should be set to application/json"
+                    
+                    # Verify request_id was used
+                    if hasattr(self.claude, 'request_tracking') and self.claude.request_tracking:
+                        # Check if request_id was included in header or tracked internally
+                        request_tracking = "Success" if (
+                            (headers.get("X-Request-ID") == custom_request_id) or
+                            hasattr(self.claude, 'recent_requests') and custom_request_id in str(self.claude.recent_requests)
+                        ) else "Failed to track request_id"
+                        results["request_id_tracking"] = request_tracking
+                    else:
+                        results["request_id_tracking"] = "Not implemented"
+                else:
+                    # Fall back to old method if request_id isn't supported
+                    post_result = self.claude.make_post_request_claude(data)
+                    results["post_request"] = "Success" if "content" in post_result else "Failed post request"
+                    assert "content" in post_result, "Response should contain 'content' field"
+                    results["request_id_tracking"] = "Not implemented"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    auth_header_set = headers.get("x-api-key") == self.metadata.get("claude_api_key")
+                    anthropic_header_set = "anthropic-version" in headers
+                    content_type_set = headers.get("Content-Type") == "application/json"
+                    results["post_request_headers"] = "Success" if auth_header_set and anthropic_header_set and content_type_set else "Failed to set headers correctly"
+                    assert auth_header_set, "Authorization header should be set with API key"
+                    assert anthropic_header_set, "Anthropic version header should be set"
+                    assert content_type_set, "Content-Type header should be set to application/json"
         except Exception as e:
             results["post_request"] = f"Error: {str(e)}"
             

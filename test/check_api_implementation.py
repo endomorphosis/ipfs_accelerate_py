@@ -24,14 +24,29 @@ class APIChecker:
         from apis import test_openai_api
         from api_backends import openai_api
         
+        # Load credentials from file if available
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        
+        try:
+            # Try to load from api_credentials.json first
+            cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+            if os.path.exists(cred_file):
+                with open(cred_file, 'r') as f:
+                    credentials = json.load(f)
+                    if "openai_api_key" in credentials and credentials["openai_api_key"]:
+                        api_key = credentials["openai_api_key"]
+                        print("  Using OpenAI API key from api_credentials.json")
+        except Exception as e:
+            print(f"  Error loading credentials file: {e}")
+        
         # Create API instance
         try:
-            api = openai_api(resources={}, metadata={"openai_api_key": os.environ.get("OPENAI_API_KEY", "")})
+            api = openai_api(resources={}, metadata={"openai_api_key": api_key})
         except Exception as e:
             print(f"  Error creating API instance: {str(e)}")
             # Try alternate instantiation if the module is a class
             if hasattr(api_backends, 'apis'):
-                apis_instance = api_backends.apis(resources={}, metadata={"openai_api_key": os.environ.get("OPENAI_API_KEY", "")})
+                apis_instance = api_backends.apis(resources={}, metadata={"openai_api_key": api_key})
                 if hasattr(apis_instance, 'openai'):
                     api = apis_instance.openai
                 else:
@@ -106,14 +121,29 @@ class APIChecker:
         from api_backends import claude
         
         try:
+            # Load credentials from file if available
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            
+            try:
+                # Try to load from api_credentials.json first
+                cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+                if os.path.exists(cred_file):
+                    with open(cred_file, 'r') as f:
+                        credentials = json.load(f)
+                        if "anthropic_api_key" in credentials and credentials["anthropic_api_key"]:
+                            api_key = credentials["anthropic_api_key"]
+                            print("  Using Claude API key from api_credentials.json")
+            except Exception as e:
+                print(f"  Error loading credentials file: {e}")
+            
             # Create API instance
             try:
-                api = claude.claude(resources={}, metadata={"claude_api_key": os.environ.get("ANTHROPIC_API_KEY", "")})
+                api = claude.claude(resources={}, metadata={"claude_api_key": api_key})
             except Exception as e:
                 print(f"  Error creating API instance: {str(e)}")
                 # Try alternate instantiation if the module is a class
                 if hasattr(api_backends, 'apis'):
-                    apis_instance = api_backends.apis(resources={}, metadata={"claude_api_key": os.environ.get("ANTHROPIC_API_KEY", "")})
+                    apis_instance = api_backends.apis(resources={}, metadata={"claude_api_key": api_key})
                     if hasattr(apis_instance, 'claude'):
                         api = apis_instance.claude
                     else:
@@ -255,9 +285,24 @@ class APIChecker:
             from apis import test_groq
             from api_backends import groq
             
+            # Load credentials from file if available
+            api_key = os.environ.get("GROQ_API_KEY", "")
+            
+            try:
+                # Try to load from api_credentials.json first
+                cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+                if os.path.exists(cred_file):
+                    with open(cred_file, 'r') as f:
+                        credentials = json.load(f)
+                        if "groq_api_key" in credentials and credentials["groq_api_key"]:
+                            api_key = credentials["groq_api_key"]
+                            print("  Using Groq API key from api_credentials.json")
+            except Exception as e:
+                print(f"  Error loading credentials file: {e}")
+            
             # Create API instance
             try:
-                api = groq.groq(resources={}, metadata={"groq_api_key": os.environ.get("GROQ_API_KEY", "")})
+                api = groq.groq(resources={}, metadata={"groq_api_key": api_key})
             except Exception as e:
                 print(f"  Error creating API instance: {str(e)}")
                 api = None
@@ -313,9 +358,24 @@ class APIChecker:
             from apis import test_hf_tgi
             from api_backends import hf_tgi
             
+            # Load credentials from file if available
+            api_key = os.environ.get("HF_API_KEY", os.environ.get("HF_API_TOKEN", ""))
+            
+            try:
+                # Try to load from api_credentials.json first
+                cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+                if os.path.exists(cred_file):
+                    with open(cred_file, 'r') as f:
+                        credentials = json.load(f)
+                        if "hf_api_token" in credentials and credentials["hf_api_token"]:
+                            api_key = credentials["hf_api_token"]
+                            print("  Using Hugging Face API token from api_credentials.json")
+            except Exception as e:
+                print(f"  Error loading credentials file: {e}")
+            
             # Create API instance
             try:
-                api = hf_tgi.hf_tgi(resources={}, metadata={"hf_api_token": os.environ.get("HF_API_TOKEN", "")})
+                api = hf_tgi.hf_tgi(resources={}, metadata={"hf_api_key": api_key})
             except Exception as e:
                 print(f"  Error creating API instance: {str(e)}")
                 api = None
@@ -371,9 +431,24 @@ class APIChecker:
             from apis import test_gemini
             from api_backends import gemini
             
+            # Load credentials from file if available
+            api_key = os.environ.get("GOOGLE_API_KEY", "")
+            
+            try:
+                # Try to load from api_credentials.json first
+                cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+                if os.path.exists(cred_file):
+                    with open(cred_file, 'r') as f:
+                        credentials = json.load(f)
+                        if "google_api_key" in credentials and credentials["google_api_key"]:
+                            api_key = credentials["google_api_key"]
+                            print("  Using Google API key from api_credentials.json")
+            except Exception as e:
+                print(f"  Error loading credentials file: {e}")
+            
             # Create API instance
             try:
-                api = gemini.gemini(resources={}, metadata={"gemini_api_key": os.environ.get("GOOGLE_API_KEY", "")})
+                api = gemini.gemini(resources={}, metadata={"gemini_api_key": api_key})
             except Exception as e:
                 print(f"  Error creating API instance: {str(e)}")
                 api = None
@@ -423,6 +498,82 @@ class APIChecker:
             self.results["apis"]["gemini"] = {"error": str(e)}
             print(f"  Error: {str(e)}")
     
+    def check_hf_tei(self):
+        print("\nChecking Hugging Face TEI API...")
+        try:
+            from apis import test_hf_tei
+            from api_backends import hf_tei
+            
+            # Load credentials from file if available
+            api_key = os.environ.get("HF_API_KEY", os.environ.get("HF_API_TOKEN", ""))
+            model_id = os.environ.get("HF_MODEL_ID", "BAAI/bge-small-en-v1.5")
+            
+            try:
+                # Try to load from api_credentials.json first
+                cred_file = os.path.join(os.path.dirname(__file__), "api_credentials.json")
+                if os.path.exists(cred_file):
+                    with open(cred_file, 'r') as f:
+                        credentials = json.load(f)
+                        if "hf_api_token" in credentials and credentials["hf_api_token"]:
+                            api_key = credentials["hf_api_token"]
+                            print("  Using Hugging Face API token from api_credentials.json")
+            except Exception as e:
+                print(f"  Error loading credentials file: {e}")
+            
+            # Create API instance
+            try:
+                api = hf_tei.hf_tei(resources={}, metadata={"hf_api_key": api_key, "model_id": model_id})
+            except Exception as e:
+                print(f"  Error creating API instance: {str(e)}")
+                api = None
+            
+            # Check for actual implementation
+            has_endpoint_handler = api is not None and hasattr(api, "create_remote_text_embedding_endpoint_handler") and callable(getattr(api, "create_remote_text_embedding_endpoint_handler"))
+            has_request_method = api is not None and hasattr(api, "make_post_request_hf_tei") and callable(getattr(api, "make_post_request_hf_tei"))
+            has_methods = has_endpoint_handler and has_request_method
+            
+            # Check for mocks in test
+            if hasattr(test_hf_tei, 'test_hf_tei'):
+                test_instance = test_hf_tei.test_hf_tei()
+            else:
+                test_instance = test_hf_tei
+            
+            is_mocked = False
+            if hasattr(test_instance, "test"):
+                test_method = getattr(test_instance, "test")
+                source_code = test_method.__code__.co_consts
+                mock_indicators = ["patch", "mock", "Mock", "MagicMock"]
+                if any(indicator in str(source_code) for indicator in mock_indicators):
+                    is_mocked = True
+            
+            status = "MOCK" if is_mocked else "REAL" if has_methods else "INCOMPLETE"
+            implementation_type = status
+            
+            # Check if stub or real implementation
+            if status == "REAL" and api is not None:
+                try:
+                    handler_method = getattr(api, "create_remote_text_embedding_endpoint_handler")
+                    if hasattr(handler_method, "__code__"):
+                        method_code = handler_method.__code__.co_code
+                        if len(method_code) < 50:
+                            implementation_type = "STUB"
+                except Exception as e:
+                    print(f"  Error inspecting method: {str(e)}")
+                    implementation_type = "UNKNOWN"
+            
+            self.results["apis"]["hf_tei"] = {
+                "status": status,
+                "implementation_type": implementation_type,
+                "has_core_methods": has_methods
+            }
+            
+            print(f"  Status: {status}")
+            print(f"  Implementation: {implementation_type}")
+            
+        except Exception as e:
+            self.results["apis"]["hf_tei"] = {"error": str(e)}
+            print(f"  Error: {str(e)}")
+        
     def run_all_checks(self):
         """Run all API implementation checks"""
         print("=== Checking API Implementations ===")
@@ -433,6 +584,7 @@ class APIChecker:
         self.check_ollama()
         self.check_groq()
         self.check_hf_tgi()
+        self.check_hf_tei()
         self.check_gemini()
         
         # Save results

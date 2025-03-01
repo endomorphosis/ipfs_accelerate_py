@@ -1,494 +1,670 @@
-import asyncio
 import os
-import requests
 import json
+import time
+import uuid
+import threading
+import requests
+import numpy as np
+from concurrent.futures import Future
+from queue import Queue
+from dotenv import load_dotenv
+
+import hashlib
+import queue
+from concurrent.futures import ThreadPoolExecutor
 
 class hf_tei:
     def __init__(self, resources=None, metadata=None):
-        self.resources = resources
-        self.metadata = metadata
-        # Register method references
-        self.create_remote_text_embedding_endpoint_handler = self.create_remote_text_embedding_endpoint_handler
-        self.request_hf_tei_endpoint = self.request_hf_tei_endpoint
-        self.make_post_request_hf_tei = self.make_post_request_hf_tei
-        self.create_hf_tei_endpoint_handler = self.create_hf_tei_endpoint_handler
-        self.test_hf_tei_endpoint = self.test_hf_tei_endpoint
-        self.init = self.init
-        self.__test__ = self.__test__
-        # Add queue for managing requests
-        self.request_queue = asyncio.Queue(64)
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
         
-    def init(self, endpoint_url=None, api_key=None, model_name=None):
-        """Initialize a connection to a remote text embedding interface endpoint
+        # Get HF API token from metadata or environment
+        self.api_token = self._get_api_token()
         
-        Args:
-            endpoint_url: The URL of the remote endpoint
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            
-        Returns:
-            tuple: (endpoint_url, api_key, handler, queue, batch_size)
-        """
-        # Create the endpoint handler
-        endpoint_handler = self.create_remote_text_embedding_endpoint_handler(endpoint_url, api_key, model_name)
+        # Initialize queue and backoff systems
+        self.max_concurrent_requests = 5
+        self.queue_size = 100
+        self.request_queue = Queue(maxsize=self.queue_size)
+        self.active_requests = 0
+        self.queue_lock = threading.RLock()
         
-        return endpoint_url, api_key, endpoint_handler, self.request_queue, 0
-    
-    def __test__(self, endpoint_url, endpoint_handler, endpoint_label, api_key=None):
-        """Test the remote text embedding endpoint
+        # Start queue processor
+        self.queue_processor = threading.Thread(target=self._process_queue)
+        self.queue_processor.daemon = True
+        self.queue_processor.start()
         
-        Args:
-            endpoint_url: URL of the endpoint
-            endpoint_handler: The handler function
-            endpoint_label: Label for the endpoint
-            api_key: API key for authentication
-            
-        Returns:
-            bool: True if test passes, False otherwise
-        """
-        test_text = "The quick brown fox jumps over the lazy dog"
+        # Initialize backoff configuration
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 16
+        
+        # Default model
+        self.default_model = "sentence-transformers/all-MiniLM-L6-v2"
+        
+        return
+
+        # Initialize counters, queues, and settings for each endpoint 
+        self.endpoints = {}  # Dictionary to store per-endpoint data
+        
+        # Retry and backoff settings (global defaults)
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 60  # Maximum delay in seconds
+        
+        # Global request queue settings
+        self.queue_enabled = True
+        self.queue_size = 100
+        self.queue_processing = False
+        self.current_requests = 0
+        self.max_concurrent_requests = 5
+        self.request_queue = []
+        self.queue_lock = threading.RLock()
+        
+        # Initialize thread pool for async processing
+        self.thread_pool = ThreadPoolExecutor(max_workers=10)
+
+    def _get_api_token(self):
+        """Get Hugging Face API token from metadata or environment"""
+        # Try to get from metadata
+        api_token = self.metadata.get("hf_api_key") or self.metadata.get("hf_api_token")
+        if api_token:
+            return api_token
+        
+        # Try to get from environment
+        env_token = os.environ.get("HF_API_KEY") or os.environ.get("HF_API_TOKEN")
+        if env_token:
+            return env_token
+        
+        # Try to load from dotenv
         try:
-            result = endpoint_handler(test_text)
-            if result is not None:
-                print(f"Remote text embedding test passed for {endpoint_label}")
-                return True
-            else:
-                print(f"Remote text embedding test failed for {endpoint_label}: No result")
-                return False
-        except Exception as e:
-            print(f"Remote text embedding test failed for {endpoint_label}: {e}")
-            return False
+            load_dotenv()
+            env_token = os.environ.get("HF_API_KEY") or os.environ.get("HF_API_TOKEN")
+            if env_token:
+                return env_token
+        except ImportError:
+            pass
+        
+        # Return None if no token found (will allow unauthenticated requests)
+        return None
+        
     
-    def request_hf_tei_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
-        """Request a text embedding endpoint
-        
-        Args:
-            model: Name of the model
-            endpoint: Specific endpoint URL (optional)
-            endpoint_type: Type of endpoint (optional)
-            batch: Batch size (optional)
-            
-        Returns:
-            dict: Information about the endpoint
-        """
-        # Implementation details
-        pass
-    
-    def test_hf_tei_endpoint(self, endpoint_url=None, api_key=None, model_name=None):
-        """Test a text embedding endpoint
-        
-        Args:
-            endpoint_url: URL of the endpoint to test
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            
-        Returns:
-            bool: True if test passes, False otherwise
-        """
-        try:
-            # Create a test request
-            test_text = "Hello, world! This is a test message for embedding."
-            
-            # Create the request data
-            data = {
-                "inputs": test_text
-            }
-            
-            if model_name:
-                data["model"] = model_name
+    def _process_queue(self, endpoint_id=None):
+        """Process requests in the queue for a specific endpoint or global queue"""
+        # Get the endpoint or use global settings
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            with endpoint["queue_lock"]:
+                if endpoint["queue_processing"]:
+                    return  # Another thread is already processing this endpoint's queue
+                endpoint["queue_processing"] = True
                 
-            # Make the request
-            result = self.make_post_request_hf_tei(endpoint_url, data, api_key)
-            
-            # Check the response format
-            if result is None:
-                return False
-                
-            # Different embedding models return in different formats:
-            # - Some return a list of floats directly
-            # - Some return a list of lists for batched inputs
-            # - Some return a dictionary with embeddings
-            
-            if isinstance(result, list):
-                # Direct embedding list
-                if all(isinstance(x, (int, float)) for x in result):
-                    return True
-                # List of lists (batch output)
-                elif (isinstance(result, list) and len(result) > 0 and 
-                      isinstance(result[0], list) and 
-                      all(isinstance(x, (int, float)) for x in result[0])):
-                    return True
-            elif isinstance(result, dict):
-                # Dictionary format
-                if "embeddings" in result:
-                    return True
-                    
-            # Unknown format
-            return False
-            
-        except Exception as e:
-            print(f"Failed to test TEI endpoint: {e}")
-            return False
-            
-    async def test_hf_tei_endpoints_async(self, model, endpoint_list=None):
-        """Test a list of text embedding endpoints asynchronously
-        
-        Args:
-            model: Name of the model
-            endpoint_list: List of endpoints to test
-            
-        Returns:
-            list: Results of endpoint tests
-        """
-        this_endpoint = None
-        filtered_list = {}
-        test_results = {}
-        
-        try:
-            local_endpoints = self.resources["tei_endpoints"]
-            local_endpoints_types = [x[1] for x in local_endpoints]
-            local_endpoints_by_model = self.endpoints["tei_endpoints"][model]
-            endpoint_handlers_by_model = self.resources["tei_endpoints"][model]
-            local_endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
-            local_endpoints_by_model_by_endpoint = [ x for x in local_endpoints_by_model_by_endpoint if x in local_endpoints_by_model if x in local_endpoints_types]
-            
-            if len(local_endpoints_by_model_by_endpoint) > 0:
-                for endpoint in local_endpoints_by_model_by_endpoint:
-                    endpoint_handler = endpoint_handlers_by_model[endpoint]
-                    try:
-                        test = await endpoint_handler("hello world")
-                        test_results[endpoint] = test
-                    except Exception as e:
-                        try:
-                            test = endpoint_handler("hello world")
-                            test_results[endpoint] = test
-                        except Exception as e:
-                            test_results[endpoint] = e
-                        pass
-            else:
-                raise ValueError("No endpoint_handlers found")
-                
-            return test_results
-            
-        except Exception as e:
-            print(f"Error testing embedding endpoints: {e}")
-            return {"error": str(e)}
-    
-    async def create_hf_tei_endpoint_handler(self, model, endpoint=None, endpoint_type=None, batch=None):
-        """Create an endpoint handler for text embedding
-        
-        Args:
-            model: Name of the model
-            endpoint: Specific endpoint URL (optional)
-            endpoint_type: Type of endpoint (optional)
-            batch: Batch size (optional)
-            
-        Returns:
-            function: Handler for the endpoint
-        """
-        if batch == None:
-            incoming_batch_size = 0
+            queue_to_process = endpoint["request_queue"]
+            is_global_queue = False
         else:
-            incoming_batch_size = len(batch)
-        endpoint_batch_size = 0
-        if endpoint in self.endpoint_status:
-            endpoint_batch_size = self.endpoint_status[endpoint]
-        elif endpoint_type == None:
-            for endpoint_type in self.endpoint_types:
-                if endpoint_type in self.__dict__.keys():
-                    if model in self.__dict__[endpoint_type]:
-                        for endpoint in self.__dict__[endpoint_type][model]:
-                            endpoint_batch_size = self.endpoint_status[endpoint]
-                            if self.endpoint_status[endpoint] >= incoming_batch_size:
-                                return endpoint
-                    else:
-                        if incoming_batch_size > endpoint_batch_size:
-                            return ValueError("Batch size too large")
-                        else:
-                            return None
+            # Use global queue if no endpoint specified or endpoint doesn't exist
+            with self.queue_lock:
+                if self.queue_processing:
+                    return  # Another thread is already processing the global queue
+                self.queue_processing = True
+                
+            queue_to_process = self.request_queue
+            is_global_queue = True
+        
+        try:
+            while True:
+                # Get the next request from the queue
+                request_info = None
+                
+                if is_global_queue:
+                    with self.queue_lock:
+                        if not queue_to_process:
+                            self.queue_processing = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if self.current_requests >= self.max_concurrent_requests:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        self.current_requests += 1
                 else:
-                    pass
-        else:
-            if model in self.__dict__[endpoint_type]:
-                for endpoint in self.__dict__[endpoint_type][model]:
-                    endpoint_batch_size = self.endpoint_status[endpoint]
-                    if self.endpoint_status[endpoint] >= incoming_batch_size:
-                        return endpoint
-                    else:
-                        if incoming_batch_size > endpoint_batch_size:
-                            return ValueError("Batch size too large")
-                        else:
-                            return None
-            else:
-                return None
+                    with endpoint["queue_lock"]:
+                        if not queue_to_process:
+                            endpoint["queue_processing"] = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        endpoint["current_requests"] += 1
                 
-        if incoming_batch_size > endpoint_batch_size:
-            return ValueError("Batch size too large")
-        else:
-            if model in self.endpoints:
-                for endpoint in self.tei_endpoints[model]:
-                    if self.endpoint_status[endpoint] >= incoming_batch_size:
-                        return endpoint
-            return None
-    
-    def make_post_request_hf_tei(self, endpoint, data=None, api_key=None):
-        """Make a POST request to a remote text embedding interface
-        
-        Args:
-            endpoint: URL of the endpoint
-            data: Data to send in the request
-            api_key: API key for authentication, if required
-            
-        Returns:
-            dict: Response from the endpoint
-            
-        Raises:
-            ValueError: If the request fails or the response status is not 200
-        """
-        try:
-            # Set up headers
-            headers = {'Content-Type': 'application/json'}
-            if api_key:
-                headers['Authorization'] = f'Bearer {api_key}'
-                
-            # Format the data properly
-            if data is None:
-                return None
-                
-            # Convert different input formats to the expected format
-            if isinstance(data, dict):
-                if "inputs" not in data:
-                    data = {"inputs": data}
-            elif isinstance(data, list):
-                data = {"inputs": data}
-            elif isinstance(data, str):
-                data = {"inputs": data}
-                
-            # Make the synchronous request
-            response = requests.post(endpoint, headers=headers, json=data)
-            
-            # Handle error status codes
-            if response.status_code == 401:
-                raise ValueError(f"Authentication failed (401): Please check your API key")
-            elif response.status_code == 404:
-                raise ValueError(f"Resource not found (404): Model or endpoint may not exist")
-            elif response.status_code >= 400:
-                error_msg = f"Request failed with status code {response.status_code}"
-                try:
-                    error_data = response.json()
-                    if "error" in error_data:
-                        error_msg = f"{error_msg}: {error_data['error']}"
-                except:
-                    pass
-                raise ValueError(error_msg)
-                
-            # Parse and return the response
-            return response.json()
-            
-        except ValueError:
-            # Re-raise ValueError exceptions
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            error_msg = str(e)
-            if "Connection" in error_msg:
-                raise ValueError(f"Connection error: {error_msg}")
-            elif "Timeout" in error_msg:
-                raise ValueError(f"Timeout error: {error_msg}")
-            else:
-                raise ValueError(f"Error in request: {error_msg}")
-                
-    async def make_async_post_request_hf_tei(self, endpoint, data=None, api_key=None):
-        """Make an asynchronous POST request to a remote text embedding interface
-        
-        Args:
-            endpoint: URL of the endpoint
-            data: Data to send in the request
-            api_key: API key for authentication, if required
-            
-        Returns:
-            dict: Response from the endpoint
-            
-        Raises:
-            ValueError: If the request fails or the response status is not 200
-        """
-        import aiohttp
-        from aiohttp import ClientSession, ClientTimeout
-        
-        # Format the data properly
-        if data is None:
-            return None
-            
-        # Convert different input formats to the expected format
-        if isinstance(data, dict):
-            if "inputs" not in data:
-                data = {"inputs": data}
-        elif isinstance(data, list):
-            data = {"inputs": data}
-        elif isinstance(data, str):
-            data = {"inputs": data}
-            
-        # Set up headers
-        headers = {'Content-Type': 'application/json'}
-        if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
-            
-        timeout = ClientTimeout(total=300) 
-        
-        try:
-            async with ClientSession(timeout=timeout) as session:
-                async with session.post(endpoint, headers=headers, json=data) as response:
-                    # Handle error status codes
-                    if response.status == 401:
-                        raise ValueError(f"Authentication failed (401): Please check your API key")
-                    elif response.status == 404:
-                        raise ValueError(f"Resource not found (404): Model or endpoint may not exist")
-                    elif response.status >= 400:
-                        error_text = await response.text()
-                        try:
-                            error_data = json.loads(error_text)
-                            if "error" in error_data:
-                                error_msg = f"Error {response.status}: {error_data['error']}"
-                            else:
-                                error_msg = f"Error {response.status}: {error_text}"
-                        except:
-                            error_msg = f"Error {response.status}: {error_text}"
-                        raise ValueError(error_msg)
+                # Process the request outside the lock
+                if request_info:
+                    try:
+                        # Extract request details
+                        endpoint_url = request_info.get("endpoint_url")
+                        data = request_info.get("data")
+                        api_key = request_info.get("api_key")
+                        request_id = request_info.get("request_id")
+                        endpoint_id = request_info.get("endpoint_id")
+                        future = request_info.get("future")
+                        method_name = request_info.get("method", "make_request")
+                        method_args = request_info.get("args", [])
+                        method_kwargs = request_info.get("kwargs", {})
                         
-                    # Parse and return the response
-                    return await response.json()
+                        # Make the request (without queueing again)
+                        # Save original queue_enabled value to prevent recursion
+                        if is_global_queue:
+                            original_queue_enabled = self.queue_enabled
+                            self.queue_enabled = False  # Disable queueing to prevent recursion
+                        else:
+                            original_queue_enabled = endpoint["queue_enabled"]
+                            endpoint["queue_enabled"] = False  # Disable queueing to prevent recursion
+                        
+                        try:
+                            # Make the request based on method name
+                            if hasattr(self, method_name) and callable(getattr(self, method_name)):
+                                method = getattr(self, method_name)
+                                
+                                # Call the method with the provided arguments
+                                if method_name.startswith("make_"):
+                                    # Direct API request methods
+                                    result = method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    # Higher-level methods
+                                    method_kwargs.update({
+                                        "request_id": request_id,
+                                        "endpoint_id": endpoint_id,
+                                        "api_key": api_key
+                                    })
+                                    result = method(*method_args, **method_kwargs)
+                            else:
+                                # Fallback to make_request or similar method
+                                make_method = getattr(self, "make_request", None)
+                                if not make_method:
+                                    make_method = getattr(self, f"make_post_request_{self.__class__.__name__.lower()}", None)
+                                    
+                                if make_method and callable(make_method):
+                                    result = make_method(
+                                        endpoint_url=endpoint_url,
+                                        data=data,
+                                        api_key=api_key,
+                                        request_id=request_id,
+                                        endpoint_id=endpoint_id
+                                    )
+                                else:
+                                    raise AttributeError(f"Method {method_name} not found")
+                            
+                            # Store result in future
+                            future["result"] = result
+                            future["completed"] = True
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["successful_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                                    
+                                    # Update token counts if present in result
+                                    if isinstance(result, dict) and "usage" in result:
+                                        usage = result["usage"]
+                                        endpoint["total_tokens"] += usage.get("total_tokens", 0)
+                                        endpoint["input_tokens"] += usage.get("prompt_tokens", 0)
+                                        endpoint["output_tokens"] += usage.get("completion_tokens", 0)
+                            
+                        except Exception as e:
+                            # Store error in future
+                            future["error"] = e
+                            future["completed"] = True
+                            print(f"Error processing queued request: {str(e)}")
+                            
+                            # Update counters
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["failed_requests"] += 1
+                                    endpoint["last_request_at"] = time.time()
+                        
+                        finally:
+                            # Restore original queue_enabled value
+                            if is_global_queue:
+                                self.queue_enabled = original_queue_enabled
+                            else:
+                                endpoint["queue_enabled"] = original_queue_enabled
                     
-        except aiohttp.ClientPayloadError as e:
-            raise ValueError(f"ClientPayloadError: {str(e)}")
-        except asyncio.TimeoutError as e:
-            raise ValueError(f"Timeout error: {str(e)}")
-        except ValueError:
-            # Re-raise ValueError exceptions
-            raise
+                    finally:
+                        # Decrement counter
+                        if is_global_queue:
+                            with self.queue_lock:
+                                self.current_requests = max(0, self.current_requests - 1)
+                        else:
+                            with endpoint["queue_lock"]:
+                                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                    
+                    # Brief pause to prevent CPU hogging
+                    time.sleep(0.01)
+                    
         except Exception as e:
-            # Convert other exceptions to ValueError
-            raise ValueError(f"Unexpected error: {str(e)}")
+            print(f"Error in queue processing thread: {str(e)}")
+            
+        finally:
+            # Reset queue processing flag
+            if is_global_queue:
+                with self.queue_lock:
+                    self.queue_processing = False
+            else:
+                with endpoint["queue_lock"]:
+                    endpoint["queue_processing"] = False
+
+    def make_post_request_hf_tei(self, endpoint_url, data, api_token=None, request_id=None, endpoint_id=None):
+        """Make a request to HF TEI API with queue and backoff"""
+        # Use endpoint-specific API token if available, fall back to default
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Get API token from endpoint settings
+            endpoint = self.endpoints[endpoint_id]
+            if api_token is None:
+                api_token = endpoint.get("api_key", self.api_token)
+        else:
+            # Use provided token or default
+            if api_token is None:
+                api_token = self.api_token
+        
+        # Generate unique request ID if not provided
+        if request_id is None:
+            request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
+        
+        # Queue system with proper concurrency management
+        future = Future()
+        
+        # Create request info
+        request_info = {
+            "endpoint_url": endpoint_url,
+            "data": data,
+            "api_key": api_token,
+            "request_id": request_id,
+            "endpoint_id": endpoint_id,
+            "future": future
+        }
+        
+        # Add to appropriate queue
+        if endpoint_id and endpoint_id in self.endpoints:
+            with self.endpoints[endpoint_id]["queue_lock"]:
+                # Check if queue is full
+                if len(self.endpoints[endpoint_id]["request_queue"]) >= self.endpoints[endpoint_id]["queue_size"]:
+                    raise ValueError(f"Request queue is full ({self.endpoints[endpoint_id]['queue_size']} items). Try again later.")
+                
+                # Add to endpoint queue
+                self.endpoints[endpoint_id]["request_queue"].append(request_info)
+                
+                # Start queue processing if not already running
+                if not self.endpoints[endpoint_id]["queue_processing"]:
+                    threading.Thread(target=self._process_queue, args=(endpoint_id,)).start()
+        else:
+            # Add to global queue
+            self.request_queue.put((future, endpoint_url, data, api_token, request_id))
+            
+        # Get result (blocks until request is processed)
+        return future.result()
+        
+    def generate_embedding(self, model_id, text, api_token=None, request_id=None, endpoint_id=None):
+        """Generate embeddings for a single text using HF TEI API"""
+        # Format endpoint URL for the model
+        endpoint_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
+        
+        # Prepare data
+        data = {"inputs": text}
+        
+        # Make request with queue and backoff
+        response = self.make_post_request_hf_tei(
+            endpoint_url=endpoint_url, 
+            data=data, 
+            api_token=api_token, 
+            request_id=request_id, 
+            endpoint_id=endpoint_id
+        )
+        
+        # Process response - normalize if needed
+        return self.normalize_embedding(response)
+
+    def batch_embed(self, model_id, texts, api_token=None, request_id=None, endpoint_id=None):
+        """Generate embeddings for multiple texts using HF TEI API"""
+        # Format endpoint URL for the model
+        endpoint_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
+        
+        # Prepare data
+        data = {"inputs": texts}
+        
+        # Make request with queue and backoff
+        response = self.make_post_request_hf_tei(
+            endpoint_url=endpoint_url, 
+            data=data, 
+            api_token=api_token, 
+            request_id=request_id, 
+            endpoint_id=endpoint_id
+        )
+        
+        # Process response - normalize if needed
+        return [self.normalize_embedding(emb) for emb in response]
 
     def normalize_embedding(self, embedding):
-        """Normalize an embedding vector to unit length
+        """Normalize embedding to unit length"""
+        # Convert to numpy array if not already
+        if not isinstance(embedding, np.ndarray):
+            embedding = np.array(embedding)
         
-        Args:
-            embedding: List of embedding values
-            
-        Returns:
-            list: Normalized embedding vector
-        """
-        try:
-            # Calculate the magnitude (L2 norm)
-            magnitude = sum(x*x for x in embedding) ** 0.5
-            
-            # Check for zero magnitude to avoid division by zero
-            if magnitude <= 1e-10:
-                return [0.0] * len(embedding)
-                
-            # Normalize by dividing each component by the magnitude
-            return [x / magnitude for x in embedding]
-            
-        except Exception as e:
-            print(f"Error normalizing embedding: {e}")
-            return embedding
-            
-    def format_request(self, handler, input_data, **kwargs):
-        """Format a request for the text embedding interface
+        # Compute L2 norm
+        norm = np.linalg.norm(embedding)
         
-        Args:
-            handler: The endpoint handler function
-            input_data: The input data to process (string, list, or dict)
-            **kwargs: Additional parameters for the embedding
-            
-        Returns:
-            Any: The response from the handler
-        """
-        try:
-            # Format the request data based on input type
-            if isinstance(input_data, str):
-                # Simple text input
-                data = {
-                    "inputs": input_data
-                }
-                    
-            elif isinstance(input_data, list):
-                # List of texts for batch processing
-                data = {
-                    "inputs": input_data
-                }
-                    
-            elif isinstance(input_data, dict):
-                # Dictionary input, use as is if it has 'inputs'
-                if "inputs" in input_data:
-                    data = input_data
-                else:
-                    # Add inputs wrapper if missing
-                    data = {"inputs": input_data}
-            else:
-                # Unknown input type
-                raise ValueError(f"Unsupported input type: {type(input_data)}")
-                
-            # Add any additional parameters from kwargs
-            for key, value in kwargs.items():
-                if key not in ["inputs"]:  # Avoid overriding inputs
-                    data[key] = value
-                
-            # Call the handler with the formatted data
-            return handler(data)
-            
-        except Exception as e:
-            print(f"Error formatting embedding request: {e}")
-            return None
-    
-    def create_remote_text_embedding_endpoint_handler(self, endpoint_url, api_key=None, model_name=None):
-        """Create a handler for a remote text embedding endpoint
+        # Normalize to unit length
+        if norm > 0:
+            normalized = embedding / norm
+        else:
+            normalized = embedding
         
-        Args:
-            endpoint_url: URL of the endpoint
-            api_key: API key for authentication, if required
-            model_name: Name of the model to use
-            
-        Returns:
-            function: Handler for the endpoint
-        """
-        def handler(input_data, endpoint_url=endpoint_url, api_key=api_key, model_name=model_name):
+        # Convert back to list for JSON serialization
+        return normalized.tolist()
+
+    def calculate_similarity(self, embedding1, embedding2):
+        """Calculate cosine similarity between two embeddings"""
+        # Convert to numpy arrays
+        emb1 = np.array(embedding1)
+        emb2 = np.array(embedding2)
+        
+        # Normalize if not already normalized
+        norm1 = np.linalg.norm(emb1)
+        norm2 = np.linalg.norm(emb2)
+        
+        if norm1 > 0:
+            emb1 = emb1 / norm1
+        if norm2 > 0:
+            emb2 = emb2 / norm2
+        
+        # Calculate cosine similarity
+        return np.dot(emb1, emb2)
+        
+    def create_remote_text_embedding_endpoint_handler(self, endpoint_url=None, api_key=None, endpoint_id=None):
+        """Create an endpoint handler for HF TEI remote inference"""
+        async def endpoint_handler(text, **kwargs):
+            """Handle requests to HF TEI endpoint"""
             try:
-                # Prepare the data based on input type
-                if isinstance(input_data, dict) and "inputs" in input_data:
-                    # Already properly formatted
-                    data = input_data
-                elif isinstance(input_data, (str, list)):
-                    # Simple text or list of texts
-                    data = {"inputs": input_data}
+                # Extract request ID if provided
+                request_id = kwargs.get("request_id")
+                
+                # Use specific endpoint ID from kwargs or from constructor
+                current_endpoint_id = kwargs.get("endpoint_id", endpoint_id)
+                
+                # If no specific model endpoint provided, use standard API
+                if not endpoint_url:
+                    # Extract model from kwargs or use default
+                    model = kwargs.get("model", self.default_model)
+                    
+                    # Create endpoint URL
+                    model_endpoint = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model}"
                 else:
-                    # Other inputs, wrap in inputs
-                    data = {"inputs": input_data}
+                    model_endpoint = endpoint_url
+                    model = kwargs.get("model", self.default_model)
                 
-                # Add model name if provided
-                if model_name:
-                    data["model"] = model_name
-                
-                # Make the request
-                result = self.make_post_request_hf_tei(endpoint_url, data, api_key)
-                
-                # Process the result
-                if result is None:
-                    return None
-                
-                # Different embedding models return in different formats,
-                # so try to handle the common patterns
-                if isinstance(result, dict) and "embeddings" in result:
-                    return result["embeddings"]
-                elif isinstance(result, list):
-                    # Either a direct embedding or a list of embeddings
-                    return result
+                # Handle batch or single input
+                if isinstance(text, list):
+                    # Batch mode
+                    embeddings = self.batch_embed(
+                        model_id=model, 
+                        texts=text, 
+                        api_token=api_key,
+                        request_id=request_id,
+                        endpoint_id=current_endpoint_id
+                    )
+                    
+                    # Normalize if requested
+                    if kwargs.get("normalize", True):
+                        embeddings = [self.normalize_embedding(emb) for emb in embeddings]
+                    
+                    # Create response with metadata
+                    response = {
+                        "embeddings": embeddings, 
+                        "implementation_type": "(REAL)",
+                        "model": model
+                    }
+                    
+                    # Add request ID if available
+                    if request_id:
+                        response["request_id"] = request_id
+                        
+                    return response
                 else:
-                    # Unknown format, return as is
-                    return result
-            
+                    # Single text mode
+                    embedding = self.generate_embedding(
+                        model_id=model, 
+                        text=text, 
+                        api_token=api_key,
+                        request_id=request_id,
+                        endpoint_id=current_endpoint_id
+                    )
+                    
+                    # Normalize if requested
+                    if kwargs.get("normalize", True):
+                        embedding = self.normalize_embedding(embedding)
+                    
+                    # Create response with metadata
+                    response = {
+                        "embedding": embedding, 
+                        "implementation_type": "(REAL)",
+                        "model": model
+                    }
+                    
+                    # Add request ID if available
+                    if request_id:
+                        response["request_id"] = request_id
+                        
+                    return response
             except Exception as e:
-                print(f"Error making request to text embedding endpoint: {e}")
-                return None
+                print(f"Error calling HF TEI endpoint: {e}")
+                return {"error": str(e), "implementation_type": "(ERROR)"}
         
-        return handler
+        return endpoint_handler
+        
+    def test_hf_tei_endpoint(self, endpoint_url=None, api_token=None, model_id=None, endpoint_id=None, request_id=None):
+        """Test the HF TEI endpoint"""
+        if not model_id:
+            model_id = self.default_model
+            
+        if not endpoint_url:
+            endpoint_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
+        
+        # Use endpoint-specific API token if available
+        if endpoint_id and endpoint_id in self.endpoints:
+            if api_token is None:
+                api_token = self.endpoints[endpoint_id].get("api_key", self.api_token)
+        elif api_token is None:
+            api_token = self.api_token
+        
+        # Generate unique request ID for the test if not provided
+        if request_id is None:
+            request_id = f"test_{int(time.time())}_{hashlib.md5(model_id.encode()).hexdigest()[:8]}"
+            
+        try:
+            # Test embedding generation with proper request tracking
+            response = self.generate_embedding(
+                model_id=model_id, 
+                text="Testing the Hugging Face TEI API.",
+                api_token=api_token,
+                request_id=request_id,
+                endpoint_id=endpoint_id
+            )
+            
+            # Verify we got a valid response
+            if isinstance(response, list) and len(response) > 0:
+                result = {
+                    "success": True,
+                    "message": "TEI API test successful",
+                    "model": model_id,
+                    "implementation_type": "(REAL)",
+                    "request_id": request_id
+                }
+                return result
+            else:
+                result = {
+                    "success": False,
+                    "message": "TEI API test failed: unexpected response format",
+                    "implementation_type": "(ERROR)",
+                    "request_id": request_id
+                }
+                return result
+        except Exception as e:
+            error_message = str(e)
+            print(f"Error testing HF TEI endpoint: {error_message}")
+            result = {
+                "success": False,
+                "message": f"TEI API test failed: {error_message}",
+                "implementation_type": "(ERROR)",
+                "request_id": request_id
+            }
+            return result
+
+    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, initial_retry_delay=None, 
+                       backoff_factor=None, max_retry_delay=None, queue_enabled=None, 
+                       max_concurrent_requests=None, queue_size=None):
+        """Create a new endpoint with its own settings and counters"""
+        # Generate a unique endpoint ID if not provided
+        if endpoint_id is None:
+            endpoint_id = f"endpoint_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+            
+        # Use provided values or defaults
+        endpoint_settings = {
+            "api_key": api_key if api_key is not None else self.api_key,
+            "max_retries": max_retries if max_retries is not None else self.max_retries,
+            "initial_retry_delay": initial_retry_delay if initial_retry_delay is not None else self.initial_retry_delay,
+            "backoff_factor": backoff_factor if backoff_factor is not None else self.backoff_factor,
+            "max_retry_delay": max_retry_delay if max_retry_delay is not None else self.max_retry_delay,
+            "queue_enabled": queue_enabled if queue_enabled is not None else self.queue_enabled,
+            "max_concurrent_requests": max_concurrent_requests if max_concurrent_requests is not None else self.max_concurrent_requests,
+            "queue_size": queue_size if queue_size is not None else self.queue_size,
+            
+            # Initialize endpoint-specific counters and state
+            "current_requests": 0,
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "total_tokens": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "queue_processing": False,
+            "request_queue": [],
+            "queue_lock": threading.RLock(),
+            "created_at": time.time(),
+            "last_request_at": None
+        }
+        
+        # Store the endpoint settings
+        self.endpoints[endpoint_id] = endpoint_settings
+        
+        return endpoint_id
+
+
+    def get_endpoint(self, endpoint_id=None):
+        """Get an endpoint's settings or create a default one if not found"""
+        # If no endpoint_id provided, use the first one or create a default
+        if endpoint_id is None:
+            if not self.endpoints:
+                endpoint_id = self.create_endpoint()
+            else:
+                endpoint_id = next(iter(self.endpoints))
+                
+        # If endpoint doesn't exist, create it
+        if endpoint_id not in self.endpoints:
+            endpoint_id = self.create_endpoint(endpoint_id=endpoint_id)
+            
+        return self.endpoints[endpoint_id]
+
+
+    def update_endpoint(self, endpoint_id, **kwargs):
+        """Update an endpoint's settings"""
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} not found")
+            
+        # Update only the provided settings
+        for key, value in kwargs.items():
+            if key in self.endpoints[endpoint_id]:
+                self.endpoints[endpoint_id][key] = value
+                
+        return self.endpoints[endpoint_id]
+
+
+    def get_stats(self, endpoint_id=None):
+        """Get usage statistics for an endpoint or global stats"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            stats = {
+                "endpoint_id": endpoint_id,
+                "total_requests": endpoint["total_requests"],
+                "successful_requests": endpoint["successful_requests"],
+                "failed_requests": endpoint["failed_requests"],
+                "total_tokens": endpoint["total_tokens"],
+                "input_tokens": endpoint["input_tokens"],
+                "output_tokens": endpoint["output_tokens"],
+                "created_at": endpoint["created_at"],
+                "last_request_at": endpoint["last_request_at"],
+                "current_queue_size": len(endpoint["request_queue"]),
+                "current_requests": endpoint["current_requests"]
+            }
+            return stats
+        else:
+            # Aggregate stats across all endpoints
+            total_requests = sum(e["total_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            successful_requests = sum(e["successful_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            failed_requests = sum(e["failed_requests"] for e in self.endpoints.values()) if self.endpoints else 0
+            total_tokens = sum(e["total_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            input_tokens = sum(e["input_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            output_tokens = sum(e["output_tokens"] for e in self.endpoints.values()) if self.endpoints else 0
+            
+            stats = {
+                "endpoints_count": len(self.endpoints),
+                "total_requests": total_requests,
+                "successful_requests": successful_requests,
+                "failed_requests": failed_requests,
+                "total_tokens": total_tokens,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "global_queue_size": len(self.request_queue),
+                "global_current_requests": self.current_requests
+            }
+            return stats
+
+
+    def reset_stats(self, endpoint_id=None):
+        """Reset usage statistics for an endpoint or globally"""
+        if endpoint_id and endpoint_id in self.endpoints:
+            # Reset stats just for this endpoint
+            endpoint = self.endpoints[endpoint_id]
+            endpoint["total_requests"] = 0
+            endpoint["successful_requests"] = 0
+            endpoint["failed_requests"] = 0
+            endpoint["total_tokens"] = 0
+            endpoint["input_tokens"] = 0
+            endpoint["output_tokens"] = 0
+        elif endpoint_id is None:
+            # Reset stats for all endpoints
+            for endpoint in self.endpoints.values():
+                endpoint["total_requests"] = 0
+                endpoint["successful_requests"] = 0
+                endpoint["failed_requests"] = 0
+                endpoint["total_tokens"] = 0
+                endpoint["input_tokens"] = 0
+                endpoint["output_tokens"] = 0
+        else:
+            raise ValueError(f"Endpoint {endpoint_id} not found")

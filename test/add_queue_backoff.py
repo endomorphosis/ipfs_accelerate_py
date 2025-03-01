@@ -68,7 +68,7 @@ def add_queue_processing(content):
     
     queue_method = """
     def _process_queue(self):
-        """Process requests in the queue in FIFO order"""
+        # Process requests in the queue in FIFO order
         with self.queue_lock:
             if self.queue_processing:
                 return  # Another thread is already processing the queue
@@ -177,7 +177,7 @@ def add_backoff_queue_to_request_method(content, api_type):
         return content
     
     # Find the entire method definition
-    method_pattern = f"def {method_name}.*?(?=\n    def |\n\nclass |\Z)"
+    method_pattern = f"def {method_name}.*?(?=\n    def |\n\nclass |$)"
     method_match = re.search(method_pattern, content, re.DOTALL)
     if not method_match:
         print(f"Warning: Could not extract complete method '{method_name}'")
@@ -187,7 +187,7 @@ def add_backoff_queue_to_request_method(content, api_type):
     
     # Create new method with backoff and queue
     # Extract parameters from old method signature
-    param_pattern = f"def {method_name}\((.*?)\)"
+    param_pattern = f"def {method_name}\\((.*?)\\)"
     param_match = re.search(param_pattern, old_method)
     if not param_match:
         print(f"Warning: Could not extract parameters for method '{method_name}'")
@@ -205,7 +205,7 @@ def add_backoff_queue_to_request_method(content, api_type):
     # Create the new method with backoff and queue
     queue_code = f"""
     def {method_name}({params}):
-        """Make a request with exponential backoff and queue"""
+        \"\"\"Make a request with exponential backoff and queue\"\"\"
         if not api_key:
             api_key = self.api_key
             

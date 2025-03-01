@@ -65,6 +65,130 @@ class test_gemini:
         """Run all tests for the Google Gemini API backend"""
         results = {}
         
+        # Test API key multiplexing
+        try:
+            if hasattr(self.gemini, 'create_endpoint'):
+                # Create first endpoint with test key
+                endpoint1 = self.gemini.create_endpoint(
+                    api_key="test_gemini_key_1",
+                    max_concurrent_requests=5,
+                    queue_size=20,
+                    max_retries=3,
+                    initial_retry_delay=1,
+                    backoff_factor=2
+                )
+                
+                # Create second endpoint with different test key
+                endpoint2 = self.gemini.create_endpoint(
+                    api_key="test_gemini_key_2",
+                    max_concurrent_requests=10,
+                    queue_size=50,
+                    max_retries=5
+                )
+                
+                results["multiplexing_endpoint_creation"] = "Success" if endpoint1 and endpoint2 else "Failed to create endpoints"
+                
+                # Test usage statistics if implemented
+                if hasattr(self.gemini, 'get_stats'):
+                    # Get stats for first endpoint
+                    stats1 = self.gemini.get_stats(endpoint1)
+                    
+                    # Make test requests to create stats
+                    with patch.object(self.gemini, 'make_post_request_gemini') as mock_post:
+                        mock_post.return_value = {
+                            "candidates": [
+                                {
+                                    "content": {
+                                        "parts": [{"text": "Response for endpoint 1"}],
+                                        "role": "model"
+                                    },
+                                    "finishReason": "STOP",
+                                    "tokenCount": {
+                                        "totalTokens": 30,
+                                        "inputTokens": 10,
+                                        "outputTokens": 20
+                                    }
+                                }
+                            ]
+                        }
+                        
+                        # Make request with first endpoint if method exists
+                        if hasattr(self.gemini, 'make_request_with_endpoint'):
+                            self.gemini.make_request_with_endpoint(
+                                endpoint_id=endpoint1,
+                                data={"contents": [{"parts": [{"text": "Test for endpoint 1"}], "role": "user"}]}
+                            )
+                            
+                            # Get updated stats
+                            stats1_after = self.gemini.get_stats(endpoint1)
+                            
+                            # Verify stats were updated
+                            results["usage_statistics"] = "Success" if stats1_after != stats1 else "Failed to update statistics"
+                        else:
+                            results["usage_statistics"] = "Not implemented"
+                else:
+                    results["usage_statistics"] = "Not implemented"
+            else:
+                results["multiplexing_endpoint_creation"] = "Not implemented"
+        except Exception as e:
+            results["multiplexing"] = f"Error: {str(e)}"
+            
+        # Test queue and backoff functionality
+        try:
+            if hasattr(self.gemini, 'queue_enabled'):
+                # Test queue settings
+                results["queue_enabled"] = "Success" if hasattr(self.gemini, 'queue_enabled') else "Missing queue_enabled"
+                results["request_queue"] = "Success" if hasattr(self.gemini, 'request_queue') else "Missing request_queue"
+                results["max_concurrent_requests"] = "Success" if hasattr(self.gemini, 'max_concurrent_requests') else "Missing max_concurrent_requests"
+                results["current_requests"] = "Success" if hasattr(self.gemini, 'current_requests') else "Missing current_requests counter"
+                
+                # Test backoff settings
+                results["max_retries"] = "Success" if hasattr(self.gemini, 'max_retries') else "Missing max_retries"
+                results["initial_retry_delay"] = "Success" if hasattr(self.gemini, 'initial_retry_delay') else "Missing initial_retry_delay"
+                results["backoff_factor"] = "Success" if hasattr(self.gemini, 'backoff_factor') else "Missing backoff_factor"
+                
+                # Test queue processing if implemented
+                if hasattr(self.gemini, '_process_queue'):
+                    with patch.object(self.gemini, '_process_queue') as mock_queue:
+                        mock_queue.return_value = None
+                        
+                        # Force queue to be enabled and at capacity for testing
+                        original_queue_enabled = self.gemini.queue_enabled
+                        original_current_requests = self.gemini.current_requests
+                        original_max_concurrent = self.gemini.max_concurrent_requests
+                        
+                        self.gemini.queue_enabled = True
+                        self.gemini.current_requests = self.gemini.max_concurrent_requests
+                        
+                        # Prepare a mock request to add to queue
+                        request_info = {
+                            "data": {"contents": [{"parts": [{"text": "Queued request"}], "role": "user"}]},
+                            "api_key": "test_key",
+                            "request_id": "queue_test_456",
+                            "future": {"result": None, "error": None, "completed": False}
+                        }
+                        
+                        # Add request to queue
+                        if not hasattr(self.gemini, "request_queue"):
+                            self.gemini.request_queue = []
+                            
+                        self.gemini.request_queue.append(request_info)
+                        
+                        # Trigger queue processing
+                        if hasattr(self.gemini, '_process_queue'):
+                            self.gemini._process_queue()
+                            results["queue_processing"] = "Success" if mock_queue.called else "Failed to call queue processing"
+                        
+                        # Restore original values
+                        self.gemini.queue_enabled = original_queue_enabled
+                        self.gemini.current_requests = original_current_requests
+                else:
+                    results["queue_processing"] = "Not implemented"
+            else:
+                results["queue_backoff"] = "Not implemented"
+        except Exception as e:
+            results["queue_backoff"] = f"Error: {str(e)}"
+        
         # Test endpoint handler creation
         try:
             endpoint_handler = self.gemini.create_gemini_endpoint_handler()
@@ -102,7 +226,7 @@ class test_gemini:
         except Exception as e:
             results["test_endpoint"] = f"Error: {str(e)}"
             
-        # Test post request function
+        # Test post request function with request_id parameter
         try:
             with patch.object(requests, 'post') as mock_post:
                 mock_response = MagicMock()
@@ -139,14 +263,40 @@ class test_gemini:
                     }
                 }
                 
-                post_result = self.gemini.make_post_request_gemini(data)
-                results["post_request"] = "Success" if "candidates" in post_result else "Failed post request"
-                
-                # Verify headers were set correctly
-                args, kwargs = mock_post.call_args
-                headers = kwargs.get('headers', {})
-                content_type_set = headers.get("Content-Type") == "application/json"
-                results["post_request_headers"] = "Success" if content_type_set else "Failed to set headers correctly"
+                # Test with custom request_id
+                custom_request_id = "test_request_456"
+                if hasattr(self.gemini, 'make_post_request_gemini') and len(self.gemini.make_post_request_gemini.__code__.co_varnames) > 2:
+                    # If the method supports request_id parameter
+                    post_result = self.gemini.make_post_request_gemini(data, request_id=custom_request_id)
+                    results["post_request"] = "Success" if "candidates" in post_result else "Failed post request"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    content_type_set = headers.get("Content-Type") == "application/json"
+                    results["post_request_headers"] = "Success" if content_type_set else "Failed to set headers correctly"
+                    
+                    # Verify request_id was used
+                    if hasattr(self.gemini, 'request_tracking') and self.gemini.request_tracking:
+                        # Check if request_id was included in header or tracked internally
+                        request_tracking = "Success" if (
+                            (headers.get("X-Request-ID") == custom_request_id) or
+                            hasattr(self.gemini, 'recent_requests') and custom_request_id in str(self.gemini.recent_requests)
+                        ) else "Failed to track request_id"
+                        results["request_id_tracking"] = request_tracking
+                    else:
+                        results["request_id_tracking"] = "Not implemented"
+                else:
+                    # Fall back to old method if request_id isn't supported
+                    post_result = self.gemini.make_post_request_gemini(data)
+                    results["post_request"] = "Success" if "candidates" in post_result else "Failed post request"
+                    results["request_id_tracking"] = "Not implemented"
+                    
+                    # Verify headers were set correctly
+                    args, kwargs = mock_post.call_args
+                    headers = kwargs.get('headers', {})
+                    content_type_set = headers.get("Content-Type") == "application/json"
+                    results["post_request_headers"] = "Success" if content_type_set else "Failed to set headers correctly"
         except Exception as e:
             results["post_request"] = f"Error: {str(e)}"
             

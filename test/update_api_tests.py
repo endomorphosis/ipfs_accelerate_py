@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # Template for adding backoff and queue tests to a test class
 BACKOFF_QUEUE_TEST_TEMPLATE = """
     def test_backoff_mechanism(self):
-        """Test the exponential backoff mechanism"""
+        # Test the exponential backoff mechanism
         try:
             # Mock a rate limit response
             with patch.object(requests, 'post') as mock_post:
@@ -49,7 +49,7 @@ BACKOFF_QUEUE_TEST_TEMPLATE = """
             return f"Error: {{str(e)}}"
     
     def test_request_queue(self):
-        """Test the request queue system for concurrent requests"""
+        # Test the request queue system for concurrent requests
         try:
             # Test if queue attributes are set
             has_queue = hasattr(self.{api_class}, "queue_enabled")
@@ -97,7 +97,7 @@ BACKOFF_QUEUE_TEST_TEMPLATE = """
             return f"Error: {{str(e)}}"
     
     def test_request_tracking(self):
-        """Test request tracking with unique IDs"""
+        # Test request tracking with unique IDs
         try:
             # Test if method accepts request_id parameter
             with patch.object(requests, 'post') as mock_post:

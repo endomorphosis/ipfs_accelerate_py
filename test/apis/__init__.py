@@ -6,6 +6,5 @@ from .test_openai_api import test_openai_api
 from .test_ovms import test_ovms      
 from .test_ollama import test_ollama
 from .test_opea import test_opea
-from .test_llvm import test_llvm
-from .test_gemini import test_gemini
-from .test_ovms import test_ovms
+# Uncomment when test_llvm.py is created
+# from .test_llvm import test_llvm

@@ -11,8 +11,21 @@ from api_backends import apis, ollama
 class test_ollama:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
-        self.metadata = metadata if metadata else {}
+        self.metadata = metadata if metadata else {
+            "ollama_api_url": os.environ.get("OLLAMA_API_URL", "http://localhost:11434/api"),
+            "ollama_model": os.environ.get("OLLAMA_MODEL", "llama2"),
+            "timeout": int(os.environ.get("OLLAMA_TIMEOUT", "30"))
+        }
         self.ollama = ollama(resources=self.resources, metadata=self.metadata)
+        
+        # Standard test prompts for consistency
+        self.test_prompts = [
+            "The quick brown fox jumps over the lazy dog.",
+            "Explain the concept of machine learning in simple terms.",
+            "Write a short poem about nature.",
+            "Translate 'hello world' to French.",
+            "What is the capital of France?"
+        ]
         return None
     
     def test(self):
@@ -21,7 +34,8 @@ class test_ollama:
         
         # Test endpoint handler creation
         try:
-            endpoint_url = "http://localhost:11434/api/generate"
+            # Use the endpoint URL from metadata if provided, otherwise use default
+            endpoint_url = self.metadata.get("ollama_api_url", "http://localhost:11434/api/generate")
             endpoint_handler = self.ollama.create_ollama_endpoint_handler(endpoint_url)
             results["endpoint_handler"] = "Success" if callable(endpoint_handler) else "Failed to create endpoint handler"
         except Exception as e:
@@ -89,15 +103,30 @@ class test_ollama:
         try:
             with patch.object(self.ollama, 'make_post_request_ollama') as mock_post:
                 mock_post.return_value = {
-                    "model": "llama2",
+                    "model": self.metadata.get("ollama_model", "llama2"),
                     "response": "This is a chat response",
                     "done": True
                 }
                 
                 if hasattr(self.ollama, 'chat'):
                     messages = [{"role": "user", "content": "Hello"}]
-                    chat_result = self.ollama.chat("llama2", messages)
+                    chat_result = self.ollama.chat(
+                        self.metadata.get("ollama_model", "llama2"), 
+                        messages
+                    )
                     results["chat_method"] = "Success" if chat_result and isinstance(chat_result, dict) else "Failed chat method"
+                    
+                    # Test with system message if supported
+                    if hasattr(self.ollama, 'chat_with_system'):
+                        system_message = "You are a helpful assistant"
+                        chat_system_result = self.ollama.chat_with_system(
+                            self.metadata.get("ollama_model", "llama2"),
+                            messages,
+                            system_message
+                        )
+                        results["chat_with_system"] = "Success" if chat_system_result and isinstance(chat_system_result, dict) else "Failed chat with system"
+                    else:
+                        results["chat_with_system"] = "Not implemented"
                 else:
                     results["chat_method"] = "Not implemented"
         except Exception as e:
@@ -115,8 +144,28 @@ class test_ollama:
                 
                 if hasattr(self.ollama, 'stream_chat'):
                     messages = [{"role": "user", "content": "Hello"}]
-                    stream_result = list(self.ollama.stream_chat("llama2", messages))
+                    stream_result = list(self.ollama.stream_chat(
+                        self.metadata.get("ollama_model", "llama2"),
+                        messages
+                    ))
                     results["streaming"] = "Success" if len(stream_result) > 0 else "Failed streaming"
+                    
+                    # Test streaming with options if supported
+                    if hasattr(self.ollama, 'stream_chat_with_options'):
+                        options = {
+                            "temperature": 0.7,
+                            "top_p": 0.95,
+                            "top_k": 40,
+                            "num_predict": 100
+                        }
+                        stream_options_result = list(self.ollama.stream_chat_with_options(
+                            self.metadata.get("ollama_model", "llama2"),
+                            messages,
+                            options
+                        ))
+                        results["streaming_with_options"] = "Success" if len(stream_options_result) > 0 else "Failed streaming with options"
+                    else:
+                        results["streaming_with_options"] = "Not implemented"
                 else:
                     results["streaming"] = "Not implemented"
         except Exception as e:
@@ -165,8 +214,8 @@ class test_ollama:
                 mock_response = MagicMock()
                 mock_response.json.return_value = {
                     "models": [
-                        {"name": "llama2", "size": 123456789},
-                        {"name": "codellama", "size": 234567890}
+                        {"name": "llama2", "size": 123456789, "modified_at": "2023-11-04T14:54:20Z", "digest": "sha256:1234567890"},
+                        {"name": "codellama", "size": 234567890, "modified_at": "2023-11-05T15:54:20Z", "digest": "sha256:0987654321"}
                     ]
                 }
                 mock_response.status_code = 200
@@ -175,6 +224,13 @@ class test_ollama:
                 if hasattr(self.ollama, 'list_models'):
                     models = self.ollama.list_models()
                     results["model_list"] = "Success" if isinstance(models, list) and len(models) > 0 else "Failed model list retrieval"
+                    
+                    # Test model info if implemented
+                    if hasattr(self.ollama, 'get_model_info'):
+                        model_info = self.ollama.get_model_info(self.metadata.get("ollama_model", "llama2"))
+                        results["model_info"] = "Success" if isinstance(model_info, dict) and "name" in model_info else "Failed model info retrieval"
+                    else:
+                        results["model_info"] = "Not implemented"
                 else:
                     results["model_list"] = "Not implemented"
         except Exception as e:
@@ -189,12 +245,62 @@ class test_ollama:
                 mock_post.return_value = mock_response
                 
                 if hasattr(self.ollama, 'pull_model'):
-                    pull_result = self.ollama.pull_model("llama2")
+                    pull_result = self.ollama.pull_model(self.metadata.get("ollama_model", "llama2"))
                     results["model_pull"] = "Success" if pull_result else "Failed model pull"
                 else:
                     results["model_pull"] = "Not implemented"
         except Exception as e:
             results["model_pull"] = f"Error: {str(e)}"
+        
+        # Test embedding generation if implemented
+        try:
+            with patch.object(requests, 'post') as mock_post:
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
+                    "embedding": [0.1, 0.2, 0.3, 0.4, 0.5] * 100  # 500-dim embedding
+                }
+                mock_response.status_code = 200
+                mock_post.return_value = mock_response
+                
+                if hasattr(self.ollama, 'generate_embeddings'):
+                    embed_result = self.ollama.generate_embeddings(
+                        self.metadata.get("ollama_model", "llama2"),
+                        "This is a test sentence for embedding."
+                    )
+                    results["embeddings"] = "Success" if isinstance(embed_result, list) and len(embed_result) > 0 else "Failed embedding generation"
+                    
+                    # Test batch embedding if implemented
+                    if hasattr(self.ollama, 'batch_embeddings'):
+                        batch_result = self.ollama.batch_embeddings(
+                            self.metadata.get("ollama_model", "llama2"),
+                            self.test_prompts[:2]  # Use first two test prompts
+                        )
+                        results["batch_embeddings"] = "Success" if isinstance(batch_result, list) and len(batch_result) == 2 else "Failed batch embedding"
+                    else:
+                        results["batch_embeddings"] = "Not implemented"
+                else:
+                    results["embeddings"] = "Not implemented"
+        except Exception as e:
+            results["embeddings"] = f"Error: {str(e)}"
+            
+        # Test token counting if implemented
+        try:
+            with patch.object(requests, 'post') as mock_post:
+                mock_response = MagicMock()
+                mock_response.json.return_value = {"tokens": 42}
+                mock_response.status_code = 200
+                mock_post.return_value = mock_response
+                
+                if hasattr(self.ollama, 'count_tokens'):
+                    token_count = self.ollama.count_tokens(
+                        self.metadata.get("ollama_model", "llama2"),
+                        "This is a test sentence for counting tokens."
+                    )
+                    results["token_count"] = "Success" if isinstance(token_count, int) and token_count > 0 else "Failed token counting"
+                else:
+                    results["token_count"] = "Not implemented"
+        except Exception as e:
+            results["token_count"] = f"Error: {str(e)}"
         
         return results
 

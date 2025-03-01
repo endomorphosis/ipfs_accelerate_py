@@ -1,355 +1,281 @@
-import requests
+import os
 import json
-from typing import Dict, List, Optional, Union, Any, Callable
+import time
+import threading
+import hashlib
+import uuid
+import requests
+from concurrent.futures import Future
+from queue import Queue
+from dotenv import load_dotenv
 
 class opea:
-    """Open Proxy for Embeddings and AI (OPEA) API Backend
-    
-    This class provides integration with OpenAI-compatible proxy servers like OpenAI Proxy.
-    """
-    
     def __init__(self, resources=None, metadata=None):
-        """Initialize OPEA backend interface
+        self.resources = resources if resources else {}
+        self.metadata = metadata if metadata else {}
         
-        Args:
-            resources: Resources configuration dictionary
-            metadata: Additional metadata dictionary
-        """
-        self.resources = resources
-        self.metadata = metadata
-        self.create_opea_endpoint_handler = self.create_opea_endpoint_handler
-        self.request_opea_endpoint = self.request_opea_endpoint
-        self.test_opea_endpoint = self.test_opea_endpoint
-        self.make_post_request_opea = self.make_post_request_opea
-        self.make_stream_request_opea = self.make_stream_request_opea
-        self.chat = self.chat
-        self.stream_chat = self.stream_chat
+        # Get OPEA API endpoint from metadata or environment
+        self.api_endpoint = self._get_api_endpoint()
         
-        # Add endpoints tracking
-        self.endpoints = {}
-        self.endpoint_status = {}
+        # Initialize queue and backoff systems
+        self.max_concurrent_requests = 5
+        self.queue_size = 100
+        self.request_queue = Queue(maxsize=self.queue_size)
+        self.active_requests = 0
+        self.queue_lock = threading.RLock()
+        
+        # Start queue processor
+        self.queue_processor = threading.Thread(target=self._process_queue)
+        self.queue_processor.daemon = True
+        self.queue_processor.start()
+        
+        # Initialize backoff configuration
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 16
+        
+        # Request tracking
+        self.request_tracking = True
+        self.recent_requests = {}
+        
+        
+        # Retry and backoff settings
+        self.max_retries = 5
+        self.initial_retry_delay = 1
+        self.backoff_factor = 2
+        self.max_retry_delay = 60  # Maximum delay in seconds
+        
+        # Request queue settings
+        self.queue_enabled = True
+        self.queue_size = 100
+        self.queue_processing = False
+        self.current_requests = 0
+        self.max_concurrent_requests = 5
+        self.request_queue = []
+        self.queue_lock = threading.RLock()
         return None
-    
-    def make_post_request_opea(self, endpoint, data, endpoint_type=None, batch=None, api_key=None):
-        """Make a POST request to an OPEA endpoint
+
+    def _get_api_endpoint(self):
+        """Get OPEA API endpoint from metadata or environment"""
+        # Try to get from metadata
+        api_endpoint = self.metadata.get("opea_endpoint")
+        if api_endpoint:
+            return api_endpoint
         
-        Args:
-            endpoint: URL of the endpoint
-            data: Data to send in the request
-            endpoint_type: Type of endpoint (e.g. "chat", "embeddings")
-            batch: Batch information (optional)
-            api_key: API key for authentication (optional)
-            
-        Returns:
-            dict: Response from the endpoint
-            
-        Raises:
-            ConnectionError: If connection to endpoint fails
-            ValueError: If endpoint returns an error code
-        """
-        try:
-            headers = {"Content-Type": "application/json"}
-            
-            # Add API key if provided
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            elif self.metadata and "api_key" in self.metadata:
-                headers["Authorization"] = f"Bearer {self.metadata['api_key']}"
-                
-            try:
-                response = requests.post(endpoint, headers=headers, json=data)
-            except requests.ConnectionError as e:
-                raise ConnectionError(f"Failed to connect to OPEA endpoint: {e}")
-            
-            # Handle error status codes
-            if response.status_code >= 400:
-                error_message = f"OPEA API error: HTTP {response.status_code}"
-                try:
-                    error_data = response.json()
-                    if "error" in error_data:
-                        error_message = f"{error_message} - {error_data['error']}"
-                except:
-                    pass
-                raise ValueError(error_message)
-                
-            return response.json()
-            
-        except (ConnectionError, ValueError):
-            # Re-raise these specific exceptions
-            raise
-        except Exception as e:
-            raise ValueError(f"Error in OPEA request: {str(e)}")
-    
-    def make_stream_request_opea(self, endpoint, data, endpoint_type=None, batch=None, api_key=None):
-        """Make a streaming request to an OPEA endpoint
+        # Try to get from environment
+        env_endpoint = os.environ.get("OPEA_API_ENDPOINT")
+        if env_endpoint:
+            return env_endpoint
         
-        Args:
-            endpoint: URL of the endpoint
-            data: Data to send in the request
-            endpoint_type: Type of endpoint (e.g. "chat")
-            batch: Batch information (optional)
-            api_key: API key for authentication (optional)
-            
-        Returns:
-            iterator: An iterator over response chunks
-            
-        Raises:
-            ConnectionError: If connection to endpoint fails
-            ValueError: If endpoint returns an error code
-        """
+        # Try to load from dotenv
         try:
-            headers = {"Content-Type": "application/json"}
-            
-            # Add API key if provided
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
-            elif self.metadata and "api_key" in self.metadata:
-                headers["Authorization"] = f"Bearer {self.metadata['api_key']}"
-                
-            # Ensure streaming is enabled in the request
-            data["stream"] = True
-                
+            load_dotenv()
+            env_endpoint = os.environ.get("OPEA_API_ENDPOINT")
+            if env_endpoint:
+                return env_endpoint
+        except ImportError:
+            pass
+        
+        # Return default if no endpoint found
+        return "http://localhost:8000/v1"
+        
+    def _process_queue(self):
+        """Process queued requests with proper concurrency management"""
+        while True:
             try:
-                response = requests.post(endpoint, headers=headers, json=data, stream=True)
-            except requests.ConnectionError as e:
-                raise ConnectionError(f"Failed to connect to OPEA streaming endpoint: {e}")
-            
-            # Handle error status codes
-            if response.status_code >= 400:
-                error_message = f"OPEA API error: HTTP {response.status_code}"
-                try:
-                    error_data = response.json()
-                    if "error" in error_data:
-                        error_message = f"{error_message} - {error_data['error']}"
-                except:
-                    pass
-                raise ValueError(error_message)
+                future, endpoint_url, data, request_id = self.request_queue.get()
                 
-            # Process the streaming response (follows OpenAI streaming format)
-            for line in response.iter_lines():
-                if line:
-                    line = line.decode('utf-8')
-                    # Skip empty lines and "data: [DONE]" messages
-                    if not line.strip() or line == "data: [DONE]":
-                        continue
-                    
-                    # Strip "data: " prefix if present
-                    if line.startswith("data: "):
-                        line = line[6:]
-                        
+                with self.queue_lock:
+                    self.active_requests += 1
+                
+                # Process with retry logic
+                retry_count = 0
+                while retry_count <= self.max_retries:
                     try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        yield {"error": f"Invalid JSON in streaming response: {line}"}
-            
-        except (ConnectionError, ValueError):
-            # Re-raise these specific exceptions
-            raise
-        except Exception as e:
-            yield {"error": f"Error in OPEA streaming request: {str(e)}"}
-    
-    def test_opea_endpoint(self, endpoint, model=None, api_key=None):
-        """Test an OPEA endpoint
-        
-        Args:
-            endpoint: URL of the endpoint to test
-            model: Name of the model to use (optional)
-            api_key: API key for authentication (optional)
-            
-        Returns:
-            bool: True if test passes, False otherwise
-        """
-        try:
-            # Create a simple test request for chat completions
-            data = {
-                "model": model or "gpt-3.5-turbo",
-                "messages": [
-                    {"role": "user", "content": "Hello, this is a test message."}
-                ],
-                "max_tokens": 10
-            }
-            
-            # Make the request
-            response = self.make_post_request_opea(endpoint, data, "chat", None, api_key)
-            
-            # Check if we got a valid response
-            valid_response = (
-                isinstance(response, dict) and
-                "choices" in response and
-                len(response["choices"]) > 0 and
-                "message" in response["choices"][0]
-            )
-            
-            return valid_response
-            
-        except Exception as e:
-            print(f"Failed to test OPEA endpoint: {e}")
-            return False
-    
-    def request_opea_endpoint(self, model, endpoint=None, endpoint_type=None, batch=None):
-        """Request an OPEA endpoint
-        
-        Args:
-            model: Name of the model
-            endpoint: Specific endpoint URL (optional)
-            endpoint_type: Type of endpoint (optional)
-            batch: Batch size (optional)
-            
-        Returns:
-            str: URL of the selected endpoint
-        """
-        # If endpoint is specified, use it
-        if endpoint:
-            return endpoint
-            
-        # If a default endpoint is in metadata, use it
-        if self.metadata and "default_endpoint" in self.metadata:
-            return self.metadata["default_endpoint"]
-            
-        # Check if we have an endpoint for this model
-        if model in self.endpoints and self.endpoints[model]:
-            return self.endpoints[model][0]
-            
-        # No suitable endpoint found
-        return None
-    
-    def create_opea_endpoint_handler(self, model=None, endpoint=None, endpoint_type="chat"):
-        """Create a handler for an OPEA endpoint
-        
-        Args:
-            model: Name of the model (optional)
-            endpoint: URL of the endpoint (optional)
-            endpoint_type: Type of endpoint (default: "chat")
-            
-        Returns:
-            function: Handler for the endpoint
-        """
-        def handler(request, model=model, endpoint=endpoint):
-            try:
-                # Use the model specified in the request if provided
-                if isinstance(request, dict) and "model" in request:
-                    model_to_use = request["model"]
-                elif model:
-                    model_to_use = model
-                else:
-                    model_to_use = "gpt-3.5-turbo"  # Default model
+                        # Construct headers
+                        headers = {"Content-Type": "application/json"}
+                        
+                        # Make request with proper error handling
+                        response = requests.post(
+                            endpoint_url,
+                            json=data,
+                            headers=headers,
+                            timeout=self.metadata.get("timeout", 30)
+                        )
+                        
+                        # Check for HTTP errors
+                        response.raise_for_status()
+                        
+                        # Parse JSON response
+                        result = response.json()
+                        
+                        # Update tracking with response
+                        if self.request_tracking:
+                            self.recent_requests[request_id] = {
+                                "timestamp": time.time(),
+                                "endpoint": endpoint_url,
+                                "status": "success",
+                                "response_code": response.status_code
+                            }
+                        
+                        future.set_result(result)
+                        break
+                        
+                    except requests.RequestException as e:
+                        retry_count += 1
+                        
+                        if retry_count > self.max_retries:
+                            # Update tracking with error
+                            if self.request_tracking:
+                                self.recent_requests[request_id] = {
+                                    "timestamp": time.time(),
+                                    "endpoint": endpoint_url,
+                                    "status": "error",
+                                    "error": str(e)
+                                }
+                            
+                            future.set_exception(e)
+                            break
+                        
+                        # Calculate backoff delay
+                        delay = min(
+                            self.initial_retry_delay * (self.backoff_factor ** (retry_count - 1)),
+                            self.max_retry_delay
+                        )
+                        
+                        # Sleep with backoff
+                        time.sleep(delay)
                     
-                # Get the endpoint URL
-                endpoint_url = self.request_opea_endpoint(model_to_use, endpoint, endpoint_type)
-                if not endpoint_url:
-                    raise ValueError(f"No OPEA endpoint available for model {model_to_use}")
-                    
-                # If the request is a string, convert it to a messages format
-                if isinstance(request, str):
-                    data = {
-                        "model": model_to_use,
-                        "messages": [{"role": "user", "content": request}]
-                    }
-                elif isinstance(request, list) and all(isinstance(msg, dict) for msg in request):
-                    # This is already a messages array
-                    data = {
-                        "model": model_to_use,
-                        "messages": request
-                    }
-                else:
-                    # Use the request as-is
-                    data = request
-                    if isinstance(data, dict) and "model" not in data:
-                        data["model"] = model_to_use
-                    
-                # Make the request
-                response = self.make_post_request_opea(endpoint_url, data, endpoint_type)
+                    except Exception as e:
+                        # Update tracking with error
+                        if self.request_tracking:
+                            self.recent_requests[request_id] = {
+                                "timestamp": time.time(),
+                                "endpoint": endpoint_url,
+                                "status": "error",
+                                "error": str(e)
+                            }
+                        
+                        future.set_exception(e)
+                        break
                 
-                return response
+                with self.queue_lock:
+                    self.active_requests -= 1
+                
+                self.request_queue.task_done()
                 
             except Exception as e:
-                print(f"Error in OPEA endpoint handler: {e}")
-                return None
-                
-        return handler
+                print(f"Error in queue processor: {e}")
     
-    def chat(self, messages, model=None, parameters=None, endpoint=None, api_key=None):
-        """Send a chat request to an OPEA endpoint
+    def make_post_request_opea(self, endpoint_url, data, request_id=None):
+        """Make a request to OPEA API with queue and backoff"""
+        # Generate unique request ID if not provided
+        if request_id is None:
+            request_id = str(uuid.uuid4())
         
-        Args:
-            messages: List of message dictionaries with "role" and "content" keys
-            model: Name of the model to use (optional)
-            parameters: Additional parameters for the request (optional)
-            endpoint: URL of the endpoint (optional)
-            api_key: API key for authentication (optional)
+        # Queue system with proper concurrency management
+        future = Future()
+        
+        # Add to queue
+        self.request_queue.put((future, endpoint_url, data, request_id))
+        
+        # Get result (blocks until request is processed)
+        return future.result()
+        
+    def chat(self, messages, model=None, **kwargs):
+        """Send a chat request to OPEA API"""
+        # Construct the proper endpoint URL
+        endpoint_url = f"{self.api_endpoint}/chat/completions"
+        
+        # Use provided model or default
+        model = model or kwargs.get("model", "gpt-3.5-turbo")
+        
+        # Prepare request data
+        data = {
+            "model": model,
+            "messages": messages
+        }
+        
+        # Add optional parameters
+        for key in ["temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "stream"]:
+            if key in kwargs:
+                data[key] = kwargs[key]
+        
+        # Make request with queue and backoff
+        response = self.make_post_request_opea(endpoint_url, data)
+        
+        # Extract text from response
+        if "choices" in response and len(response["choices"]) > 0:
+            text = response["choices"][0].get("message", {}).get("content", "")
+        else:
+            text = ""
+        
+        # Process and normalize response
+        return {
+            "text": text,
+            "model": model,
+            "usage": response.get("usage", {}),
+            "implementation_type": "(REAL)",
+            "raw_response": response  # Include raw response for advanced use
+        }
+
+    def stream_chat(self, messages, model=None, **kwargs):
+        """Stream a chat request from OPEA API"""
+        # Not implemented in this version - would need SSE streaming support
+        raise NotImplementedError("Streaming not yet implemented for OPEA")
+    
+    def make_stream_request_opea(self, endpoint_url, data, request_id=None):
+        """Make a streaming request to OPEA API"""
+        # Not implemented in this version - would need SSE streaming support
+        raise NotImplementedError("Streaming not yet implemented for OPEA")
             
-        Returns:
-            dict: Response from the OPEA API
-        """
+    def create_opea_endpoint_handler(self):
+        """Create an endpoint handler for OPEA"""
+        async def endpoint_handler(prompt, **kwargs):
+            """Handle requests to OPEA endpoint"""
+            try:
+                # Create messages from prompt
+                if isinstance(prompt, list):
+                    # Already formatted as messages
+                    messages = prompt
+                else:
+                    # Create a simple user message
+                    messages = [{"role": "user", "content": prompt}]
+                
+                # Extract model from kwargs or use default
+                model = kwargs.get("model", "gpt-3.5-turbo")
+                
+                # Extract other parameters
+                params = {k: v for k, v in kwargs.items() if k not in ["model"]}
+                
+                # Use streaming if requested
+                if kwargs.get("stream", False):
+                    raise NotImplementedError("Streaming not yet implemented for OPEA")
+                else:
+                    # Standard synchronous response
+                    response = self.chat(messages, model, **params)
+                    return response
+            except Exception as e:
+                print(f"Error calling OPEA endpoint: {e}")
+                return {"text": f"Error: {str(e)}", "implementation_type": "(ERROR)"}
+        
+        return endpoint_handler
+        
+    def test_opea_endpoint(self, endpoint_url=None):
+        """Test the OPEA endpoint"""
+        if not endpoint_url:
+            endpoint_url = f"{self.api_endpoint}/chat/completions"
+            
         try:
-            # Get the model to use
-            model_to_use = model or "gpt-3.5-turbo"
+            # Create a simple message
+            messages = [{"role": "user", "content": "Testing the OPEA API. Please respond with a short message."}]
             
-            # Get the endpoint URL
-            endpoint_url = self.request_opea_endpoint(model_to_use, endpoint, "chat")
-            if not endpoint_url:
-                raise ValueError(f"No OPEA endpoint available for model {model_to_use}")
-                
-            # Prepare the request data
-            data = {
-                "model": model_to_use,
-                "messages": messages
-            }
-            
-            # Add any additional parameters
-            if parameters:
-                data.update(parameters)
-                
             # Make the request
-            response = self.make_post_request_opea(endpoint_url, data, "chat", None, api_key)
+            response = self.chat(messages)
             
-            return response
-            
+            # Check if the response contains text
+            return "text" in response and response.get("implementation_type") == "(REAL)"
         except Exception as e:
-            print(f"Error in OPEA chat: {e}")
-            return None
-            
-    def stream_chat(self, messages, model=None, parameters=None, endpoint=None, api_key=None):
-        """Send a streaming chat request to an OPEA endpoint
-        
-        Args:
-            messages: List of message dictionaries with "role" and "content" keys
-            model: Name of the model to use (optional)
-            parameters: Additional parameters for the request (optional)
-            endpoint: URL of the endpoint (optional)
-            api_key: API key for authentication (optional)
-            
-        Returns:
-            iterator: An iterator over response chunks
-        """
-        try:
-            # Get the model to use
-            model_to_use = model or "gpt-3.5-turbo"
-            
-            # Get the endpoint URL
-            endpoint_url = self.request_opea_endpoint(model_to_use, endpoint, "chat")
-            if not endpoint_url:
-                yield {"error": f"No OPEA endpoint available for model {model_to_use}"}
-                return
-                
-            # Prepare the request data
-            data = {
-                "model": model_to_use,
-                "messages": messages,
-                "stream": True
-            }
-            
-            # Add any additional parameters
-            if parameters:
-                for key, value in parameters.items():
-                    if key != "stream":  # Ensure we don't override the stream parameter
-                        data[key] = value
-                        
-            # Make the streaming request
-            for chunk in self.make_stream_request_opea(endpoint_url, data, "chat", None, api_key):
-                yield chunk
-                
-        except Exception as e:
-            print(f"Error in OPEA streaming chat: {e}")
-            yield {"error": str(e)}
-    
+            print(f"Error testing OPEA endpoint: {e}")
+            return False

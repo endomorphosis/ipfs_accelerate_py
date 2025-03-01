@@ -2,148 +2,331 @@
 
 ## Overview
 
-The API Key Multiplexing feature allows you to use multiple API keys for OpenAI, Groq, Claude, and Gemini APIs, with the following benefits:
+The enhanced API Key Multiplexing feature provides robust management of multiple API keys for OpenAI, Groq, Claude, and Gemini APIs, with substantial improvements:
 
-1. **Load Balancing**: Distribute requests across multiple API keys to avoid rate limits
-2. **Request Queueing**: Each API key has its own separate request queue
-3. **Efficient Resource Usage**: Automatically selects the best API key using different strategies
-4. **Parallel Requests**: Run multiple concurrent requests across different API keys
+1. **Per-Endpoint Management**: Each endpoint has its own counters, API key, backoff, and queue
+2. **Request Tracking**: Every request can have its own request_id for tracking and debugging
+3. **Detailed Statistics**: Track usage statistics per endpoint for better resource monitoring
+4. **Advanced Queueing**: Configurable queue size and concurrency limits per endpoint
+5. **Smart Backoff**: Exponential backoff with retry logic that respects server response headers
 
-This guide explains how to configure and use the API Key Multiplexing feature in the IPFS Accelerate Python framework.
+## Key Features
 
-## Configuration
+### 1. Per-Endpoint Configuration
 
-### 1. API Key Setup in .env File
-
-Create a `.env` file in your project directory with multiple API keys:
-
-```
-# OpenAI API Keys
-OPENAI_API_KEY=sk-your-main-key               # Primary key
-OPENAI_API_KEY_1=sk-your-first-key            # Key 1 for multiplexing
-OPENAI_API_KEY_2=sk-your-second-key           # Key 2 for multiplexing
-OPENAI_API_KEY_3=sk-your-third-key            # Key 3 for multiplexing
-
-# Groq API Keys
-GROQ_API_KEY=gsk-your-main-key                # Primary key
-GROQ_API_KEY_1=gsk-your-first-key             # Key 1 for multiplexing
-GROQ_API_KEY_2=gsk-your-second-key            # Key 2 for multiplexing
-
-# Claude API Keys
-CLAUDE_API_KEY=sk-ant-your-main-key           # Primary key
-ANTHROPIC_API_KEY_1=sk-ant-your-first-key     # Key 1 for multiplexing
-ANTHROPIC_API_KEY_2=sk-ant-your-second-key    # Key 2 for multiplexing
-
-# Gemini API Keys
-GEMINI_API_KEY=your-main-key                  # Primary key
-GEMINI_API_KEY_1=your-first-key               # Key 1 for multiplexing
-GEMINI_API_KEY_2=your-second-key              # Key 2 for multiplexing
-```
-
-The multiplexer will automatically detect and use these keys when you run the API tests.
-
-### 2. Multiplexing Configuration
-
-The API Key Multiplexer supports several configuration options:
+Each endpoint can have its own configuration:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `max_concurrent_requests` | Maximum concurrent requests per API key | 5 |
-| `queue_size` | Maximum queue size per API key | 100 |
+| `api_key` | API key for this specific endpoint | (Primary key) |
+| `max_concurrent_requests` | Maximum concurrent requests | 5 |
+| `queue_size` | Maximum queue size | 100 |
 | `initial_retry_delay` | Initial delay for backoff (seconds) | 1 |
 | `backoff_factor` | Factor to multiply delay on each retry | 2 |
 | `max_retries` | Maximum number of retries for failed requests | 5 |
+| `max_retry_delay` | Maximum retry delay (seconds) | 60 |
+| `queue_enabled` | Enable/disable queueing for the endpoint | True |
 
-## Usage
+### 2. Request IDs
 
-### Basic Usage in Code
+Each request can have an optional request_id parameter:
+- Automatically generated if not provided
+- Helps track requests through logging and metrics
+- Useful for debugging and tracing request flows
+
+### 3. Detailed Statistics
+
+Each endpoint tracks:
+- Total requests
+- Successful requests
+- Failed requests
+- Total tokens
+- Input tokens
+- Output tokens
+- Queue size
+- Current active requests
+
+## Implementation
+
+### Creating Endpoints
 
 ```python
-from test.api_key_multiplexing_example import ApiKeyMultiplexer
+from ipfs_accelerate_py.api_backends import claude, openai_api, gemini, groq
 
-# Create the multiplexer
-multiplexer = ApiKeyMultiplexer()
+# Initialize API client with default key
+claude_client = claude(resources={}, metadata={"claude_api_key": "default-api-key"})
 
-# Add API keys (can also be loaded automatically from environment)
-multiplexer.add_openai_key("key1", "sk-your-first-key")
-multiplexer.add_openai_key("key2", "sk-your-second-key")
-multiplexer.add_groq_key("groq1", "gsk-your-first-key")
+# Create an endpoint with a specific API key
+endpoint_id = claude_client.create_endpoint(
+    api_key="custom-api-key-1",
+    max_retries=5,
+    initial_retry_delay=1,
+    backoff_factor=2,
+    max_retry_delay=60,
+    queue_enabled=True,
+    max_concurrent_requests=5,
+    queue_size=100
+)
 
-# Get an OpenAI client using round-robin strategy
-openai_client = multiplexer.get_openai_client(strategy="round-robin")
-
-# Use the client to make a request
-response = openai_client("chat", messages=[{"role": "user", "content": "Hello"}])
-
-# Get client statistics
-stats = multiplexer.get_usage_stats()
-print(stats)
+# Create another endpoint with different settings
+endpoint_id2 = claude_client.create_endpoint(
+    api_key="custom-api-key-2",
+    max_retries=3,
+    max_concurrent_requests=10
+)
 ```
 
-### Selection Strategies
+### Making Requests with Specific Endpoints
 
-The multiplexer supports multiple strategies for selecting API keys:
+```python
+# Make a request using a specific endpoint
+response = claude_client.chat(
+    messages=[{"role": "user", "content": "Hello"}],
+    endpoint_id=endpoint_id,
+    request_id="custom-request-id-123"  # Optional
+)
 
-1. **specific**: Use a specific key by name
-   ```python
-   client = multiplexer.get_openai_client(key_name="key1")
-   ```
-
-2. **round-robin**: Select the least recently used key (default)
-   ```python
-   client = multiplexer.get_openai_client(strategy="round-robin")
-   ```
-
-3. **least-loaded**: Select the key with the smallest request queue
-   ```python
-   client = multiplexer.get_openai_client(strategy="least-loaded")
-   ```
-
-## Integration with test_ipfs_accelerate
-
-The API Key Multiplexing is automatically integrated with the `test_ipfs_accelerate` environment as the final test. It will:
-
-1. Detect all available API keys in the environment
-2. Create separate client instances for each key
-3. Run concurrent requests across all available APIs
-4. Report detailed statistics on queue usage and request distribution
-
-The test results will be included in the standard test output JSON file.
-
-## Running Standalone Tests
-
-You can also run the API Key Multiplexing tests standalone:
-
-```bash
-python -m test.api_key_multiplexing_example
+# Make a request with another endpoint
+response2 = claude_client.chat(
+    messages=[{"role": "user", "content": "Hello again"}],
+    endpoint_id=endpoint_id2
+    # request_id will be auto-generated if not provided
+)
 ```
 
-This will:
-1. Load all API keys from your environment
-2. Run concurrent requests across all available API providers
-3. Print detailed statistics about request distribution
+### Tracking Usage Statistics
 
-## Performance Considerations
+```python
+# Get statistics for a specific endpoint
+stats = claude_client.get_stats(endpoint_id)
+print(f"Total requests: {stats['total_requests']}")
+print(f"Successful requests: {stats['successful_requests']}")
+print(f"Failed requests: {stats['failed_requests']}")
+print(f"Total tokens: {stats['total_tokens']}")
+print(f"Input tokens: {stats['input_tokens']}")
+print(f"Output tokens: {stats['output_tokens']}")
 
-- Each API key maintains its own separate queue and backoff timer
-- The multiplexer uses thread locks to ensure thread safety
-- Queue processing happens in background threads
-- API keys with fewer requests are automatically favored by the least-loaded strategy
+# Get aggregate statistics across all endpoints
+all_stats = claude_client.get_stats()
+print(f"Total endpoints: {all_stats['endpoints_count']}")
+print(f"Total requests: {all_stats['total_requests']}")
+```
+
+### Resetting Statistics
+
+```python
+# Reset stats for a specific endpoint
+claude_client.reset_stats(endpoint_id)
+
+# Reset stats for all endpoints
+claude_client.reset_stats()
+```
+
+### Updating Endpoint Settings
+
+```python
+# Update settings for an existing endpoint
+claude_client.update_endpoint(
+    endpoint_id,
+    max_retries=10,
+    queue_enabled=False
+)
+```
+
+## Advanced Usage Patterns
+
+### Load Balancing Across Multiple API Keys
+
+```python
+from ipfs_accelerate_py.api_backends import claude
+import random
+
+# Initialize API client
+claude_client = claude(resources={}, metadata={})
+
+# Create multiple endpoints with different API keys
+api_keys = [
+    "api-key-1",
+    "api-key-2",
+    "api-key-3"
+]
+
+endpoints = []
+for i, key in enumerate(api_keys):
+    endpoint_id = claude_client.create_endpoint(
+        api_key=key,
+        max_concurrent_requests=5,
+        queue_size=20
+    )
+    endpoints.append(endpoint_id)
+
+# Function to select an endpoint based on current usage
+def select_endpoint():
+    # Get stats for all endpoints
+    endpoint_stats = {endpoint: claude_client.get_stats(endpoint) for endpoint in endpoints}
+    
+    # First try to find an endpoint that isn't at capacity
+    available_endpoints = [
+        ep for ep, stats in endpoint_stats.items() 
+        if stats["current_requests"] < claude_client.endpoints[ep]["max_concurrent_requests"]
+    ]
+    
+    if available_endpoints:
+        # Sort by current usage and pick the least used
+        return min(available_endpoints, key=lambda ep: endpoint_stats[ep]["current_requests"])
+    else:
+        # All endpoints at capacity, pick one with the shortest queue
+        return min(endpoints, key=lambda ep: len(claude_client.endpoints[ep]["request_queue"]))
+
+# Make a request with load balancing
+def balanced_request(messages):
+    endpoint_id = select_endpoint()
+    return claude_client.chat(
+        messages=messages,
+        endpoint_id=endpoint_id,
+        request_id=f"req-{random.randint(1000, 9999)}"
+    )
+
+# Example usage
+response = balanced_request([{"role": "user", "content": "Hello, API!"}])
+```
+
+### Routing Requests Based on Priority
+
+```python
+# Create tiered endpoints with different concurrency settings
+high_priority = claude_client.create_endpoint(
+    api_key="high-priority-key",
+    max_concurrent_requests=10,  # Higher concurrency for important requests
+    queue_size=50,
+    max_retries=5
+)
+
+medium_priority = claude_client.create_endpoint(
+    api_key="medium-priority-key",
+    max_concurrent_requests=5,
+    queue_size=20,
+    max_retries=3
+)
+
+low_priority = claude_client.create_endpoint(
+    api_key="low-priority-key",
+    max_concurrent_requests=2,
+    queue_size=10,
+    max_retries=2
+)
+
+# Function to route requests based on priority
+def route_request(messages, priority="medium"):
+    if priority == "high":
+        endpoint_id = high_priority
+    elif priority == "medium":
+        endpoint_id = medium_priority
+    else:
+        endpoint_id = low_priority
+        
+    return claude_client.chat(
+        messages=messages,
+        endpoint_id=endpoint_id,
+        request_id=f"pri-{priority}-{int(time.time())}"
+    )
+
+# Example usage
+high_priority_response = route_request(
+    [{"role": "user", "content": "Urgent question: How to handle a system outage?"}],
+    priority="high"
+)
+
+low_priority_response = route_request(
+    [{"role": "user", "content": "What's the weather like today?"}],
+    priority="low"
+)
+```
+
+## Technical Implementation Details
+
+### Queue System
+
+1. Each endpoint has its own request queue
+2. When an endpoint reaches its `max_concurrent_requests` limit, new requests enter the queue
+3. A background thread processes the queue as resources become available
+4. Queued requests include all necessary context to complete them when dequeued
+
+### Backoff Mechanism
+
+1. When rate limited, each endpoint applies exponential backoff
+2. Starting with `initial_retry_delay`, each retry increases by `backoff_factor`
+3. Respects `Retry-After` headers from API responses when available
+4. Caps retry delays at `max_retry_delay` to prevent excessive waits
+
+### Request Tracking
+
+1. Request IDs can be provided or auto-generated
+2. Auto-generated IDs follow the format: `req_{timestamp}_{hash}`
+3. Request IDs are included in API request headers when possible
+4. Used for associating requests with their responses and debugging
+
+### Statistics Collection
+
+1. Each request updates the endpoint's counters
+2. Token usage is extracted from API responses when available
+3. Statistics can be reset per endpoint or globally
+4. Stats are maintained separately for each endpoint for precise monitoring
+
+## API-Specific Notes
+
+### Claude (Anthropic)
+
+- API key is passed via `x-api-key` header
+- Token usage is tracked from response metadata
+- Supports automatic retry on rate limiting (429 responses)
+
+### OpenAI
+
+- Supports all OpenAI API methods (chat, embedding, moderation, etc.)
+- API key is passed via `Authorization: Bearer {key}` header
+- Handles OpenAI-specific rate limiting responses
+
+### Gemini
+
+- Supports both text and multimodal inputs
+- API key is passed via URL parameter and/or header
+- Tracks token usage when available in response metadata
+
+### Groq
+
+- Compatible with OpenAI-style API interface
+- API key is passed via `Authorization: Bearer {key}` header
+- Handles Groq-specific rate limiting patterns
 
 ## Best Practices
 
-1. Use multiple API keys from different accounts to maximize throughput
-2. Configure different `max_concurrent_requests` values based on your rate limits
-3. Use the least-loaded strategy for optimal throughput during heavy load
-4. Monitor usage statistics to ensure even distribution across keys
-5. Avoid using keys with different permission levels in the same multiplexer
-6. Store your API keys securely in a `.env` file (never commit them to version control)
+1. **API Key Management**:
+   - Use different API keys for different purposes or priority levels
+   - Monitor usage per endpoint to identify issues with specific keys
+   - Rotate keys periodically following security best practices
 
-## Error Handling
+2. **Configuration Optimization**:
+   - Adjust `max_concurrent_requests` based on API provider rate limits
+   - Set appropriate `queue_size` based on application traffic patterns
+   - Configure backoff parameters based on API provider recommendations
 
-The multiplexer provides detailed error information:
+3. **Request Tracking**:
+   - Use meaningful request ID prefixes for easier debugging
+   - Include request IDs in logs and metrics
+   - Correlate request IDs with application-level operations
 
-- Each API client has its own queue and backoff handling
-- Errors from one API key won't affect requests to other keys
-- Failed requests are tracked and reported in the statistics
-- Rate limit errors trigger exponential backoff specific to that key
+4. **Error Handling**:
+   - Monitor failed requests ratio per endpoint
+   - Implement circuit breakers for consistently failing endpoints
+   - Add alerts for queues approaching capacity
+
+## Conclusion
+
+The enhanced API multiplexing system provides a robust foundation for applications that need to:
+- Manage and optimize usage across multiple API keys
+- Track detailed usage metrics per endpoint
+- Handle rate limiting and backoff gracefully
+- Ensure reliable operation with queuing and prioritization
+
+All API backends (Claude, OpenAI, Gemini, and Groq) now implement this consistent interface, making it easy to use multiple providers or switch between them as needed.

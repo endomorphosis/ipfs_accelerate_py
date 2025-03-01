@@ -1,0 +1,38 @@
+{
+  "timestamp": "20250301_011031",
+  "apis": {
+    "openai": {
+      "status": "MOCK",
+      "implementation_type": "MOCK",
+      "has_core_methods": false
+    },
+    "claude": {
+      "status": "REAL",
+      "implementation_type": "REAL",
+      "has_core_methods": true
+    },
+    "ollama": {
+      "status": "INCOMPLETE",
+      "implementation_type": "INCOMPLETE",
+      "has_core_methods": false
+    },
+    "groq": {
+      "status": "MOCK",
+      "implementation_type": "MOCK",
+      "has_core_methods": false
+    },
+    "hf_tgi": {
+      "status": "INCOMPLETE",
+      "implementation_type": "INCOMPLETE",
+      "has_core_methods": false
+    },
+    "hf_tei": {
+      "status": "INCOMPLETE",
+      "implementation_type": "INCOMPLETE",
+      "has_core_methods": false
+    },
+    "gemini": {
+      "error": "expected 'except' or 'finally' block (gemini.py, line 588)"
+    }
+  }
+}
