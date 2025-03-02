@@ -331,10 +331,15 @@ def run_all_tests(client, model, args):
     all_requests = (
         results["basic_queue"] + 
         results["backoff_recovery"] + 
-        results["queue_sizes"] + 
-        results["with_without_queue"]["with_queue"] + 
-        results["with_without_queue"]["without_queue"]
+        results["queue_sizes"]
     )
+    
+    # Add with/without queue results if they exist
+    if isinstance(results.get("with_without_queue"), dict):
+        if "with_queue" in results["with_without_queue"]:
+            all_requests += results["with_without_queue"]["with_queue"]
+        if "without_queue" in results["with_without_queue"]:
+            all_requests += results["with_without_queue"]["without_queue"]
     
     successful_requests = sum(1 for r in all_requests if r["success"])
     

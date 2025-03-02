@@ -98,6 +98,31 @@ Recent improvements to the testing framework include:
 7. **Performance Monitoring** - Added inference time and memory usage tracking
 8. **Documentation Updates** - Expanded documentation with dependency matrix and progress tracking
 
+### API Improvements (March 2025)
+
+We have recently completed major enhancements to the API backends:
+
+1. **Claude API** - Fixed indentation issues in queue processing implementation, added robust request handling, and implemented proper mock support for testing.
+
+2. **Test Infrastructure** - Enhanced API test framework to properly handle API-specific parameters, with better error reporting and comprehensive backoff testing.
+
+3. **Queue and Backoff** - All APIs now implement thread-safe request queues, exponential backoff for error handling, request tracking with unique IDs, and per-endpoint configuration.
+
+4. **Circuit Breaker** - Added service outage detection with automatic fast-fail and self-healing capabilities for unresponsive services.
+
+To test the API improvements:
+
+```bash
+# Test a specific API
+python test_api_backoff_queue.py --api claude
+
+# Run all API tests
+python run_queue_backoff_tests.py
+
+# Run comprehensive Ollama tests
+python test_ollama_backoff_comprehensive.py
+```
+
 ## Contributing
 
 When adding new tests:

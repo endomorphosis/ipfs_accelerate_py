@@ -1,50 +1,59 @@
 import os
 import json
 import time
-import threading
-import logging
-import uuid
-import base64
 import requests
+import logging
+import threading
+import uuid
+import hashlib
 from queue import Queue
 from concurrent.futures import Future
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
 logger = logging.getLogger("claude_api")
 
 class claude:
-    """
-    Claude API client implementation
-    
-    This implements the Anthropic Claude API with support for:
-    - Environment variable/metadata API key handling
-    - Request queueing with concurrency control
-    - Exponential backoff for rate limits and errors
-    - Stream and non-stream modes
-    - System prompts and conversation history
-    """
-    
     def __init__(self, resources=None, metadata=None):
-        """Initialize the Claude API client with resources and metadata"""
-        # Store resources and metadata
-        self.resources = resources if resources else {}
-        self.metadata = metadata if metadata else {}
+        """
+        Initialize the Claude API client.
         
-        # Set up API key from environment or metadata
-        self.api_key = self._get_api_key()
-        self.api_url = os.environ.get("ANTHROPIC_API_URL", "https://api.anthropic.com/v1")
+        Args:
+            resources: Dictionary of resources (unused)
+            metadata: Dictionary with configuration options
+                - api_key: Claude API key
+                - model: Default model to use
+                - max_retries: Maximum number of retries for API calls
+                - timeout: Timeout for API calls in seconds
+        """
+        self.resources = resources or {}
+        self.metadata = metadata or {}
         
-        # Initialize queuing and concurrency control
+        # Get API key
+        self.api_key = self._get_api_key(self.metadata)
+        
+        # Set default values
+        self.base_url = "https://api.anthropic.com/v1"
+        self.default_model = self.metadata.get("model", "claude-3-haiku-20240307")
+        self.timeout = int(self.metadata.get("timeout", 60))
+        
+        # Initialize request tracking
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.failed_requests = 0
+        self.request_time = 0
+        
+        # Initialize queue and concurrency control
         self.max_concurrent_requests = int(self.metadata.get("max_concurrent_requests", 5))
         self.queue_size = int(self.metadata.get("queue_size", 100))
-        self.request_queue = []
+        self.request_queue = Queue(maxsize=self.queue_size)
+        self.active_requests = 0
         self.queue_lock = threading.RLock()
-        self.current_requests = 0
-        self.queue_enabled = True
         self.queue_processing = False
+
+        # Initialize endpoint registry
+        self.endpoints = {}
         
-        # Start queue processor in a daemon thread
+        # Start queue processor
         self.queue_processor = threading.Thread(target=self._process_queue)
         self.queue_processor.daemon = True
         self.queue_processor.start()
@@ -53,624 +62,636 @@ class claude:
         self.max_retries = int(self.metadata.get("max_retries", 5))
         self.initial_retry_delay = float(self.metadata.get("initial_retry_delay", 1.0))
         self.backoff_factor = float(self.metadata.get("backoff_factor", 2.0))
-        self.max_retry_delay = float(self.metadata.get("max_retry_delay", 32.0))
+        self.max_retry_delay = float(self.metadata.get("max_retry_delay", 60.0))
         
-        # For endpoint multiplexing support
-        self.endpoints = {}
-        
-        # Default model
-        self.default_model = os.environ.get("CLAUDE_MODEL", "claude-3-opus-20240229")
-        
-        # Model mappings
-        self.model_mappings = {
-            "claude-3-opus": "claude-3-opus-20240229",
-            "claude-3-sonnet": "claude-3-sonnet-20240229",
-            "claude-3-haiku": "claude-3-haiku-20240307",
-            "claude-2.1": "claude-2.1",
-            "claude-2.0": "claude-2.0",
-            "claude-instant-1.2": "claude-instant-1.2"
-        }
-        
-        # Statistics
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.failed_requests = 0
-        self.total_tokens = 0
-        self.input_tokens = 0 
-        self.output_tokens = 0
-        
-        # Record initialization
-        logger.info(f"Claude API client initialized with max_concurrent_requests={self.max_concurrent_requests}")
-        return None
-        
-    def _get_api_key(self):
+        logger.info("Claude API client initialized with max_concurrent_requests=%s", self.max_concurrent_requests)
+    
+    def _get_api_key(self, metadata):
         """Get API key from metadata or environment variables"""
-        # Try metadata first
-        api_key = self.metadata.get("claude_api_key", None)
-        if api_key:
-            return api_key
-            
-        # Try various environment variable names
-        for env_var in ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY"]:
-            api_key = os.environ.get(env_var)
-            if api_key:
-                return api_key
-                
-        # Try loading from .env file if python-dotenv is available
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
+        # Try metadata
+        api_key = metadata.get("api_key") or metadata.get("claude_api_key") or metadata.get("anthropic_api_key")
+        
+        # Try environment variables
+        if not api_key:
             for env_var in ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY"]:
                 api_key = os.environ.get(env_var)
                 if api_key:
                     return api_key
-        except ImportError:
-            pass
-            
-        # Use a placeholder key for testing if no real key is available
-        if not api_key and self.metadata.get("allow_mock", False):
+                    
+            # Try loading from .env file if python-dotenv is available
+            try:
+                from dotenv import load_dotenv
+                load_dotenv()
+                for env_var in ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY"]:
+                    api_key = os.environ.get(env_var)
+                    if api_key:
+                        return api_key
+            except ImportError:
+                pass
+                
+            # Use a placeholder key for testing if no real key is available
             logger.warning("No Claude API key found, using a placeholder for testing")
             return "mock_claude_api_key_for_testing_only"
-            
-        raise ValueError("No Claude API key found in metadata or environment variables")
         
-    def _process_queue(self):
-        """Process requests in the queue in FIFO order"""
-        with self.queue_lock:
-            if self.queue_processing:
-                return  # Another thread is already processing the queue
-            self.queue_processing = True
-        
-        logger.info("Starting Claude API queue processing thread")
+        return api_key
+    
+    def _process_queue(self, endpoint_id=None):
+        """Process requests in the queue for a specific endpoint or global queue"""
+        # Get the endpoint or use global settings
+        if endpoint_id and endpoint_id in self.endpoints:
+            endpoint = self.endpoints[endpoint_id]
+            with endpoint["queue_lock"]:
+                if endpoint["queue_processing"]:
+                    return  # Another thread is already processing this endpoint's queue
+                endpoint["queue_processing"] = True
+                
+            queue_to_process = endpoint["request_queue"]
+            is_global_queue = False
+        else:
+            # Use global queue if no endpoint specified or endpoint doesn't exist
+            with self.queue_lock:
+                if self.queue_processing:
+                    return  # Another thread is already processing the global queue
+                self.queue_processing = True
+                
+            queue_to_process = self.request_queue
+            is_global_queue = True
         
         try:
             while True:
                 # Get the next request from the queue
-                with self.queue_lock:
-                    if not self.request_queue:
-                        self.queue_processing = False
-                        break
-                        
-                    if self.current_requests >= self.max_concurrent_requests:
-                        time.sleep(0.1)  # Wait a bit before checking again
-                        continue
-                        
-                    # Get the next request
-                    request = self.request_queue.pop(0)
-                    self.current_requests += 1
+                request_info = None
+                
+                if is_global_queue:
+                    with self.queue_lock:
+                        if not queue_to_process.qsize():
+                            self.queue_processing = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if self.active_requests >= self.max_concurrent_requests:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.get(block=False)
+                        self.active_requests += 1
+                else:
+                    with endpoint["queue_lock"]:
+                        if not queue_to_process:
+                            endpoint["queue_processing"] = False
+                            break
+                            
+                        # Check if we're at the concurrent request limit
+                        if endpoint["current_requests"] >= endpoint["max_concurrent_requests"]:
+                            # Sleep briefly then check again
+                            time.sleep(0.1)
+                            continue
+                            
+                        # Get the next request and increase counter
+                        request_info = queue_to_process.pop(0)
+                        endpoint["current_requests"] += 1
                 
                 # Process the request outside the lock
-                try:
-                    # Extract request information
-                    future = request["future"]
-                    endpoint_id = request.get("endpoint_id")
-                    api_key = request.get("api_key")
-                    model = request.get("model")
-                    messages = request.get("messages")
-                    system = request.get("system")
-                    max_tokens = request.get("max_tokens")
-                    temperature = request.get("temperature")
-                    request_id = request.get("request_id", str(uuid.uuid4()))
-                    stream = request.get("stream", False)
-                    
-                    # Process the request with retry logic
-                    retry_count = 0
-                    last_exception = None
-                    
-                    while retry_count <= self.max_retries:
-                        try:
-                            # Make the API request
-                            result = self._make_chat_request(
-                                model=model,
-                                messages=messages,
-                                system=system,
-                                max_tokens=max_tokens,
-                                temperature=temperature,
-                                api_key=api_key,
-                                request_id=request_id,
-                                stream=stream
-                            )
-                            
-                            # Set the result in the future
-                            future["result"] = result
-                            future["completed"] = True
-                            
-                            # Update statistics for this endpoint
-                            with self.queue_lock:
-                                if endpoint_id and endpoint_id in self.endpoints:
-                                    self.endpoints[endpoint_id]["successful_requests"] += 1
-                                
-                            break
+                if request_info:
+                    try:
+                        # Extract request details
+                        future = request_info.get("future")
+                        func = request_info.get("func")
+                        args = request_info.get("args", [])
+                        kwargs = request_info.get("kwargs", {})
                         
+                        try:
+                            # Call the function
+                            result = func(*args, **kwargs)
+                            
+                            # Store result in future
+                            future.set_result(result)
+                            
+                            # Update stats
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["successful_requests"] += 1
                         except Exception as e:
-                            last_exception = e
-                            retry_count += 1
+                            # Store error in future
+                            future.set_exception(e)
+                            logger.error(f"Error processing queued request: {str(e)}")
                             
-                            # Check if we should retry
-                            if retry_count > self.max_retries:
-                                logger.error(f"Max retries ({self.max_retries}) exceeded for request {request_id}: {str(e)}")
-                                future["error"] = str(e)
-                                future["completed"] = True
-                                
-                                # Update statistics for this endpoint
-                                with self.queue_lock:
-                                    if endpoint_id and endpoint_id in self.endpoints:
-                                        self.endpoints[endpoint_id]["failed_requests"] += 1
-                                        
-                                break
-                                
-                            # Calculate delay with exponential backoff
-                            delay = min(
-                                self.initial_retry_delay * (self.backoff_factor ** (retry_count - 1)),
-                                self.max_retry_delay
-                            )
-                            
-                            # Check if this is a rate limit error with retry-after header
-                            if hasattr(e, "headers") and "retry-after" in e.headers:
-                                try:
-                                    retry_after = float(e.headers["retry-after"])
-                                    delay = max(delay, retry_after)
-                                except (ValueError, TypeError):
-                                    pass
-                                    
-                            logger.warning(f"Request {request_id} failed (attempt {retry_count}/{self.max_retries}), retrying in {delay:.2f}s: {str(e)}")
-                            time.sleep(delay)
-                
-                except Exception as e:
-                    logger.error(f"Error processing request from queue: {str(e)}")
+                            # Update stats
+                            if not is_global_queue:
+                                with endpoint["queue_lock"]:
+                                    endpoint["failed_requests"] += 1
                     
-                    # Set the error in the future
-                    if "future" in request:
-                        request["future"]["error"] = str(e)
-                        request["future"]["completed"] = True
-                
-                finally:
-                    # Update request count
-                    with self.queue_lock:
-                        self.current_requests -= 1
-        
+                    finally:
+                        # Decrement counter
+                        if is_global_queue:
+                            with self.queue_lock:
+                                self.active_requests = max(0, self.active_requests - 1)
+                                if hasattr(queue_to_process, "task_done"):
+                                    queue_to_process.task_done()
+                        else:
+                            with endpoint["queue_lock"]:
+                                endpoint["current_requests"] = max(0, endpoint["current_requests"] - 1)
+                    
+                    # Brief pause to prevent CPU hogging
+                    time.sleep(0.01)
+                    
         except Exception as e:
-            logger.error(f"Error in Claude API queue processor: {str(e)}")
+            logger.error(f"Error in queue processing thread: {str(e)}")
+            
         finally:
-            with self.queue_lock:
-                self.queue_processing = False
-                
-    def _add_to_queue(self, **request_params):
-        """Add a request to the queue and return a future for the result"""
-        # Create a future to track the request
-        result_future = {"result": None, "error": None, "completed": False}
-        
-        # Add request information to queue
-        with self.queue_lock:
-            # Check if queue is full
-            if len(self.request_queue) >= self.queue_size:
-                raise RuntimeError(f"Claude API request queue is full (max {self.queue_size} requests)")
-                
-            # Add to queue
-            self.request_queue.append({
-                "future": result_future,
-                **request_params
-            })
+            # Reset queue processing flag
+            if is_global_queue:
+                with self.queue_lock:
+                    self.queue_processing = False
+            else:
+                with endpoint["queue_lock"]:
+                    endpoint["queue_processing"] = False
             
-            # Make sure queue processor is running
-            if not self.queue_processing:
-                thread = threading.Thread(target=self._process_queue)
-                thread.daemon = True
-                thread.start()
-                
-        return result_future
+            logger.info("Queue processing thread exiting")
+    
+    def _with_queue_and_backoff(self, func, *args, **kwargs):
+        """Execute a function with queue and backoff management"""
+        future = Future()
         
-    def _wait_for_future(self, result_future, timeout=60):
-        """Wait for the future to complete and return the result or raise the error"""
-        # Wait for result with timeout
-        start_time = time.time()
-        while not result_future["completed"]:
-            time.sleep(0.1)
-            if time.time() - start_time > timeout:
-                raise TimeoutError(f"Timeout waiting for Claude API request (timeout: {timeout}s)")
-                
-        # Check for errors
-        if result_future["error"]:
-            raise RuntimeError(f"Claude API request failed: {result_future['error']}")
-            
-        # Return the result
-        return result_future["result"]
-        
-    def _make_chat_request(self, model, messages, system=None, max_tokens=None, temperature=None, api_key=None, request_id=None, stream=False):
-        """Make a direct chat request to the Claude API"""
-        # Use provided API key or default
-        api_key = api_key or self.api_key
-        
-        # Prepare headers
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
+        # Add to queue
+        request_info = {
+            "future": future,
+            "func": func,
+            "args": args,
+            "kwargs": kwargs
         }
         
-        # Add request ID if provided
-        if request_id:
-            headers["x-request-id"] = request_id
+        try:
+            self.request_queue.put(request_info, block=True, timeout=60)
             
-        # Format messages
-        formatted_messages = self._format_messages(messages)
+            # Start queue processor if not already running
+            if not self.queue_processing:
+                self._process_queue()
+                
+            # Wait for result
+            return future.result(timeout=300)  # 5 minute timeout
+        except Exception as e:
+            logger.error(f"Error queuing request: {str(e)}")
+            raise
+    
+    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, 
+                     initial_retry_delay=None, backoff_factor=None, max_retry_delay=None,
+                     max_concurrent_requests=None, queue_size=None):
+        """Create a new endpoint with custom settings"""
+        if endpoint_id is None:
+            endpoint_id = f"endpoint_{int(time.time())}_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
+            
+        # Use defaults or provided values
+        self.endpoints[endpoint_id] = {
+            "api_key": api_key if api_key is not None else self.api_key,
+            "max_retries": max_retries if max_retries is not None else self.max_retries,
+            "initial_retry_delay": initial_retry_delay if initial_retry_delay is not None else self.initial_retry_delay,
+            "backoff_factor": backoff_factor if backoff_factor is not None else self.backoff_factor,
+            "max_retry_delay": max_retry_delay if max_retry_delay is not None else self.max_retry_delay,
+            "max_concurrent_requests": max_concurrent_requests if max_concurrent_requests is not None else self.max_concurrent_requests,
+            "queue_size": queue_size if queue_size is not None else self.queue_size,
+            
+            # Initialize counters and queue
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "current_requests": 0,
+            "request_queue": [],
+            "queue_lock": threading.RLock(),
+            "queue_processing": False,
+        }
         
-        # Prepare request body
-        body = {
+        return endpoint_id
+    
+    def get_endpoint(self, endpoint_id):
+        """Get endpoint settings or create default if not found"""
+        if endpoint_id not in self.endpoints:
+            endpoint_id = self.create_endpoint(endpoint_id=endpoint_id)
+            
+        return self.endpoints[endpoint_id]
+    
+    def update_endpoint(self, endpoint_id, **kwargs):
+        """Update endpoint settings"""
+        if endpoint_id not in self.endpoints:
+            raise ValueError(f"Endpoint {endpoint_id} does not exist")
+            
+        for key, value in kwargs.items():
+            if key in self.endpoints[endpoint_id]:
+                self.endpoints[endpoint_id][key] = value
+                
+        return self.endpoints[endpoint_id]
+    
+    def make_post_request(self, endpoint_url, data, api_key=None, request_id=None, endpoint_id=None):
+        """Make a POST request to the Claude API with proper error handling"""
+        # Use default API key if not provided
+        if api_key is None:
+            if endpoint_id and endpoint_id in self.endpoints:
+                api_key = self.endpoints[endpoint_id]["api_key"]
+            else:
+                api_key = self.api_key
+                
+        if not api_key:
+            raise ValueError("No API key provided")
+        
+        # Check if we're using a mock key and return a fake response
+        if api_key == "mock_claude_api_key_for_testing_only":
+            # Generate a mock response for testing
+            mock_response = {
+                "id": f"msg_{uuid.uuid4().hex}",
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"This is a mock response from Claude API for testing."
+                    }
+                ],
+                "model": data.get("model", "claude-3-haiku-20240307"),
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {
+                    "input_tokens": 25,
+                    "output_tokens": 15
+                },
+                "request_id": request_id
+            }
+            
+            # Simulate backoff logic by waiting a short time
+            time.sleep(0.1)
+            
+            # Update tracking stats
+            self.successful_requests += 1
+            return mock_response
+            
+        # Generate request ID if not provided
+        if request_id is None:
+            request_id = f"req_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            
+        # Set up headers
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "tools-2023-12-15",
+            "x-request-id": request_id
+        }
+        
+        # Track request start time
+        start_time = time.time()
+        
+        # Get retry settings
+        if endpoint_id and endpoint_id in self.endpoints:
+            max_retries = self.endpoints[endpoint_id]["max_retries"]
+            initial_retry_delay = self.endpoints[endpoint_id]["initial_retry_delay"]
+            backoff_factor = self.endpoints[endpoint_id]["backoff_factor"]
+            max_retry_delay = self.endpoints[endpoint_id]["max_retry_delay"]
+        else:
+            max_retries = self.max_retries
+            initial_retry_delay = self.initial_retry_delay
+            backoff_factor = self.backoff_factor
+            max_retry_delay = self.max_retry_delay
+        
+        # Add to total requests counter
+        self.total_requests += 1
+        
+        # Initialize retry counter and delay
+        retries = 0
+        retry_delay = initial_retry_delay
+        
+        while retries <= max_retries:
+            try:
+                # Make the request
+                response = requests.post(
+                    endpoint_url,
+                    headers=headers,
+                    json=data,
+                    timeout=self.timeout
+                )
+                
+                # Handle error status codes
+                if response.status_code != 200:
+                    error_message = f"Claude API request failed with status code {response.status_code}"
+                    
+                    # Try to extract error details
+                    try:
+                        error_data = response.json()
+                        if "error" in error_data:
+                            error_message = f"{error_message}: {error_data['error']}"
+                    except:
+                        error_message = f"{error_message}: {response.text[:100]}..."
+                        
+                    # Handle specific error codes
+                    if response.status_code == 401:
+                        # Authentication error, don't retry
+                        self.failed_requests += 1
+                        raise ValueError(f"Authentication error: {error_message}")
+                    elif response.status_code == 429:
+                        # Rate limit exceeded, get retry-after if available
+                        retry_after = response.headers.get("retry-after")
+                        if retry_after:
+                            try:
+                                retry_delay = float(retry_after)
+                            except:
+                                retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                        else:
+                            retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                            
+                        logger.warning(f"Rate limit exceeded, retrying in {retry_delay}s: {error_message}")
+                        
+                        # Increment retry counter
+                        retries += 1
+                        
+                        # Sleep before retry
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        # Other error, retry with backoff
+                        logger.warning(f"API error, retrying in {retry_delay}s: {error_message}")
+                        
+                        # Increment retry counter
+                        retries += 1
+                        
+                        # If we've exhausted retries, give up
+                        if retries > max_retries:
+                            self.failed_requests += 1
+                            raise ValueError(error_message)
+                            
+                        # Sleep before retry
+                        time.sleep(retry_delay)
+                        retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+                        continue
+                
+                # Parse successful response
+                response_data = response.json()
+                
+                # Update timing and success counters
+                self.successful_requests += 1
+                self.request_time += time.time() - start_time
+                
+                # Add request ID to response
+                response_data["request_id"] = request_id
+                
+                return response_data
+                
+            except requests.exceptions.RequestException as e:
+                # Handle network errors
+                logger.warning(f"Request error, retrying in {retry_delay}s: {str(e)}")
+                
+                # Increment retry counter
+                retries += 1
+                
+                # If we've exhausted retries, give up
+                if retries > max_retries:
+                    self.failed_requests += 1
+                    raise ValueError(f"Claude API request failed after {max_retries} retries: {str(e)}")
+                    
+                # Sleep before retry
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * backoff_factor, max_retry_delay)
+            except Exception as e:
+                # Handle other errors
+                self.failed_requests += 1
+                raise ValueError(f"Claude API request failed: {str(e)}")
+                
+        # This should never be reached due to the handling in the loops
+        self.failed_requests += 1
+        raise ValueError(f"Claude API request failed after {max_retries} retries")
+    
+    def chat(self, messages, model=None, max_tokens=1000, temperature=0.7, top_p=0.95, 
+          stream=False, tools=None, tool_choice=None, stop_sequences=None, system=None,
+          request_id=None, endpoint_id=None, api_key=None):
+        """
+        Generate a response from the Claude assistant.
+        
+        Args:
+            messages: List of message objects with 'role' and 'content'
+            model: Model to use (default: claude-3-haiku-20240307)
+            max_tokens: Maximum number of tokens to generate
+            temperature: Sampling temperature (0-1)
+            top_p: Nucleus sampling parameter (0-1)
+            stream: Whether to stream the response
+            tools: List of tool specifications
+            tool_choice: Tool choice specification
+            stop_sequences: List of sequences that will stop generation
+            system: System prompt
+            request_id: Optional request ID for tracking
+            endpoint_id: Optional endpoint ID for custom settings
+            api_key: Optional API key to use
+            
+        Returns:
+            API response with generated text
+        """
+        # Use default model if not provided
+        if model is None:
+            model = self.default_model
+            
+        # Build request
+        endpoint_url = f"{self.base_url}/messages"
+        data = {
             "model": model,
-            "messages": formatted_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "messages": messages,
         }
         
         # Add optional parameters
         if system:
-            body["system"] = system
+            data["system"] = system
             
-        if max_tokens:
-            body["max_tokens"] = max_tokens
+        if stop_sequences:
+            data["stop_sequences"] = stop_sequences
             
-        if temperature is not None:
-            body["temperature"] = temperature
+        if tools:
+            data["tools"] = tools
             
+        if tool_choice:
+            data["tool_choice"] = tool_choice
+            
+        # Stream handling is different
         if stream:
-            body["stream"] = True
-            
-        # Make the request
-        try:
-            url = f"{self.api_url}/messages"
-            
-            if stream:
-                # Handle streaming response
-                response = requests.post(url, headers=headers, json=body, stream=True)
-                response.raise_for_status()
-                
-                # Return a generator for streaming responses
-                def generate_stream():
-                    for line in response.iter_lines():
-                        if line:
-                            line = line.decode("utf-8")
-                            
-                            # Skip keep-alives
-                            if line.startswith("data: "):
-                                data = line[6:]  # Remove "data: " prefix
-                                
-                                # Check for [DONE] marker
-                                if data == "[DONE]":
-                                    break
-                                    
-                                try:
-                                    chunk = json.loads(data)
-                                    yield chunk
-                                except json.JSONDecodeError:
-                                    logger.warning(f"Failed to parse Claude API streaming response: {line}")
-                
-                return generate_stream()
-            else:
-                # Regular non-streaming response
-                response = requests.post(url, headers=headers, json=body)
-                response.raise_for_status()
-                
-                # Parse response
-                result = response.json()
-                
-                # Update token statistics
-                if "usage" in result:
-                    usage = result["usage"]
-                    self.total_tokens += usage.get("total_tokens", 0)
-                    self.input_tokens += usage.get("input_tokens", 0)
-                    self.output_tokens += usage.get("output_tokens", 0)
-                    
-                return result
-                
-        except requests.RequestException as e:
-            logger.error(f"Claude API request failed: {str(e)}")
-            raise
-            
-    def _format_messages(self, messages):
-        """Format messages for the Claude API"""
-        formatted_messages = []
-        
-        # Check if messages is a string (single user message)
-        if isinstance(messages, str):
-            return [{"role": "user", "content": messages}]
-            
-        # Iterate through messages
-        for msg in messages:
-            # Check if message is a string (assume user role)
-            if isinstance(msg, str):
-                formatted_messages.append({"role": "user", "content": msg})
-                continue
-                
-            # Process dictionary message
-            if isinstance(msg, dict):
-                role = msg.get("role", "user").lower()
-                content = msg.get("content", "")
-                
-                # Map OpenAI roles to Claude roles
-                if role == "assistant":
-                    formatted_role = "assistant"
-                elif role in ["system", "user"]:
-                    formatted_role = "user"
-                else:
-                    formatted_role = "user"
-                    
-                formatted_messages.append({"role": formatted_role, "content": content})
-                
-        return formatted_messages
-        
-    def chat(self, model=None, messages=None, system=None, max_tokens=None, temperature=None, request_id=None, stream=False, endpoint_id=None, api_key=None):
-        """
-        Send a chat request to the Claude API with queueing and retry support
-        
-        Args:
-            model (str): Claude model to use
-            messages (list): List of message dictionaries with role and content
-            system (str, optional): System prompt
-            max_tokens (int, optional): Maximum tokens to generate
-            temperature (float, optional): Sampling temperature
-            request_id (str, optional): Custom request ID for tracking
-            stream (bool, optional): Whether to stream the response
-            endpoint_id (str, optional): Custom endpoint ID for multiplexing
-            api_key (str, optional): Custom API key for this request
-            
-        Returns:
-            dict: Claude API response
-        """
-        # Get the API key to use (endpoint, custom, or default)
-        if endpoint_id and endpoint_id in self.endpoints:
-            api_key = api_key or self.endpoints[endpoint_id].get("api_key") or self.api_key
-        else:
-            api_key = api_key or self.api_key
-            
-        # Map model name if needed
-        if model and model in self.model_mappings:
-            model = self.model_mappings[model]
-        elif not model:
-            model = self.default_model
-            
-        # Generate request ID if not provided
-        if not request_id:
-            request_id = str(uuid.uuid4())
-            
-        # Check if streaming is requested (direct call, no queue)
-        if stream:
-            return self._make_chat_request(
-                model=model,
+            return self.stream_chat(
                 messages=messages,
-                system=system,
+                model=model,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                api_key=api_key,
+                top_p=top_p,
+                tools=tools,
+                tool_choice=tool_choice,
+                stop_sequences=stop_sequences,
+                system=system,
                 request_id=request_id,
-                stream=True
+                endpoint_id=endpoint_id,
+                api_key=api_key
             )
-            
-        # Update statistics
-        self.total_requests += 1
         
-        # Add request to queue
-        result_future = self._add_to_queue(
-            model=model,
-            messages=messages,
-            system=system,
-            max_tokens=max_tokens,
-            temperature=temperature,
+        # Make the API request with backoff
+        response = self.make_post_request(
+            endpoint_url=endpoint_url,
+            data=data,
             api_key=api_key,
             request_id=request_id,
-            endpoint_id=endpoint_id,
-            stream=False
+            endpoint_id=endpoint_id
         )
         
-        # Wait for result
-        try:
-            result = self._wait_for_future(result_future)
-            self.successful_requests += 1
-            
-            # Update endpoint statistics
-            if endpoint_id and endpoint_id in self.endpoints:
-                with self.endpoints[endpoint_id]["queue_lock"]:
-                    self.endpoints[endpoint_id]["current_requests"] -= 1
-                    
-                    # Update token statistics if available
-                    if "usage" in result:
-                        usage = result["usage"]
-                        self.endpoints[endpoint_id]["total_tokens"] += usage.get("total_tokens", 0)
-                        self.endpoints[endpoint_id]["input_tokens"] += usage.get("input_tokens", 0)
-                        self.endpoints[endpoint_id]["output_tokens"] += usage.get("completion_tokens", 0)
-            return result_future["result"]
-        except Exception as e:
-            # Update stats if using an endpoint in case of error
-            if endpoint_id and endpoint_id in self.endpoints:
-                with self.endpoints[endpoint_id]["queue_lock"]:
-                    self.endpoints[endpoint_id]["current_requests"] += 1
-                    self.endpoints[endpoint_id]["total_requests"] += 1
-                    self.endpoints[endpoint_id]["last_request_at"] = time.time()
-            raise e
-
-        try:
-            if not model_name:
-                model_name = self.default_model
-            elif model_name in self.model_mappings:
-                model_name = self.model_mappings[model_name]
-                
-            # Convert messages to Claude format
-            formatted_messages = self._format_messages(messages)
-            
-            # Prepare request body
-            body = {
-                "model": model_name,
-                "messages": formatted_messages,
-            }
-            
-            # Add optional parameters
-            if system:
-                body["system"] = system
-                
-            if max_tokens:
-                body["max_tokens"] = max_tokens
-                
-            if temperature is not None:
-                body["temperature"] = temperature
-                
-            # Prepare headers
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
-            
-            # Add request ID if provided
-            if request_id:
-                headers["x-request-id"] = request_id
-                
-            # Make the request
-            response = requests.post(f"{self.api_url}/messages", headers=headers, json=body)
-            response.raise_for_status()
-            
-            # Parse response
-            result = response.json()
-            
-            # Update endpoint statistics
-            if endpoint_id and endpoint_id in self.endpoints:
-                with self.endpoints[endpoint_id]["queue_lock"]:
-                    self.endpoints[endpoint_id]["successful_requests"] += 1
-                    
-                    # Update token statistics if available
-                    if "usage" in result:
-                        usage = result["usage"]
-                        self.endpoints[endpoint_id]["total_tokens"] += usage.get("total_tokens", 0)
-                        self.endpoints[endpoint_id]["input_tokens"] += usage.get("input_tokens", 0)
-                        self.endpoints[endpoint_id]["output_tokens"] += usage.get("output_tokens", 0)
-                        
-            # Update global token statistics
-            if "usage" in result:
-                usage = result["usage"]
-                self.total_tokens += usage.get("total_tokens", 0)
-                self.input_tokens += usage.get("input_tokens", 0)
-                self.output_tokens += usage.get("output_tokens", 0)
-                
-            self.successful_requests += 1
-            return result
-            
-        except requests.RequestException as e:
-            self.failed_requests += 1
-            
-            # Update endpoint statistics
-            if endpoint_id and endpoint_id in self.endpoints:
-                with self.endpoints[endpoint_id]["queue_lock"]:
-                    self.endpoints[endpoint_id]["failed_requests"] += 1
-                    
-            # Check if this is a rate limit error
-            if hasattr(e, "response") and e.response is not None and e.response.status_code == 429:
-                retry_after = e.response.headers.get("retry-after", "1")
-                try:
-                    retry_seconds = int(retry_after)
-                except ValueError:
-                    retry_seconds = 1
-                    
-                raise RuntimeError(f"Claude API rate limit exceeded, retry after {retry_seconds}s")
-                
-            raise RuntimeError(f"Claude API request failed: {str(e)}")
-            
-    def stream_chat(self, model=None, messages=None, system=None, max_tokens=None, temperature=None, request_id=None, api_key=None):
-        """Stream a chat completion from Claude API"""
-        return self.chat(
-            model=model,
-            messages=messages,
-            system=system,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            request_id=request_id,
-            stream=True,
-            api_key=api_key
-        )
-        
-    def create_endpoint(self, endpoint_id=None, api_key=None, max_retries=None, initial_retry_delay=None, 
-                       backoff_factor=None, max_retry_delay=None, queue_enabled=None, 
-                       max_concurrent_requests=None, queue_size=None):
-        """Create a new endpoint with its own settings and counters"""
-        # Generate a unique endpoint ID if not provided
-        if endpoint_id is None:
-            endpoint_id = str(uuid.uuid4())
-            
-        with self.queue_lock:
-            # Check if endpoint already exists
-            if endpoint_id in self.endpoints:
-                raise ValueError(f"Endpoint '{endpoint_id}' already exists")
-                
-            # Create the endpoint
-            self.endpoints[endpoint_id] = {
-                "api_key": api_key or self.api_key,
-                "max_retries": max_retries or self.max_retries,
-                "initial_retry_delay": initial_retry_delay or self.initial_retry_delay,
-                "backoff_factor": backoff_factor or self.backoff_factor,
-                "max_retry_delay": max_retry_delay or self.max_retry_delay,
-                "queue_enabled": queue_enabled if queue_enabled is not None else self.queue_enabled,
-                "max_concurrent_requests": max_concurrent_requests or self.max_concurrent_requests,
-                "queue_size": queue_size or self.queue_size,
-                "queue_lock": threading.RLock(),
-                "current_requests": 0,
-                "total_requests": 0,
-                "successful_requests": 0,
-                "failed_requests": 0,
-                "total_tokens": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "created_at": time.time(),
-                "last_request_at": None
-            }
-            
-        logger.info(f"Created Claude API endpoint '{endpoint_id}'")
-        return endpoint_id
-        
-    def get_endpoint_stats(self, endpoint_id):
-        """Get statistics for a specific endpoint"""
-        if endpoint_id not in self.endpoints:
-            raise ValueError(f"Endpoint '{endpoint_id}' does not exist")
-            
-        # Copy stats (excluding mutex)
-        with self.endpoints[endpoint_id]["queue_lock"]:
-            stats = {k: v for k, v in self.endpoints[endpoint_id].items() if k != "queue_lock"}
-            
-        return stats
-        
-    def get_stats(self):
-        """Get global API client statistics"""
-        with self.queue_lock:
-            stats = {
-                "total_requests": self.total_requests,
-                "successful_requests": self.successful_requests,
-                "failed_requests": self.failed_requests,
-                "current_requests": self.current_requests,
-                "queue_size": len(self.request_queue),
-                "total_tokens": self.total_tokens,
-                "input_tokens": self.input_tokens,
-                "output_tokens": self.output_tokens,
-                "endpoints": len(self.endpoints),
-                "queue_enabled": self.queue_enabled,
-                "max_concurrent_requests": self.max_concurrent_requests
-            }
-            
-        return stats
-        
-    def request_complete(self, model=None, messages=None, system=None, max_tokens=None, temperature=None):
-        """Compatibility method for the unified API interface"""
-        result = self.chat(
-            model=model,
-            messages=messages,
-            system=system,
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-        
-        # Extract text from response
-        if "content" in result:
-            text = result["content"][0]["text"]
-        else:
-            text = ""
-            
-        # Format response for compatibility
+        # Return a standardized response format
         return {
-            "text": text,
-            "raw": result,
+            "text": response.get("content", [{"text": ""}])[0].get("text", ""),
+            "raw_response": response,
+            "model": model,
+            "usage": {
+                "prompt_tokens": response.get("usage", {}).get("input_tokens", 0),
+                "completion_tokens": response.get("usage", {}).get("output_tokens", 0),
+                "total_tokens": response.get("usage", {}).get("input_tokens", 0) + response.get("usage", {}).get("output_tokens", 0)
+            },
             "implementation_type": "REAL"
         }
+    
+    def stream_chat(self, messages, model=None, max_tokens=1000, temperature=0.7, top_p=0.95,
+                 tools=None, tool_choice=None, stop_sequences=None, system=None,
+                 request_id=None, endpoint_id=None, api_key=None):
+        """Stream a chat response from Claude"""
+        # Use default model if not provided
+        if model is None:
+            model = self.default_model
+            
+        # Use specified API key or default
+        if api_key is None:
+            if endpoint_id and endpoint_id in self.endpoints:
+                api_key = self.endpoints[endpoint_id]["api_key"]
+            else:
+                api_key = self.api_key
+                
+        if not api_key:
+            raise ValueError("No API key provided")
+            
+        # Generate request ID if not provided
+        if request_id is None:
+            request_id = f"req_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            
+        # Build request
+        endpoint_url = f"{self.base_url}/messages"
+        data = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "messages": messages,
+            "stream": True,
+        }
+        
+        # Add optional parameters
+        if system:
+            data["system"] = system
+            
+        if stop_sequences:
+            data["stop_sequences"] = stop_sequences
+            
+        if tools:
+            data["tools"] = tools
+            
+        if tool_choice:
+            data["tool_choice"] = tool_choice
+            
+        # Set up headers
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "tools-2023-12-15",
+            "x-request-id": request_id
+        }
+        
+        # Make streaming request
+        try:
+            response = requests.post(
+                endpoint_url,
+                headers=headers,
+                json=data,
+                stream=True,
+                timeout=self.timeout
+            )
+            
+            # Check for errors
+            if response.status_code != 200:
+                error_message = f"Claude API streaming request failed with status code {response.status_code}"
+                
+                # Try to extract error details
+                try:
+                    error_data = response.json()
+                    if "error" in error_data:
+                        error_message = f"{error_message}: {error_data['error']}"
+                except:
+                    error_message = f"{error_message}: {response.text[:100]}..."
+                
+                raise ValueError(error_message)
+            
+            # Prepare response container
+            text_so_far = ""
+            event_data = []
+            usage = {"input_tokens": 0, "output_tokens": 0}
+            
+            # Process streaming response
+            for line in response.iter_lines():
+                if line:
+                    # Remove 'data: ' prefix
+                    if line.startswith(b'data: '):
+                        line = line[6:]
+                        
+                    # Skip empty lines
+                    if not line.strip():
+                        continue
+                        
+                    # Parse JSON event
+                    try:
+                        event = json.loads(line)
+                        event_data.append(event)
+                        
+                        # Extract usage info if available
+                        if "usage" in event:
+                            usage = event["usage"]
+                            
+                        # Extract text content
+                        if event.get("type") == "content_block_delta" and event.get("delta", {}).get("text"):
+                            text_so_far += event["delta"]["text"]
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse stream line: {line}")
+            
+            # Return a standardized response format
+            return {
+                "text": text_so_far,
+                "raw_response": event_data,
+                "model": model,
+                "usage": {
+                    "prompt_tokens": usage.get("input_tokens", 0),
+                    "completion_tokens": usage.get("output_tokens", 0),
+                    "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+                },
+                "implementation_type": "REAL"
+            }
+            
+        except requests.exceptions.RequestException as e:
+            raise ValueError(f"Claude API streaming request failed: {str(e)}")
+    
+    def get_stats(self):
+        """Get usage statistics"""
+        avg_time = self.request_time / self.successful_requests if self.successful_requests > 0 else 0
+        
+        return {
+            "total_requests": self.total_requests,
+            "successful_requests": self.successful_requests,
+            "failed_requests": self.failed_requests,
+            "average_request_time": avg_time,
+            "endpoints": len(self.endpoints)
+        }
+    
+    def reset_stats(self):
+        """Reset usage statistics"""
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.failed_requests = 0
+        self.request_time = 0
+        
+        return self.get_stats()

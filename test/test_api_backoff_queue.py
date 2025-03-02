@@ -20,10 +20,29 @@ import argparse
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import API backends
-from ipfs_accelerate_py.api_backends import (
-    apis, groq, claude, gemini, openai_api, ollama, 
-    hf_tgi, hf_tei, llvm, opea, ovms, s3_kit
-)
+import importlib
+import sys
+from pathlib import Path
+
+# Add parent directory path
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+try:
+    from ipfs_accelerate_py.api_backends.claude import claude
+    from ipfs_accelerate_py.api_backends.groq import groq
+    from ipfs_accelerate_py.api_backends.gemini import gemini
+    from ipfs_accelerate_py.api_backends.openai_api import openai_api
+    from ipfs_accelerate_py.api_backends.ollama import ollama
+    from ipfs_accelerate_py.api_backends.hf_tgi import hf_tgi
+    from ipfs_accelerate_py.api_backends.hf_tei import hf_tei
+    from ipfs_accelerate_py.api_backends.llvm import llvm
+    from ipfs_accelerate_py.api_backends.opea import opea
+    from ipfs_accelerate_py.api_backends.ovms import ovms
+    from ipfs_accelerate_py.api_backends.s3_kit import s3_kit
+except ImportError as e:
+    print(f"Error importing API backends: {e}")
 
 # API client classes by name
 API_CLIENTS = {
@@ -64,21 +83,56 @@ DEFAULT_MODELS = {
     "s3_kit": "default"
 }
 
-def send_request(api_client, message, model=None, tag=""):
+def send_request(api_client, message, model=None, tag="", api_name=None):
     """Send a request and capture the timing information"""
     start_time = time.time()
     request_id = f"req_{tag}_{time.time()}"
     
     try:
-        # Different APIs have different chat methods
-        if hasattr(api_client, "chat"):
+        # Different APIs have different chat methods and parameter names
+        if api_name == "claude":
             response = api_client.chat(
-                model_name=model,
                 messages=[{"role": "user", "content": message}],
+                model=model,
                 max_tokens=30,
                 temperature=0.7,
                 request_id=request_id
             )
+        elif api_name == "openai":
+            response = api_client.chat(
+                messages=[{"role": "user", "content": message}],
+                model=model,
+                max_tokens=30,
+                temperature=0.7,
+                request_id=request_id
+            )
+        elif api_name == "groq":
+            response = api_client.chat(
+                messages=[{"role": "user", "content": message}],
+                model=model,
+                max_tokens=30,
+                temperature=0.7,
+                request_id=request_id
+            )
+        elif hasattr(api_client, "chat"):
+            # Generic approach for other APIs with chat method
+            try:
+                response = api_client.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": message}],
+                    max_tokens=30,
+                    temperature=0.7,
+                    request_id=request_id
+                )
+            except TypeError:
+                # Fallback with model_name parameter
+                response = api_client.chat(
+                    model_name=model,
+                    messages=[{"role": "user", "content": message}],
+                    max_tokens=30,
+                    temperature=0.7,
+                    request_id=request_id
+                )
         elif hasattr(api_client, "generate"):
             response = api_client.generate(
                 model=model,
@@ -171,7 +225,8 @@ def test_backoff_system(api_name, api_key="", model=None, num_requests=5):
             api_client, 
             f"Count from 1 to 5. Request #{i+1}", 
             model=model,
-            tag=f"backoff_{i+1}"
+            tag=f"backoff_{i+1}",
+            api_name=api_name
         )
         
         results.append(result)
@@ -239,7 +294,7 @@ def test_queue_system(api_name, api_key="", model=None, num_requests=8, max_conc
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_requests) as executor:
         # Submit all tasks
         future_to_idx = {
-            executor.submit(send_request, api_client, msg, model, f"queue_{i+1}"): i 
+            executor.submit(send_request, api_client, msg, model, f"queue_{i+1}", api_name): i 
             for i, msg in enumerate(messages)
         }
         

@@ -10,3 +10,6 @@ model_cache/
 model_cache/*
 *_results_*
 *.env*
+*_report_*
+*.log
+*_status_*

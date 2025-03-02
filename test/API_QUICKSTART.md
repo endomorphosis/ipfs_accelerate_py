@@ -352,7 +352,7 @@ if hasattr(groq_api, "get_usage_stats"):
 
 #### 2. Request Queueing and Concurrency Control
 
-All API backends support configurable concurrency limits:
+All API backends support configurable concurrency limits with robust thread-safe implementations:
 
 ```python
 from ipfs_accelerate_py.api_backends import openai_api
@@ -366,11 +366,25 @@ client.queue_size = 50              # Queue up to 50 pending requests
 
 # Any requests beyond the concurrent limit will be queued automatically
 # You don't need to do anything special to use the queue
+
+# Create multiple endpoints with different settings
+endpoint_id = client.create_endpoint(
+    api_key="different-api-key",    # Use a different API key
+    max_concurrent_requests=10,     # Higher concurrency for this endpoint
+    queue_size=100                  # Larger queue for this endpoint
+)
+
+# Use the specific endpoint for requests
+response = client.chat(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+    endpoint_id=endpoint_id          # Use the specific endpoint
+)
 ```
 
-#### 3. Exponential Backoff
+#### 3. Exponential Backoff with Circuit Breaker
 
-All APIs include automatic exponential backoff for transient errors:
+All APIs include automatic exponential backoff for transient errors and circuit breaker patterns for handling service outages:
 
 ```python
 # Customize backoff behavior
@@ -378,6 +392,14 @@ client.max_retries = 5           # Maximum retry attempts
 client.initial_retry_delay = 1   # Initial delay in seconds
 client.backoff_factor = 2        # Multiply delay by this factor on each retry
 client.max_retry_delay = 30      # Maximum delay in seconds
+
+# Circuit breaker configuration (when available)
+client.failure_threshold = 5     # Number of failures before opening circuit
+client.reset_timeout = 30        # Seconds to wait before trying half-open
+
+# Get circuit breaker status
+if hasattr(client, "circuit_state"):
+    print(f"Current circuit state: {client.circuit_state}")  # CLOSED, OPEN, or HALF_OPEN
 ```
 
 #### 4. Environment Variables and .env Support
@@ -463,12 +485,32 @@ python test_single_api.py ollama
 # Test API backoff and queue functionality
 python test_api_backoff_queue.py --api openai
 
+# Run comprehensive suite of queue and backoff tests
+python run_queue_backoff_tests.py --apis claude openai groq
+
+# Run detailed tests for Ollama
+python test_ollama_backoff_comprehensive.py
+
+# Run tests for all APIs except specific ones
+python run_queue_backoff_tests.py --skip-apis llvm s3_kit
+
 # Test all API backends
 python test_api_backend.py --api all
 
 # Check implementation status
 python check_api_implementation.py
+python check_all_api_implementation.py
 ```
+
+#### Advanced Testing Features
+
+The test suite provides comprehensive verification for all API backends:
+
+1. **Queue Testing**: Validates that requests beyond concurrency limits are properly queued
+2. **Backoff Testing**: Confirms exponential backoff for rate limits and errors
+3. **Circuit Breaker Testing**: Checks service outage detection and recovery
+4. **Priority Queue Testing**: Ensures high-priority requests are processed first
+5. **Mock Testing**: Allows testing without real API keys using sophisticated mocks
 
 ### Error Handling
 

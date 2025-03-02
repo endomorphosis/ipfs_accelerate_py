@@ -55,21 +55,39 @@ This file contains the core test functionality for the Claude API, including tes
   - Endpoint-specific configuration
   - Per-endpoint usage statistics
 
-- **Queuing and Backoff**
-  - Request queuing
-  - Queue processing
+- **Advanced Queue System (Updated March 2025)**
+  - Thread-safe request queue implementation
+  - Prioritized queue processing
+  - Proper thread management and resource cleanup
+  - Robust error handling with retry logic
+  - Configurable concurrency controls
+
+- **Comprehensive Backoff System**
   - Exponential backoff for rate limiting
-  - Concurrent request management
+  - Circuit breaker pattern for service outages
+  - Retry-After header handling
+  - Customizable retry configuration
+  - Individual backoff state per endpoint
 
 - **Error Handling**
   - Authentication errors (401)
   - Rate limiting (429)
   - Invalid requests (400)
   - Server errors (500)
+  - Service outage detection and recovery
+
+### 2. `test_api_backoff_queue.py`
+
+This test file (found in the parent directory) specifically validates the queue and backoff systems:
+
+- **Queue Testing**: Verifies that concurrent requests are properly handled
+- **Backoff Testing**: Confirms exponential backoff for rate limits and errors
+- **Concurrency Control**: Tests that max_concurrent_requests is enforced
+- **Request Tracking**: Validates proper request ID generation and tracking
 
 ## Running Tests
 
-You can run the Claude API tests using:
+You can run various Claude API tests using:
 
 ```bash
 # Run standard test suite
@@ -77,7 +95,26 @@ python -m test.apis.test_claude
 
 # Run with specific API key
 ANTHROPIC_API_KEY="your-api-key-here" python -m test.apis.test_claude
+
+# Run specific queue and backoff tests
+python test_api_backoff_queue.py --api claude
+
+# Run comprehensive tests with mock support (no API key needed)
+MOCK_CLAUDE_TEST=1 python test_api_backoff_queue.py --api claude
+
+# Run as part of the complete test suite
+python run_queue_backoff_tests.py --apis claude
 ```
+
+### Advanced Testing Features (March 2025)
+
+The updated test suite includes:
+
+1. **Mock Testing Support**: Tests can now run without real API keys by using the built-in mock response system
+2. **Thread-Safety Validation**: Tests verify proper locking and resource management in concurrent scenarios
+3. **Queue Prioritization**: Verification that high-priority requests are processed before lower priority ones
+4. **Circuit Breaker Testing**: Simulation of service outages to test detection and recovery
+5. **Comprehensive Metrics Validation**: Tests that all usage statistics are properly tracked
 
 ## Environment Variables
 

@@ -4,7 +4,7 @@
 
 | API | Own Counters | Per-Endpoint API Key | Backoff | Queue | Request ID | Status |
 |-----|-------------|---------------------|---------|-------|------------|--------|
-| Claude | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
+| Claude | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE (Fixed) |
 | Gemini | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠️ SYNTAX ERRORS |
 | Groq | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Hf_tei | ✓ | ✓ | ✓ | ✓ | ✓ | ⚠️ ATTRIBUTE ERRORS |

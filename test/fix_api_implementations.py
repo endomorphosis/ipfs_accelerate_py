@@ -279,7 +279,7 @@ def fix_hf_tei_tgi():
             print(f"Added logger setup to {api_file}")
         
         # Fix 3: Fix the __init__ method to add queue processing
-        init_pattern = r'def __init__\s*\([^)]*\):.*?(?=\n\s*def|\n\s*$|\Z)'
+        init_pattern = r'def __init__\s*\([^)]*\):.*?(?=\n\s*def|\n\s*$|$)'
         init_match = re.search(init_pattern, content, re.DOTALL)
         
         if init_match:
@@ -514,7 +514,7 @@ def fix_hf_tei_tgi():
             # Find a good location (after _process_queue)
             if "_process_queue" in content:
                 # Add after _process_queue
-                process_queue_pattern = r'def _process_queue.*?(?=\n\s*def|\Z)'
+                process_queue_pattern = r'def _process_queue.*?(?=\n\s*def|$)'
                 process_queue_match = re.search(process_queue_pattern, content, re.DOTALL)
                 if process_queue_match:
                     pos = process_queue_match.end()
@@ -533,7 +533,7 @@ def fix_hf_tei_tgi():
         request_method_name = f"make_post_request_{api_type}" if api_type in ["hf_tei", "hf_tgi"] else "make_post_request"
         
         if request_method_name in content:
-            request_pattern = f'def {request_method_name}.*?(?=\n\s*def|\Z)'
+            request_pattern = f'def {request_method_name}.*?(?=\n[ \t]*def|$)'
             request_match = re.search(request_pattern, content, re.DOTALL)
             
             if request_match:
@@ -636,7 +636,7 @@ def fix_gemini_syntax():
     
     # Fix 3: Check for missing `request_id` in _process_queue
     if '_process_queue' in content and 'request_id' in content:
-        process_queue_pattern = r'def _process_queue.*?(?=\n\s*def|\Z)'
+        process_queue_pattern = r'def _process_queue.*?(?=\n\s*def|$)'
         process_queue_match = re.search(process_queue_pattern, content, re.DOTALL)
         
         if process_queue_match:

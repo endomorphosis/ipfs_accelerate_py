@@ -56,7 +56,9 @@ The testing framework supports the following API backends:
 | OPEA | `test_opea.py` | ⚠️ Pending | Local endpoint |
 | S3 Kit | `test_s3_kit.py` | ⚠️ Pending | AWS credentials |
 
-### New Implementation Status Check
+### Implementation Status and Advanced Test Tools
+
+#### Basic Implementation Status
 
 To check the overall implementation status of all APIs, run:
 
@@ -64,11 +66,39 @@ To check the overall implementation status of all APIs, run:
 python3 check_all_api_implementation.py
 ```
 
-This will generate a comprehensive report showing:
+This generates a comprehensive report showing:
 - Implementation type (REAL, MOCK, PARTIAL)
 - Availability of key features like endpoint management
 - API structure conformance 
 - Authentication handling
+
+#### Advanced Queue and Backoff Testing
+
+New test tools are available to validate our enhanced queue and backoff implementations:
+
+```bash
+# Test a specific API's queue and backoff systems
+python test_api_backoff_queue.py --api claude
+
+# Run comprehensive tests for all API backends
+python run_queue_backoff_tests.py
+
+# Run a specific set of API tests
+python run_queue_backoff_tests.py --apis openai claude groq
+
+# Skip specific APIs in the test suite
+python run_queue_backoff_tests.py --skip-apis llvm s3_kit
+
+# Run comprehensive Ollama-specific tests
+python test_ollama_backoff_comprehensive.py
+```
+
+These tests verify:
+- **Thread-safe request queues** - Concurrent request handling with proper locking
+- **Exponential backoff** - Rate limit handling with progressive retry delays
+- **Circuit breaker pattern** - Service outage detection and recovery
+- **Priority queueing** - Processing of high-priority requests before lower priority ones
+- **Request tracking** - Generation and handling of unique request IDs
 
 ## Specialized API Tests
 

@@ -1,4 +1,53 @@
-# Semantic Similarity Caching for the Gemini API
+# API Examples & Semantic Similarity Caching
+
+This directory contains example implementations for working with the IPFS Accelerate API backends, including an advanced semantic similarity-based caching system.
+
+## Advanced API Features (March 2025)
+
+All API backends now implement these advanced features:
+
+- **Thread-Safe Request Queue**: Manages concurrent requests with proper locking
+- **Exponential Backoff**: Handles rate limits with progressive retry delays
+- **Circuit Breaker Pattern**: Detects service outages and provides fast-fail
+- **Request Tracking**: Generates and manages unique request IDs
+- **Multiple Endpoints**: Allows different configurations for different use cases
+
+### Example: Using the Queue and Backoff Systems
+
+```python
+from ipfs_accelerate_py.api_backends import claude
+
+# Initialize the API with credentials
+api = claude(resources={}, metadata={"anthropic_api_key": "your-key-here"})
+
+# Configure the queue and backoff systems
+api.max_concurrent_requests = 5    # Maximum concurrent requests
+api.queue_size = 100               # Maximum queue size
+api.max_retries = 5                # Maximum retry attempts
+api.backoff_factor = 2             # Multiplier for retry delays
+
+# Create multiple endpoints with different configurations
+endpoint1 = api.create_endpoint(
+    api_key="key1",
+    max_concurrent_requests=3,     # Lower concurrency
+    max_retries=3                  # Fewer retries
+)
+
+endpoint2 = api.create_endpoint(
+    api_key="key2",
+    max_concurrent_requests=10,    # Higher concurrency
+    max_retries=7                  # More retries
+)
+
+# Use specific endpoint for request
+response = api.chat(
+    messages=[{"role": "user", "content": "Hello"}],
+    endpoint_id=endpoint1,
+    request_id="custom-request-id"  # Optional custom tracking ID
+)
+```
+
+## Semantic Similarity Caching for the Gemini API
 
 This directory contains an implementation of semantic similarity-based caching for the Google Gemini API. Instead of requiring exact string matches for cache hits, this implementation uses embeddings and cosine similarity to find semantically similar cached entries.
 
