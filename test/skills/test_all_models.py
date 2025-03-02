@@ -30,12 +30,2420 @@ REPORT_FILE = CURRENT_DIR / "test_report.md"
 # Map of model categories to test modules
 MODEL_FAMILIES = {
     "bert": {
-        "module": "test_simplified",
+        "module": "test_hf_bert",
         "description": "BERT-family masked language models",
         "default_model": "bert-base-uncased",
-        "class": "TestSimpleModel",
+        "class": "TestBertModels",
         "status": "complete"
     },
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+    "mamba": {
+        "module": "test_hf_mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "TestMambaModels",
+        "status": "complete"
+    },
+    "phi3": {
+        "module": "test_hf_phi3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "TestPhi3Models",
+        "status": "complete"
+    },
+    "paligemma": {
+        "module": "test_hf_paligemma",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "TestPaliGemmaModels",
+        "status": "complete"
+    },
+    "mixtral": {
+        "module": "test_hf_mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "TestMixtralModels",
+        "status": "complete"
+    },
+    "deberta_v2": {
+        "module": "test_hf_deberta_v2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "TestDebertaV2Models",
+        "status": "complete"
+    },
+    "video_llava": {
+        "module": "test_hf_video_llava",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "TestVideoLlavaModels",
+        "status": "complete"
+    },
+    "blip2": {
+        "module": "test_hf_blip_2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "TestBlip2Models",
+        "status": "complete"
+    },
+    "instructblip": {
+        "module": "test_hf_instructblip",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "TestInstructBlipModels",
+        "status": "complete"
+    },
+    "swin": {
+        "module": "test_hf_swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "TestSwinModels",
+        "status": "complete"
+    },
+    "convnext": {
+        "module": "test_hf_convnext",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "TestConvNextModels",
+        "status": "complete"
+    },
+    "seamless_m4t": {
+        "module": "test_hf_seamless_m4t",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "TestSeamlessM4TModels",
+        "status": "complete"
+    },
+    "wavlm": {
+        "module": "test_hf_wavlm",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "TestWavLMModels",
+        "status": "complete"
+    },
+    "codellama": {
+        "module": "test_hf_codellama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "TestCodeLlamaModels",
+        "status": "complete"
+    },
+    "starcoder2": {
+        "module": "test_hf_starcoder2",
+        "description": "StarCoder2 for code generation",
+        "default_model": "bigcode/starcoder2-3b",
+        "class": "TestStarcoder2Models",
+        "status": "complete"
+    },
+    "qwen2": {
+        "module": "test_hf_qwen2",
+        "description": "Qwen2 models from Alibaba",
+        "default_model": "Qwen/Qwen2-7B-Instruct",
+        "class": "TestQwen2Models",
+        "status": "complete"
+    },
+    "bart": {
+        "module": "test_hf_bart",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-large-cnn",
+        "class": "TestBartModels",
+        "status": "complete"
+    },
+    "segformer": {
+        "module": "test_hf_segformer",
+        "description": "SegFormer models for image segmentation",
+        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+        "class": "TestSegformerModels",
+        "status": "complete"
+    },
+    "dinov2": {
+        "module": "test_hf_dinov2",
+        "description": "DINOv2 self-supervised vision models",
+        "default_model": "facebook/dinov2-base",
+        "class": "TestDinov2Models",
+        "status": "complete"
+    },
+    "mamba2": {
+        "module": "test_hf_mamba2",
+        "description": "Mamba2 state space models",
+        "default_model": "state-spaces/mamba2-2.8b",
+        "class": "TestMamba2Models",
+        "status": "complete"
+    },
+    "phi4": {
+        "module": "test_hf_phi4",
+        "description": "Phi-4 language models from Microsoft",
+        "default_model": "microsoft/phi-4-mini-instruct",
+        "class": "TestPhi4Models",
+        "status": "complete"
+    },
+    "rwkv": {
+        "module": "test_hf_rwkv",
+        "description": "RWKV Receptance Weighted Key Value models",
+        "default_model": "RWKV/rwkv-4-pile-430m",
+        "class": "TestRwkvModels",
+        "status": "complete"
+    },
+    "depth_anything": {
+        "module": "test_hf_depth_anything",
+        "description": "Depth Anything models for universal depth estimation",
+        "default_model": "LiheYoung/depth-anything-small",
+        "class": "TestDepthAnythingModels",
+        "status": "complete"
+    },
+    "qwen2_audio": {
+        "module": "test_hf_qwen2_audio",
+        "description": "Qwen2 Audio models for speech understanding",
+        "default_model": "Qwen/Qwen2-Audio-7B",
+        "class": "TestQwen2AudioModels",
+        "status": "complete"
+    },
+    "kosmos_2": {
+        "module": "test_hf_kosmos_2",
+        "description": "KOSMOS-2 multimodal language models with reference grounding",
+        "default_model": "microsoft/kosmos-2-patch14-224",
+        "class": "TestKosmos2Models",
+        "status": "complete"
+    },
+    "grounding_dino": {
+        "module": "test_hf_grounding_dino",
+        "description": "Grounding DINO models for open-set object detection",
+        "default_model": "IDEA-Research/grounding-dino-base",
+        "class": "TestGroundingDinoModels",
+        "status": "complete"
+    },
+    "wav2vec2_bert": {
+        "module": "test_hf_wav2vec2_bert",
+        "description": "Wav2Vec2-BERT for speech and language understanding",
+        "default_model": "facebook/wav2vec2-bert-base",
+        "class": "TestWav2Vec2BertModels",
+        "status": "complete"
+    },
+    "idefics3": {
+        "module": "test_hf_idefics3",
+        "description": "IDEFICS3 vision-language models",
+        "default_model": "HuggingFaceM4/idefics3-8b",
+        "class": "TestIdefics3Models",
+        "status": "complete"
+    },
+    "deepseek": {
+        "module": "test_hf_deepseek",
+        "description": "DeepSeek language models",
+        "default_model": "deepseek-ai/deepseek-llm-7b-base",
+        "class": "TestDeepSeekModels",
+        "status": "complete"
+    },
+    "siglip": {
+        "module": "test_hf_siglip",
+        "description": "SigLIP vision-language models with sigmoid loss",
+        "default_model": "google/siglip-base-patch16-224",
+        "class": "TestSiglipModels",
+        "status": "complete"
+    },
+    "qwen2_vl": {
+        "module": "test_hf_qwen2_vl",
+        "description": "Qwen2 vision-language models",
+        "default_model": "Qwen/Qwen2-VL-7B",
+        "class": "TestQwen2VLModels",
+        "status": "complete"
+    },
+    "qwen2_audio_encoder": {
+        "module": "test_hf_qwen2_audio_encoder",
+        "description": "Qwen2 Audio Encoder models",
+        "default_model": "Qwen/Qwen2-Audio-Encoder",
+        "class": "TestQwen2AudioEncoderModels",
+        "status": "complete"
+    },
+    "xclip": {
+        "module": "test_hf_xclip",
+        "description": "X-CLIP extended CLIP models with additional capabilities",
+        "default_model": "microsoft/xclip-base-patch32",
+        "class": "TestXCLIPModels",
+        "status": "complete"
+    },
+    "vilt": {
+        "module": "test_hf_vilt",
+        "description": "Vision-and-Language Transformer models",
+        "default_model": "dandelin/vilt-b32-mlm",
+        "class": "TestViltModels",
+        "status": "complete"
+    },
+    "encodec": {
+        "module": "test_hf_encodec",
+        "description": "EnCodec neural audio codec models",
+        "default_model": "facebook/encodec_24khz",
+        "class": "TestEncodecModels",
+        "status": "complete"
+    },
+    "bark": {
+        "module": "test_hf_bark",
+        "description": "Bark text-to-audio generation models",
+        "default_model": "suno/bark-small",
+        "class": "TestBarkModels",
+        "status": "complete"
+    },
+    "biogpt": {
+        "module": "test_hf_biogpt",
+        "description": "BioGPT models for biomedical text generation",
+        "default_model": "microsoft/biogpt",
+        "class": "TestBioGptModels",
+        "status": "complete"
+    },
+    "esm": {
+        "module": "test_hf_esm",
+        "description": "ESM protein language models",
+        "default_model": "facebook/esm2_t33_650M_UR50D",
+        "class": "TestEsmModels",
+        "status": "complete"
+    },
+    "audioldm2": {
+        "module": "test_hf_audioldm2",
+        "description": "AudioLDM2 text-to-audio diffusion models",
+        "default_model": "cvssp/audioldm2",
+        "class": "TestAudioLdm2Models",
+        "status": "complete"
+    },
+    "tinyllama": {
+        "module": "test_hf_tinyllama",
+        "description": "TinyLlama efficient small form-factor LLM",
+        "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "class": "TestTinyLlamaModels",
+        "status": "complete"
+    },
+    "vqgan": {
+        "module": "test_hf_vqgan",
+        "description": "Vector Quantized Generative Adversarial Network",
+        "default_model": "CompVis/vqgan-f16-16384",
+        "class": "TestVQGANModels",
+        "status": "complete"
+    },
+    "command_r": {
+        "module": "test_hf_command_r",
+        "description": "Command-R advanced instruction-following models",
+        "default_model": "CohereForAI/c4ai-command-r-v01",
+        "class": "TestCommandRModels",
+        "status": "complete"
+    },
+    "cm3": {
+        "module": "test_hf_cm3",
+        "description": "CM3 multimodal model with text, image and audio capabilities",
+        "default_model": "facebook/cm3leon-7b",
+        "class": "TestCm3Models",
+        "status": "complete"
+    },
+    "llava_next_video": {
+        "module": "test_hf_llava_next_video",
+        "description": "LLaVA-NeXT-Video for multimodal video understanding",
+        "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
+        "class": "TestLlavaNextVideoModels",
+        "status": "complete"
+    },
+    "orca3": {
+        "module": "test_hf_orca3",
+        "description": "Orca3 instruction-following LLM from Microsoft",
+        "default_model": "microsoft/Orca-3-7B",
+        "class": "TestOrca3Models",
+        "status": "complete"
+    },
+    "imagebind": {
+        "module": "test_hf_imagebind",
+        "description": "ImageBind models binding multiple modalities",
+        "default_model": "facebook/imagebind-huge",
+        "class": "TestImageBindModels",
+        "status": "complete"
+    },
+    "cogvlm2": {
+        "module": "test_hf_cogvlm2",
+        "description": "CogVLM2 vision-language model with cognitive capabilities",
+        "default_model": "THUDM/cogvlm2-llama3-8b",
+        "class": "TestCogVlm2Models",
+        "status": "complete"
+    },
+    "graphsage": {
+        "module": "test_hf_graphsage",
+        "description": "GraphSAGE inductive framework for graph embeddings",
+        "default_model": "deepgnn/graphsage-base",
+        "class": "TestGraphSageModels",
+        "status": "complete"
+    },
+    "ulip": {
+        "module": "test_hf_ulip",
+        "description": "Unified Language-Image Pre-training for point cloud understanding",
+        "default_model": "salesforce/ulip-pointbert-base",
+        "class": "TestUlipModels",
+        "status": "complete"
+    },
+    "claude3_haiku": {
+        "module": "test_hf_claude3_haiku",
+        "description": "Claude 3 Haiku family large language models via Hugging Face API",
+        "default_model": "anthropic/claude-3-haiku-20240307",
+        "class": "TestClaude3Models",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+    "mamba": {
+        "module": "test_hf_mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "TestMambaModels",
+        "status": "complete"
+    },
+    "phi3": {
+        "module": "test_hf_phi3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "TestPhi3Models",
+        "status": "complete"
+    },
+    "paligemma": {
+        "module": "test_hf_paligemma",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "TestPaliGemmaModels",
+        "status": "complete"
+    },
+    "mixtral": {
+        "module": "test_hf_mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "TestMixtralModels",
+        "status": "complete"
+    },
+    "deberta_v2": {
+        "module": "test_hf_deberta_v2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "TestDebertaV2Models",
+        "status": "complete"
+    },
+    "video_llava": {
+        "module": "test_hf_video_llava",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "TestVideoLlavaModels",
+        "status": "complete"
+    },
+    "blip2": {
+        "module": "test_hf_blip_2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "TestBlip2Models",
+        "status": "complete"
+    },
+    "instructblip": {
+        "module": "test_hf_instructblip",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "TestInstructBlipModels",
+        "status": "complete"
+    },
+    "swin": {
+        "module": "test_hf_swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "TestSwinModels",
+        "status": "complete"
+    },
+    "convnext": {
+        "module": "test_hf_convnext",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "TestConvNextModels",
+        "status": "complete"
+    },
+    "seamless_m4t": {
+        "module": "test_hf_seamless_m4t",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "TestSeamlessM4TModels",
+        "status": "complete"
+    },
+    "wavlm": {
+        "module": "test_hf_wavlm",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "TestWavLMModels",
+        "status": "complete"
+    },
+    "codellama": {
+        "module": "test_hf_codellama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "TestCodeLlamaModels",
+        "status": "complete"
+    },
+    "starcoder2": {
+        "module": "test_hf_starcoder2",
+        "description": "StarCoder2 for code generation",
+        "default_model": "bigcode/starcoder2-3b",
+        "class": "TestStarcoder2Models",
+        "status": "complete"
+    },
+    "qwen2": {
+        "module": "test_hf_qwen2",
+        "description": "Qwen2 models from Alibaba",
+        "default_model": "Qwen/Qwen2-7B-Instruct",
+        "class": "TestQwen2Models",
+        "status": "complete"
+    },
+    "bart": {
+        "module": "test_hf_bart",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-large-cnn",
+        "class": "TestBartModels",
+        "status": "complete"
+    },
+    "segformer": {
+        "module": "test_hf_segformer",
+        "description": "SegFormer models for image segmentation",
+        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+        "class": "TestSegformerModels",
+        "status": "complete"
+    },
+    "dinov2": {
+        "module": "test_hf_dinov2",
+        "description": "DINOv2 self-supervised vision models",
+        "default_model": "facebook/dinov2-base",
+        "class": "TestDinov2Models",
+        "status": "complete"
+    },
+    "mamba2": {
+        "module": "test_hf_mamba2",
+        "description": "Mamba2 state space models",
+        "default_model": "state-spaces/mamba2-2.8b",
+        "class": "TestMamba2Models",
+        "status": "complete"
+    },
+    "phi4": {
+        "module": "test_hf_phi4",
+        "description": "Phi-4 language models from Microsoft",
+        "default_model": "microsoft/phi-4-mini-instruct",
+        "class": "TestPhi4Models",
+        "status": "complete"
+    },
+    "rwkv": {
+        "module": "test_hf_rwkv",
+        "description": "RWKV Receptance Weighted Key Value models",
+        "default_model": "RWKV/rwkv-4-pile-430m",
+        "class": "TestRwkvModels",
+        "status": "complete"
+    },
+    "depth_anything": {
+        "module": "test_hf_depth_anything",
+        "description": "Depth Anything models for universal depth estimation",
+        "default_model": "LiheYoung/depth-anything-small",
+        "class": "TestDepthAnythingModels",
+        "status": "complete"
+    },
+    "qwen2_audio": {
+        "module": "test_hf_qwen2_audio",
+        "description": "Qwen2 Audio models for speech understanding",
+        "default_model": "Qwen/Qwen2-Audio-7B",
+        "class": "TestQwen2AudioModels",
+        "status": "complete"
+    },
+    "kosmos_2": {
+        "module": "test_hf_kosmos_2",
+        "description": "KOSMOS-2 multimodal language models with reference grounding",
+        "default_model": "microsoft/kosmos-2-patch14-224",
+        "class": "TestKosmos2Models",
+        "status": "complete"
+    },
+    "grounding_dino": {
+        "module": "test_hf_grounding_dino",
+        "description": "Grounding DINO models for open-set object detection",
+        "default_model": "IDEA-Research/grounding-dino-base",
+        "class": "TestGroundingDinoModels",
+        "status": "complete"
+    },
+    "wav2vec2_bert": {
+        "module": "test_hf_wav2vec2_bert",
+        "description": "Wav2Vec2-BERT for speech and language understanding",
+        "default_model": "facebook/wav2vec2-bert-base",
+        "class": "TestWav2Vec2BertModels",
+        "status": "complete"
+    },
+    "idefics3": {
+        "module": "test_hf_idefics3",
+        "description": "IDEFICS3 vision-language models",
+        "default_model": "HuggingFaceM4/idefics3-8b",
+        "class": "TestIdefics3Models",
+        "status": "complete"
+    },
+    "deepseek": {
+        "module": "test_hf_deepseek",
+        "description": "DeepSeek language models",
+        "default_model": "deepseek-ai/deepseek-llm-7b-base",
+        "class": "TestDeepSeekModels",
+        "status": "complete"
+    },
+    "siglip": {
+        "module": "test_hf_siglip",
+        "description": "SigLIP vision-language models with sigmoid loss",
+        "default_model": "google/siglip-base-patch16-224",
+        "class": "TestSiglipModels",
+        "status": "complete"
+    },
+    "qwen2_vl": {
+        "module": "test_hf_qwen2_vl",
+        "description": "Qwen2 vision-language models",
+        "default_model": "Qwen/Qwen2-VL-7B",
+        "class": "TestQwen2VLModels",
+        "status": "complete"
+    },
+    "qwen2_audio_encoder": {
+        "module": "test_hf_qwen2_audio_encoder",
+        "description": "Qwen2 Audio Encoder models",
+        "default_model": "Qwen/Qwen2-Audio-Encoder",
+        "class": "TestQwen2AudioEncoderModels",
+        "status": "complete"
+    },
+    "xclip": {
+        "module": "test_hf_xclip",
+        "description": "X-CLIP extended CLIP models with additional capabilities",
+        "default_model": "microsoft/xclip-base-patch32",
+        "class": "TestXCLIPModels",
+        "status": "complete"
+    },
+    "vilt": {
+        "module": "test_hf_vilt",
+        "description": "Vision-and-Language Transformer models",
+        "default_model": "dandelin/vilt-b32-mlm",
+        "class": "TestViltModels",
+        "status": "complete"
+    },
+    "encodec": {
+        "module": "test_hf_encodec",
+        "description": "EnCodec neural audio codec models",
+        "default_model": "facebook/encodec_24khz",
+        "class": "TestEncodecModels",
+        "status": "complete"
+    },
+    "bark": {
+        "module": "test_hf_bark",
+        "description": "Bark text-to-audio generation models",
+        "default_model": "suno/bark-small",
+        "class": "TestBarkModels",
+        "status": "complete"
+    },
+    "biogpt": {
+        "module": "test_hf_biogpt",
+        "description": "BioGPT models for biomedical text generation",
+        "default_model": "microsoft/biogpt",
+        "class": "TestBioGptModels",
+        "status": "complete"
+    },
+    "esm": {
+        "module": "test_hf_esm",
+        "description": "ESM protein language models",
+        "default_model": "facebook/esm2_t33_650M_UR50D",
+        "class": "TestEsmModels",
+        "status": "complete"
+    },
+    "audioldm2": {
+        "module": "test_hf_audioldm2",
+        "description": "AudioLDM2 text-to-audio diffusion models",
+        "default_model": "cvssp/audioldm2",
+        "class": "TestAudioLdm2Models",
+        "status": "complete"
+    },
+    "tinyllama": {
+        "module": "test_hf_tinyllama",
+        "description": "TinyLlama efficient small form-factor LLM",
+        "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "class": "TestTinyLlamaModels",
+        "status": "complete"
+    },
+    "vqgan": {
+        "module": "test_hf_vqgan",
+        "description": "Vector Quantized Generative Adversarial Network",
+        "default_model": "CompVis/vqgan-f16-16384",
+        "class": "TestVQGANModels",
+        "status": "complete"
+    },
+    "command_r": {
+        "module": "test_hf_command_r",
+        "description": "Command-R advanced instruction-following models",
+        "default_model": "CohereForAI/c4ai-command-r-v01",
+        "class": "TestCommandRModels",
+        "status": "complete"
+    },
+    "cm3": {
+        "module": "test_hf_cm3",
+        "description": "CM3 multimodal model with text, image and audio capabilities",
+        "default_model": "facebook/cm3leon-7b",
+        "class": "TestCm3Models",
+        "status": "complete"
+    },
+    "llava_next_video": {
+        "module": "test_hf_llava_next_video",
+        "description": "LLaVA-NeXT-Video for multimodal video understanding",
+        "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
+        "class": "TestLlavaNextVideoModels",
+        "status": "complete"
+    },
+    "orca3": {
+        "module": "test_hf_orca3",
+        "description": "Orca3 instruction-following LLM from Microsoft",
+        "default_model": "microsoft/Orca-3-7B",
+        "class": "TestOrca3Models",
+        "status": "complete"
+    },
+    "imagebind": {
+        "module": "test_hf_imagebind",
+        "description": "ImageBind models binding multiple modalities",
+        "default_model": "facebook/imagebind-huge",
+        "class": "TestImageBindModels",
+        "status": "complete"
+    },
+    "cogvlm2": {
+        "module": "test_hf_cogvlm2",
+        "description": "CogVLM2 vision-language model with cognitive capabilities",
+        "default_model": "THUDM/cogvlm2-llama3-8b",
+        "class": "TestCogVlm2Models",
+        "status": "complete"
+    },
+    "graphsage": {
+        "module": "test_hf_graphsage",
+        "description": "GraphSAGE inductive framework for graph embeddings",
+        "default_model": "deepgnn/graphsage-base",
+        "class": "TestGraphSageModels",
+        "status": "complete"
+    },
+    "ulip": {
+        "module": "test_hf_ulip",
+        "description": "Unified Language-Image Pre-training for point cloud understanding",
+        "default_model": "salesforce/ulip-pointbert-base",
+        "class": "TestUlipModels",
+        "status": "complete"
+    },
+    "claude3_haiku": {
+        "module": "test_hf_claude3_haiku",
+        "description": "Claude 3 Haiku family large language models via Hugging Face API",
+        "default_model": "anthropic/claude-3-haiku-20240307",
+        "class": "TestClaude3Models",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+    "mamba": {
+        "module": "test_hf_mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "TestMambaModels",
+        "status": "complete"
+    },
+    "phi3": {
+        "module": "test_hf_phi3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "TestPhi3Models",
+        "status": "complete"
+    },
+    "paligemma": {
+        "module": "test_hf_paligemma",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "TestPaliGemmaModels",
+        "status": "complete"
+    },
+    "mixtral": {
+        "module": "test_hf_mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "TestMixtralModels",
+        "status": "complete"
+    },
+    "deberta_v2": {
+        "module": "test_hf_deberta_v2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "TestDebertaV2Models",
+        "status": "complete"
+    },
+    "video_llava": {
+        "module": "test_hf_video_llava",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "TestVideoLlavaModels",
+        "status": "complete"
+    },
+    "blip2": {
+        "module": "test_hf_blip_2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "TestBlip2Models",
+        "status": "complete"
+    },
+    "instructblip": {
+        "module": "test_hf_instructblip",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "TestInstructBlipModels",
+        "status": "complete"
+    },
+    "swin": {
+        "module": "test_hf_swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "TestSwinModels",
+        "status": "complete"
+    },
+    "convnext": {
+        "module": "test_hf_convnext",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "TestConvNextModels",
+        "status": "complete"
+    },
+    "seamless_m4t": {
+        "module": "test_hf_seamless_m4t",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "TestSeamlessM4TModels",
+        "status": "complete"
+    },
+    "wavlm": {
+        "module": "test_hf_wavlm",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "TestWavLMModels",
+        "status": "complete"
+    },
+    "codellama": {
+        "module": "test_hf_codellama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "TestCodeLlamaModels",
+        "status": "complete"
+    },
+    "starcoder2": {
+        "module": "test_hf_starcoder2",
+        "description": "StarCoder2 for code generation",
+        "default_model": "bigcode/starcoder2-3b",
+        "class": "TestStarcoder2Models",
+        "status": "complete"
+    },
+    "qwen2": {
+        "module": "test_hf_qwen2",
+        "description": "Qwen2 models from Alibaba",
+        "default_model": "Qwen/Qwen2-7B-Instruct",
+        "class": "TestQwen2Models",
+        "status": "complete"
+    },
+    "bart": {
+        "module": "test_hf_bart",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-large-cnn",
+        "class": "TestBartModels",
+        "status": "complete"
+    },
+    "segformer": {
+        "module": "test_hf_segformer",
+        "description": "SegFormer models for image segmentation",
+        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+        "class": "TestSegformerModels",
+        "status": "complete"
+    },
+    "dinov2": {
+        "module": "test_hf_dinov2",
+        "description": "DINOv2 self-supervised vision models",
+        "default_model": "facebook/dinov2-base",
+        "class": "TestDinov2Models",
+        "status": "complete"
+    },
+    "mamba2": {
+        "module": "test_hf_mamba2",
+        "description": "Mamba2 state space models",
+        "default_model": "state-spaces/mamba2-2.8b",
+        "class": "TestMamba2Models",
+        "status": "complete"
+    },
+    "phi4": {
+        "module": "test_hf_phi4",
+        "description": "Phi-4 language models from Microsoft",
+        "default_model": "microsoft/phi-4-mini-instruct",
+        "class": "TestPhi4Models",
+        "status": "complete"
+    },
+    "rwkv": {
+        "module": "test_hf_rwkv",
+        "description": "RWKV Receptance Weighted Key Value models",
+        "default_model": "RWKV/rwkv-4-pile-430m",
+        "class": "TestRwkvModels",
+        "status": "complete"
+    },
+    "depth_anything": {
+        "module": "test_hf_depth_anything",
+        "description": "Depth Anything models for universal depth estimation",
+        "default_model": "LiheYoung/depth-anything-small",
+        "class": "TestDepthAnythingModels",
+        "status": "complete"
+    },
+    "qwen2_audio": {
+        "module": "test_hf_qwen2_audio",
+        "description": "Qwen2 Audio models for speech understanding",
+        "default_model": "Qwen/Qwen2-Audio-7B",
+        "class": "TestQwen2AudioModels",
+        "status": "complete"
+    },
+    "kosmos_2": {
+        "module": "test_hf_kosmos_2",
+        "description": "KOSMOS-2 multimodal language models with reference grounding",
+        "default_model": "microsoft/kosmos-2-patch14-224",
+        "class": "TestKosmos2Models",
+        "status": "complete"
+    },
+    "grounding_dino": {
+        "module": "test_hf_grounding_dino",
+        "description": "Grounding DINO models for open-set object detection",
+        "default_model": "IDEA-Research/grounding-dino-base",
+        "class": "TestGroundingDinoModels",
+        "status": "complete"
+    },
+    "wav2vec2_bert": {
+        "module": "test_hf_wav2vec2_bert",
+        "description": "Wav2Vec2-BERT for speech and language understanding",
+        "default_model": "facebook/wav2vec2-bert-base",
+        "class": "TestWav2Vec2BertModels",
+        "status": "complete"
+    },
+    "idefics3": {
+        "module": "test_hf_idefics3",
+        "description": "IDEFICS3 vision-language models",
+        "default_model": "HuggingFaceM4/idefics3-8b",
+        "class": "TestIdefics3Models",
+        "status": "complete"
+    },
+    "deepseek": {
+        "module": "test_hf_deepseek",
+        "description": "DeepSeek language models",
+        "default_model": "deepseek-ai/deepseek-llm-7b-base",
+        "class": "TestDeepSeekModels",
+        "status": "complete"
+    },
+    "siglip": {
+        "module": "test_hf_siglip",
+        "description": "SigLIP vision-language models with sigmoid loss",
+        "default_model": "google/siglip-base-patch16-224",
+        "class": "TestSiglipModels",
+        "status": "complete"
+    },
+    "qwen2_vl": {
+        "module": "test_hf_qwen2_vl",
+        "description": "Qwen2 vision-language models",
+        "default_model": "Qwen/Qwen2-VL-7B",
+        "class": "TestQwen2VLModels",
+        "status": "complete"
+    },
+    "qwen2_audio_encoder": {
+        "module": "test_hf_qwen2_audio_encoder",
+        "description": "Qwen2 Audio Encoder models",
+        "default_model": "Qwen/Qwen2-Audio-Encoder",
+        "class": "TestQwen2AudioEncoderModels",
+        "status": "complete"
+    },
+    "xclip": {
+        "module": "test_hf_xclip",
+        "description": "X-CLIP extended CLIP models with additional capabilities",
+        "default_model": "microsoft/xclip-base-patch32",
+        "class": "TestXCLIPModels",
+        "status": "complete"
+    },
+    "vilt": {
+        "module": "test_hf_vilt",
+        "description": "Vision-and-Language Transformer models",
+        "default_model": "dandelin/vilt-b32-mlm",
+        "class": "TestViltModels",
+        "status": "complete"
+    },
+    "encodec": {
+        "module": "test_hf_encodec",
+        "description": "EnCodec neural audio codec models",
+        "default_model": "facebook/encodec_24khz",
+        "class": "TestEncodecModels",
+        "status": "complete"
+    },
+    "bark": {
+        "module": "test_hf_bark",
+        "description": "Bark text-to-audio generation models",
+        "default_model": "suno/bark-small",
+        "class": "TestBarkModels",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+    "mamba": {
+        "module": "test_hf_mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "TestMambaModels",
+        "status": "complete"
+    },
+    "phi3": {
+        "module": "test_hf_phi3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "TestPhi3Models",
+        "status": "complete"
+    },
+    "paligemma": {
+        "module": "test_hf_paligemma",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "TestPaliGemmaModels",
+        "status": "complete"
+    },
+    "mixtral": {
+        "module": "test_hf_mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "TestMixtralModels",
+        "status": "complete"
+    },
+    "deberta_v2": {
+        "module": "test_hf_deberta_v2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "TestDebertaV2Models",
+        "status": "complete"
+    },
+    "video_llava": {
+        "module": "test_hf_video_llava",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "TestVideoLlavaModels",
+        "status": "complete"
+    },
+    "blip2": {
+        "module": "test_hf_blip_2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "TestBlip2Models",
+        "status": "complete"
+    },
+    "instructblip": {
+        "module": "test_hf_instructblip",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "TestInstructBlipModels",
+        "status": "complete"
+    },
+    "swin": {
+        "module": "test_hf_swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "TestSwinModels",
+        "status": "complete"
+    },
+    "convnext": {
+        "module": "test_hf_convnext",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "TestConvNextModels",
+        "status": "complete"
+    },
+    "seamless_m4t": {
+        "module": "test_hf_seamless_m4t",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "TestSeamlessM4TModels",
+        "status": "complete"
+    },
+    "wavlm": {
+        "module": "test_hf_wavlm",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "TestWavLMModels",
+        "status": "complete"
+    },
+    "codellama": {
+        "module": "test_hf_codellama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "TestCodeLlamaModels",
+        "status": "complete"
+    },
+    "starcoder2": {
+        "module": "test_hf_starcoder2",
+        "description": "StarCoder2 for code generation",
+        "default_model": "bigcode/starcoder2-3b",
+        "class": "TestStarcoder2Models",
+        "status": "complete"
+    },
+    "qwen2": {
+        "module": "test_hf_qwen2",
+        "description": "Qwen2 models from Alibaba",
+        "default_model": "Qwen/Qwen2-7B-Instruct",
+        "class": "TestQwen2Models",
+        "status": "complete"
+    },
+    "bart": {
+        "module": "test_hf_bart",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-large-cnn",
+        "class": "TestBartModels",
+        "status": "complete"
+    },
+    "segformer": {
+        "module": "test_hf_segformer",
+        "description": "SegFormer models for image segmentation",
+        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+        "class": "TestSegformerModels",
+        "status": "complete"
+    },
+    "dinov2": {
+        "module": "test_hf_dinov2",
+        "description": "DINOv2 self-supervised vision models",
+        "default_model": "facebook/dinov2-base",
+        "class": "TestDinov2Models",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+    "mamba": {
+        "module": "test_hf_mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "TestMambaModels",
+        "status": "complete"
+    },
+    "phi3": {
+        "module": "test_hf_phi3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "TestPhi3Models",
+        "status": "complete"
+    },
+    "paligemma": {
+        "module": "test_hf_paligemma",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "TestPaliGemmaModels",
+        "status": "complete"
+    },
+    "mixtral": {
+        "module": "test_hf_mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "TestMixtralModels",
+        "status": "complete"
+    },
+    "deberta_v2": {
+        "module": "test_hf_deberta_v2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "TestDebertaV2Models",
+        "status": "complete"
+    },
+    "video_llava": {
+        "module": "test_hf_video_llava",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "TestVideoLlavaModels",
+        "status": "complete"
+    },
+    "blip2": {
+        "module": "test_hf_blip_2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "TestBlip2Models",
+        "status": "complete"
+    },
+    "instructblip": {
+        "module": "test_hf_instructblip",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "TestInstructBlipModels",
+        "status": "complete"
+    },
+    "swin": {
+        "module": "test_hf_swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "TestSwinModels",
+        "status": "complete"
+    },
+    "convnext": {
+        "module": "test_hf_convnext",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "TestConvNextModels",
+        "status": "complete"
+    },
+    "seamless_m4t": {
+        "module": "test_hf_seamless_m4t",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "TestSeamlessM4TModels",
+        "status": "complete"
+    },
+    "wavlm": {
+        "module": "test_hf_wavlm",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "TestWavLMModels",
+        "status": "complete"
+    },
+    "codellama": {
+        "module": "test_hf_codellama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "TestCodeLlamaModels",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+    "donut": {
+        "module": "test_hf_donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "TestDonutModels",
+        "status": "complete"
+    },
+    "layoutlmv3": {
+        "module": "test_hf_layoutlmv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "TestLayoutLMv3Models",
+        "status": "complete"
+    },
+    "markuplm": {
+        "module": "test_hf_markuplm",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "TestMarkupLMModels",
+        "status": "complete"
+    },
+},
+    "gpt2": {
+        "module": "test_hf_gpt2",
+        "description": "GPT-2 causal language models",
+        "default_model": "gpt2",
+        "class": "TestGpt2Models",
+        "status": "complete"
+    },
+    "t5": {
+        "module": "test_hf_t5",
+        "description": "T5 encoder-decoder models",
+        "default_model": "t5-small",
+        "class": "TestT5Models",
+        "status": "complete"
+    },
+    "clip": {
+        "module": "test_hf_clip",
+        "description": "CLIP vision-language models",
+        "default_model": "openai/clip-vit-base-patch32",
+        "class": "TestClipModels",
+        "status": "complete"
+    },
+    "llama": {
+        "module": "test_hf_llama",
+        "description": "LLaMA causal language models",
+        "default_model": "meta-llama/Llama-2-7b-hf",
+        "class": "TestLlamaModels",
+        "status": "complete"
+    },
+    "whisper": {
+        "module": "test_hf_whisper",
+        "description": "Whisper speech recognition models",
+        "default_model": "openai/whisper-tiny",
+        "class": "TestWhisperModels",
+        "status": "complete"
+    },
+    "wav2vec2": {
+        "module": "test_hf_wav2vec2",
+        "description": "Wav2Vec2 speech models",
+        "default_model": "facebook/wav2vec2-base",
+        "class": "TestWav2Vec2Models",
+        "status": "complete"
+    },
+    "vit": {
+        "module": "test_hf_vit",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "TestVitModels",
+        "status": "complete"
+    },
+    "detr": {
+        "module": "test_hf_detr",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "TestDetrModels",
+        "status": "complete"
+    },
+    "layoutlmv2": {
+        "module": "test_hf_layoutlmv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "TestLayoutLMv2Models",
+        "status": "complete"
+    },
+    "time_series_transformer": {
+        "module": "test_hf_time_series_transformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TestTimeSeriesTransformerModels",
+        "status": "complete"
+    },
+    "llava": {
+        "module": "test_hf_llava",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "TestLlavaModels",
+        "status": "complete"
+    },
+    "roberta": {
+        "module": "test_hf_roberta",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "TestRobertaModels",
+        "status": "complete"
+    },
+    "phi": {
+        "module": "test_hf_phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "TestPhiModels",
+        "status": "complete"
+    },
+    "distilbert": {
+        "module": "test_hf_distilbert",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "TestDistilBertModels",
+        "status": "complete"
+    },
+    "visual_bert": {
+        "module": "test_hf_visual_bert",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "TestVisualBertModels",
+        "status": "complete"
+    },
+    "zoedepth": {
+        "module": "test_hf_zoedepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "TestZoeDepthModels",
+        "status": "complete"
+    },
+    "mistral": {
+        "module": "test_hf_mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "TestMistralModels",
+        "status": "complete"
+    },
+    "blip": {
+        "module": "test_hf_blip",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "TestBlipModels",
+        "status": "complete"
+    },
+    "sam": {
+        "module": "test_hf_sam",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "TestSamModels",
+        "status": "complete"
+    },
+    "owlvit": {
+        "module": "test_hf_owlvit",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "TestOwlvitModels",
+        "status": "complete"
+    },
+    "gemma": {
+        "module": "test_hf_gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "TestGemmaModels",
+        "status": "complete"
+    },
+    "musicgen": {
+        "module": "test_hf_musicgen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "TestMusicgenModels",
+        "status": "complete"
+    },
+    "hubert": {
+        "module": "test_hf_hubert",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "TestHubertModels",
+        "status": "complete"
+    },
+},
     "gpt2": {
         "module": "test_simplified",
         "description": "GPT-2 causal language models",

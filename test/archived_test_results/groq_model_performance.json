@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-02-28 20:25:42",
+  "models": [
+    {
+      "model": "llama-3.3-70b-versatile",
+      "response_time": 0.8433878421783447,
+      "queue_time": 0.018775528,
+      "processing_time": 0.8246123141783447,
+      "tokens": 264,
+      "tokens_per_second": 320.15044580440605,
+      "success": true
+    },
+    {
+      "model": "llama3-70b-8192",
+      "response_time": 0.944699764251709,
+      "queue_time": 0.015267289,
+      "processing_time": 0.929432475251709,
+      "tokens": 285,
+      "tokens_per_second": 306.63873663637185,
+      "success": true
+    },
+    {
+      "model": "mixtral-8x7b-32768",
+      "response_time": 0.5583493709564209,
+      "queue_time": 0.018779069000000002,
+      "processing_time": 0.5395703019564209,
+      "tokens": 327,
+      "tokens_per_second": 606.0378023296223,
+      "success": true
+    },
+    {
+      "model": "llama3-8b-8192",
+      "response_time": 0.32254910469055176,
+      "queue_time": 0.021562366,
+      "processing_time": 0.30098673869055176,
+      "tokens": 306,
+      "tokens_per_second": 1016.6560870131971,
+      "success": true
+    },
+    {
+      "model": "gemma2-9b-it",
+      "response_time": 0.4957878589630127,
+      "queue_time": 0.019727581,
+      "processing_time": 0.4760602779630127,
+      "tokens": 254,
+      "tokens_per_second": 533.5458801285126,
+      "success": true
+    }
+  ]
+}

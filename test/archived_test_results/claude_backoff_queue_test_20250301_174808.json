@@ -1,0 +1,72 @@
+{
+  "api": "claude",
+  "timestamp": "20250301_174808",
+  "model": "claude-3-haiku-20240307",
+  "backoff_test": [
+    {
+      "success": true,
+      "request_id": "req_backoff_1_1740880082.4282973",
+      "tag": "backoff_1",
+      "time_taken": 0.10022163391113281,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "MainThread"
+    },
+    {
+      "success": true,
+      "request_id": "req_backoff_2_1740880082.628703",
+      "tag": "backoff_2",
+      "time_taken": 0.10021781921386719,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "MainThread"
+    },
+    {
+      "success": true,
+      "request_id": "req_backoff_3_1740880082.8291407",
+      "tag": "backoff_3",
+      "time_taken": 0.10018062591552734,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "MainThread"
+    }
+  ],
+  "queue_test": [
+    {
+      "success": true,
+      "request_id": "req_queue_1_1740880087.9321136",
+      "tag": "queue_1",
+      "time_taken": 0.10020112991333008,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "ThreadPoolExecutor-0_0"
+    },
+    {
+      "success": true,
+      "request_id": "req_queue_2_1740880087.9328425",
+      "tag": "queue_2",
+      "time_taken": 0.10052108764648438,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "ThreadPoolExecutor-0_1"
+    },
+    {
+      "success": true,
+      "request_id": "req_queue_3_1740880087.9333458",
+      "tag": "queue_3",
+      "time_taken": 0.1001894474029541,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "ThreadPoolExecutor-0_2"
+    },
+    {
+      "success": true,
+      "request_id": "req_queue_4_1740880087.9339278",
+      "tag": "queue_4",
+      "time_taken": 0.10020232200622559,
+      "text": "This is a mock response from Claude API for testing.",
+      "model": "claude-3-haiku-20240307",
+      "thread": "ThreadPoolExecutor-0_3"
+    }
+  ]
+}

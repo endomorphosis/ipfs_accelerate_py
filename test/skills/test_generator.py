@@ -515,6 +515,1523 @@ MODEL_REGISTRY = {
                 "class": "ZoeDepthForDepthEstimation"
             }
         }
+    },
+    "mistral": {
+        "family_name": "Mistral",
+        "description": "Mistral causal language models",
+        "default_model": "mistralai/Mistral-7B-v0.1",
+        "class": "MistralForCausalLM",
+        "test_class": "TestMistralModels",
+        "module_name": "test_hf_mistral",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain quantum computing in simple terms"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "mistralai/Mistral-7B-v0.1": {
+                "description": "Mistral 7B model",
+                "class": "MistralForCausalLM"
+            },
+            "mistralai/Mistral-7B-Instruct-v0.1": {
+                "description": "Mistral 7B Instruct model",
+                "class": "MistralForCausalLM"
+            }
+        }
+    },
+    "blip": {
+        "family_name": "BLIP",
+        "description": "BLIP vision-language models",
+        "default_model": "Salesforce/blip-image-captioning-base",
+        "class": "BlipForConditionalGeneration",
+        "test_class": "TestBlipModels",
+        "module_name": "test_hf_blip",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 50}
+        },
+        "models": {
+            "Salesforce/blip-image-captioning-base": {
+                "description": "BLIP base model for image captioning",
+                "class": "BlipForConditionalGeneration"
+            },
+            "Salesforce/blip-vqa-base": {
+                "description": "BLIP base model for visual question answering",
+                "class": "BlipForQuestionAnswering"
+            }
+        }
+    },
+    "sam": {
+        "family_name": "SAM",
+        "description": "Segment Anything Model for image segmentation",
+        "default_model": "facebook/sam-vit-base",
+        "class": "SamModel",
+        "test_class": "TestSamModels",
+        "module_name": "test_hf_sam",
+        "tasks": ["image-segmentation"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "points": [[500, 375]]
+        },
+        "dependencies": ["transformers", "pillow", "requests", "numpy"],
+        "task_specific_args": {
+            "image-segmentation": {}
+        },
+        "models": {
+            "facebook/sam-vit-base": {
+                "description": "SAM with ViT-Base backbone",
+                "class": "SamModel"
+            },
+            "facebook/sam-vit-large": {
+                "description": "SAM with ViT-Large backbone",
+                "class": "SamModel"
+            },
+            "facebook/sam-vit-huge": {
+                "description": "SAM with ViT-Huge backbone",
+                "class": "SamModel"
+            }
+        }
+    },
+    "owlvit": {
+        "family_name": "OWL-ViT",
+        "description": "Open-vocabulary object detection with Vision Transformers",
+        "default_model": "google/owlvit-base-patch32",
+        "class": "OwlViTForObjectDetection",
+        "test_class": "TestOwlvitModels",
+        "module_name": "test_hf_owlvit",
+        "tasks": ["zero-shot-object-detection"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "candidate_labels": ["cat", "dog", "person", "chair"]
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "zero-shot-object-detection": {"threshold": 0.1}
+        },
+        "models": {
+            "google/owlvit-base-patch32": {
+                "description": "OWL-ViT Base model (patch size 32)",
+                "class": "OwlViTForObjectDetection"
+            },
+            "google/owlvit-base-patch16": {
+                "description": "OWL-ViT Base model (patch size 16)",
+                "class": "OwlViTForObjectDetection"
+            },
+            "google/owlvit-large-patch14": {
+                "description": "OWL-ViT Large model (patch size 14)",
+                "class": "OwlViTForObjectDetection"
+            }
+        }
+    },
+    "gemma": {
+        "family_name": "Gemma",
+        "description": "Gemma language models from Google",
+        "default_model": "google/gemma-2b",
+        "class": "GemmaForCausalLM",
+        "test_class": "TestGemmaModels",
+        "module_name": "test_hf_gemma",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Write a poem about artificial intelligence"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "google/gemma-2b": {
+                "description": "Gemma 2B model",
+                "class": "GemmaForCausalLM"
+            },
+            "google/gemma-7b": {
+                "description": "Gemma 7B model",
+                "class": "GemmaForCausalLM"
+            },
+            "google/gemma-2b-it": {
+                "description": "Gemma 2B instruction-tuned model",
+                "class": "GemmaForCausalLM"
+            }
+        }
+    },
+    "musicgen": {
+        "family_name": "MusicGen",
+        "description": "MusicGen music generation models from AudioCraft",
+        "default_model": "facebook/musicgen-small",
+        "class": "MusicgenForConditionalGeneration",
+        "test_class": "TestMusicgenModels",
+        "module_name": "test_hf_musicgen",
+        "tasks": ["text-to-audio"],
+        "inputs": {
+            "text": "Electronic dance music with a strong beat and synth melody"
+        },
+        "dependencies": ["transformers", "tokenizers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "text-to-audio": {"max_length": 256}
+        },
+        "models": {
+            "facebook/musicgen-small": {
+                "description": "MusicGen small model",
+                "class": "MusicgenForConditionalGeneration"
+            },
+            "facebook/musicgen-medium": {
+                "description": "MusicGen medium model",
+                "class": "MusicgenForConditionalGeneration"
+            },
+            "facebook/musicgen-melody": {
+                "description": "MusicGen melody model",
+                "class": "MusicgenForConditionalGeneration"
+            }
+        }
+    },
+    "hubert": {
+        "family_name": "HuBERT",
+        "description": "HuBERT speech representation models",
+        "default_model": "facebook/hubert-base-ls960",
+        "class": "HubertModel",
+        "test_class": "TestHubertModels",
+        "module_name": "test_hf_hubert",
+        "tasks": ["automatic-speech-recognition"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "automatic-speech-recognition": {}
+        },
+        "models": {
+            "facebook/hubert-base-ls960": {
+                "description": "HuBERT Base model",
+                "class": "HubertModel"
+            },
+            "facebook/hubert-large-ll60k": {
+                "description": "HuBERT Large model",
+                "class": "HubertModel"
+            },
+            "facebook/hubert-xlarge-ll60k": {
+                "description": "HuBERT XLarge model",
+                "class": "HubertModel"
+            }
+        }
+    },
+    "donut": {
+        "family_name": "Donut",
+        "description": "Donut document understanding transformer",
+        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+        "class": "DonutProcessor",
+        "test_class": "TestDonutModels",
+        "module_name": "test_hf_donut",
+        "tasks": ["document-question-answering"],
+        "inputs": {
+            "image_url": "https://huggingface.co/datasets/hf-internal-testing/fixtures_docvqa/resolve/main/document.png",
+            "question": "What is the date on this document?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "document-question-answering": {}
+        },
+        "models": {
+            "naver-clova-ix/donut-base-finetuned-docvqa": {
+                "description": "Donut base model finetuned for document VQA",
+                "class": "DonutProcessor"
+            },
+            "naver-clova-ix/donut-base-finetuned-cord-v2": {
+                "description": "Donut base model finetuned for receipt parsing (CORD)",
+                "class": "DonutProcessor"
+            }
+        }
+    },
+    "layoutlmv3": {
+        "family_name": "LayoutLMv3",
+        "description": "LayoutLMv3 models for document understanding",
+        "default_model": "microsoft/layoutlmv3-base",
+        "class": "LayoutLMv3ForTokenClassification",
+        "test_class": "TestLayoutLMv3Models",
+        "module_name": "test_hf_layoutlmv3",
+        "tasks": ["document-question-answering"],
+        "inputs": {
+            "image_url": "https://huggingface.co/datasets/hf-internal-testing/fixtures_docvqa/resolve/main/document.png",
+            "question": "What is the date on this document?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "document-question-answering": {}
+        },
+        "models": {
+            "microsoft/layoutlmv3-base": {
+                "description": "LayoutLMv3 Base model",
+                "class": "LayoutLMv3ForTokenClassification"
+            },
+            "microsoft/layoutlmv3-large": {
+                "description": "LayoutLMv3 Large model",
+                "class": "LayoutLMv3ForTokenClassification"
+            }
+        }
+    },
+    "markuplm": {
+        "family_name": "MarkupLM",
+        "description": "MarkupLM models for markup language understanding",
+        "default_model": "microsoft/markuplm-base",
+        "class": "MarkupLMModel",
+        "test_class": "TestMarkupLMModels",
+        "module_name": "test_hf_markuplm",
+        "tasks": ["token-classification"],
+        "inputs": {
+            "html": "<html><body><h1>Title</h1><p>This is a paragraph.</p></body></html>"
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "token-classification": {}
+        },
+        "models": {
+            "microsoft/markuplm-base": {
+                "description": "MarkupLM Base model",
+                "class": "MarkupLMModel"
+            },
+            "microsoft/markuplm-large": {
+                "description": "MarkupLM Large model",
+                "class": "MarkupLMModel"
+            }
+        }
+    },
+    "mamba": {
+        "family_name": "Mamba",
+        "description": "Mamba state space models for language modeling",
+        "default_model": "state-spaces/mamba-2.8b",
+        "class": "MambaForCausalLM",
+        "test_class": "TestMambaModels",
+        "module_name": "test_hf_mamba",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Mamba is a new architecture that"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "state-spaces/mamba-2.8b": {
+                "description": "Mamba 2.8B base model",
+                "class": "MambaForCausalLM"
+            },
+            "state-spaces/mamba-1.4b": {
+                "description": "Mamba 1.4B model",
+                "class": "MambaForCausalLM"
+            },
+            "state-spaces/mamba-2.8b-slimpj": {
+                "description": "Mamba 2.8B slim projection model",
+                "class": "MambaForCausalLM"
+            }
+        }
+    },
+    "phi3": {
+        "family_name": "Phi-3",
+        "description": "Phi-3 language models from Microsoft",
+        "default_model": "microsoft/phi-3-mini-4k-instruct",
+        "class": "Phi3ForCausalLM",
+        "test_class": "TestPhi3Models",
+        "module_name": "test_hf_phi3",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain the theory of relativity in simple terms"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "microsoft/phi-3-mini-4k-instruct": {
+                "description": "Phi-3 Mini 4K instruction-tuned model",
+                "class": "Phi3ForCausalLM"
+            },
+            "microsoft/phi-3-small-8k-instruct": {
+                "description": "Phi-3 Small 8K instruction-tuned model",
+                "class": "Phi3ForCausalLM"
+            },
+            "microsoft/phi-3-medium-4k-instruct": {
+                "description": "Phi-3 Medium 4K instruction-tuned model",
+                "class": "Phi3ForCausalLM"
+            }
+        }
+    },
+    "paligemma": {
+        "family_name": "PaLI-GEMMA",
+        "description": "PaLI-GEMMA vision-language models from Google",
+        "default_model": "google/paligemma-3b-mix-224",
+        "class": "PaliGemmaForConditionalGeneration",
+        "test_class": "TestPaliGemmaModels",
+        "module_name": "test_hf_paligemma",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "Describe this image in detail:"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 200}
+        },
+        "models": {
+            "google/paligemma-3b-mix-224": {
+                "description": "PaLI-GEMMA 3B model (224px)",
+                "class": "PaliGemmaForConditionalGeneration"
+            },
+            "google/paligemma-3b-vision-224": {
+                "description": "PaLI-GEMMA 3B vision model (224px)",
+                "class": "PaliGemmaForConditionalGeneration"
+            }
+        }
+    },
+    "mixtral": {
+        "family_name": "Mixtral",
+        "description": "Mixtral mixture-of-experts language models",
+        "default_model": "mistralai/Mixtral-8x7B-v0.1",
+        "class": "MixtralForCausalLM",
+        "test_class": "TestMixtralModels",
+        "module_name": "test_hf_mixtral",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "The concept of sparse mixture-of-experts means"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "mistralai/Mixtral-8x7B-v0.1": {
+                "description": "Mixtral 8x7B base model",
+                "class": "MixtralForCausalLM"
+            },
+            "mistralai/Mixtral-8x7B-Instruct-v0.1": {
+                "description": "Mixtral 8x7B instruction-tuned model",
+                "class": "MixtralForCausalLM"
+            }
+        }
+    },
+    "deberta_v2": {
+        "family_name": "DeBERTa-V2",
+        "description": "DeBERTa-V2 models with enhanced disentangled attention",
+        "default_model": "microsoft/deberta-v2-xlarge",
+        "class": "DebertaV2ForMaskedLM",
+        "test_class": "TestDebertaV2Models",
+        "module_name": "test_hf_deberta_v2",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "Paris is the [MASK] of France."
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "fill-mask": {"top_k": 5}
+        },
+        "models": {
+            "microsoft/deberta-v2-xlarge": {
+                "description": "DeBERTa V2 XLarge model",
+                "class": "DebertaV2ForMaskedLM"
+            },
+            "microsoft/deberta-v2-xxlarge": {
+                "description": "DeBERTa V2 XXLarge model",
+                "class": "DebertaV2ForMaskedLM"
+            },
+            "microsoft/deberta-v2-xlarge-mnli": {
+                "description": "DeBERTa V2 XLarge model fine-tuned on MNLI",
+                "class": "DebertaV2ForSequenceClassification"
+            }
+        }
+    },
+    "video_llava": {
+        "family_name": "Video-LLaVA",
+        "description": "Video-LLaVA video understanding models",
+        "default_model": "LanguageBind/Video-LLaVA-7B",
+        "class": "VideoLlavaForConditionalGeneration",
+        "test_class": "TestVideoLlavaModels",
+        "module_name": "test_hf_video_llava",
+        "tasks": ["video-to-text"],
+        "inputs": {
+            "video_url": "https://huggingface.co/datasets/LanguageBind/Video-LLaVA-Instruct-150K/resolve/main/demo/airplane-short.mp4",
+            "text": "What's happening in this video?"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "decord"],
+        "task_specific_args": {
+            "video-to-text": {"max_length": 200}
+        },
+        "models": {
+            "LanguageBind/Video-LLaVA-7B": {
+                "description": "Video-LLaVA 7B model",
+                "class": "VideoLlavaForConditionalGeneration"
+            },
+            "LanguageBind/Video-LLaVA-13B": {
+                "description": "Video-LLaVA 13B model",
+                "class": "VideoLlavaForConditionalGeneration"
+            }
+        }
+    },
+    "blip2": {
+        "family_name": "BLIP-2",
+        "description": "BLIP-2 vision-language models",
+        "default_model": "Salesforce/blip2-opt-2.7b",
+        "class": "Blip2ForConditionalGeneration",
+        "test_class": "TestBlip2Models",
+        "module_name": "test_hf_blip_2",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "Question: What is shown in the image? Answer:"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "Salesforce/blip2-opt-2.7b": {
+                "description": "BLIP-2 with OPT 2.7B",
+                "class": "Blip2ForConditionalGeneration"
+            },
+            "Salesforce/blip2-flan-t5-xl": {
+                "description": "BLIP-2 with Flan-T5 XL",
+                "class": "Blip2ForConditionalGeneration"
+            }
+        }
+    },
+    "instructblip": {
+        "family_name": "InstructBLIP",
+        "description": "InstructBLIP vision-language instruction-tuned models",
+        "default_model": "Salesforce/instructblip-flan-t5-xl",
+        "class": "InstructBlipForConditionalGeneration",
+        "test_class": "TestInstructBlipModels",
+        "module_name": "test_hf_instructblip",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What is unusual about this scene?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "Salesforce/instructblip-flan-t5-xl": {
+                "description": "InstructBLIP with Flan-T5 XL",
+                "class": "InstructBlipForConditionalGeneration"
+            },
+            "Salesforce/instructblip-vicuna-7b": {
+                "description": "InstructBLIP with Vicuna 7B",
+                "class": "InstructBlipForConditionalGeneration"
+            }
+        }
+    },
+    "swin": {
+        "family_name": "Swin",
+        "description": "Swin Transformer vision models",
+        "default_model": "microsoft/swin-base-patch4-window7-224",
+        "class": "SwinForImageClassification",
+        "test_class": "TestSwinModels",
+        "module_name": "test_hf_swin",
+        "tasks": ["image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-classification": {}
+        },
+        "models": {
+            "microsoft/swin-base-patch4-window7-224": {
+                "description": "Swin Base (patch 4, window 7, 224x224)",
+                "class": "SwinForImageClassification"
+            },
+            "microsoft/swin-large-patch4-window7-224-in22k": {
+                "description": "Swin Large (patch 4, window 7, 224x224, ImageNet-22K)",
+                "class": "SwinForImageClassification"
+            }
+        }
+    },
+    "convnext": {
+        "family_name": "ConvNeXT",
+        "description": "ConvNeXT vision models",
+        "default_model": "facebook/convnext-base-224",
+        "class": "ConvNextForImageClassification",
+        "test_class": "TestConvNextModels",
+        "module_name": "test_hf_convnext",
+        "tasks": ["image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-classification": {}
+        },
+        "models": {
+            "facebook/convnext-base-224": {
+                "description": "ConvNeXT Base (224x224)",
+                "class": "ConvNextForImageClassification"
+            },
+            "facebook/convnext-large-224": {
+                "description": "ConvNeXT Large (224x224)",
+                "class": "ConvNextForImageClassification"
+            }
+        }
+    },
+    "seamless_m4t": {
+        "family_name": "Seamless-M4T",
+        "description": "Seamless multilingual and multimodal translation models",
+        "default_model": "facebook/seamless-m4t-large",
+        "class": "SeamlessM4TModel",
+        "test_class": "TestSeamlessM4TModels",
+        "module_name": "test_hf_seamless_m4t",
+        "tasks": ["translation", "speech-to-text", "text-to-speech"],
+        "inputs": {
+            "text": "Hello, how are you?",
+            "target_lang": "fr"
+        },
+        "dependencies": ["transformers", "tokenizers", "sentencepiece", "librosa"],
+        "task_specific_args": {
+            "translation": {"max_length": 100}
+        },
+        "models": {
+            "facebook/seamless-m4t-large": {
+                "description": "Seamless-M4T Large model",
+                "class": "SeamlessM4TModel"
+            },
+            "facebook/seamless-m4t-medium": {
+                "description": "Seamless-M4T Medium model",
+                "class": "SeamlessM4TModel"
+            }
+        }
+    },
+    "wavlm": {
+        "family_name": "WavLM",
+        "description": "WavLM speech processing models",
+        "default_model": "microsoft/wavlm-base",
+        "class": "WavLMModel",
+        "test_class": "TestWavLMModels",
+        "module_name": "test_hf_wavlm",
+        "tasks": ["audio-classification"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "audio-classification": {}
+        },
+        "models": {
+            "microsoft/wavlm-base": {
+                "description": "WavLM Base model",
+                "class": "WavLMModel"
+            },
+            "microsoft/wavlm-base-plus": {
+                "description": "WavLM Base Plus model",
+                "class": "WavLMModel"
+            },
+            "microsoft/wavlm-large": {
+                "description": "WavLM Large model",
+                "class": "WavLMModel"
+            }
+        }
+    },
+    "codellama": {
+        "family_name": "CodeLlama",
+        "description": "CodeLlama for code generation",
+        "default_model": "codellama/CodeLlama-7b-hf",
+        "class": "LlamaForCausalLM",
+        "test_class": "TestCodeLlamaModels",
+        "module_name": "test_hf_codellama",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "def fibonacci(n):"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 200}
+        },
+        "models": {
+            "codellama/CodeLlama-7b-hf": {
+                "description": "CodeLlama 7B model",
+                "class": "LlamaForCausalLM"
+            },
+            "codellama/CodeLlama-13b-hf": {
+                "description": "CodeLlama 13B model",
+                "class": "LlamaForCausalLM"
+            },
+            "codellama/CodeLlama-34b-hf": {
+                "description": "CodeLlama 34B model",
+                "class": "LlamaForCausalLM"
+            }
+        }
+    },
+    "starcoder2": {
+        "family_name": "StarCoder2",
+        "description": "StarCoder2 for code generation",
+        "default_model": "bigcode/starcoder2-3b",
+        "class": "StarCoder2ForCausalLM",
+        "test_class": "TestStarcoder2Models",
+        "module_name": "test_hf_starcoder2",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "def quicksort(arr):"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 200}
+        },
+        "models": {
+            "bigcode/starcoder2-3b": {
+                "description": "StarCoder2 3B model",
+                "class": "StarCoder2ForCausalLM"
+            },
+            "bigcode/starcoder2-7b": {
+                "description": "StarCoder2 7B model",
+                "class": "StarCoder2ForCausalLM"
+            },
+            "bigcode/starcoder2-15b": {
+                "description": "StarCoder2 15B model",
+                "class": "StarCoder2ForCausalLM"
+            }
+        }
+    },
+    "qwen2": {
+        "family_name": "Qwen2",
+        "description": "Qwen2 models from Alibaba",
+        "default_model": "Qwen/Qwen2-7B-Instruct",
+        "class": "Qwen2ForCausalLM",
+        "test_class": "TestQwen2Models",
+        "module_name": "test_hf_qwen2",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain the concept of neural networks to a beginner"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 150}
+        },
+        "models": {
+            "Qwen/Qwen2-7B-Instruct": {
+                "description": "Qwen2 7B instruction-tuned model",
+                "class": "Qwen2ForCausalLM"
+            },
+            "Qwen/Qwen2-7B": {
+                "description": "Qwen2 7B base model",
+                "class": "Qwen2ForCausalLM"
+            }
+        }
+    },
+    "bart": {
+        "family_name": "BART",
+        "description": "BART sequence-to-sequence models",
+        "default_model": "facebook/bart-large-cnn",
+        "class": "BartForConditionalGeneration",
+        "test_class": "TestBartModels",
+        "module_name": "test_hf_bart",
+        "tasks": ["summarization"],
+        "inputs": {
+            "text": "The tower is 324 metres tall, about the same height as an 81-storey building. Its base is square, measuring 125 metres on each side. During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest human-made structure in the world, a title it held for 41 years until the Chrysler Building in New York City was completed in 1930."
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "summarization": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "facebook/bart-large-cnn": {
+                "description": "BART large model fine-tuned on CNN/Daily Mail",
+                "class": "BartForConditionalGeneration"
+            },
+            "facebook/bart-large-xsum": {
+                "description": "BART large model fine-tuned on XSum",
+                "class": "BartForConditionalGeneration"
+            },
+            "facebook/bart-large-mnli": {
+                "description": "BART large model fine-tuned on MNLI",
+                "class": "BartForSequenceClassification"
+            }
+        }
+    },
+    "segformer": {
+        "family_name": "SegFormer",
+        "description": "SegFormer models for image segmentation",
+        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+        "class": "SegformerForSemanticSegmentation",
+        "test_class": "TestSegformerModels",
+        "module_name": "test_hf_segformer",
+        "tasks": ["image-segmentation"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-segmentation": {}
+        },
+        "models": {
+            "nvidia/segformer-b0-finetuned-ade-512-512": {
+                "description": "SegFormer B0 model finetuned on ADE20K",
+                "class": "SegformerForSemanticSegmentation"
+            },
+            "nvidia/segformer-b5-finetuned-cityscapes-1024-1024": {
+                "description": "SegFormer B5 model finetuned on Cityscapes",
+                "class": "SegformerForSemanticSegmentation"
+            }
+        }
+    },
+    "dinov2": {
+        "family_name": "DINOv2",
+        "description": "DINOv2 self-supervised vision models",
+        "default_model": "facebook/dinov2-base",
+        "class": "Dinov2Model",
+        "test_class": "TestDinov2Models",
+        "module_name": "test_hf_dinov2",
+        "tasks": ["image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-classification": {}
+        },
+        "models": {
+            "facebook/dinov2-base": {
+                "description": "DINOv2 Base model",
+                "class": "Dinov2Model"
+            },
+            "facebook/dinov2-large": {
+                "description": "DINOv2 Large model",
+                "class": "Dinov2Model"
+            },
+            "facebook/dinov2-giant": {
+                "description": "DINOv2 Giant model",
+                "class": "Dinov2Model"
+            }
+        }
+    },
+    "mamba2": {
+        "family_name": "Mamba2",
+        "description": "Mamba2 state space models",
+        "default_model": "state-spaces/mamba2-2.8b",
+        "class": "Mamba2ForCausalLM",
+        "test_class": "TestMamba2Models",
+        "module_name": "test_hf_mamba2",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Mamba2 is an improved version that"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "state-spaces/mamba2-2.8b": {
+                "description": "Mamba2 2.8B model",
+                "class": "Mamba2ForCausalLM"
+            },
+            "state-spaces/mamba2-1.4b": {
+                "description": "Mamba2 1.4B model",
+                "class": "Mamba2ForCausalLM"
+            }
+        }
+    },
+    "phi4": {
+        "family_name": "Phi-4",
+        "description": "Phi-4 language models from Microsoft",
+        "default_model": "microsoft/phi-4-mini-instruct",
+        "class": "Phi4ForCausalLM",
+        "test_class": "TestPhi4Models",
+        "module_name": "test_hf_phi4",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "In a world where AI continues to evolve,"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "microsoft/phi-4-mini-instruct": {
+                "description": "Phi-4 Mini instruction-tuned model",
+                "class": "Phi4ForCausalLM"
+            },
+            "microsoft/phi-4-small": {
+                "description": "Phi-4 Small model",
+                "class": "Phi4ForCausalLM"
+            }
+        }
+    },
+    "rwkv": {
+        "family_name": "RWKV",
+        "description": "RWKV Receptance Weighted Key Value models",
+        "default_model": "RWKV/rwkv-4-pile-430m",
+        "class": "RwkvForCausalLM",
+        "test_class": "TestRwkvModels",
+        "module_name": "test_hf_rwkv",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "RWKV combines the best aspects of transformers and RNNs by"
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "RWKV/rwkv-4-pile-430m": {
+                "description": "RWKV-4 430M model trained on Pile",
+                "class": "RwkvForCausalLM"
+            },
+            "RWKV/rwkv-4-pile-1b5": {
+                "description": "RWKV-4 1.5B model trained on Pile",
+                "class": "RwkvForCausalLM"
+            }
+        }
+    },
+    "depth_anything": {
+        "family_name": "Depth-Anything",
+        "description": "Depth Anything models for universal depth estimation",
+        "default_model": "LiheYoung/depth-anything-small",
+        "class": "DepthAnythingForDepthEstimation",
+        "test_class": "TestDepthAnythingModels",
+        "module_name": "test_hf_depth_anything",
+        "tasks": ["depth-estimation"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "depth-estimation": {}
+        },
+        "models": {
+            "LiheYoung/depth-anything-small": {
+                "description": "Depth Anything Small model",
+                "class": "DepthAnythingForDepthEstimation"
+            },
+            "LiheYoung/depth-anything-base": {
+                "description": "Depth Anything Base model",
+                "class": "DepthAnythingForDepthEstimation"
+            }
+        }
+    },
+    "qwen2_audio": {
+        "family_name": "Qwen2-Audio",
+        "description": "Qwen2 Audio models for speech understanding",
+        "default_model": "Qwen/Qwen2-Audio-7B",
+        "class": "Qwen2AudioForCausalLM",
+        "test_class": "TestQwen2AudioModels",
+        "module_name": "test_hf_qwen2_audio",
+        "tasks": ["audio-to-text"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "tokenizers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "audio-to-text": {"max_length": 100}
+        },
+        "models": {
+            "Qwen/Qwen2-Audio-7B": {
+                "description": "Qwen2 Audio 7B model",
+                "class": "Qwen2AudioForCausalLM"
+            }
+        }
+    },
+    "kosmos_2": {
+        "family_name": "KOSMOS-2",
+        "description": "KOSMOS-2 multimodal language models with reference grounding",
+        "default_model": "microsoft/kosmos-2-patch14-224",
+        "class": "Kosmos2ForConditionalGeneration",
+        "test_class": "TestKosmos2Models",
+        "module_name": "test_hf_kosmos_2",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "This is a picture of"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "microsoft/kosmos-2-patch14-224": {
+                "description": "KOSMOS-2 model (patch size 14, 224x224)",
+                "class": "Kosmos2ForConditionalGeneration"
+            }
+        }
+    },
+    "grounding_dino": {
+        "family_name": "Grounding-DINO",
+        "description": "Grounding DINO models for open-set object detection",
+        "default_model": "IDEA-Research/grounding-dino-base",
+        "class": "GroundingDinoForObjectDetection",
+        "test_class": "TestGroundingDinoModels",
+        "module_name": "test_hf_grounding_dino",
+        "tasks": ["object-detection"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "cat . dog"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "object-detection": {"threshold": 0.3}
+        },
+        "models": {
+            "IDEA-Research/grounding-dino-base": {
+                "description": "Grounding DINO Base model",
+                "class": "GroundingDinoForObjectDetection"
+            },
+            "IDEA-Research/grounding-dino-large": {
+                "description": "Grounding DINO Large model",
+                "class": "GroundingDinoForObjectDetection"
+            }
+        }
+    },
+    "wav2vec2_bert": {
+        "family_name": "Wav2Vec2-BERT",
+        "description": "Wav2Vec2-BERT for speech and language understanding",
+        "default_model": "facebook/wav2vec2-bert-base",
+        "class": "Wav2Vec2BertModel",
+        "test_class": "TestWav2Vec2BertModels",
+        "module_name": "test_hf_wav2vec2_bert",
+        "tasks": ["automatic-speech-recognition"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "automatic-speech-recognition": {}
+        },
+        "models": {
+            "facebook/wav2vec2-bert-base": {
+                "description": "Wav2Vec2-BERT Base model",
+                "class": "Wav2Vec2BertModel"
+            }
+        }
+    },
+    "idefics3": {
+        "family_name": "IDEFICS3",
+        "description": "IDEFICS3 vision-language models",
+        "default_model": "HuggingFaceM4/idefics3-8b",
+        "class": "Idefics3ForVisionText2Text",
+        "test_class": "TestIdefics3Models",
+        "module_name": "test_hf_idefics3",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What do you see in this image?"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "HuggingFaceM4/idefics3-8b": {
+                "description": "IDEFICS3 8B model",
+                "class": "Idefics3ForVisionText2Text"
+            }
+        }
+    },
+    "deepseek": {
+        "family_name": "DeepSeek",
+        "description": "DeepSeek language models",
+        "default_model": "deepseek-ai/deepseek-llm-7b-base",
+        "class": "DeepSeekForCausalLM",
+        "test_class": "TestDeepSeekModels",
+        "module_name": "test_hf_deepseek",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "DeepSeek is a model that can"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "deepseek-ai/deepseek-llm-7b-base": {
+                "description": "DeepSeek 7B base model",
+                "class": "DeepSeekForCausalLM"
+            }
+        }
+    },
+    "siglip": {
+        "family_name": "SigLIP",
+        "description": "SigLIP vision-language models with sigmoid loss",
+        "default_model": "google/siglip-base-patch16-224",
+        "class": "SiglipModel",
+        "test_class": "TestSiglipModels",
+        "module_name": "test_hf_siglip",
+        "tasks": ["zero-shot-image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "candidate_labels": ["a photo of a cat", "a photo of a dog"]
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "zero-shot-image-classification": {}
+        },
+        "models": {
+            "google/siglip-base-patch16-224": {
+                "description": "SigLIP Base (patch size 16, 224x224)",
+                "class": "SiglipModel"
+            }
+        }
+    },
+    "qwen2_vl": {
+        "family_name": "Qwen2-VL",
+        "description": "Qwen2 vision-language models",
+        "default_model": "Qwen/Qwen2-VL-7B",
+        "class": "Qwen2VLForConditionalGeneration",
+        "test_class": "TestQwen2VLModels",
+        "module_name": "test_hf_qwen2_vl",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What can you see in this image?"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "Qwen/Qwen2-VL-7B": {
+                "description": "Qwen2-VL 7B vision-language model",
+                "class": "Qwen2VLForConditionalGeneration"
+            }
+        }
+    },
+    "qwen2_audio_encoder": {
+        "family_name": "Qwen2-Audio-Encoder",
+        "description": "Qwen2 Audio Encoder models",
+        "default_model": "Qwen/Qwen2-Audio-Encoder",
+        "class": "Qwen2AudioEncoderModel",
+        "test_class": "TestQwen2AudioEncoderModels",
+        "module_name": "test_hf_qwen2_audio_encoder",
+        "tasks": ["audio-classification"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "audio-classification": {}
+        },
+        "models": {
+            "Qwen/Qwen2-Audio-Encoder": {
+                "description": "Qwen2 Audio Encoder model",
+                "class": "Qwen2AudioEncoderModel"
+            }
+        }
+    },
+    "xclip": {
+        "family_name": "X-CLIP",
+        "description": "X-CLIP extended CLIP models with additional capabilities",
+        "default_model": "microsoft/xclip-base-patch32",
+        "class": "XCLIPModel",
+        "test_class": "TestXCLIPModels",
+        "module_name": "test_hf_xclip",
+        "tasks": ["zero-shot-image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": ["a photo of a cat", "a photo of a dog"]
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "zero-shot-image-classification": {}
+        },
+        "models": {
+            "microsoft/xclip-base-patch32": {
+                "description": "X-CLIP Base (patch size 32)",
+                "class": "XCLIPModel"
+            }
+        }
+    },
+    "vilt": {
+        "family_name": "ViLT",
+        "description": "Vision-and-Language Transformer models",
+        "default_model": "dandelin/vilt-b32-mlm",
+        "class": "ViltForMaskedLM",
+        "test_class": "TestViltModels",
+        "module_name": "test_hf_vilt",
+        "tasks": ["visual-question-answering"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What is shown in the image?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "visual-question-answering": {}
+        },
+        "models": {
+            "dandelin/vilt-b32-mlm": {
+                "description": "ViLT Base (patch size 32) for masked language modeling",
+                "class": "ViltForMaskedLM"
+            }
+        }
+    },
+    "encodec": {
+        "family_name": "EnCodec",
+        "description": "EnCodec neural audio codec models",
+        "default_model": "facebook/encodec_24khz",
+        "class": "EncodecModel",
+        "test_class": "TestEncodecModels",
+        "module_name": "test_hf_encodec",
+        "tasks": ["audio-to-audio"],
+        "inputs": {
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "audio-to-audio": {}
+        },
+        "models": {
+            "facebook/encodec_24khz": {
+                "description": "EnCodec 24kHz model",
+                "class": "EncodecModel"
+            }
+        }
+    },
+    "bark": {
+        "family_name": "Bark",
+        "description": "Bark text-to-audio generation models",
+        "default_model": "suno/bark-small",
+        "class": "BarkModel",
+        "test_class": "TestBarkModels",
+        "module_name": "test_hf_bark",
+        "tasks": ["text-to-audio"],
+        "inputs": {
+            "text": "Hello, my name is Suno. And, I love to sing."
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "text-to-audio": {}
+        },
+        "models": {
+            "suno/bark-small": {
+                "description": "Bark Small model",
+                "class": "BarkModel"
+            }
+        }
+    },
+    "biogpt": {
+        "family_name": "BioGPT",
+        "description": "BioGPT models for biomedical text generation",
+        "default_model": "microsoft/biogpt",
+        "class": "BioGptForCausalLM",
+        "test_class": "TestBioGptModels",
+        "module_name": "test_hf_biogpt",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "The patient presented with symptoms of"
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "microsoft/biogpt": {
+                "description": "BioGPT model for biomedical text generation",
+                "class": "BioGptForCausalLM"
+            }
+        }
+    },
+    "esm": {
+        "family_name": "ESM",
+        "description": "ESM protein language models",
+        "default_model": "facebook/esm2_t33_650M_UR50D",
+        "class": "EsmForProteinFolding",
+        "test_class": "TestEsmModels",
+        "module_name": "test_hf_esm",
+        "tasks": ["protein-folding"],
+        "inputs": {
+            "text": "MKTVRQERLKSIVRILERSKEPVSGAQLAEELSVSRQVIVQDIAYLRSLGYNIVATPRGYVLAGG"
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "protein-folding": {}
+        },
+        "models": {
+            "facebook/esm2_t33_650M_UR50D": {
+                "description": "ESM-2 model with 33 layers and 650M parameters",
+                "class": "EsmForProteinFolding"
+            },
+            "facebook/esm2_t6_8M_UR50D": {
+                "description": "ESM-2 model with 6 layers and 8M parameters",
+                "class": "EsmForProteinFolding"
+            }
+        }
+    },
+    "audioldm2": {
+        "family_name": "AudioLDM2",
+        "description": "AudioLDM2 text-to-audio diffusion models",
+        "default_model": "cvssp/audioldm2",
+        "class": "AudioLdm2ForConditionalGeneration",
+        "test_class": "TestAudioLdm2Models",
+        "module_name": "test_hf_audioldm2",
+        "tasks": ["text-to-audio"],
+        "inputs": {
+            "text": "A dog barking in the distance"
+        },
+        "dependencies": ["transformers", "librosa", "soundfile"],
+        "task_specific_args": {
+            "text-to-audio": {}
+        },
+        "models": {
+            "cvssp/audioldm2": {
+                "description": "AudioLDM2 base model",
+                "class": "AudioLdm2ForConditionalGeneration"
+            }
+        }
+    },
+    "tinyllama": {
+        "family_name": "TinyLlama",
+        "description": "TinyLlama efficient small form-factor LLM",
+        "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "class": "LlamaForCausalLM",
+        "test_class": "TestTinyLlamaModels",
+        "module_name": "test_hf_tinyllama",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "What are the benefits of using smaller language models?"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100}
+        },
+        "models": {
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0": {
+                "description": "TinyLlama 1.1B Chat model",
+                "class": "LlamaForCausalLM"
+            },
+            "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-token-2.5T": {
+                "description": "TinyLlama 1.1B intermediate checkpoint",
+                "class": "LlamaForCausalLM"
+            }
+        }
+    },
+    "vqgan": {
+        "family_name": "VQGAN",
+        "description": "Vector Quantized Generative Adversarial Network",
+        "default_model": "CompVis/vqgan-f16-16384",
+        "class": "VQModel",
+        "test_class": "TestVQGANModels",
+        "module_name": "test_hf_vqgan",
+        "tasks": ["image-to-image"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-to-image": {}
+        },
+        "models": {
+            "CompVis/vqgan-f16-16384": {
+                "description": "VQGAN model with 16-bit quantization and 16384 codes",
+                "class": "VQModel"
+            }
+        }
+    },
+    "command_r": {
+        "family_name": "Command-R",
+        "description": "Command-R advanced instruction-following models",
+        "default_model": "CohereForAI/c4ai-command-r-v01",
+        "class": "AutoModelForCausalLM",
+        "test_class": "TestCommandRModels",
+        "module_name": "test_hf_command_r",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain the difference between transformer and state space models"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 150, "min_length": 50}
+        },
+        "models": {
+            "CohereForAI/c4ai-command-r-v01": {
+                "description": "Command-R base model",
+                "class": "AutoModelForCausalLM"
+            }
+        }
+    },
+    "cm3": {
+        "family_name": "CM3",
+        "description": "CM3 multimodal model with text, image and audio capabilities",
+        "default_model": "facebook/cm3leon-7b",
+        "class": "Cm3LeonForConditionalGeneration",
+        "test_class": "TestCm3Models",
+        "module_name": "test_hf_cm3",
+        "tasks": ["text-to-image", "image-to-text"],
+        "inputs": {
+            "text": "A cat wearing sunglasses and a leather jacket",
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "text-to-image": {},
+            "image-to-text": {"max_length": 100}
+        },
+        "models": {
+            "facebook/cm3leon-7b": {
+                "description": "CM3Leon 7B model",
+                "class": "Cm3LeonForConditionalGeneration"
+            }
+        }
+    },
+    "llava_next_video": {
+        "family_name": "LLaVA-NeXT-Video",
+        "description": "LLaVA-NeXT-Video for multimodal video understanding",
+        "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
+        "class": "LlavaNextVideoForConditionalGeneration",
+        "test_class": "TestLlavaNextVideoModels",
+        "module_name": "test_hf_llava_next_video",
+        "tasks": ["video-to-text"],
+        "inputs": {
+            "video_url": "https://huggingface.co/datasets/LanguageBind/Video-LLaVA-Instruct-150K/resolve/main/demo/airplane-short.mp4",
+            "text": "Describe what's happening in this video"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate", "decord"],
+        "task_specific_args": {
+            "video-to-text": {"max_length": 150}
+        },
+        "models": {
+            "llava-hf/llava-v1.6-vicuna-7b-video": {
+                "description": "LLaVA NeXT Video 7B model",
+                "class": "LlavaNextVideoForConditionalGeneration"
+            }
+        }
+    },
+    "orca3": {
+        "family_name": "Orca3",
+        "description": "Orca3 instruction-following LLM from Microsoft",
+        "default_model": "microsoft/Orca-3-7B",
+        "class": "Orca3ForCausalLM",
+        "test_class": "TestOrca3Models",
+        "module_name": "test_hf_orca3",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain how nuclear fusion works in simple terms"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 150, "min_length": 50}
+        },
+        "models": {
+            "microsoft/Orca-3-7B": {
+                "description": "Orca-3 7B model",
+                "class": "Orca3ForCausalLM"
+            }
+        }
+    },
+    "imagebind": {
+        "family_name": "ImageBind",
+        "description": "ImageBind models binding multiple modalities",
+        "default_model": "facebook/imagebind-huge",
+        "class": "ImageBindModel",
+        "test_class": "TestImageBindModels",
+        "module_name": "test_hf_imagebind",
+        "tasks": ["feature-extraction"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "a cat sitting on the floor",
+            "audio_file": "audio_sample.mp3"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "librosa"],
+        "task_specific_args": {
+            "feature-extraction": {}
+        },
+        "models": {
+            "facebook/imagebind-huge": {
+                "description": "ImageBind Huge model",
+                "class": "ImageBindModel"
+            }
+        }
+    },
+    "cogvlm2": {
+        "family_name": "CogVLM2",
+        "description": "CogVLM2 vision-language model with cognitive capabilities",
+        "default_model": "THUDM/cogvlm2-llama3-8b",
+        "class": "CogVlm2ForConditionalGeneration",
+        "test_class": "TestCogVlm2Models",
+        "module_name": "test_hf_cogvlm2",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "Describe this image in detail with emphasis on objects, colors, and context"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "image-to-text": {"max_length": 150}
+        },
+        "models": {
+            "THUDM/cogvlm2-llama3-8b": {
+                "description": "CogVLM2 with LLaMA3 8B",
+                "class": "CogVlm2ForConditionalGeneration"
+            }
+        }
+    },
+    "graphsage": {
+        "family_name": "GraphSAGE",
+        "description": "GraphSAGE inductive framework for graph embeddings",
+        "default_model": "deepgnn/graphsage-base",
+        "class": "GraphSageForNodeClassification",
+        "test_class": "TestGraphSageModels",
+        "module_name": "test_hf_graphsage",
+        "tasks": ["node-classification"],
+        "inputs": {
+            "graph_data": {
+                "nodes": [0, 1, 2, 3, 4],
+                "edges": [[0, 1], [1, 2], [2, 3], [3, 4], [4, 0]],
+                "features": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8], [0.9, 1.0]]
+            }
+        },
+        "dependencies": ["transformers", "numpy", "torch_geometric"],
+        "task_specific_args": {
+            "node-classification": {}
+        },
+        "models": {
+            "deepgnn/graphsage-base": {
+                "description": "GraphSAGE base model",
+                "class": "GraphSageForNodeClassification"
+            }
+        }
+    },
+    "ulip": {
+        "family_name": "ULIP",
+        "description": "Unified Language-Image Pre-training for point cloud understanding",
+        "default_model": "salesforce/ulip-pointbert-base",
+        "class": "UlipModel",
+        "test_class": "TestUlipModels",
+        "module_name": "test_hf_ulip",
+        "tasks": ["point-cloud-classification"],
+        "inputs": {
+            "point_cloud_url": "https://huggingface.co/datasets/dummy-data/point-cloud/resolve/main/example.pts",
+            "text": "a 3D model of a chair"
+        },
+        "dependencies": ["transformers", "torch", "numpy"],
+        "task_specific_args": {
+            "point-cloud-classification": {}
+        },
+        "models": {
+            "salesforce/ulip-pointbert-base": {
+                "description": "ULIP with PointBERT base model",
+                "class": "UlipModel"
+            }
+        }
+    },
+    "claude3_haiku": {
+        "family_name": "Claude3-Haiku",
+        "description": "Claude 3 Haiku family large language models via Hugging Face API",
+        "default_model": "anthropic/claude-3-haiku-20240307",
+        "class": "Claude3Model",
+        "test_class": "TestClaude3Models",
+        "module_name": "test_hf_claude3_haiku",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain the key differences between Claude 3 Haiku and Claude 3 Sonnet"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 150, "min_length": 50}
+        },
+        "models": {
+            "anthropic/claude-3-haiku-20240307": {
+                "description": "Claude 3 Haiku model",
+                "class": "Claude3Model"
+            }
+        }
     }
 }
 

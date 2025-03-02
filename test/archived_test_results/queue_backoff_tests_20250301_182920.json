@@ -1,0 +1,62 @@
+{
+  "timestamp": "2025-03-01T18:27:40.251994",
+  "tests": {
+    "api_backoff": {
+      "openai": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "groq": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "claude": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "gemini": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "ollama": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "hf_tgi": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "hf_tei": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "llvm": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "opea": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "ovms": {
+        "exit_code": 1,
+        "status": "Failed"
+      },
+      "s3_kit": {
+        "exit_code": 1,
+        "status": "Failed"
+      }
+    },
+    "ollama_comprehensive": {
+      "exit_code": 0,
+      "status": "Success"
+    },
+    "api_multiplexing": {
+      "exit_code": 1,
+      "status": "Failed"
+    }
+  },
+  "success_count": 1,
+  "total_tests": 3,
+  "success_rate": 0.3333333333333333
+}

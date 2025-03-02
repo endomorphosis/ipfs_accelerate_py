@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-03-01T18:01:00.641437",
+  "tests": {
+    "api_backoff": {
+      "ollama": {
+        "exit_code": 1,
+        "status": "Failed"
+      }
+    },
+    "ollama_comprehensive": {
+      "exit_code": 1,
+      "status": "Failed"
+    },
+    "api_multiplexing": {
+      "exit_code": 1,
+      "status": "Failed"
+    }
+  },
+  "success_count": 0,
+  "total_tests": 3,
+  "success_rate": 0.0
+}

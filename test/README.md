@@ -12,27 +12,41 @@ The test framework includes:
 4. **Endpoint Tests** - Tests for local inference endpoints
 5. **Performance Tests** - Benchmarking across hardware configurations
 
-## Test Documentation
+## Directory Structure
 
-- [MODEL_TESTING_GUIDE.md](MODEL_TESTING_GUIDE.md) - Complete guide to model testing
-- [MODEL_TESTING_README.md](MODEL_TESTING_README.md) - Detailed model test documentation
-- [MODEL_TESTING_PROGRESS.md](MODEL_TESTING_PROGRESS.md) - Implementation status and progress
-- [MODEL_DEPENDENCIES.md](MODEL_DEPENDENCIES.md) - Model dependency tracking matrix
-- [huggingface_test_implementation_plan.md](huggingface_test_implementation_plan.md) - Implementation priorities
-- [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
+The repository has been organized for better readability and maintainability:
+
+- **Root directory**: Contains the main scripts and documentation
+- **test_generators/**: Tools for generating test files
+- **model_test_runners/**: Model-specific test runner scripts
+- **implementation_files/**: Implementation scripts for various components
+- **archived_reports/**: Historical implementation reports
+- **archived_test_results/**: Historical test result files
+- **archived_md_files/**: Additional documentation
+- **archived_cuda_fixes/**: CUDA detection fix scripts
+- **old_scripts/**: Older versions of implementation scripts
+
+## Core Documentation
+
 - [API_IMPLEMENTATION_STATUS.md](API_IMPLEMENTATION_STATUS.md) - API implementation status
 - [API_IMPLEMENTATION_SUMMARY.md](API_IMPLEMENTATION_SUMMARY.md) - Summary of API implementations
+- [API_IMPLEMENTATION_SUMMARY_UPDATED.md](API_IMPLEMENTATION_SUMMARY_UPDATED.md) - Latest implementation summary
+- [API_IMPLEMENTATION_PLAN_UPDATED.md](API_IMPLEMENTATION_PLAN_UPDATED.md) - Updated implementation plan
 - [QUEUE_BACKOFF_GUIDE.md](QUEUE_BACKOFF_GUIDE.md) - Queue and backoff implementation guide
+- [MONITORING_AND_REPORTING_GUIDE.md](MONITORING_AND_REPORTING_GUIDE.md) - Monitoring features guide
+- [ADVANCED_API_FEATURES_GUIDE.md](ADVANCED_API_FEATURES_GUIDE.md) - Advanced API features documentation
 - [API_QUICKSTART.md](API_QUICKSTART.md) - Quick start guide for API usage
+- [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
 
-## Test Generation Tools
+## Primary Implementation Tools
 
-The framework includes several tools for generating new tests:
+The following tools are used for implementing and testing the API infrastructure:
 
-- [generate_model_tests.py](generate_model_tests.py) - Primary test generator for HuggingFace models
-- [simple_model_test_generator.py](simple_model_test_generator.py) - Enhanced generator with dependency tracking
-- [generate_missing_test_files.py](generate_missing_test_files.py) - Older test generator
-- [generate_comprehensive_tests.py](generate_comprehensive_tests.py) - Advanced test generator (WIP)
+- **complete_api_improvement_plan.py** - Comprehensive implementation plan
+- **run_api_improvement_plan.py** - Main orchestration script
+- **standardize_api_queue.py** - Queue implementation standardization
+- **enhance_api_backoff.py** - Enhanced backoff and circuit breaker implementation
+- **check_api_implementation.py** - Implementation status verification
 
 ## Running Tests
 
@@ -110,7 +124,7 @@ Recent improvements to the testing framework include:
 7. **Performance Monitoring** - Added inference time and memory usage tracking
 8. **Documentation Updates** - Expanded documentation with dependency matrix and progress tracking
 
-### API Improvements (March 2025)
+### API Implementations (March 2025)
 
 All 11 API backends are now fully implemented with complete functionality:
 
@@ -128,48 +142,70 @@ All 11 API backends are now fully implemented with complete functionality:
 | OPEA | ✅ COMPLETE | Open Platform for Enterprise AI |
 | S3 Kit | ✅ COMPLETE | Model storage and retrieval |
 
+## Advanced API Features
+
 We have implemented several major enhancements:
 
-1. **Queue and Backoff System (COMPLETED)** - Implemented thread-safe request queueing with configurable concurrency limits, exponential backoff for error handling, proper cleanup of completed requests, and request tracking with unique IDs across all 11 API backends.
+1. **Queue and Backoff System** - Thread-safe request queueing with configurable concurrency limits, exponential backoff for error handling, proper cleanup of completed requests, and request tracking with unique IDs across all 11 API backends.
 
-2. **Priority Queue** - Added three-tier priority levels (HIGH, NORMAL, LOW) with dynamic queue size configuration and priority-based scheduling.
+2. **Priority Queue** - Three-tier priority levels (HIGH, NORMAL, LOW) with dynamic queue size configuration and priority-based scheduling.
 
-3. **Circuit Breaker Pattern** - Implemented three-state machine (CLOSED, OPEN, HALF-OPEN) with automatic service outage detection and self-healing capabilities.
+3. **Circuit Breaker Pattern** - Three-state machine (CLOSED, OPEN, HALF-OPEN) with automatic service outage detection and self-healing capabilities.
 
-4. **API Key Multiplexing** - Added support for multiple API keys per provider with automatic round-robin rotation and least-loaded selection strategies.
+4. **API Key Multiplexing** - Support for multiple API keys per provider with automatic round-robin rotation and least-loaded selection strategies.
 
-5. **Semantic Caching** - Implemented caching based on semantic similarity with configurable thresholds to reduce API costs.
+5. **Monitoring and Reporting** - Comprehensive request statistics tracking with error classification, performance metrics by model and endpoint, and detailed reporting capabilities.
 
-6. **Request Batching** - Added automatic request combining for compatible models with configurable batch sizes and timeouts.
+6. **Request Batching** - Automatic request combining for compatible models with configurable batch sizes and timeouts.
 
-To test the API improvements:
+## Testing API Implementations
+
+To test the API implementations:
 
 ```bash
-# Test a specific API
+# Run the complete API improvement plan (core implementation script)
+python complete_api_improvement_plan.py
+
+# Test a specific API's backoff and queue functionality
 python test_api_backoff_queue.py --api claude
 
-# Run all API tests
+# Run all queue and backoff tests across APIs
 python run_queue_backoff_tests.py
 
 # Run comprehensive Ollama tests
 python test_ollama_backoff_comprehensive.py
 
-# Check implementation status
+# Check current implementation status of all APIs
 python check_api_implementation.py
-
-# Fix any remaining issues
-python fix_all_api_implementations.py
 ```
+
+## Next Steps
+
+The following areas have been identified for future development:
+
+1. **Semantic Caching Implementation**
+   - Add caching layer for frequently used requests
+   - Implement embedding-based similarity search
+   - Add cache invalidation strategies
+
+2. **Advanced Rate Limiting**
+   - Implement token-bucket rate limiters
+   - Add adaptive rate limiting based on response codes
+   - Implement sliding-window rate limiters
+
+3. **Performance Optimization**
+   - Benchmark throughput and latency
+   - Optimize queue processing for higher throughput
+   - Fine-tune backoff parameters per provider
 
 ## Contributing
 
-When adding new tests:
+When adding new scripts or tests:
 
-1. Use the `generate_model_tests.py` script when possible
-2. Follow the established test structure
-3. Include both single and batch testing
-4. Test on all available hardware platforms
-5. Update the documentation to reflect new tests
+1. Place test generators in the `test_generators/` directory
+2. Place model test runners in the `model_test_runners/` directory
+3. Place implementation scripts in the `implementation_files/` directory
+4. Update documentation to reflect changes
 
 ## License
 

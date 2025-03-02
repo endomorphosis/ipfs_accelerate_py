@@ -1,1113 +1,790 @@
-# Standard library imports first
+#!/usr/bin/env python3
+"""
+Class-based test file for all Qwen2-family models.
+This file provides a unified testing interface for:
+- Qwen2ForCausalLM
+"""
+
 import os
 import sys
 import json
 import time
 import datetime
 import traceback
-from unittest.mock import patch, MagicMock
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Third-party imports next
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
 import numpy as np
 
-# Use absolute path setup
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-
-# Try/except pattern for importing optional dependencies
+# Try to import torch
 try:
     import torch
+    HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
-    print("Warning: torch not available, using mock implementation")
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
+# Try to import transformers
 try:
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Import the module to test
+
+# Try to import tokenizers
 try:
-    from ipfs_accelerate_py.worker.skillset.hf_qwen2 import hf_qwen2
+    import tokenizers
+    HAS_TOKENIZERS = True
 except ImportError:
-    print("Creating mock hf_qwen2 class since import failed")
-    class hf_qwen2:
-        def __init__(self, resources=None, metadata=None):
-            self.resources = resources if resources else {}
-            self.metadata = metadata if metadata else {}
-            
-        def init_cpu(self, model_name, model_type, device_label="cpu", **kwargs):
-            tokenizer = MagicMock()
-            endpoint = MagicMock()
-            handler = lambda text: torch.zeros((1, 4096))
-            return endpoint, tokenizer, handler, None, 4
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
 
-# Define required CUDA initialization method
-def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-    """
-    Initialize Qwen2 model with CUDA support.
-    
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model (e.g., "text-generation")
-        device_label: CUDA device label (e.g., "cuda:0")
-        
-    Returns:
-        tuple: (endpoint, tokenizer, handler, queue, batch_size)
-    """
-    import traceback
-    import sys
-    import unittest.mock
-    import time
-    
-    # Try to import the necessary utility functions
-    try:
-        sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
-        
-        # Check if CUDA is really available
-        import torch
-        if not torch.cuda.is_available():
-            print("CUDA not available, falling back to mock implementation")
-            tokenizer = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda text: None
-            return endpoint, tokenizer, handler, None, 0
-            
-        # Get the CUDA device
-        device = test_utils.get_cuda_device(device_label)
-        if device is None:
-            print("Failed to get valid CUDA device, falling back to mock implementation")
-            tokenizer = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda text: None
-            return endpoint, tokenizer, handler, None, 0
-        
-        # Try to load the real model with CUDA
-        try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            print(f"Attempting to load real Qwen2 model {model_name} with CUDA support")
-            
-            # First try to load tokenizer
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                print(f"Successfully loaded tokenizer for {model_name}")
-            except Exception as tokenizer_err:
-                print(f"Failed to load tokenizer, creating simulated one: {tokenizer_err}")
-                tokenizer = unittest.mock.MagicMock()
-                tokenizer.is_real_simulation = True
-                
-            # Try to load model
-            try:
-                model = AutoModelForCausalLM.from_pretrained(model_name)
-                print(f"Successfully loaded model {model_name}")
-                # Move to device and optimize
-                model = test_utils.optimize_cuda_memory(model, device, use_half_precision=True)
-                model.eval()
-                print(f"Model loaded to {device} and optimized for inference")
-                
-                # Create a real handler function
-                def real_handler(text):
-                    try:
-                        start_time = time.time()
-                        # Tokenize the input
-                        inputs = tokenizer(text, return_tensors="pt")
-                        # Move to device
-                        inputs = {k: v.to(device) for k, v in inputs.items()}
-                        
-                        # Track GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_before = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                        else:
-                            gpu_mem_before = 0
-                            
-                        # Run text generation inference
-                        with torch.no_grad():
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                            
-                            # Generate output text
-                            outputs = model.generate(
-                                inputs["input_ids"],
-                                max_new_tokens=50,
-                                do_sample=True,
-                                temperature=0.7,
-                                top_p=0.9
-                            )
-                            
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                        
-                        # Decode the generated token ids back to text
-                        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                            
-                        # Measure GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_after = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                            gpu_mem_used = gpu_mem_after - gpu_mem_before
-                        else:
-                            gpu_mem_used = 0
-                            
-                        return {
-                            "generated_text": generated_text,
-                            "implementation_type": "REAL",
-                            "generation_time_seconds": time.time() - start_time,
-                            "gpu_memory_mb": gpu_mem_used,
-                            "device": str(device)
-                        }
-                    except Exception as e:
-                        print(f"Error in real CUDA handler: {e}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        # Return fallback response
-                        return {
-                            "generated_text": "Error generating text with Qwen2 model.",
-                            "implementation_type": "REAL",
-                            "error": str(e),
-                            "device": str(device),
-                            "is_error": True
-                        }
-                
-                return model, tokenizer, real_handler, None, 1
-                
-            except Exception as model_err:
-                print(f"Failed to load model with CUDA, will use simulation: {model_err}")
-                # Fall through to simulated implementation
-        except ImportError as import_err:
-            print(f"Required libraries not available: {import_err}")
-            # Fall through to simulated implementation
-            
-        # Simulate a successful CUDA implementation for testing
-        print("Creating simulated REAL implementation for demonstration purposes")
-        
-        # Create a realistic model simulation
-        endpoint = unittest.mock.MagicMock()
-        endpoint.to.return_value = endpoint  # For .to(device) call
-        endpoint.half.return_value = endpoint  # For .half() call
-        endpoint.eval.return_value = endpoint  # For .eval() call
-        
-        # Add config with hidden_size to make it look like a real model
-        config = unittest.mock.MagicMock()
-        config.hidden_size = 4096
-        config.vocab_size = 151936
-        endpoint.config = config
-        
-        # Set up realistic processor simulation
-        tokenizer = unittest.mock.MagicMock()
-        
-        # Mark these as simulated real implementations
-        endpoint.is_real_simulation = True
-        tokenizer.is_real_simulation = True
-        
-        # Create a simulated handler that returns realistic outputs
-        def simulated_handler(text):
-            # Simulate model processing with realistic timing
-            start_time = time.time()
-            if hasattr(torch.cuda, "synchronize"):
-                torch.cuda.synchronize()
-            
-            # Simulate processing time
-            time.sleep(0.5)  # LLMs take longer than embedding models
-            
-            # Create a simulated response
-            input_text = text[:50] + "..." if len(text) > 50 else text
-            response_text = f"This is a simulated Qwen2 response to: '{input_text}'. The model would generate coherent text here based on the input prompt."
-            
-            # Simulate memory usage
-            gpu_memory_allocated = 4.2  # GB, simulated for Qwen2 base
-            
-            # Return a dictionary with REAL implementation markers
-            return {
-                "generated_text": response_text,
-                "implementation_type": "REAL",
-                "generation_time_seconds": time.time() - start_time,
-                "gpu_memory_mb": gpu_memory_allocated * 1024,  # Convert to MB
-                "device": str(device),
-                "is_simulated": True
-            }
-            
-        print(f"Successfully loaded simulated Qwen2 model on {device}")
-        return endpoint, tokenizer, simulated_handler, None, 1  # Lower batch size for LLMs
-            
-    except Exception as e:
-        print(f"Error in init_cuda: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        
-    # Fallback to mock implementation
-    tokenizer = unittest.mock.MagicMock()
-    endpoint = unittest.mock.MagicMock()
-    handler = lambda text: {"generated_text": "Mock Qwen2 response.", "implementation_type": "MOCK"}
-    return endpoint, tokenizer, handler, None, 0
 
-# Define OpenVINO initialization method
-def init_openvino(self, model_name, model_type, device="CPU", openvino_label="openvino:0", **kwargs):
-    """
-    Initialize Qwen2 model with OpenVINO support.
+# Try to import accelerate
+try:
+    import accelerate
+    HAS_ACCELERATE = True
+except ImportError:
+    accelerate = MagicMock()
+    HAS_ACCELERATE = False
+    logger.warning("accelerate not available, using mock")
+
+
+# Mock implementations for missing dependencies
+if not HAS_TOKENIZERS:
+    class MockTokenizer:
+        def __init__(self, *args, **kwargs):
+            self.vocab_size = 32000
+            
+        def encode(self, text, **kwargs):
+            return {"ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}
+            
+        def decode(self, ids, **kwargs):
+            return "Decoded text from mock"
+            
+        @staticmethod
+        def from_file(vocab_filename):
+            return MockTokenizer()
+
+    tokenizers.Tokenizer = MockTokenizer
+
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
     
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model (e.g., "text-generation")
-        device: OpenVINO device (e.g., "CPU", "GPU")
-        openvino_label: Device label
-        
-    Returns:
-        tuple: (endpoint, tokenizer, handler, queue, batch_size)
-    """
-    import traceback
-    import sys
-    import unittest.mock
-    import time
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
     
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
     try:
         import openvino
-        print(f"OpenVINO version: {openvino.__version__}")
+        capabilities["openvino"] = True
     except ImportError:
-        print("OpenVINO not available, falling back to mock implementation")
-        tokenizer = unittest.mock.MagicMock()
-        endpoint = unittest.mock.MagicMock()
-        handler = lambda text: {"generated_text": "Mock Qwen2 OpenVINO response.", "implementation_type": "MOCK"}
-        return endpoint, tokenizer, handler, None, 0
-        
-    try:
-        # Try to use provided utility functions
-        get_openvino_model = kwargs.get('get_openvino_model')
-        get_optimum_openvino_model = kwargs.get('get_optimum_openvino_model')
-        get_openvino_pipeline_type = kwargs.get('get_openvino_pipeline_type')
-        openvino_cli_convert = kwargs.get('openvino_cli_convert')
-        
-        if all([get_openvino_model, get_optimum_openvino_model, get_openvino_pipeline_type, openvino_cli_convert]):
-            try:
-                from transformers import AutoTokenizer
-                print(f"Attempting to load OpenVINO model for {model_name}")
-                
-                # Get the OpenVINO pipeline type
-                pipeline_type = get_openvino_pipeline_type(model_name, model_type)
-                print(f"Pipeline type: {pipeline_type}")
-                
-                # Try to load tokenizer
-                try:
-                    tokenizer = AutoTokenizer.from_pretrained(model_name)
-                    print("Successfully loaded tokenizer")
-                except Exception as tokenizer_err:
-                    print(f"Failed to load tokenizer: {tokenizer_err}")
-                    tokenizer = unittest.mock.MagicMock()
-                    
-                # Try to convert/load model with OpenVINO
-                try:
-                    # Convert model if needed
-                    model_dst_path = f"/tmp/openvino_models/{model_name.replace('/', '_')}"
-                    os.makedirs(os.path.dirname(model_dst_path), exist_ok=True)
-                    
-                    openvino_cli_convert(
-                        model_name=model_name,
-                        model_dst_path=model_dst_path,
-                        task="text-generation"
-                    )
-                    
-                    # Load the converted model
-                    ov_model = get_openvino_model(model_dst_path, model_type)
-                    print("Successfully loaded OpenVINO model")
-                    
-                    # Create a real handler function
-                    def real_handler(text):
-                        try:
-                            start_time = time.time()
-                            # Tokenize input
-                            inputs = tokenizer(text, return_tensors="pt")
-                            
-                            # Run generation
-                            outputs = ov_model.generate(
-                                inputs["input_ids"],
-                                max_new_tokens=50,
-                                temperature=0.7,
-                                top_p=0.9
-                            )
-                            
-                            # Decode generated tokens
-                            generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                            
-                            return {
-                                "generated_text": generated_text,
-                                "implementation_type": "REAL",
-                                "generation_time_seconds": time.time() - start_time,
-                                "device": device
-                            }
-                        except Exception as e:
-                            print(f"Error in OpenVINO handler: {e}")
-                            return {
-                                "generated_text": "Error generating text with OpenVINO.",
-                                "implementation_type": "REAL",
-                                "error": str(e),
-                                "is_error": True
-                            }
-                            
-                    return ov_model, tokenizer, real_handler, None, 1
-                    
-                except Exception as model_err:
-                    print(f"Failed to load OpenVINO model: {model_err}")
-                    # Will fall through to mock implementation
-            
-            except Exception as e:
-                print(f"Error setting up OpenVINO: {e}")
-                # Will fall through to mock implementation
-        
-        # Simulate a REAL implementation for demonstration
-        print("Creating simulated REAL implementation for OpenVINO")
-        
-        # Create realistic mock models
-        endpoint = unittest.mock.MagicMock()
-        endpoint.is_real_simulation = True
-        
-        tokenizer = unittest.mock.MagicMock()
-        tokenizer.is_real_simulation = True
-        
-        # Create a simulated handler
-        def simulated_handler(text):
-            # Simulate processing time
-            start_time = time.time()
-            time.sleep(0.3)  # OpenVINO is typically faster than pure PyTorch
-            
-            # Create a simulated response
-            input_text = text[:50] + "..." if len(text) > 50 else text
-            response_text = f"[OpenVINO] This is a simulated Qwen2 response to: '{input_text}'. The model would generate coherent text here based on the input prompt."
-            
-            return {
-                "generated_text": response_text,
-                "implementation_type": "REAL",
-                "generation_time_seconds": time.time() - start_time,
-                "device": device,
-                "is_simulated": True
-            }
-            
-        return endpoint, tokenizer, simulated_handler, None, 1
-        
-    except Exception as e:
-        print(f"Error in init_openvino: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
+        pass
     
-    # Fallback to mock implementation
-    tokenizer = unittest.mock.MagicMock()
-    endpoint = unittest.mock.MagicMock()
-    handler = lambda text: {"generated_text": "Mock Qwen2 OpenVINO response.", "implementation_type": "MOCK"}
-    return endpoint, tokenizer, handler, None, 0
+    return capabilities
 
-# Add the methods to the hf_qwen2 class
-hf_qwen2.init_cuda = init_cuda
-hf_qwen2.init_openvino = init_openvino
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
 
-class test_hf_qwen2:
-    def __init__(self, resources=None, metadata=None):
-        """
-        Initialize the Qwen2 test class.
+# Models registry - Maps model IDs to their specific configurations
+QWEN2_MODELS_REGISTRY = {
+    "Qwen/Qwen2-7B-Instruct": {
+        "description": "Qwen2 7B instruction-tuned model",
+        "class": "Qwen2ForCausalLM",
+    },
+    "Qwen/Qwen2-7B": {
+        "description": "Qwen2 7B base model",
+        "class": "Qwen2ForCausalLM",
+    },
+}
+
+class TestQwen2Models:
+    """Base test class for all Qwen2-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "Qwen/Qwen2-7B-Instruct"
         
-        Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }
-        self.metadata = metadata if metadata else {}
-        self.qwen2 = hf_qwen2(resources=self.resources, metadata=self.metadata)
+        # Verify model exists in registry
+        if self.model_id not in QWEN2_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = QWEN2_MODELS_REGISTRY["Qwen/Qwen2-7B-Instruct"]
+        else:
+            self.model_info = QWEN2_MODELS_REGISTRY[self.model_id]
         
-        # Use a small open-access model by default
-        self.model_name = "Qwen/Qwen2-0.5B"  # Smallest Qwen2 model
+        # Define model parameters
+        self.task = "text-generation"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
         
-        # Alternative models in increasing size order
-        self.alternative_models = [
-            "Qwen/Qwen2-0.5B",       # Smallest size
-            "Qwen/Qwen2-1.5B",      
-            "Qwen/Qwen2-7B"          # Largest recommended size for testing
+        # Define test inputs
+        self.test_text = "Explain the concept of neural networks to a beginner"
+        self.test_texts = [
+            "Explain the concept of neural networks to a beginner",
+            "Explain the concept of neural networks to a beginner (alternative)"
         ]
         
-        try:
-            print(f"Attempting to use primary model: {self.model_name}")
-            
-            # Try to import transformers for validation
-            if not isinstance(self.resources["transformers"], MagicMock):
-                from transformers import AutoConfig
-                try:
-                    # Try to access the config to verify model works
-                    AutoConfig.from_pretrained(self.model_name)
-                    print(f"Successfully validated primary model: {self.model_name}")
-                except Exception as config_error:
-                    print(f"Primary model validation failed: {config_error}")
-                    
-                    # Try alternatives one by one
-                    for alt_model in self.alternative_models[1:]:
-                        try:
-                            print(f"Trying alternative model: {alt_model}")
-                            AutoConfig.from_pretrained(alt_model)
-                            self.model_name = alt_model
-                            print(f"Successfully validated alternative model: {self.model_name}")
-                            break
-                        except Exception as alt_error:
-                            print(f"Alternative model validation failed: {alt_error}")
-                            
-                    # If all alternatives failed, create local test model
-                    if self.model_name == self.alternative_models[0]:
-                        print("All models failed validation, creating local test model")
-                        self.model_name = self._create_test_model()
-                        print(f"Created local test model: {self.model_name}")
-            else:
-                # If transformers is mocked, use local test model
-                print("Transformers is mocked, using local test model")
-                self.model_name = self._create_test_model()
-                
-        except Exception as e:
-            print(f"Error finding model: {e}")
-            # Fall back to local test model as last resort
-            self.model_name = self._create_test_model()
-            print("Falling back to local test model due to error")
-            
-        print(f"Using model: {self.model_name}")
-        self.test_text = "Write a short poem about artificial intelligence."
-        
-        # Initialize collection arrays for examples and status
-        self.examples = []
-        self.status_messages = {}
-        return None
-        
-    def _create_test_model(self):
-        """
-        Create a tiny Qwen2 model for testing without needing Hugging Face authentication.
-        
-        Returns:
-            str: Path to the created model
-        """
-        try:
-            print("Creating local test model for Qwen2 testing...")
-            
-            # Create model directory in /tmp for tests
-            test_model_dir = os.path.join("/tmp", "qwen2_test_model")
-            os.makedirs(test_model_dir, exist_ok=True)
-            
-            # Create a minimal config file for a Qwen2-like model
-            config = {
-                "architectures": ["Qwen2ForCausalLM"],
-                "attention_implementation": "flash_attention_2",
-                "auto_map": {
-                    "AutoConfig": "configuration_qwen2.Qwen2Config",
-                    "AutoModelForCausalLM": "modeling_qwen2.Qwen2ForCausalLM"
-                },
-                "bos_token_id": 151643,
-                "eos_token_id": 151644,
-                "hidden_act": "silu",
-                "hidden_size": 1024,
-                "initializer_range": 0.02,
-                "intermediate_size": 2816,
-                "max_position_embeddings": 4096,
-                "model_type": "qwen2",
-                "num_attention_heads": 8,
-                "num_hidden_layers": 2,
-                "num_key_value_heads": 8,
-                "pad_token_id": 151644,
-                "rms_norm_eps": 1e-05,
-                "rope_scaling": None,
-                "rope_theta": 10000.0,
-                "tie_word_embeddings": true,
-                "torch_dtype": "bfloat16",
-                "transformers_version": "4.36.0",
-                "use_cache": true,
-                "vocab_size": 151936
-            }
-            
-            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
-                json.dump(config, f)
-                
-            # Create a minimal tokenizer config
-            tokenizer_config = {
-                "add_bos_token": true,
-                "add_eos_token": false,
-                "clean_up_tokenization_spaces": false,
-                "eos_token": {
-                    "content": "<|endoftext|>",
-                    "single_word": false,
-                    "lstrip": false,
-                    "rstrip": false,
-                    "normalized": true
-                },
-                "model_max_length": 1000000000000000019884624838656,
-                "padding_side": "right",
-                "tokenizer_class": "PreTrainedTokenizerFast",
-                "unk_token": {
-                    "content": "<|endoftext|>",
-                    "single_word": false,
-                    "lstrip": false,
-                    "rstrip": false,
-                    "normalized": true
-                }
-            }
-            
-            with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
-                json.dump(tokenizer_config, f)
-                
-            # Create a small vocabulary file (minimal)
-            with open(os.path.join(test_model_dir, "vocab.json"), "w") as f:
-                json.dump({"<|endoftext|>": 151644}, f)
-                
-            # Create a small random model weights file if torch is available
-            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
-                # Create random tensors for model weights (minimal)
-                model_state = {}
-                
-                # Create minimal layers (just to have something)
-                model_state["model.embed_tokens.weight"] = torch.randn(151936, 1024)
-                model_state["model.norm.weight"] = torch.ones(1024)
-                
-                # Save model weights
-                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
-                print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
-            
-            print(f"Test model created at {test_model_dir}")
-            return test_model_dir
-            
-        except Exception as e:
-            print(f"Error creating test model: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            # Fall back to a model name that won't need to be downloaded for mocks
-            return "qwen2-test"
-        
-    def test(self):
-        """
-        Run all tests for the Qwen2 language model, organized by hardware platform.
-        Tests CPU, CUDA, and OpenVINO implementations.
-        
-        Returns:
-            dict: Structured test results with status, examples and metadata
-        """
-        results = {}
-        
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.qwen2 is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # ====== CPU TESTS ======
-        try:
-            print("Testing Qwen2 on CPU...")
-            # Initialize for CPU without mocks
-            endpoint, tokenizer, handler, queue, batch_size = self.qwen2.init_cpu(
-                self.model_name,
-                "text-generation", 
-                "cpu"
-            )
-            
-            valid_init = endpoint is not None and tokenizer is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
-            
-            # Get handler for CPU directly from initialization
-            test_handler = handler
-            
-            # Run actual inference
-            start_time = time.time()
-            output = test_handler(self.test_text)
-            elapsed_time = time.time() - start_time
-            
-            # Verify the output is a valid response
-            is_valid_response = False
-            implementation_type = "MOCK"
-            
-            if isinstance(output, dict) and "generated_text" in output:
-                is_valid_response = True
-                implementation_type = output.get("implementation_type", "MOCK")
-            elif isinstance(output, str) and len(output) > 0:
-                is_valid_response = True
-                # Assume REAL if we got a string response of reasonable length
-                implementation_type = "REAL" if len(output) > 10 else "MOCK" 
-            
-            results["cpu_handler"] = f"Success ({implementation_type})" if is_valid_response else "Failed CPU handler"
-            
-            # Record example
-            output_text = output.get("generated_text", output) if isinstance(output, dict) else output
-            
-            self.examples.append({
-                "input": self.test_text,
-                "output": {
-                    "generated_text": output_text if isinstance(output_text, str) else str(output_text),
-                    "token_count": len(output_text.split()) if isinstance(output_text, str) else 0
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": elapsed_time,
-                "implementation_type": implementation_type,
-                "platform": "CPU"
-            })
-            
-            # Add response details to results
-            if is_valid_response:
-                results["cpu_response_length"] = len(output_text) if isinstance(output_text, str) else 0
-                results["cpu_generation_time"] = elapsed_time
-                
-        except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
-
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available():
-            try:
-                print("Testing Qwen2 on CUDA...")
-                
-                # Initialize for CUDA
-                endpoint, tokenizer, handler, queue, batch_size = self.qwen2.init_cuda(
-                    self.model_name,
-                    "text-generation",
-                    "cuda:0"
-                )
-                
-                # Check if initialization succeeded
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                
-                # Determine if this is a real or mock implementation
-                is_mock_endpoint = isinstance(endpoint, MagicMock) and not hasattr(endpoint, 'is_real_simulation')
-                implementation_type = "MOCK" if is_mock_endpoint else "REAL"
-                
-                # Update result status with implementation type
-                results["cuda_init"] = f"Success ({implementation_type})" if valid_init else "Failed CUDA initialization"
-                
-                # Run inference
-                start_time = time.time()
-                try:
-                    output = handler(self.test_text)
-                    elapsed_time = time.time() - start_time
-                    print(f"CUDA inference completed in {elapsed_time:.4f} seconds")
-                except Exception as handler_error:
-                    elapsed_time = time.time() - start_time
-                    print(f"Error in CUDA handler execution: {handler_error}")
-                    output = {"generated_text": "Error running Qwen2 inference", "error": str(handler_error)}
-                
-                # Verify output
-                is_valid_response = False
-                output_implementation_type = implementation_type
-                
-                if isinstance(output, dict) and "generated_text" in output:
-                    is_valid_response = True
-                    if "implementation_type" in output:
-                        output_implementation_type = output["implementation_type"]
-                elif isinstance(output, str) and len(output) > 0:
-                    is_valid_response = True
-                
-                # Use the most reliable implementation type info
-                if output_implementation_type == "REAL" and implementation_type == "MOCK":
-                    implementation_type = "REAL"
-                elif output_implementation_type == "MOCK" and implementation_type == "REAL":
-                    implementation_type = "MOCK"
-                
-                results["cuda_handler"] = f"Success ({implementation_type})" if is_valid_response else f"Failed CUDA handler"
-                
-                # Extract text response
-                output_text = output.get("generated_text", output) if isinstance(output, dict) else output
-                
-                # Extract performance metrics if available
-                performance_metrics = {}
-                if isinstance(output, dict):
-                    if "generation_time_seconds" in output:
-                        performance_metrics["generation_time"] = output["generation_time_seconds"]
-                    if "gpu_memory_mb" in output:
-                        performance_metrics["gpu_memory_mb"] = output["gpu_memory_mb"]
-                    if "device" in output:
-                        performance_metrics["device"] = output["device"]
-                    if "is_simulated" in output:
-                        performance_metrics["is_simulated"] = output["is_simulated"]
-                
-                # Record example
-                self.examples.append({
-                    "input": self.test_text,
-                    "output": {
-                        "generated_text": output_text if isinstance(output_text, str) else str(output_text),
-                        "token_count": len(output_text.split()) if isinstance(output_text, str) else 0,
-                        "performance_metrics": performance_metrics if performance_metrics else None
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": implementation_type,
-                    "platform": "CUDA"
-                })
-                
-                # Add response details to results
-                if is_valid_response:
-                    results["cuda_response_length"] = len(output_text) if isinstance(output_text, str) else 0
-                    results["cuda_generation_time"] = elapsed_time
-                
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
         else:
-            results["cuda_tests"] = "CUDA not available"
-            self.status_messages["cuda"] = "CUDA not available"
-
-        # ====== OPENVINO TESTS ======
-        try:
-            # First check if OpenVINO is installed
+            self.preferred_device = "cpu"
+        
+        logger.info(f"Using {self.preferred_device} as preferred device")
+        
+        # Results storage
+        self.results = {}
+        self.examples = []
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["pipeline_success"] = False
+        return results
+    if not HAS_ACCELERATE:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["accelerate>=0.12.0"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        pipeline_input = self.test_text
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
             try:
-                import openvino
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "OpenVINO not installed"
-                
-            if has_openvino:
-                # Import the existing OpenVINO utils from the main package
-                try:
-                    from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                    
-                    # Initialize openvino_utils
-                    ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-                    
-                    # Try with real OpenVINO utils
-                    try:
-                        print("Trying real OpenVINO initialization...")
-                        endpoint, tokenizer, handler, queue, batch_size = self.qwen2.init_openvino(
-                            model_name=self.model_name,
-                            model_type="text-generation",
-                            device="CPU",
-                            openvino_label="openvino:0",
-                            get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-                            get_openvino_model=ov_utils.get_openvino_model,
-                            get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-                            openvino_cli_convert=ov_utils.openvino_cli_convert
-                        )
-                        
-                        # If we got a handler back, we succeeded
-                        valid_init = handler is not None
-                        is_real_impl = True
-                        results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
-                        
-                    except Exception as e:
-                        print(f"Real OpenVINO initialization failed: {e}")
-                        print("Falling back to mock implementation...")
-                        
-                        # Create mock utility functions
-                        def mock_get_openvino_model(model_name, model_type=None):
-                            print(f"Mock get_openvino_model called for {model_name}")
-                            return MagicMock()
-                            
-                        def mock_get_optimum_openvino_model(model_name, model_type=None):
-                            print(f"Mock get_optimum_openvino_model called for {model_name}")
-                            return MagicMock()
-                            
-                        def mock_get_openvino_pipeline_type(model_name, model_type=None):
-                            return "text-generation"
-                            
-                        def mock_openvino_cli_convert(model_name, model_dst_path=None, task=None, weight_format=None, ratio=None, group_size=None, sym=None):
-                            print(f"Mock openvino_cli_convert called for {model_name}")
-                            return True
-                        
-                        # Fall back to mock implementation
-                        endpoint, tokenizer, handler, queue, batch_size = self.qwen2.init_openvino(
-                            model_name=self.model_name,
-                            model_type="text-generation",
-                            device="CPU",
-                            openvino_label="openvino:0",
-                            get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                            get_openvino_model=mock_get_openvino_model,
-                            get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                            openvino_cli_convert=mock_openvino_cli_convert
-                        )
-                        
-                        # If we got a handler back, the mock succeeded
-                        valid_init = handler is not None
-                        is_real_impl = False
-                        results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
-                    
-                    # Run inference
-                    start_time = time.time()
-                    output = handler(self.test_text)
-                    elapsed_time = time.time() - start_time
-                    
-                    # Verify output and determine implementation type
-                    is_valid_response = False
-                    implementation_type = "REAL" if is_real_impl else "MOCK"
-                    
-                    if isinstance(output, dict) and "generated_text" in output:
-                        is_valid_response = True
-                        if "implementation_type" in output:
-                            implementation_type = output["implementation_type"]
-                    elif isinstance(output, str) and len(output) > 0:
-                        is_valid_response = True
-                    
-                    results["openvino_handler"] = f"Success ({implementation_type})" if is_valid_response else "Failed OpenVINO handler"
-                    
-                    # Extract text response
-                    output_text = output.get("generated_text", output) if isinstance(output, dict) else output
-                    
-                    # Record example
-                    performance_metrics = {}
-                    if isinstance(output, dict):
-                        if "generation_time_seconds" in output:
-                            performance_metrics["generation_time"] = output["generation_time_seconds"]
-                        if "device" in output:
-                            performance_metrics["device"] = output["device"]
-                    
-                    self.examples.append({
-                        "input": self.test_text,
-                        "output": {
-                            "generated_text": output_text if isinstance(output_text, str) else str(output_text),
-                            "token_count": len(output_text.split()) if isinstance(output_text, str) else 0,
-                            "performance_metrics": performance_metrics if performance_metrics else None
-                        },
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "elapsed_time": elapsed_time,
-                        "implementation_type": implementation_type,
-                        "platform": "OpenVINO"
-                    })
-                    
-                    # Add response details to results
-                    if is_valid_response:
-                        results["openvino_response_length"] = len(output_text) if isinstance(output_text, str) else 0
-                        results["openvino_generation_time"] = elapsed_time
-                
-                except Exception as e:
-                    print(f"Error with OpenVINO utils: {e}")
-                    results["openvino_tests"] = f"Error: {str(e)}"
-                    self.status_messages["openvino"] = f"Failed: {str(e)}"
-                
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
 
-        # Create structured results with status, examples and metadata
-        structured_results = {
-            "status": results,
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["from_pretrained_success"] = False
+        return results
+    if not HAS_ACCELERATE:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["accelerate>=0.12.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "Qwen2ForCausalLM":
+            model_class = transformers.Qwen2ForCausalLM
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModelForCausalLM
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = self.test_text
+        
+        # Tokenize input
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Process generation output
+        predictions = outputs[0]
+        if hasattr(tokenizer, "decode"):
+            if hasattr(outputs[0], "logits"):
+                logits = outputs[0].logits
+                next_token_logits = logits[0, -1, :]
+                next_token_id = torch.argmax(next_token_logits).item()
+                next_token = tokenizer.decode([next_token_id])
+                predictions = [{"token": next_token, "score": 1.0}]
+            else:
+                predictions = [{"generated_text": "Mock generated text"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModelForCausalLM
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModelForCausalLM.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare input
+        if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
+            mask_token = tokenizer.mask_token
+            test_input = self.test_text.replace("[MASK]", mask_token)
+        else:
+            test_input = self.test_text
+            
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Process generation output
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            next_token_logits = logits[0, -1, :]
+            next_token_id = torch.argmax(next_token_logits).item()
+            
+            if hasattr(tokenizer, "decode"):
+                next_token = tokenizer.decode([next_token_id])
+                predictions = [next_token]
+            else:
+                predictions = ["<mock_token>"]
+        else:
+            predictions = ["<mock_output>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
+        """
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
+        
+        Returns:
+            Dict containing test results
+        """
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
+        
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
+            
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
+            
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
             "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
             "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": self.status_messages
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_tokenizers": HAS_TOKENIZERS,
+                "has_accelerate": HAS_ACCELERATE
             }
         }
 
-        return structured_results
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_qwen2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
 
-    def __test__(self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-        """
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {
-                "status": {"test_error": str(e)},
-                "examples": [],
-                "metadata": {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            }
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_qwen2_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved collected results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_qwen2_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                
-                # Filter out variable fields for comparison
-                def filter_variable_data(result):
-                    if isinstance(result, dict):
-                        # Create a copy to avoid modifying the original
-                        filtered = {}
-                        for k, v in result.items():
-                            # Skip timestamp and variable output data for comparison
-                            if k not in ["timestamp", "elapsed_time", "output"] and k != "examples" and k != "metadata":
-                                filtered[k] = filter_variable_data(v)
-                        return filtered
-                    elif isinstance(result, list):
-                        return [filter_variable_data(item) for item in result]
-                    else:
-                        return result
-                
-                # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # More detailed comparison of results
-                all_match = True
-                mismatches = []
-                
-                for key in set(status_expected.keys()) | set(status_actual.keys()):
-                    if key not in status_expected:
-                        mismatches.append(f"Missing expected key: {key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append(f"Missing actual key: {key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if (
-                            isinstance(status_expected[key], str) and 
-                            isinstance(status_actual[key], str) and
-                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
-                            "Success" in status_expected[key] and "Success" in status_actual[key]
-                        ):
-                            continue
-                        
-                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
-                        all_match = False
-                
-                if not all_match:
-                    print("Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print(f"- {mismatch}")
-                    print("\nWould you like to update the expected results? (y/n)")
-                    user_input = input().strip().lower()
-                    if user_input == 'y':
-                        with open(expected_file, 'w') as ef:
-                            json.dump(test_results, ef, indent=2)
-                            print(f"Updated expected results file: {expected_file}")
-                    else:
-                        print("Expected results not updated.")
-                else:
-                    print("All test results match expected results.")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                print("Creating new expected results file.")
-                with open(expected_file, 'w') as ef:
-                    json.dump(test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+def get_available_models():
+    """Get a list of all available Qwen2 models in the registry."""
+    return list(QWEN2_MODELS_REGISTRY.keys())
 
-        return test_results
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered Qwen2 models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestQwen2Models(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_qwen2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test Qwen2-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable Qwen2-family models:")
+        for model in models:
+            info = QWEN2_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nQwen2 Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "Qwen/Qwen2-7B-Instruct"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestQwen2Models(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        print("Starting Qwen2 test...")
-        this_qwen2 = test_hf_qwen2()
-        results = this_qwen2.__test__()
-        print("Qwen2 test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get("status", {})
-        examples = results.get("examples", [])
-        metadata = results.get("metadata", {})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get("platform", "")
-            impl_type = example.get("implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-        print("\nQWEN2 TEST RESULTS SUMMARY")
-        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print performance information if available
-        for example in examples:
-            platform = example.get("platform", "")
-            output = example.get("output", {})
-            elapsed_time = example.get("elapsed_time", 0)
-            
-            print(f"\n{platform} PERFORMANCE METRICS:")
-            print(f"  Elapsed time: {elapsed_time:.4f}s")
-            
-            if "token_count" in output:
-                print(f"  Generated tokens: {output['token_count']}")
-                
-            # Check for detailed metrics
-            if "performance_metrics" in output:
-                metrics = output["performance_metrics"]
-                for k, v in metrics.items():
-                    print(f"  {k}: {v}")
-        
-        # Print a JSON representation to make it easier to parse
-        print("\nstructured_results")
-        print(json.dumps({
-            "status": {
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-            },
-            "model_name": metadata.get("model_name", "Unknown"),
-            "examples": examples
-        }))
-        
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error during testing: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+    main()

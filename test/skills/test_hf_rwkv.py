@@ -1,915 +1,769 @@
-# Standard library imports first
+#!/usr/bin/env python3
+"""
+Class-based test file for all RWKV-family models.
+This file provides a unified testing interface for:
+- RwkvForCausalLM
+"""
+
 import os
 import sys
 import json
 import time
 import datetime
 import traceback
-from unittest.mock import patch, MagicMock
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Third-party imports next
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
 import numpy as np
 
-# Use absolute path setup
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-
-# Try/except pattern for importing optional dependencies
+# Try to import torch
 try:
     import torch
+    HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
-    print("Warning: torch not available, using mock implementation")
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
+# Try to import transformers
 try:
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Try to import specific dependencies based on model type
-# Model supports: text-generation
-if "text-generation" in ["image-classification", "object-detection", "image-segmentation", "image-to-text", "visual-question-answering"]:
-    try:
-        from PIL import Image
-    except ImportError:
-        Image = MagicMock()
-        print("Warning: PIL not available, using mock implementation")
 
-if "text-generation" in ["automatic-speech-recognition", "audio-classification", "text-to-audio"]:
-    try:
-        import librosa
-    except ImportError:
-        librosa = MagicMock()
-        print("Warning: librosa not available, using mock implementation")
-
-if "text-generation" == "protein-folding":
-    try:
-        from Bio import SeqIO
-    except ImportError:
-        SeqIO = MagicMock()
-        print("Warning: BioPython not available, using mock implementation")
-
-if "text-generation" == "table-question-answering":
-    try:
-        import pandas as pd
-    except ImportError:
-        pd = MagicMock()
-        print("Warning: pandas not available, using mock implementation")
-
-if "text-generation" == "time-series-prediction":
-    try:
-        import pandas as pd
-        import numpy as np
-    except ImportError:
-        pd = MagicMock()
-        print("Warning: pandas or numpy not available, using mock implementation")
-
-# Import the module to test (create a mock if not available)
+# Try to import tokenizers
 try:
-    from ipfs_accelerate_py.worker.skillset.hf_rwkv import hf_rwkv
+    import tokenizers
+    HAS_TOKENIZERS = True
 except ImportError:
-    # If the module doesn't exist yet, create a mock class
-    class hf_rwkv:
-        def __init__(self, resources=None, metadata=None):
-            self.resources = resources or {}
-            self.metadata = metadata or {}
-            
-        def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: torch.zeros((1, 768)), None, 1
-            
-        def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: torch.zeros((1, 768)), None, 1
-            
-        def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: torch.zeros((1, 768)), None, 1
-    
-    print(f"Warning: hf_rwkv module not found, using mock implementation")
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
 
-# Define required methods to add to hf_rwkv
-def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-    """
-    Initialize model with CUDA support.
+
+# Mock implementations for missing dependencies
+if not HAS_TOKENIZERS:
+    class MockTokenizer:
+        def __init__(self, *args, **kwargs):
+            self.vocab_size = 32000
+            
+        def encode(self, text, **kwargs):
+            return {"ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}
+            
+        def decode(self, ids, **kwargs):
+            return "Decoded text from mock"
+            
+        @staticmethod
+        def from_file(vocab_filename):
+            return MockTokenizer()
+
+    tokenizers.Tokenizer = MockTokenizer
+
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
     
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model (e.g., "text-generation")
-        device_label: CUDA device label (e.g., "cuda:0")
-        
-    Returns:
-        tuple: (endpoint, tokenizer, handler, queue, batch_size)
-    """
-    import traceback
-    import sys
-    import unittest.mock
-    import time
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
     
-    # Try to import the necessary utility functions
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
     try:
-        sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
-        
-        # Check if CUDA is really available
-        import torch
-        if not torch.cuda.is_available():
-            print("CUDA not available, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda x: {"output": None, "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Get the CUDA device
-        device = test_utils.get_cuda_device(device_label)
-        if device is None:
-            print("Failed to get valid CUDA device, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda x: {"output": None, "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Try to import and initialize HuggingFace components based on model type
-        try:
-            # Different imports based on model type
-            if "text-generation" == "text-generation":
-                from transformers import AutoModelForCausalLM, AutoTokenizer
-                print(f"Attempting to load text generation model {model_name} with CUDA support")
-                processor = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModelForCausalLM.from_pretrained(model_name)
-            elif "text-generation" == "image-classification":
-                from transformers import AutoFeatureExtractor, AutoModelForImageClassification
-                print(f"Attempting to load image classification model {model_name} with CUDA support")
-                processor = AutoFeatureExtractor.from_pretrained(model_name)
-                model = AutoModelForImageClassification.from_pretrained(model_name)
-            elif "text-generation" == "automatic-speech-recognition":
-                from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
-                print(f"Attempting to load speech recognition model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
-            elif "text-generation" == "protein-folding":
-                from transformers import EsmForProteinFolding, AutoTokenizer
-                print(f"Attempting to load protein folding model {model_name} with CUDA support")
-                processor = AutoTokenizer.from_pretrained(model_name)
-                model = EsmForProteinFolding.from_pretrained(model_name)
-            elif "text-generation" == "table-question-answering":
-                from transformers import AutoModelForTableQuestionAnswering, AutoTokenizer
-                print(f"Attempting to load table question answering model {model_name} with CUDA support")
-                processor = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModelForTableQuestionAnswering.from_pretrained(model_name)
-            elif "text-generation" == "time-series-prediction":
-                from transformers import AutoModelForTimeSeriesPrediction, AutoProcessor
-                print(f"Attempting to load time series prediction model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForTimeSeriesPrediction.from_pretrained(model_name)
-            elif "text-generation" == "visual-question-answering":
-                from transformers import AutoProcessor, AutoModelForVisualQuestionAnswering
-                print(f"Attempting to load visual question answering model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForVisualQuestionAnswering.from_pretrained(model_name)
-            elif "text-generation" == "image-to-text":
-                from transformers import AutoProcessor, AutoModelForVision2Seq
-                print(f"Attempting to load image-to-text model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForVision2Seq.from_pretrained(model_name)
-            elif "text-generation" == "document-question-answering":
-                from transformers import AutoProcessor, AutoModelForDocumentQuestionAnswering
-                print(f"Attempting to load document QA model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForDocumentQuestionAnswering.from_pretrained(model_name)
-            elif "text-generation" == "depth-estimation":
-                from transformers import AutoProcessor, AutoModelForDepthEstimation
-                print(f"Attempting to load depth estimation model {model_name} with CUDA support")
-                processor = AutoProcessor.from_pretrained(model_name)
-                model = AutoModelForDepthEstimation.from_pretrained(model_name)
-            else:
-                # Default handling for other model types
-                from transformers import AutoProcessor, AutoModel
-                print(f"Attempting to load model {model_name} with CUDA support")
-                try:
-                    processor = AutoProcessor.from_pretrained(model_name)
-                except:
-                    from transformers import AutoTokenizer
-                    processor = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModel.from_pretrained(model_name)
-                
-            # Move to device and optimize
-            model = test_utils.optimize_cuda_memory(model, device, use_half_precision=True)
-            model.eval()
-            print(f"Model loaded to {device} and optimized for inference")
-            
-            # Create a real handler function - implementation depends on model type
-            def real_handler(input_data):
-                try:
-                    start_time = time.time()
-                    
-                    # Process input based on model type
-                    if "text-generation" == "text-generation":
-                        inputs = processor(input_data, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model.generate(**inputs, max_length=50)
-                        result = processor.decode(output[0], skip_special_tokens=True)
-                        
-                    elif "text-generation" == "image-classification":
-                        if isinstance(input_data, str):
-                            # Load image from file
-                            from PIL import Image
-                            image = Image.open(input_data)
-                        else:
-                            image = input_data
-                        inputs = processor(images=image, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model(**inputs)
-                        result = output.logits
-                        
-                    elif "text-generation" == "protein-folding":
-                        inputs = processor(input_data, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model(**inputs)
-                        result = output.positions
-                        
-                    elif "text-generation" == "table-question-answering":
-                        if isinstance(input_data, dict):
-                            # Handle table dictionary with question
-                            table = pd.DataFrame(input_data["rows"], columns=input_data["header"])
-                            question = input_data.get("question", "")
-                            inputs = processor(table=table, query=question, return_tensors="pt").to(device)
-                        else:
-                            # Fallback for string input
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model(**inputs)
-                        result = {
-                            "answer": output.answer,
-                            "coordinates": output.coordinates,
-                            "cells": output.cells
-                        }
-                        
-                    elif "text-generation" == "time-series-prediction":
-                        if isinstance(input_data, dict):
-                            # Handle time series input
-                            past_values = torch.tensor(input_data["past_values"]).float().unsqueeze(0).to(device)
-                            past_time_features = torch.tensor(input_data["past_time_features"]).float().unsqueeze(0).to(device)
-                            future_time_features = torch.tensor(input_data["future_time_features"]).float().unsqueeze(0).to(device)
-                            inputs = {
-                                "past_values": past_values,
-                                "past_time_features": past_time_features,
-                                "future_time_features": future_time_features
-                            }
-                        else:
-                            # Fallback for other inputs
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model(**inputs)
-                        result = output.predictions
-                    
-                    elif "text-generation" in ["visual-question-answering", "image-to-text"]:
-                        # Handle various multimodal inputs
-                        if isinstance(input_data, dict) and "image" in input_data and "question" in input_data:
-                            # Handle image+question dictionary
-                            image = input_data["image"]
-                            question = input_data["question"]
-                            if isinstance(image, str):
-                                from PIL import Image
-                                image = Image.open(image)
-                            inputs = processor(image=image, text=question, return_tensors="pt").to(device)
-                        elif isinstance(input_data, str) and os.path.exists(input_data):
-                            # Handle image file path
-                            from PIL import Image
-                            image = Image.open(input_data)
-                            # For image-to-text, use empty string as text
-                            text = "" if "text-generation" == "image-to-text" else "What is in this image?"
-                            inputs = processor(image=image, text=text, return_tensors="pt").to(device)
-                        else:
-                            # Fallback for other inputs
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                        
-                        with torch.no_grad():
-                            output = model(**inputs)
-                        
-                        if "text-generation" == "image-to-text":
-                            result = processor.decode(output.sequences[0], skip_special_tokens=True)
-                        else:
-                            # Visual QA
-                            result = {
-                                "scores": output.logits.softmax(dim=1)[0].tolist(),
-                                "labels": processor.tokenizer.convert_ids_to_tokens(output.logits.argmax(dim=1)[0])
-                            }
-                    
-                    elif "text-generation" == "document-question-answering":
-                        # Handle document QA
-                        if isinstance(input_data, dict) and "image" in input_data and "question" in input_data:
-                            image = input_data["image"]
-                            question = input_data["question"]
-                            if isinstance(image, str):
-                                from PIL import Image
-                                image = Image.open(image)
-                            inputs = processor(image=image, question=question, return_tensors="pt").to(device)
-                        elif isinstance(input_data, str) and os.path.exists(input_data):
-                            from PIL import Image
-                            image = Image.open(input_data)
-                            question = "What is this document about?"
-                            inputs = processor(image=image, question=question, return_tensors="pt").to(device)
-                        else:
-                            # Fallback
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                        
-                        with torch.no_grad():
-                            output = model(**inputs)
-                            
-                        if hasattr(output, "answer"):
-                            result = output.answer
-                        else:
-                            result = processor.decode(output.sequences[0], skip_special_tokens=True)
-                            
-                    elif "text-generation" == "depth-estimation":
-                        # Handle depth estimation
-                        if isinstance(input_data, str):
-                            from PIL import Image
-                            image = Image.open(input_data)
-                        else:
-                            image = input_data
-                            
-                        inputs = processor(images=image, return_tensors="pt").to(device)
-                        with torch.no_grad():
-                            output = model(**inputs)
-                            
-                        result = output.predicted_depth
-                    
-                    else:
-                        # Generic handling for other tasks
-                        if isinstance(input_data, str):
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                        else:
-                            inputs = processor(input_data, return_tensors="pt").to(device)
-                            
-                        with torch.no_grad():
-                            output = model(**inputs)
-                            
-                        # Return a generic result that should work for most models
-                        if hasattr(output, "logits"):
-                            result = output.logits
-                        elif hasattr(output, "last_hidden_state"):
-                            result = output.last_hidden_state
-                        else:
-                            # Just return the first tensor from the output
-                            for key, value in output.items():
-                                if isinstance(value, torch.Tensor):
-                                    result = value
-                                    break
-                            else:
-                                result = "Failed to extract output tensor"
-                    
-                    return {
-                        "output": result,
-                        "implementation_type": "REAL",
-                        "inference_time_seconds": time.time() - start_time,
-                        "device": str(device)
-                    }
-                except Exception as e:
-                    print(f"Error in real CUDA handler: {e}")
-                    print(f"Traceback: {traceback.format_exc()}")
-                    return {
-                        "output": None,
-                        "implementation_type": "REAL",
-                        "error": str(e),
-                        "is_error": True
-                    }
-            
-            return model, processor, real_handler, None, 8
-            
-        except Exception as model_err:
-            print(f"Failed to load model with CUDA, will use simulation: {model_err}")
-    except Exception as e:
-        print(f"Error in init_cuda: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
     
-    # Fallback to mock implementation
-    processor = unittest.mock.MagicMock()
-    endpoint = unittest.mock.MagicMock()
-    handler = lambda x: {"output": None, "implementation_type": "MOCK"}
-    return endpoint, processor, handler, None, 0
+    return capabilities
 
-# Add the method to the class
-hf_rwkv.init_cuda = init_cuda
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
 
-class test_hf_rwkv:
-    def __init__(self, resources=None, metadata=None):
+# Models registry - Maps model IDs to their specific configurations
+RWKV_MODELS_REGISTRY = {
+    "RWKV/rwkv-4-pile-430m": {
+        "description": "RWKV-4 430M model trained on Pile",
+        "class": "RwkvForCausalLM",
+    },
+    "RWKV/rwkv-4-pile-1b5": {
+        "description": "RWKV-4 1.5B model trained on Pile",
+        "class": "RwkvForCausalLM",
+    },
+}
+
+class TestRwkvModels:
+    """Base test class for all RWKV-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "RWKV/rwkv-4-pile-430m"
+        
+        # Verify model exists in registry
+        if self.model_id not in RWKV_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = RWKV_MODELS_REGISTRY["RWKV/rwkv-4-pile-430m"]
+        else:
+            self.model_info = RWKV_MODELS_REGISTRY[self.model_id]
+        
+        # Define model parameters
+        self.task = "text-generation"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
+        
+        # Define test inputs
+        self.test_text = "RWKV combines the best aspects of transformers and RNNs by"
+        self.test_texts = [
+            "RWKV combines the best aspects of transformers and RNNs by",
+            "RWKV combines the best aspects of transformers and RNNs by (alternative)"
+        ]
+        
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
+        else:
+            self.preferred_device = "cpu"
+        
+        logger.info(f"Using {self.preferred_device} as preferred device")
+        
+        # Results storage
+        self.results = {}
+        self.examples = []
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        pipeline_input = self.test_text
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
+            try:
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
+
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "RwkvForCausalLM":
+            model_class = transformers.RwkvForCausalLM
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModelForCausalLM
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = self.test_text
+        
+        # Tokenize input
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Process generation output
+        predictions = outputs[0]
+        if hasattr(tokenizer, "decode"):
+            if hasattr(outputs[0], "logits"):
+                logits = outputs[0].logits
+                next_token_logits = logits[0, -1, :]
+                next_token_id = torch.argmax(next_token_logits).item()
+                next_token = tokenizer.decode([next_token_id])
+                predictions = [{"token": next_token, "score": 1.0}]
+            else:
+                predictions = [{"generated_text": "Mock generated text"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModelForCausalLM
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModelForCausalLM.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare input
+        if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
+            mask_token = tokenizer.mask_token
+            test_input = self.test_text.replace("[MASK]", mask_token)
+        else:
+            test_input = self.test_text
+            
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Process generation output
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            next_token_logits = logits[0, -1, :]
+            next_token_id = torch.argmax(next_token_logits).item()
+            
+            if hasattr(tokenizer, "decode"):
+                next_token = tokenizer.decode([next_token_id])
+                predictions = [next_token]
+            else:
+                predictions = ["<mock_token>"]
+        else:
+            predictions = ["<mock_output>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
         """
-        Initialize the test class.
+        Run all tests for this model.
         
         Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }
-        self.metadata = metadata if metadata else {}
-        self.model = hf_rwkv(resources=self.resources, metadata=self.metadata)
-        
-        # Use a small model for testing
-        self.model_name = "distilgpt2"  # Small model for testing
-        
-        # Test inputs appropriate for this model type
-        self.test_text = "The quick brown fox jumps over the lazy dog"
-        
-        # Initialize collection arrays for examples and status
-        self.examples = []
-        self.status_messages = {}
-        return None
-        
-    def test(self):
-        """
-        Run all tests for the model, organized by hardware platform.
-        Tests CPU, CUDA, OpenVINO implementations.
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
         
         Returns:
-            dict: Structured test results with status, examples and metadata
+            Dict containing test results
         """
-        results = {}
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
         
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.model is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # ====== CPU TESTS ======
-        try:
-            print("Testing rwkv on CPU...")
-            # Initialize for CPU
-            endpoint, processor, handler, queue, batch_size = self.model.init_cpu(
-                self.model_name,
-                "text-generation", 
-                "cpu"
-            )
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
             
-            valid_init = endpoint is not None and processor is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
             
-            # Prepare test input based on model type
-            test_input = None
-            if "text-generation" == "text-generation" and hasattr(self, 'test_text'):
-                test_input = self.test_text
-            elif "text-generation" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
-                test_input = self.test_image
-            elif "text-generation" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
-                test_input = self.test_audio
-            elif "text-generation" == "protein-folding" and hasattr(self, 'test_sequence'):
-                test_input = self.test_sequence
-            elif "text-generation" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
-                test_input = {"table": self.test_table, "question": self.test_question}
-            elif "text-generation" == "time-series-prediction" and hasattr(self, 'test_time_series'):
-                test_input = self.test_time_series
-            elif hasattr(self, 'test_input'):
-                test_input = self.test_input
-            else:
-                test_input = "Default test input"
-            
-            # Run actual inference
-            start_time = time.time()
-            output = handler(test_input)
-            elapsed_time = time.time() - start_time
-            
-            # Verify the output
-            is_valid_output = output is not None
-            
-            results["cpu_handler"] = "Success (REAL)" if is_valid_output else "Failed CPU handler"
-            
-            # Record example
-            self.examples.append({
-                "input": str(test_input),
-                "output": {
-                    "output_type": str(type(output)),
-                    "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": elapsed_time,
-                "implementation_type": "REAL",
-                "platform": "CPU"
-            })
-                
-        except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
-
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available():
-            try:
-                print("Testing rwkv on CUDA...")
-                # Initialize for CUDA
-                endpoint, processor, handler, queue, batch_size = self.model.init_cuda(
-                    self.model_name,
-                    "text-generation",
-                    "cuda:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cuda_init"] = "Success (REAL)" if valid_init else "Failed CUDA initialization"
-                
-                # Prepare test input as above
-                test_input = None
-                if "text-generation" == "text-generation" and hasattr(self, 'test_text'):
-                    test_input = self.test_text
-                elif "text-generation" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
-                    test_input = self.test_image
-                elif "text-generation" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
-                    test_input = self.test_audio
-                elif "text-generation" == "protein-folding" and hasattr(self, 'test_sequence'):
-                    test_input = self.test_sequence
-                elif "text-generation" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
-                    test_input = {"table": self.test_table, "question": self.test_question}
-                elif "text-generation" == "time-series-prediction" and hasattr(self, 'test_time_series'):
-                    test_input = self.test_time_series
-                elif hasattr(self, 'test_input'):
-                    test_input = self.test_input
-                else:
-                    test_input = "Default test input"
-                
-                # Run actual inference
-                start_time = time.time()
-                output = handler(test_input)
-                elapsed_time = time.time() - start_time
-                
-                # Verify the output
-                is_valid_output = output is not None
-                
-                results["cuda_handler"] = "Success (REAL)" if is_valid_output else "Failed CUDA handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": str(test_input),
-                    "output": {
-                        "output_type": str(type(output)),
-                        "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": "REAL",
-                    "platform": "CUDA"
-                })
-                    
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
-        else:
-            results["cuda_tests"] = "CUDA not available"
-            self.status_messages["cuda"] = "CUDA not available"
-
-        # ====== OPENVINO TESTS ======
-        try:
-            # First check if OpenVINO is installed
-            try:
-                import openvino
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "OpenVINO not installed"
-                
-            if has_openvino:
-                print("Testing rwkv on OpenVINO...")
-                # Initialize mock OpenVINO utils if not available
-                try:
-                    from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                    ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-                    
-                    # Initialize for OpenVINO
-                    endpoint, processor, handler, queue, batch_size = self.model.init_openvino(
-                        self.model_name,
-                        "text-generation",
-                        "CPU",
-                        get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-                        get_openvino_model=ov_utils.get_openvino_model,
-                        get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-                        openvino_cli_convert=ov_utils.openvino_cli_convert
-                    )
-                    
-                    valid_init = endpoint is not None and processor is not None and handler is not None
-                    results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
-                    
-                    # Prepare test input as above
-                    test_input = None
-                    if "text-generation" == "text-generation" and hasattr(self, 'test_text'):
-                        test_input = self.test_text
-                    elif "text-generation" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
-                        test_input = self.test_image
-                    elif "text-generation" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
-                        test_input = self.test_audio
-                    elif "text-generation" == "protein-folding" and hasattr(self, 'test_sequence'):
-                        test_input = self.test_sequence
-                    elif "text-generation" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
-                        test_input = {"table": self.test_table, "question": self.test_question}
-                    elif "text-generation" == "time-series-prediction" and hasattr(self, 'test_time_series'):
-                        test_input = self.test_time_series
-                    elif hasattr(self, 'test_input'):
-                        test_input = self.test_input
-                    else:
-                        test_input = "Default test input"
-                    
-                    # Run actual inference
-                    start_time = time.time()
-                    output = handler(test_input)
-                    elapsed_time = time.time() - start_time
-                    
-                    # Verify the output
-                    is_valid_output = output is not None
-                    
-                    results["openvino_handler"] = "Success (REAL)" if is_valid_output else "Failed OpenVINO handler"
-                    
-                    # Record example
-                    self.examples.append({
-                        "input": str(test_input),
-                        "output": {
-                            "output_type": str(type(output)),
-                            "implementation_type": "REAL" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
-                        },
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "elapsed_time": elapsed_time,
-                        "implementation_type": "REAL",
-                        "platform": "OpenVINO"
-                    })
-                        
-                except Exception as e:
-                    print(f"Error in OpenVINO implementation: {e}")
-                    traceback.print_exc()
-                    
-                    # Try with mock implementations
-                    print("Falling back to mock OpenVINO implementation...")
-                    mock_get_openvino_model = lambda model_name, model_type=None: MagicMock()
-                    mock_get_optimum_openvino_model = lambda model_name, model_type=None: MagicMock()
-                    mock_get_openvino_pipeline_type = lambda model_name, model_type=None: "text-generation"
-                    mock_openvino_cli_convert = lambda model_name, model_dst_path=None, task=None, weight_format=None, ratio=None, group_size=None, sym=None: True
-                    
-                    endpoint, processor, handler, queue, batch_size = self.model.init_openvino(
-                        self.model_name,
-                        "text-generation",
-                        "CPU",
-                        get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                        get_openvino_model=mock_get_openvino_model,
-                        get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                        openvino_cli_convert=mock_openvino_cli_convert
-                    )
-                    
-                    valid_init = endpoint is not None and processor is not None and handler is not None
-                    results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
-                    
-                    # Prepare test input as above
-                    test_input = None
-                    if "text-generation" == "text-generation" and hasattr(self, 'test_text'):
-                        test_input = self.test_text
-                    elif "text-generation" in ["image-classification", "image-to-text", "visual-question-answering"] and hasattr(self, 'test_image'):
-                        test_input = self.test_image
-                    elif "text-generation" in ["automatic-speech-recognition", "audio-classification"] and hasattr(self, 'test_audio'):
-                        test_input = self.test_audio
-                    elif "text-generation" == "protein-folding" and hasattr(self, 'test_sequence'):
-                        test_input = self.test_sequence
-                    elif "text-generation" == "table-question-answering" and hasattr(self, 'test_table') and hasattr(self, 'test_question'):
-                        test_input = {"table": self.test_table, "question": self.test_question}
-                    elif "text-generation" == "time-series-prediction" and hasattr(self, 'test_time_series'):
-                        test_input = self.test_time_series
-                    elif hasattr(self, 'test_input'):
-                        test_input = self.test_input
-                    else:
-                        test_input = "Default test input"
-                    
-                    # Run actual inference
-                    start_time = time.time()
-                    output = handler(test_input)
-                    elapsed_time = time.time() - start_time
-                    
-                    # Verify the output
-                    is_valid_output = output is not None
-                    
-                    results["openvino_handler"] = "Success (MOCK)" if is_valid_output else "Failed OpenVINO handler"
-                    
-                    # Record example
-                    self.examples.append({
-                        "input": str(test_input),
-                        "output": {
-                            "output_type": str(type(output)),
-                            "implementation_type": "MOCK" if isinstance(output, dict) and "implementation_type" in output else "UNKNOWN"
-                        },
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "elapsed_time": elapsed_time,
-                        "implementation_type": "MOCK",
-                        "platform": "OpenVINO"
-                    })
-                
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
-
-        # Create structured results with status, examples and metadata
-        structured_results = {
-            "status": results,
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
             "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
             "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": self.status_messages
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_tokenizers": HAS_TOKENIZERS
             }
         }
 
-        return structured_results
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_rwkv_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
 
-    def __test__(self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-        """
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {
-                "status": {"test_error": str(e)},
-                "examples": [],
-                "metadata": {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            }
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_rwkv_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved collected results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_rwkv_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                
-                # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # More detailed comparison of results
-                all_match = True
-                mismatches = []
-                
-                for key in set(status_expected.keys()) | set(status_actual.keys()):
-                    if key not in status_expected:
-                        mismatches.append(f"Missing expected key: {key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append(f"Missing actual key: {key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if (
-                            isinstance(status_expected[key], str) and 
-                            isinstance(status_actual[key], str) and
-                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
-                            "Success" in status_expected[key] and "Success" in status_actual[key]
-                        ):
-                            continue
-                        
-                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
-                        all_match = False
-                
-                if not all_match:
-                    print("Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print(f"- {mismatch}")
-                    print("Would you like to update the expected results? (y/n)")
-                    user_input = input().strip().lower()
-                    if user_input == 'y':
-                        with open(expected_file, 'w') as ef:
-                            json.dump(test_results, ef, indent=2)
-                            print(f"Updated expected results file: {expected_file}")
-                    else:
-                        print("Expected results not updated.")
-                else:
-                    print("All test results match expected results.")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                print("Creating new expected results file.")
-                with open(expected_file, 'w') as ef:
-                    json.dump(test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+def get_available_models():
+    """Get a list of all available RWKV models in the registry."""
+    return list(RWKV_MODELS_REGISTRY.keys())
 
-        return test_results
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered RWKV models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestRwkvModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_rwkv_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test RWKV-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable RWKV-family models:")
+        for model in models:
+            info = RWKV_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nRWKV Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "RWKV/rwkv-4-pile-430m"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestRwkvModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        print("Starting rwkv test...")
-        test_instance = test_hf_rwkv()
-        results = test_instance.__test__()
-        print("rwkv test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get("status", {})
-        examples = results.get("examples", [])
-        metadata = results.get("metadata", {})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get("platform", "")
-            impl_type = example.get("implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-        print("\nRWKV TEST RESULTS SUMMARY")
-        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print a JSON representation to make it easier to parse
-        print("\nstructured_results")
-        print(json.dumps({
-            "status": {
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-            },
-            "model_name": metadata.get("model_name", "Unknown"),
-            "examples": examples
-        }))
-        
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error during testing: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+    main()

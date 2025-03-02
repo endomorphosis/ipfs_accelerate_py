@@ -1,0 +1,216 @@
+{
+  "timestamp": "20250301_174458",
+  "model": "llama3",
+  "total_requests": 20,
+  "successful_requests": 20,
+  "success_rate": 1.0,
+  "results": {
+    "basic_queue": [
+      {
+        "success": true,
+        "request_id": "req_basic_1_1740879866",
+        "time_taken": 31.018839836120605,
+        "content": "Error: HTTPConnectionPool(host='localhost', port=11434): Max retries exceeded with url: /api/chat (C",
+        "error": null,
+        "tag": "basic_1",
+        "thread": "ThreadPoolExecutor-0_0",
+        "timestamp": "2025-03-01T17:44:57.916141"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_2_1740879866",
+        "time_taken": 31.01780867576599,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_2",
+        "thread": "ThreadPoolExecutor-0_1",
+        "timestamp": "2025-03-01T17:44:57.916361"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_3_1740879866",
+        "time_taken": 31.017718076705933,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_3",
+        "thread": "ThreadPoolExecutor-0_2",
+        "timestamp": "2025-03-01T17:44:57.916542"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_5_1740879866",
+        "time_taken": 31.01710605621338,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_5",
+        "thread": "ThreadPoolExecutor-0_4",
+        "timestamp": "2025-03-01T17:44:57.916665"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_4_1740879866",
+        "time_taken": 31.017433166503906,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_4",
+        "thread": "ThreadPoolExecutor-0_3",
+        "timestamp": "2025-03-01T17:44:57.916759"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_6_1740879866",
+        "time_taken": 31.016847133636475,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_6",
+        "thread": "ThreadPoolExecutor-0_5",
+        "timestamp": "2025-03-01T17:44:57.916860"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_7_1740879866",
+        "time_taken": 31.016688108444214,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_7",
+        "thread": "ThreadPoolExecutor-0_6",
+        "timestamp": "2025-03-01T17:44:57.916937"
+      },
+      {
+        "success": true,
+        "request_id": "req_basic_8_1740879866",
+        "time_taken": 31.016547441482544,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "basic_8",
+        "thread": "ThreadPoolExecutor-0_7",
+        "timestamp": "2025-03-01T17:44:57.917041"
+      }
+    ],
+    "backoff_recovery": [
+      {
+        "success": true,
+        "request_id": "req_backoff_1_1740879897",
+        "time_taken": 0.0001494884490966797,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "backoff_1",
+        "thread": "MainThread",
+        "timestamp": "2025-03-01T17:44:57.918107"
+      },
+      {
+        "success": true,
+        "request_id": "req_backoff_2_1740879898",
+        "time_taken": 0.000286102294921875,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "backoff_2",
+        "thread": "MainThread",
+        "timestamp": "2025-03-01T17:44:58.418544"
+      },
+      {
+        "success": true,
+        "request_id": "req_backoff_3_1740879898",
+        "time_taken": 0.0003147125244140625,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "backoff_3",
+        "thread": "MainThread",
+        "timestamp": "2025-03-01T17:44:58.919127"
+      }
+    ],
+    "queue_sizes": [
+      {
+        "success": true,
+        "request_id": "req_size1_1_1740879898",
+        "time_taken": 0.0002837181091308594,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size1_1",
+        "thread": "ThreadPoolExecutor-1_0",
+        "timestamp": "2025-03-01T17:44:58.919924"
+      },
+      {
+        "success": true,
+        "request_id": "req_size1_3_1740879898",
+        "time_taken": 0.0011553764343261719,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size1_3",
+        "thread": "ThreadPoolExecutor-1_1",
+        "timestamp": "2025-03-01T17:44:58.921743"
+      },
+      {
+        "success": true,
+        "request_id": "req_size1_2_1740879898",
+        "time_taken": 0.0015099048614501953,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size1_2",
+        "thread": "ThreadPoolExecutor-1_0",
+        "timestamp": "2025-03-01T17:44:58.921910"
+      },
+      {
+        "success": true,
+        "request_id": "req_size3_1_1740879898",
+        "time_taken": 0.0006420612335205078,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size3_1",
+        "thread": "ThreadPoolExecutor-2_0",
+        "timestamp": "2025-03-01T17:44:58.923918"
+      },
+      {
+        "success": true,
+        "request_id": "req_size3_2_1740879898",
+        "time_taken": 0.0007994174957275391,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size3_2",
+        "thread": "ThreadPoolExecutor-2_0",
+        "timestamp": "2025-03-01T17:44:58.924815"
+      },
+      {
+        "success": true,
+        "request_id": "req_size3_3_1740879898",
+        "time_taken": 0.0004761219024658203,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size3_3",
+        "thread": "ThreadPoolExecutor-2_0",
+        "timestamp": "2025-03-01T17:44:58.925414"
+      },
+      {
+        "success": true,
+        "request_id": "req_size5_1_1740879898",
+        "time_taken": 0.0012595653533935547,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size5_1",
+        "thread": "ThreadPoolExecutor-3_0",
+        "timestamp": "2025-03-01T17:44:58.927855"
+      },
+      {
+        "success": true,
+        "request_id": "req_size5_2_1740879898",
+        "time_taken": 0.0010762214660644531,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size5_2",
+        "thread": "ThreadPoolExecutor-3_1",
+        "timestamp": "2025-03-01T17:44:58.928240"
+      },
+      {
+        "success": true,
+        "request_id": "req_size5_3_1740879898",
+        "time_taken": 0.0007083415985107422,
+        "content": "Error: Circuit breaker is OPEN. Service unavailable.",
+        "error": null,
+        "tag": "size5_3",
+        "thread": "ThreadPoolExecutor-3_2",
+        "timestamp": "2025-03-01T17:44:58.928345"
+      }
+    ],
+    "with_without_queue": {}
+  }
+}

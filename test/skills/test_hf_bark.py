@@ -1,855 +1,747 @@
+#!/usr/bin/env python3
+"""
+Class-based test file for all Bark-family models.
+This file provides a unified testing interface for:
+- BarkModel
+"""
+
 import os
 import sys
 import json
 import time
-import torch
-import numpy as np
-from unittest.mock import MagicMock, patch
-import importlib.util
 import datetime
 import traceback
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Use direct import with the absolute path
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Try to import transformers directly if available
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
+import numpy as np
+
+# Try to import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Try to import transformers
 try:
     import transformers
-    transformers_module = transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
-    transformers_module = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    transformers = MagicMock()
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Try to import audio handling libraries
+
+# Try to import audio processing libraries
 try:
     import librosa
     import soundfile as sf
-    has_audio_libs = True
-    
-    def save_audio(audio_data, path, sample_rate=24000):
-        """Save audio data to a file"""
-        try:
-            sf.write(path, audio_data, sample_rate)
-            return True
-        except Exception as e:
-            print(f"Error saving audio: {e}")
-            return False
+    HAS_AUDIO = True
 except ImportError:
-    has_audio_libs = False
-    
-    def save_audio(audio_data, path, sample_rate=24000):
-        """Mock function when audio libraries aren't available"""
-        print(f"Would save audio to {path} (mock implementation)")
-        return True
+    librosa = MagicMock()
+    sf = MagicMock()
+    HAS_AUDIO = False
+    logger.warning("librosa or soundfile not available, using mock")
 
-# Look for an existing implementation in ipfs_accelerate_py that might be adapted for Bark
-# For this test, we'll create a new implementation since Bark is quite unique
-from ipfs_accelerate_py.worker.skillset.base_skill import base_skill
 
-# Create a specialized Bark class that extends base_skill
-class hf_bark(base_skill):
-    """Implementation for Suno's Bark text-to-speech model"""
+if not HAS_AUDIO:
+    def mock_load(file_path, sr=None, mono=True):
+        return (np.zeros(16000), 16000)
+        
+    class MockSoundFile:
+        @staticmethod
+        def write(file, data, samplerate):
+            pass
     
-    def __init__(self, resources=None, metadata=None):
-        super().__init__(resources=resources, metadata=metadata)
-        self.model_name = "suno/bark" 
-        
-    def init_cpu(self, model_name, model_type, device_label="cpu"):
-        """Initialize Bark model on CPU
-        
-        Args:
-            model_name: Name or path of the model
-            model_type: Type of model (e.g. 'text-to-audio')
-            device_label: Device to use
-            
-        Returns:
-            tuple: (processor, model, handler, queue, batch_size)
-        """
-        import traceback
-        import sys
-        from unittest import mock
-        
-        # Check if transformers is available
-        transformers_available = hasattr(self.resources["transformers"], "__version__")
-        if not transformers_available:
-            print("Transformers not available for real CPU implementation")
-            processor = mock.MagicMock()
-            model = mock.MagicMock()
-            handler = mock.MagicMock()
-            return processor, model, handler, None, 1
-            
-        # Try to initialize with real components
-        try:
-            from transformers import BarkProcessor, BarkModel
-            import numpy as np
-            
-            print(f"Initializing Bark model {model_name} on CPU...")
-            
-            # Load the processor and model
-            try:
-                processor = BarkProcessor.from_pretrained(model_name)
-                model = BarkModel.from_pretrained(model_name)
-                model.to("cpu")
-                print(f"Successfully loaded Bark model {model_name}")
-                
-                # Define handler function
-                def handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-                    """Generate speech from text using Bark
-                    
-                    Args:
-                        text: Text to convert to speech
-                        voice_preset: Bark voice preset to use
-                        output_path: Optional path to save audio
-                        
-                    Returns:
-                        dict: Results including audio array and metadata
-                    """
-                    try:
-                        start_time = time.time()
-                        # Process inputs
-                        inputs = processor(text, voice_preset=voice_preset)
-                        
-                        # Generate audio
-                        audio_array = model.generate(**inputs)
-                        audio_array = audio_array.cpu().numpy().squeeze()
-                        
-                        # Save audio if path provided
-                        saved = False
-                        if output_path:
-                            saved = save_audio(audio_array, output_path, sample_rate=model.generation_config.sample_rate)
-                        
-                        # Calculate processing times
-                        elapsed_time = time.time() - start_time
-                        
-                        return {
-                            "audio_array": audio_array,
-                            "sample_rate": model.generation_config.sample_rate,
-                            "implementation_type": "REAL",
-                            "device": "cpu",
-                            "processing_time": elapsed_time,
-                            "text_input": text,
-                            "voice_preset": voice_preset,
-                            "saved_to_file": saved,
-                            "output_path": output_path if saved else None
-                        }
-                    except Exception as e:
-                        print(f"Error in Bark handler: {e}")
-                        traceback.print_exc()
-                        return {
-                            "audio_array": np.zeros(1000),
-                            "sample_rate": 24000,
-                            "implementation_type": "REAL",
-                            "error": str(e),
-                            "device": "cpu"
-                        }
-                
-                return processor, model, handler, None, 1
-                
-            except Exception as e:
-                print(f"Error loading Bark model: {e}")
-                processor = mock.MagicMock()
-                model = mock.MagicMock()
-                    
-                def mock_handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-                    """Mock handler when model loading fails"""
-                    print(f"Would generate speech for: '{text}' (mock implementation)")
-                    mock_audio = np.random.rand(24000)  # 1 second of random noise
-                    if output_path:
-                        print(f"Would save to {output_path} (mock)")
-                    return {
-                        "audio_array": mock_audio,
-                        "sample_rate": 24000,
-                        "implementation_type": "MOCK", 
-                        "text_input": text,
-                        "voice_preset": voice_preset
-                    }
-                
-                return processor, model, mock_handler, None, 1
-                
-        except ImportError as e:
-            print(f"Required libraries not available: {e}")
-            
-        # Fall back to mock implementation
-        processor = mock.MagicMock()
-        model = mock.MagicMock()
-        
-        def mock_handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-            """Mock handler for Bark"""
-            print(f"Would generate speech for: '{text}' (mock implementation)")
-            mock_audio = np.random.rand(24000)  # 1 second of random noise
-            if output_path:
-                print(f"Would save to {output_path} (mock)")
-            return {
-                "audio_array": mock_audio,
-                "sample_rate": 24000,
-                "implementation_type": "MOCK", 
-                "text_input": text,
-                "voice_preset": voice_preset
-            }
-        
-        return processor, model, mock_handler, None, 1
+    if isinstance(librosa, MagicMock):
+        librosa.load = mock_load
     
-    def init_cuda(self, model_name, model_type, device_label="cuda:0"):
-        """Initialize Bark model with CUDA support
-        
-        Args:
-            model_name: Name or path of the model
-            model_type: Type of model (e.g. 'text-to-audio')
-            device_label: CUDA device to use
-            
-        Returns:
-            tuple: (processor, model, handler, queue, batch_size)
-        """
-        import traceback
-        import sys
-        import torch
-        from unittest import mock
-        
-        # Check if transformers is available
-        transformers_available = hasattr(self.resources["transformers"], "__version__")
-        if not transformers_available:
-            print("Transformers not available for real CUDA implementation")
-            processor = mock.MagicMock()
-            model = mock.MagicMock()
-            handler = mock.MagicMock()
-            return processor, model, handler, None, 1
-        
-        # Check if CUDA is available
-        if not torch.cuda.is_available():
-            print("CUDA not available, falling back to mock implementation")
-            processor = mock.MagicMock()
-            model = mock.MagicMock()
-            handler = mock.MagicMock()
-            return processor, model, handler, None, 1
-            
-        # Try to import the necessary utility functions
-        try:
-            sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-            import utils as test_utils
-            
-            # Get CUDA device
-            device = test_utils.get_cuda_device(device_label)
-            if device is None:
-                print("Failed to get valid CUDA device, falling back to mock implementation")
-                processor = mock.MagicMock()
-                model = mock.MagicMock()
-                handler = mock.MagicMock()
-                return processor, model, handler, None, 1
-                
-            # Try to initialize with real components
-            try:
-                from transformers import BarkProcessor, BarkModel
-                import numpy as np
-                
-                print(f"Initializing Bark model {model_name} on {device}...")
-                
-                # Load the processor
-                try:
-                    processor = BarkProcessor.from_pretrained(model_name)
-                    print(f"Successfully loaded Bark processor for {model_name}")
-                except Exception as proc_err:
-                    print(f"Error loading processor: {proc_err}")
-                    processor = mock.MagicMock()
-                
-                # Load the model
-                try:
-                    model = BarkModel.from_pretrained(model_name)
-                    model = test_utils.optimize_cuda_memory(model, device, use_half_precision=True)
-                    model.to(device)
-                    print(f"Successfully loaded Bark model {model_name} to {device}")
-                except Exception as model_err:
-                    print(f"Error loading model: {model_err}")
-                    model = mock.MagicMock()
-                
-                # Define handler function
-                def handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-                    """Generate speech from text using Bark with CUDA
-                    
-                    Args:
-                        text: Text to convert to speech
-                        voice_preset: Bark voice preset to use
-                        output_path: Optional path to save audio
-                        
-                    Returns:
-                        dict: Results including audio array and metadata
-                    """
-                    try:
-                        start_time = time.time()
-                        
-                        # Track GPU memory before inference
-                        gpu_mem_before = torch.cuda.memory_allocated(device) / (1024 * 1024) if hasattr(torch.cuda, "memory_allocated") else 0
-                        
-                        # Process inputs
-                        inputs = processor(text, voice_preset=voice_preset)
-                        
-                        # Ensure inputs are on the correct device
-                        inputs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in inputs.items()}
-                        
-                        # Generate audio
-                        torch.cuda.synchronize() if hasattr(torch.cuda, "synchronize") else None
-                        inference_start = time.time()
-                        with torch.no_grad():
-                            audio_array = model.generate(**inputs)
-                        torch.cuda.synchronize() if hasattr(torch.cuda, "synchronize") else None
-                        inference_time = time.time() - inference_start
-                        
-                        # Track GPU memory after inference
-                        gpu_mem_after = torch.cuda.memory_allocated(device) / (1024 * 1024) if hasattr(torch.cuda, "memory_allocated") else 0
-                        gpu_mem_used = gpu_mem_after - gpu_mem_before
-                        
-                        # Move to CPU and convert to numpy
-                        audio_array = audio_array.cpu().numpy().squeeze()
-                        
-                        # Save audio if path provided
-                        saved = False
-                        if output_path:
-                            saved = save_audio(audio_array, output_path, sample_rate=model.generation_config.sample_rate)
-                        
-                        # Calculate processing times
-                        elapsed_time = time.time() - start_time
-                        
-                        return {
-                            "audio_array": audio_array,
-                            "sample_rate": model.generation_config.sample_rate,
-                            "implementation_type": "REAL",
-                            "device": str(device),
-                            "processing_time": elapsed_time,
-                            "inference_time": inference_time,
-                            "gpu_memory_used_mb": gpu_mem_used,
-                            "text_input": text,
-                            "voice_preset": voice_preset,
-                            "saved_to_file": saved,
-                            "output_path": output_path if saved else None
-                        }
-                    except Exception as e:
-                        print(f"Error in Bark CUDA handler: {e}")
-                        traceback.print_exc()
-                        return {
-                            "audio_array": np.zeros(1000),
-                            "sample_rate": 24000,
-                            "implementation_type": "REAL",
-                            "error": str(e),
-                            "device": str(device)
-                        }
-                
-                return processor, model, handler, None, 1
-                
-            except ImportError as e:
-                print(f"Required libraries not available: {e}")
-                
-        except Exception as e:
-            print(f"Error in init_cuda: {e}")
-            traceback.print_exc()
-            
-        # Fall back to mock implementation
-        processor = mock.MagicMock()
-        model = mock.MagicMock()
-        
-        def mock_handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-            """Mock handler for Bark CUDA implementation"""
-            print(f"Would generate speech for: '{text}' (mock CUDA implementation)")
-            mock_audio = np.random.rand(24000)  # 1 second of random noise
-            if output_path:
-                print(f"Would save to {output_path} (mock)")
-            time.sleep(0.1)  # Simulate CUDA processing time
-            return {
-                "audio_array": mock_audio,
-                "sample_rate": 24000,
-                "implementation_type": "MOCK", 
-                "text_input": text,
-                "voice_preset": voice_preset,
-                "device": "cuda:0 (mock)"
-            }
-        
-        return processor, model, mock_handler, None, 1
-        
-    def init_openvino(self, model_name, model_type, device, openvino_label,
-                      get_optimum_openvino_model=None, get_openvino_model=None,
-                      get_openvino_pipeline_type=None, openvino_cli_convert=None):
-        """Initialize Bark model on OpenVINO
-        
-        Args:
-            model_name: Name or path of the model
-            model_type: Type of model (e.g. 'text-to-audio')
-            device: OpenVINO device to use
-            openvino_label: OpenVINO device label
-            get_optimum_openvino_model: Function to get optimum OpenVINO model
-            get_openvino_model: Function to get OpenVINO model
-            get_openvino_pipeline_type: Function to get OpenVINO pipeline type
-            openvino_cli_convert: Function to convert model to OpenVINO
-            
-        Returns:
-            tuple: (processor, model, handler, queue, batch_size)
-        """
-        from unittest import mock
-        
-        # For now, return a mock implementation
-        # OpenVINO support for Bark is complex and would need specialized implementation
-        processor = mock.MagicMock()
-        model = mock.MagicMock()
-        
-        def mock_handler(text, voice_preset="v2/en_speaker_6", output_path=None):
-            """Mock handler for OpenVINO implementation"""
-            print(f"Would generate speech for: '{text}' (mock OpenVINO implementation)")
-            mock_audio = np.random.rand(24000)  # 1 second of random noise
-            if output_path:
-                print(f"Would save to {output_path} (mock)")
-            return {
-                "audio_array": mock_audio,
-                "sample_rate": 24000,
-                "implementation_type": "MOCK", 
-                "text_input": text,
-                "voice_preset": voice_preset,
-                "device": f"OpenVINO {device} (mock)"
-            }
-        
-        return processor, model, mock_handler, None, 1
+    if isinstance(sf, MagicMock):
+        sf.write = MockSoundFile.write
 
-# Test class for Bark
-class test_hf_bark:
-    def __init__(self, resources=None, metadata=None):
-        """Initialize the test class for Bark model"""
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers_module
-        }
-        self.metadata = metadata if metadata else {}
-        self.bark = hf_bark(resources=self.resources, metadata=self.metadata)
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
+    
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
+    
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
+    try:
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+# Models registry - Maps model IDs to their specific configurations
+BARK_MODELS_REGISTRY = {
+    "suno/bark-small": {
+        "description": "Bark Small model",
+        "class": "BarkModel",
+    },
+}
+
+class TestBarkModels:
+    """Base test class for all Bark-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "suno/bark-small"
         
-        # Use the standard Bark model
-        self.model_name = "suno/bark"
+        # Verify model exists in registry
+        if self.model_id not in BARK_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = BARK_MODELS_REGISTRY["suno/bark-small"]
+        else:
+            self.model_info = BARK_MODELS_REGISTRY[self.model_id]
         
-        # Alternative models if the primary model fails
-        self.alternative_models = [
-            "suno/bark-small",
-            "facebook/bark-small"  # Possible alternatives
+        # Define model parameters
+        self.task = "text-to-audio"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
+        
+        # Define test inputs
+        self.test_text = "Hello, my name is Suno. And, I love to sing."
+        self.test_texts = [
+            "Hello, my name is Suno. And, I love to sing.",
+            "Hello, my name is Suno. And, I love to sing. (alternative)"
         ]
         
-        # Try to use the specified model first, then fall back to alternatives
-        try:
-            print(f"Attempting to use primary model: {self.model_name}")
-            
-            # Try to import transformers for validation
-            if not isinstance(self.resources["transformers"], MagicMock):
-                from transformers import AutoConfig
-                try:
-                    # Try to access the config to verify model works
-                    AutoConfig.from_pretrained(self.model_name)
-                    print(f"Successfully validated primary model: {self.model_name}")
-                except Exception as config_error:
-                    print(f"Primary model validation failed: {config_error}")
-                    
-                    # Try alternatives one by one
-                    for alt_model in self.alternative_models:
-                        try:
-                            print(f"Trying alternative model: {alt_model}")
-                            AutoConfig.from_pretrained(alt_model)
-                            self.model_name = alt_model
-                            print(f"Successfully validated alternative model: {self.model_name}")
-                            break
-                        except Exception as alt_error:
-                            print(f"Alternative model validation failed: {alt_error}")
-                    
-                    # If all alternatives fail, check the local cache
-                    if self.model_name == "suno/bark":
-                        # Check if we can find a locally cached model
-                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
-                        if os.path.exists(cache_dir):
-                            bark_models = [name for name in os.listdir(cache_dir) if "bark" in name.lower()]
-                            if bark_models:
-                                bark_model_name = bark_models[0].replace("--", "/")
-                                print(f"Found local Bark model: {bark_model_name}")
-                                self.model_name = bark_model_name
-                            else:
-                                print("No Bark models found in cache, continuing with mock implementation")
-        except Exception as e:
-            print(f"Error finding model: {e}")
-            print("Continuing with default model name for mock implementation")
-        
-        print(f"Using model: {self.model_name}")
-        
-        # Test prompt for speech generation
-        self.test_prompt = "Hello, this is a test of the Bark text to speech model."
-        
-        # Set output path for generated audio
-        self.test_output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "generated_audio")
-        os.makedirs(self.test_output_dir, exist_ok=True)
-        self.test_output_path = os.path.join(self.test_output_dir, "bark_test_output.wav")
-        
-        # Flag to track if we're using mocks
-        self.using_mocks = False
-        
-        return None
-    
-    def test(self):
-        """Run tests for the Bark text-to-speech model"""
-        from unittest.mock import MagicMock
-        import traceback
-        
-        results = {}
-        
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.bark is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-        
-        # Check if we're using real transformers
-        transformers_available = not isinstance(self.resources["transformers"], MagicMock)
-        implementation_type = "(REAL)" if transformers_available else "(MOCK)"
-        
-        # Test CPU implementation
-        try:
-            if transformers_available:
-                print("Testing with real Bark model on CPU")
-                # Initialize for CPU
-                processor, model, handler, queue, batch_size = self.bark.init_cpu(
-                    self.model_name,
-                    "text-to-audio",
-                    "cpu"
-                )
-                
-                valid_init = processor is not None and model is not None and handler is not None
-                results["cpu_init"] = f"Success {implementation_type}" if valid_init else "Failed CPU initialization"
-                
-                if valid_init:
-                    # Test text-to-speech generation
-                    try:
-                        start_time = time.time()
-                        output = handler(self.test_prompt, output_path=self.test_output_path)
-                        elapsed_time = time.time() - start_time
-                        
-                        results["cpu_handler"] = f"Success {implementation_type}" if output is not None else "Failed CPU handler"
-                        
-                        # Check if audio was generated successfully
-                        if output is not None and "audio_array" in output and len(output["audio_array"]) > 0:
-                            results["cpu_audio_length"] = len(output["audio_array"])
-                            results["cpu_sample_rate"] = output.get("sample_rate", "Unknown")
-                            results["cpu_audio_duration"] = len(output["audio_array"]) / output.get("sample_rate", 24000)
-                            results["cpu_saved_to_file"] = output.get("saved_to_file", False)
-                            
-                            # Check implementation type in output
-                            if "implementation_type" in output:
-                                output_impl_type = output["implementation_type"]
-                                if output_impl_type == "REAL":
-                                    implementation_type = "(REAL)"
-                                elif output_impl_type == "MOCK":
-                                    implementation_type = "(MOCK)"
-                                
-                            # Record example for reference
-                            results["cpu_example"] = {
-                                "input": self.test_prompt,
-                                "output_type": "Audio",
-                                "audio_length": len(output["audio_array"]),
-                                "sample_rate": output.get("sample_rate", 24000),
-                                "audio_duration_seconds": len(output["audio_array"]) / output.get("sample_rate", 24000),
-                                "processing_time": output.get("processing_time", elapsed_time),
-                                "implementation_type": implementation_type.strip("()"),
-                                "platform": "CPU",
-                                "saved_to_file": output.get("saved_to_file", False),
-                                "output_path": output.get("output_path", self.test_output_path) if output.get("saved_to_file", False) else None
-                            }
-                        else:
-                            results["cpu_error"] = "Failed to generate audio"
-                    except Exception as handler_error:
-                        print(f"Error in CPU handler: {handler_error}")
-                        traceback.print_exc()
-                        results["cpu_error"] = str(handler_error)
-            else:
-                # Fall back to mock if transformers not available
-                raise ImportError("Transformers not available")
-        except Exception as e:
-            # Fall back to mock implementation
-            print(f"Falling back to mock Bark implementation: {e}")
-            implementation_type = "(MOCK)"
-            self.using_mocks = True
-            
-            with patch('transformers.BarkProcessor.from_pretrained') as mock_processor, \
-                 patch('transformers.BarkModel.from_pretrained') as mock_model:
-                
-                mock_processor.return_value = MagicMock()
-                mock_model.return_value = MagicMock()
-                
-                # Mock audio processing
-                mock_audio_array = np.random.rand(24000)  # 1 second of random noise
-                mock_model.return_value.generate.return_value = torch.tensor(mock_audio_array)
-                
-                # Initialize for CPU
-                processor, model, handler, queue, batch_size = self.bark.init_cpu(
-                    self.model_name,
-                    "text-to-audio",
-                    "cpu"
-                )
-                
-                valid_init = processor is not None and model is not None and handler is not None
-                results["cpu_init"] = f"Success {implementation_type}" if valid_init else "Failed CPU initialization"
-                
-                if valid_init:
-                    # Test with mock handler
-                    output = handler(self.test_prompt, output_path=self.test_output_path)
-                    results["cpu_handler"] = f"Success {implementation_type}" if output is not None else "Failed CPU handler"
-                    
-                    # Record mock results
-                    if output is not None:
-                        results["cpu_audio_length"] = len(output["audio_array"])
-                        results["cpu_sample_rate"] = output.get("sample_rate", 24000)
-                        results["cpu_audio_duration"] = len(output["audio_array"]) / output.get("sample_rate", 24000)
-                        
-                        results["cpu_example"] = {
-                            "input": self.test_prompt,
-                            "output_type": "Audio",
-                            "audio_length": len(output["audio_array"]),
-                            "sample_rate": output.get("sample_rate", 24000),
-                            "audio_duration_seconds": len(output["audio_array"]) / output.get("sample_rate", 24000),
-                            "processing_time": 0.1,  # Mock processing time
-                            "implementation_type": "MOCK",
-                            "platform": "CPU"
-                        }
-        
-        # Test CUDA implementation if available
-        if torch.cuda.is_available():
-            try:
-                print("Testing Bark model on CUDA")
-                
-                # Initialize for CUDA
-                processor, model, handler, queue, batch_size = self.bark.init_cuda(
-                    self.model_name,
-                    "text-to-audio",
-                    "cuda:0"
-                )
-                
-                valid_init = processor is not None and model is not None and handler is not None
-                impl_type = "(REAL)" if transformers_available and not self.using_mocks else "(MOCK)"
-                results["cuda_init"] = f"Success {impl_type}" if valid_init else "Failed CUDA initialization"
-                
-                if valid_init:
-                    # Test text-to-speech generation
-                    try:
-                        start_time = time.time()
-                        output = handler(self.test_prompt, output_path=self.test_output_path.replace(".wav", "_cuda.wav"))
-                        elapsed_time = time.time() - start_time
-                        
-                        results["cuda_handler"] = f"Success {impl_type}" if output is not None else "Failed CUDA handler"
-                        
-                        # Check if audio was generated successfully
-                        if output is not None and "audio_array" in output and len(output["audio_array"]) > 0:
-                            results["cuda_audio_length"] = len(output["audio_array"])
-                            results["cuda_sample_rate"] = output.get("sample_rate", "Unknown")
-                            results["cuda_audio_duration"] = len(output["audio_array"]) / output.get("sample_rate", 24000)
-                            results["cuda_saved_to_file"] = output.get("saved_to_file", False)
-                            
-                            # Extract performance metrics if available
-                            perf_metrics = {}
-                            if "processing_time" in output:
-                                perf_metrics["processing_time"] = output["processing_time"]
-                            if "inference_time" in output:
-                                perf_metrics["inference_time"] = output["inference_time"]
-                            if "gpu_memory_used_mb" in output:
-                                perf_metrics["gpu_memory_used_mb"] = output["gpu_memory_used_mb"]
-                            
-                            # Check implementation type
-                            output_impl_type = output.get("implementation_type", "UNKNOWN")
-                            impl_type = f"({output_impl_type})"
-                            
-                            # Record example
-                            results["cuda_example"] = {
-                                "input": self.test_prompt,
-                                "output_type": "Audio",
-                                "audio_length": len(output["audio_array"]),
-                                "sample_rate": output.get("sample_rate", 24000),
-                                "audio_duration_seconds": len(output["audio_array"]) / output.get("sample_rate", 24000),
-                                "processing_time": output.get("processing_time", elapsed_time),
-                                "performance_metrics": perf_metrics,
-                                "implementation_type": output_impl_type,
-                                "platform": "CUDA",
-                                "device": output.get("device", "cuda:0"),
-                                "saved_to_file": output.get("saved_to_file", False),
-                                "output_path": output.get("output_path", None)
-                            }
-                        else:
-                            results["cuda_error"] = "Failed to generate audio"
-                    except Exception as handler_error:
-                        print(f"Error in CUDA handler: {handler_error}")
-                        traceback.print_exc()
-                        results["cuda_error"] = str(handler_error)
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_error"] = str(e)
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
         else:
-            results["cuda_tests"] = "CUDA not available"
+            self.preferred_device = "cpu"
         
-        # Test OpenVINO implementation - simplified
-        try:
-            try:
-                import openvino
-                print("OpenVINO import successful")
-            except ImportError:
-                results["openvino_tests"] = "OpenVINO not installed"
-                return results
-                
-            # Initialize for OpenVINO
-            processor, model, handler, queue, batch_size = self.bark.init_openvino(
-                self.model_name,
-                "text-to-audio",
-                "CPU",
-                "openvino:0",
-                None, None, None, None  # No utility functions provided
-            )
-            
-            valid_init = processor is not None and model is not None and handler is not None
-            results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
-            
-            if valid_init:
-                # Test text-to-speech generation
-                output = handler(self.test_prompt, output_path=self.test_output_path.replace(".wav", "_openvino.wav"))
-                results["openvino_handler"] = "Success (MOCK)" if output is not None else "Failed OpenVINO handler"
-                
-                # Record mock results
-                if output is not None:
-                    results["openvino_example"] = {
-                        "input": self.test_prompt,
-                        "output_type": "Audio",
-                        "audio_length": len(output["audio_array"]),
-                        "sample_rate": output.get("sample_rate", 24000),
-                        "implementation_type": "MOCK",
-                        "platform": "OpenVINO"
-                    }
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            results["openvino_error"] = str(e)
+        logger.info(f"Using {self.preferred_device} as preferred device")
         
+        # Results storage
+        self.results = {}
+        self.examples = []
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_AUDIO:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+        results["pipeline_success"] = False
         return results
     
-    def __test__(self):
-        """Run tests and compare/save results"""
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            print(f"Detailed traceback: {tb}")
-            test_results = {"test_error": str(e), "traceback": tb}
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
         
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Add metadata about the environment to the results
-        test_results["metadata"] = {
-            "timestamp": datetime.datetime.now().isoformat(),
-            "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-            "numpy_version": np.__version__ if hasattr(np, "__version__") else "Unknown",
-            "transformers_version": transformers_module.__version__ if hasattr(transformers_module, "__version__") else "mocked",
-            "cuda_available": torch.cuda.is_available(),
-            "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
-            "audio_libraries": has_audio_libs,
-            "transformers_mocked": isinstance(self.resources["transformers"], MagicMock),
-            "test_prompt": self.test_prompt,
-            "test_model": self.model_name,
-            "test_run_id": f"bark-test-{int(time.time())}",
-            "implementation_type": "(REAL)" if not self.using_mocks else "(MOCK)",
-            "os_platform": sys.platform,
-            "python_version": sys.version,
-            "test_date": time.strftime("%Y-%m-%d %H:%M:%S")
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
         }
         
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_bark_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved test results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Create expected results file if it doesn't exist
-        expected_file = os.path.join(expected_dir, 'hf_bark_test_results.json')
-        if not os.path.exists(expected_file):
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        pipeline_input = self.test_text
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
             try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
 
-        return test_results
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_AUDIO:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "BarkModel":
+            model_class = transformers.BarkModel
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModel
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = "Generic input for testing"
+        
+        # Create generic inputs
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = [{"output": "Processed model output"}]
+        else:
+            predictions = [{"output": "Mock output"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModel
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModel.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare generic input
+        test_input = "Generic input for testing"
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = ["Processed OpenVINO output"]
+        else:
+            predictions = ["<mock_output>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
+        """
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
+        
+        Returns:
+            Dict containing test results
+        """
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
+        
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
+            
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
+            
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
+            "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
+            "metadata": {
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_audio": HAS_AUDIO
+            }
+        }
+
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_bark_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
+
+def get_available_models():
+    """Get a list of all available Bark models in the registry."""
+    return list(BARK_MODELS_REGISTRY.keys())
+
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered Bark models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestBarkModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_bark_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test Bark-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable Bark-family models:")
+        for model in models:
+            info = BARK_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nBark Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "suno/bark-small"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestBarkModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        this_bark = test_hf_bark()
-        results = this_bark.__test__()
-        print("Bark Test Completed")
-        
-        # Print a summary of the test results
-        print("\nBARK TEST RESULTS SUMMARY")
-        print(f"MODEL: {results.get('metadata', {}).get('test_model', 'Unknown')}")
-        
-        # Extract CPU/CUDA/OpenVINO status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in results.items():
-            if isinstance(value, str) and "cpu_" in key and "SUCCESS" in value.upper():
-                cpu_status = "SUCCESS"
-                if "REAL" in value.upper():
-                    cpu_status += " (REAL)"
-                elif "MOCK" in value.upper():
-                    cpu_status += " (MOCK)"
-                    
-            if isinstance(value, str) and "cuda_" in key and "SUCCESS" in value.upper():
-                cuda_status = "SUCCESS"
-                if "REAL" in value.upper():
-                    cuda_status += " (REAL)"
-                elif "MOCK" in value.upper():
-                    cuda_status += " (MOCK)"
-                    
-            if isinstance(value, str) and "openvino_" in key and "SUCCESS" in value.upper():
-                openvino_status = "SUCCESS"
-                if "REAL" in value.upper():
-                    openvino_status += " (REAL)"
-                elif "MOCK" in value.upper():
-                    openvino_status += " (MOCK)"
-        
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print audio generation results
-        if "cpu_example" in results:
-            ex = results["cpu_example"]
-            print(f"\nCPU Audio Generation:")
-            print(f"  Audio length: {ex.get('audio_length', 'Unknown')} samples")
-            print(f"  Sample rate: {ex.get('sample_rate', 'Unknown')} Hz")
-            print(f"  Duration: {ex.get('audio_duration_seconds', 'Unknown'):.2f} seconds")
-            print(f"  Processing time: {ex.get('processing_time', 'Unknown'):.2f} seconds")
-            if ex.get('saved_to_file', False):
-                print(f"  Saved to: {ex.get('output_path', 'Unknown')}")
-        
-        if "cuda_example" in results:
-            ex = results["cuda_example"]
-            print(f"\nCUDA Audio Generation:")
-            print(f"  Audio length: {ex.get('audio_length', 'Unknown')} samples")
-            print(f"  Sample rate: {ex.get('sample_rate', 'Unknown')} Hz") 
-            print(f"  Duration: {ex.get('audio_duration_seconds', 'Unknown'):.2f} seconds")
-            print(f"  Processing time: {ex.get('processing_time', 'Unknown'):.2f} seconds")
-            
-            if "performance_metrics" in ex and ex["performance_metrics"]:
-                metrics = ex["performance_metrics"]
-                for k, v in metrics.items():
-                    print(f"  {k}: {v}")
-            
-            if ex.get('saved_to_file', False):
-                print(f"  Saved to: {ex.get('output_path', 'Unknown')}")
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
+    main()

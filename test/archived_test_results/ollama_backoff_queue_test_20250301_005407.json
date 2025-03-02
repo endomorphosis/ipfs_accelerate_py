@@ -1,0 +1,72 @@
+{
+  "api": "ollama",
+  "timestamp": "20250301_005407",
+  "model": "llama3",
+  "backoff_test": [
+    {
+      "success": false,
+      "request_id": "req_backoff_1_1740819242.1457224",
+      "tag": "backoff_1",
+      "time_taken": 1.9550323486328125e-05,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "MainThread"
+    },
+    {
+      "success": false,
+      "request_id": "req_backoff_2_1740819242.2458816",
+      "tag": "backoff_2",
+      "time_taken": 1.621246337890625e-05,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "MainThread"
+    },
+    {
+      "success": false,
+      "request_id": "req_backoff_3_1740819242.3460088",
+      "tag": "backoff_3",
+      "time_taken": 2.2649765014648438e-05,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "MainThread"
+    }
+  ],
+  "queue_test": [
+    {
+      "success": false,
+      "request_id": "req_queue_1_1740819247.346833",
+      "tag": "queue_1",
+      "time_taken": 1.239776611328125e-05,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "ThreadPoolExecutor-0_0"
+    },
+    {
+      "success": false,
+      "request_id": "req_queue_2_1740819247.3470104",
+      "tag": "queue_2",
+      "time_taken": 1.049041748046875e-05,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "ThreadPoolExecutor-0_0"
+    },
+    {
+      "success": false,
+      "request_id": "req_queue_3_1740819247.3470352",
+      "tag": "queue_3",
+      "time_taken": 6.198883056640625e-06,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "ThreadPoolExecutor-0_0"
+    },
+    {
+      "success": false,
+      "request_id": "req_queue_4_1740819247.3472571",
+      "tag": "queue_4",
+      "time_taken": 7.62939453125e-06,
+      "error": "ollama.chat() got an unexpected keyword argument 'model_name'",
+      "model": "llama3",
+      "thread": "ThreadPoolExecutor-0_0"
+    }
+  ]
+}

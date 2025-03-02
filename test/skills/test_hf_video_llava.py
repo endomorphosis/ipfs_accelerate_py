@@ -1,1012 +1,764 @@
-# Standard library imports first
+#!/usr/bin/env python3
+"""
+Class-based test file for all Video-LLaVA-family models.
+This file provides a unified testing interface for:
+- VideoLlavaForConditionalGeneration
+"""
+
 import os
 import sys
 import json
 import time
 import datetime
 import traceback
-from unittest.mock import patch, MagicMock
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Third-party imports next
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
 import numpy as np
 
-# Use absolute path setup
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-
-# Try/except pattern for importing optional dependencies
+# Try to import torch
 try:
     import torch
+    HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
-    print("Warning: torch not available, using mock implementation")
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
+# Try to import transformers
 try:
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Handle PIL import
-PIL = None
-Image = None
+
+# Try to import PIL
 try:
-    import PIL
     from PIL import Image
-    PIL_AVAILABLE = True
+    import requests
+    from io import BytesIO
+    HAS_PIL = True
 except ImportError:
-    # Create mock objects
-    PIL = MagicMock()
     Image = MagicMock()
-    PIL_AVAILABLE = False
-    print("Warning: PIL not available, using mock implementation")
+    requests = MagicMock()
+    BytesIO = MagicMock()
+    HAS_PIL = False
+    logger.warning("PIL or requests not available, using mock")
 
-# Import the module to test (create a mock if not available)
-try:
-    from ipfs_accelerate_py.worker.skillset.hf_video_llava import hf_video_llava
-except ImportError:
-    # If the module doesn't exist yet, create a mock class
-    class hf_video_llava:
-        def __init__(self, resources=None, metadata=None):
-            self.resources = resources or {}
-            self.metadata = metadata or {}
-            
-        def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}, None, 1
-            
-        def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}, None, 1
-            
-        def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
-            # Mock implementation
-            return MagicMock(), MagicMock(), lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}, None, 1
-    
-    print("Warning: hf_video_llava module not found, using mock implementation")
 
-# Define required methods to add to hf_video_llava
-def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-    """
-    Initialize Video-LLaVA model with CUDA support.
+if not HAS_PIL:
+    class MockImage:
+        @staticmethod
+        def open(file):
+            class MockImg:
+                def __init__(self):
+                    self.size = (224, 224)
+                def convert(self, mode):
+                    return self
+                def resize(self, size):
+                    return self
+            return MockImg()
+            
+    class MockRequests:
+        @staticmethod
+        def get(url):
+            class MockResponse:
+                def __init__(self):
+                    self.content = b"mock image data"
+                def raise_for_status(self):
+                    pass
+            return MockResponse()
+
+    Image.open = MockImage.open
+    requests.get = MockRequests.get
+
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
     
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model (e.g., "visual-question-answering", "image-to-text")
-        device_label: CUDA device label (e.g., "cuda:0")
-        
-    Returns:
-        tuple: (endpoint, processor, handler, queue, batch_size)
-    """
-    import traceback
-    import sys
-    import unittest.mock
-    import time
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
     
-    # Try to import the necessary utility functions
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
     try:
-        sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
-        
-        # Check if CUDA is really available
-        import torch
-        if not torch.cuda.is_available():
-            print("CUDA not available, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Get the CUDA device
-        device = test_utils.get_cuda_device(device_label)
-        if device is None:
-            print("Failed to get valid CUDA device, falling back to mock implementation")
-            processor = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}
-            return endpoint, processor, handler, None, 0
-            
-        # Try to load the real model with CUDA
-        try:
-            # For Video-LLaVA, we need to use the specialized classes for multimodal models
-            from transformers import AutoProcessor, LlavaForConditionalGeneration
-            print(f"Attempting to load Video-LLaVA model {model_name} with CUDA support")
-            
-            # Try to load processor
-            try:
-                processor = AutoProcessor.from_pretrained(model_name)
-                print(f"Successfully loaded processor for {model_name}")
-            except Exception as processor_err:
-                print(f"Failed to load processor: {processor_err}")
-                processor = unittest.mock.MagicMock()
-                
-            # Try to load model
-            try:
-                model = LlavaForConditionalGeneration.from_pretrained(model_name)
-                print(f"Successfully loaded model {model_name}")
-                
-                # Move to device and optimize
-                model = test_utils.optimize_cuda_memory(model, device, use_half_precision=True)
-                model.eval()
-                print(f"Model loaded to {device} and optimized for inference")
-                
-                # Create a real handler function for video processing
-                def real_handler(input_data):
-                    try:
-                        start_time = time.time()
-                        
-                        # Track GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_before = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                        else:
-                            gpu_mem_before = 0
-                            
-                        # Handle different input types
-                        prompt = "What's happening in this video?"
-                        video_frames = []
-                        
-                        if isinstance(input_data, dict) and "video" in input_data:
-                            # Extract video path or frames and prompt
-                            video_input = input_data["video"]
-                            if "prompt" in input_data:
-                                prompt = input_data["prompt"]
-                                
-                            # Handle video frames (list of images)
-                            if isinstance(video_input, list):
-                                video_frames = video_input
-                            # Handle video path
-                            elif isinstance(video_input, str) and os.path.exists(video_input):
-                                # Extract frames from video
-                                try:
-                                    import cv2
-                                    cap = cv2.VideoCapture(video_input)
-                                    frames_to_extract = 8  # Number of frames to extract
-                                    
-                                    # Get video properties
-                                    fps = cap.get(cv2.CAP_PROP_FPS)
-                                    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                                    duration = frame_count / fps
-                                    
-                                    # Calculate frame interval to sample uniformly
-                                    interval = max(1, int(frame_count / frames_to_extract))
-                                    
-                                    # Extract frames at intervals
-                                    for i in range(0, frame_count, interval):
-                                        if len(video_frames) >= frames_to_extract:
-                                            break
-                                        cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-                                        ret, frame = cap.read()
-                                        if ret:
-                                            # Convert BGR to RGB
-                                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                            # Convert to PIL Image
-                                            from PIL import Image
-                                            pil_image = Image.fromarray(frame_rgb)
-                                            video_frames.append(pil_image)
-                                    
-                                    cap.release()
-                                except ImportError:
-                                    print("OpenCV not available for video frame extraction")
-                            else:
-                                print(f"Unsupported video input format: {type(video_input)}")
-                        else:
-                            print(f"Invalid input format. Expected dict with 'video' key but got: {type(input_data)}")
-                            
-                        # Check if we have frames to process
-                        if not video_frames:
-                            return {
-                                "generated_text": "Error: No valid video frames found",
-                                "implementation_type": "REAL",
-                                "error": "No valid video frames found",
-                                "is_error": True
-                            }
-                        
-                        # Process video frames with the model
-                        inputs = processor(
-                            text=prompt,
-                            images=video_frames,  # Pass all frames
-                            return_tensors="pt"
-                        ).to(device)
-                        
-                        # Run generation
-                        with torch.no_grad():
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                                
-                            # Generate text with model
-                            generation_args = {
-                                "max_new_tokens": 150,
-                                "do_sample": True,
-                                "temperature": 0.7,
-                                "top_p": 0.9
-                            }
-                            generated_ids = model.generate(
-                                **inputs,
-                                **generation_args
-                            )
-                            
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                                
-                        # Decode the generated text
-                        generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                        
-                        # Post-process: remove the prompt and keep only the generated response
-                        if generated_text.startswith(prompt):
-                            generated_text = generated_text[len(prompt):].strip()
-                        
-                        # Measure GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_after = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                            gpu_mem_used = gpu_mem_after - gpu_mem_before
-                        else:
-                            gpu_mem_used = 0
-                        
-                        return {
-                            "generated_text": generated_text,
-                            "implementation_type": "REAL",
-                            "inference_time_seconds": time.time() - start_time,
-                            "gpu_memory_mb": gpu_mem_used,
-                            "device": str(device),
-                            "num_frames_processed": len(video_frames)
-                        }
-                    except Exception as e:
-                        print(f"Error in real CUDA handler: {e}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        return {
-                            "generated_text": "Error processing video",
-                            "implementation_type": "REAL",
-                            "error": str(e),
-                            "is_error": True
-                        }
-                
-                return model, processor, real_handler, None, 4  # Lower batch size due to video memory usage
-                
-            except Exception as model_err:
-                print(f"Failed to load model with CUDA: {model_err}")
-                # Fall through to simulated implementation
-        except ImportError as import_err:
-            print(f"Required libraries not available: {import_err}")
-            # Fall through to simulated implementation
-            
-        # Simulate a successful CUDA implementation for testing
-        print("Creating simulated REAL implementation for Video-LLaVA")
-        
-        # Create a realistic model simulation
-        endpoint = unittest.mock.MagicMock()
-        endpoint.to.return_value = endpoint  # For .to(device) call
-        endpoint.half.return_value = endpoint  # For .half() call
-        endpoint.eval.return_value = endpoint  # For .eval() call
-        
-        # Add config to make it look like a real model
-        config = unittest.mock.MagicMock()
-        config.hidden_size = 4096
-        config.vision_config = unittest.mock.MagicMock()
-        config.vision_config.hidden_size = 1024
-        endpoint.config = config
-        
-        # Set up realistic processor simulation
-        processor = unittest.mock.MagicMock()
-        processor.batch_decode = lambda ids, skip_special_tokens: ["What's happening in this video? The video shows a person cooking in a kitchen."]
-        processor.__call__ = lambda text, images, return_tensors: unittest.mock.MagicMock(input_ids=torch.ones((1, 20), dtype=torch.long))
-        
-        # Mark these as simulated real implementations
-        endpoint.is_real_simulation = True
-        processor.is_real_simulation = True
-        
-        # Create a simulated handler that returns realistic responses
-        def simulated_handler(input_data):
-            # Simulate model processing with realistic timing
-            start_time = time.time()
-            if hasattr(torch.cuda, "synchronize"):
-                torch.cuda.synchronize()
-            
-            # Simulate processing time based on input complexity
-            if isinstance(input_data, dict) and "video" in input_data:
-                # More complex processing for videos with frames
-                video_input = input_data["video"]
-                if isinstance(video_input, list):
-                    # Simulate processing based on number of frames
-                    num_frames = len(video_input)
-                    processing_time = 0.05 * num_frames  # 50ms per frame
-                    time.sleep(processing_time)
-                else:
-                    # Assume it's a video path, simulate standard processing time
-                    time.sleep(0.4)  # 400ms for a typical video
-                
-                # Extract prompt if available
-                prompt = input_data.get("prompt", "What's happening in this video?")
-                
-                # Generate response based on prompt and video content
-                if "cooking" in str(input_data).lower() or "kitchen" in str(input_data).lower():
-                    response = "The video shows a person cooking in a kitchen. They appear to be preparing a meal, chopping vegetables on a cutting board and stirring ingredients in a pot on the stove. The kitchen has modern appliances and good lighting."
-                elif "sports" in str(input_data).lower() or "game" in str(input_data).lower():
-                    response = "The video shows a sports event. It appears to be a basketball game with players running across the court. One team is wearing red jerseys while the other team is in white. The crowd in the background is cheering enthusiastically."
-                elif "nature" in str(input_data).lower() or "outdoor" in str(input_data).lower():
-                    response = "The video shows a beautiful nature scene. It appears to be a forest with tall trees and a small stream running through it. There are birds flying overhead and the sunlight is filtering through the leaves creating a dappled effect on the ground."
-                elif "explain" in prompt.lower() or "describe" in prompt.lower():
-                    response = "The video shows a sequence of frames with people in what appears to be an indoor setting. The scene has good lighting and shows multiple individuals engaging in some kind of activity. Based on their movements and positioning, they seem to be participating in a structured event or gathering."
-                else:
-                    response = "The video shows a series of scenes with people engaged in various activities. The footage appears to be shot indoors with good lighting. Several individuals can be seen moving around and interacting with each other and their environment."
-            else:
-                # Simpler processing for invalid inputs
-                time.sleep(0.1)
-                response = "Unable to process the input. Please provide a valid video input in the format {'video': video_frames_or_path, 'prompt': 'optional prompt'}"
-            
-            # Return a dictionary with REAL implementation markers
-            return {
-                "generated_text": response,
-                "implementation_type": "REAL",
-                "inference_time_seconds": time.time() - start_time,
-                "gpu_memory_mb": 2048.0,  # Simulated memory usage (higher for video)
-                "device": str(device),
-                "is_simulated": True,
-                "num_frames_processed": 8 if isinstance(input_data, dict) and "video" in input_data else 0
-            }
-            
-        print(f"Successfully loaded simulated Video-LLaVA model on {device}")
-        return endpoint, processor, simulated_handler, None, 4  # Lower batch size due to video memory usage
-            
-    except Exception as e:
-        print(f"Error in init_cuda: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        
-    # Fallback to mock implementation
-    processor = unittest.mock.MagicMock()
-    endpoint = unittest.mock.MagicMock()
-    handler = lambda x: {"generated_text": "This is a mock response from Video-LLaVA", "implementation_type": "MOCK"}
-    return endpoint, processor, handler, None, 0
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
+    
+    return capabilities
 
-# Add the method to the class
-hf_video_llava.init_cuda = init_cuda
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
 
-class test_hf_video_llava:
-    def __init__(self, resources=None, metadata=None):
-        """
-        Initialize the Video-LLaVA test class.
+# Models registry - Maps model IDs to their specific configurations
+VIDEO-LLAVA_MODELS_REGISTRY = {
+    "LanguageBind/Video-LLaVA-7B": {
+        "description": "Video-LLaVA 7B model",
+        "class": "VideoLlavaForConditionalGeneration",
+    },
+    "LanguageBind/Video-LLaVA-13B": {
+        "description": "Video-LLaVA 13B model",
+        "class": "VideoLlavaForConditionalGeneration",
+    },
+}
+
+class TestVideoLlavaModels:
+    """Base test class for all Video-LLaVA-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "LanguageBind/Video-LLaVA-7B"
         
-        Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }
-        # Add PIL resources if available
-        if PIL is not None:
-            self.resources["PIL"] = PIL
-        if Image is not None:
-            self.resources["Image"] = Image
-        self.metadata = metadata if metadata else {}
-        self.model = hf_video_llava(resources=self.resources, metadata=self.metadata)
+        # Verify model exists in registry
+        if self.model_id not in VIDEO-LLAVA_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = VIDEO-LLAVA_MODELS_REGISTRY["LanguageBind/Video-LLaVA-7B"]
+        else:
+            self.model_info = VIDEO-LLAVA_MODELS_REGISTRY[self.model_id]
         
-        # Use a Video-LLaVA model
-        self.model_name = "LanguageBind/Video-LLaVA-7B"
+        # Define model parameters
+        self.task = "video-to-text"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
         
-        # Alternative models to try if primary model fails
-        self.alternative_models = [
-            "LanguageBind/Video-LLaVA-7B",
-            "LanguageBind/Video-LLaVA-2-7B",
-            "LanguageBind/Video-LLaVA-1.5-7B"
+        # Define test inputs
+        self.test_text = "What's happening in this video?"
+        self.test_texts = [
+            "What's happening in this video?",
+            "What's happening in this video? (alternative)"
         ]
         
-        try:
-            print(f"Attempting to use primary model: {self.model_name}")
-            
-            # Try to import transformers for validation
-            if not isinstance(self.resources["transformers"], MagicMock):
-                from transformers import AutoConfig
-                try:
-                    # Try to access the config to verify model works
-                    AutoConfig.from_pretrained(self.model_name)
-                    print(f"Successfully validated primary model: {self.model_name}")
-                except Exception as config_error:
-                    print(f"Primary model validation failed: {config_error}")
-                    
-                    # Try alternatives one by one
-                    for alt_model in self.alternative_models[1:]:
-                        try:
-                            print(f"Trying alternative model: {alt_model}")
-                            AutoConfig.from_pretrained(alt_model)
-                            self.model_name = alt_model
-                            print(f"Successfully validated alternative model: {self.model_name}")
-                            break
-                        except Exception as alt_error:
-                            print(f"Alternative model validation failed: {alt_error}")
-                            
-        except Exception as e:
-            print(f"Error finding model: {e}")
-            print("Will use the default model for testing")
-            
-        print(f"Using model: {self.model_name}")
-        
-        # Create simulated video frames for testing
-        self.test_video_frames = []
-        if PIL_AVAILABLE:
-            try:
-                from PIL import ImageDraw
-                # Create a series of simple frames with different content
-                for i in range(8):  # 8 frames
-                    # Create a blank image
-                    img = Image.new('RGB', (320, 240), color=(240, 240, 240))
-                    draw = ImageDraw.Draw(img)
-                    
-                    # Add some dynamic elements that change across frames
-                    # Draw rectangle that moves across the frame
-                    rect_x = 40 + i * 30
-                    draw.rectangle([rect_x, 80, rect_x + 40, 120], fill=(255, 0, 0))
-                    
-                    # Draw circle that changes size
-                    circle_radius = 20 + i * 2
-                    draw.ellipse([160-circle_radius, 120-circle_radius, 
-                                  160+circle_radius, 120+circle_radius], 
-                                 fill=(0, 0, 255))
-                    
-                    # Add frame number text
-                    draw.text((10, 10), f"Frame {i+1}", fill=(0, 0, 0))
-                    
-                    self.test_video_frames.append(img)
-                print(f"Created {len(self.test_video_frames)} test video frames")
-            except Exception as e:
-                print(f"Error creating test video frames: {e}")
-                # Create empty placeholder frames
-                self.test_video_frames = ["frame1", "frame2", "frame3", "frame4", "frame5", "frame6", "frame7", "frame8"]
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
         else:
-            print("PIL not available, using placeholder frames")
-            # Create placeholder frames as strings since PIL is not available
-            self.test_video_frames = ["frame1", "frame2", "frame3", "frame4", "frame5", "frame6", "frame7", "frame8"]
+            self.preferred_device = "cpu"
         
-        # Test input for video processing
-        self.test_input = {
-            "video": self.test_video_frames,
-            "prompt": "What's happening in this video?"
-        }
+        logger.info(f"Using {self.preferred_device} as preferred device")
         
-        # Test input with different prompt
-        self.test_input_detailed = {
-            "video": self.test_video_frames,
-            "prompt": "Explain in detail what's happening in this video."
-        }
-        
-        # Initialize collection arrays for examples and status
+        # Results storage
+        self.results = {}
         self.examples = []
-        self.status_messages = {}
-        return None
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
         
-    def test(self):
+    if not HAS_PIL:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        pipeline_input = self.test_text
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
+            try:
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
+
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_PIL:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "VideoLlavaForConditionalGeneration":
+            model_class = transformers.VideoLlavaForConditionalGeneration
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModel
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = "Generic input for testing"
+        
+        # Create generic inputs
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = [{"output": "Processed model output"}]
+        else:
+            predictions = [{"output": "Mock output"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModel
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModel.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare generic input
+        test_input = "Generic input for testing"
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = ["Processed OpenVINO output"]
+        else:
+            predictions = ["<mock_output>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
         """
-        Run all tests for the Video-LLaVA model, organized by hardware platform.
-        Tests CPU, CUDA, OpenVINO implementations.
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
         
         Returns:
-            dict: Structured test results with status, examples and metadata
+            Dict containing test results
         """
-        results = {}
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
         
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.model is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # ====== CPU TESTS ======
-        try:
-            print("Testing Video-LLaVA on CPU...")
-            # Initialize for CPU
-            endpoint, processor, handler, queue, batch_size = self.model.init_cpu(
-                self.model_name,
-                "visual-question-answering", 
-                "cpu"
-            )
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
             
-            valid_init = endpoint is not None and processor is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
             
-            # Run actual inference
-            print("Testing standard prompt...")
-            start_time = time.time()
-            standard_output = handler(self.test_input)
-            standard_elapsed_time = time.time() - start_time
-            
-            print("Testing detailed prompt...")
-            start_time = time.time()
-            detailed_output = handler(self.test_input_detailed)
-            detailed_elapsed_time = time.time() - start_time
-            
-            # Verify the outputs
-            is_valid_standard_output = (
-                standard_output is not None and 
-                isinstance(standard_output, dict) and
-                "generated_text" in standard_output and
-                isinstance(standard_output["generated_text"], str)
-            )
-            
-            is_valid_detailed_output = (
-                detailed_output is not None and 
-                isinstance(detailed_output, dict) and
-                "generated_text" in detailed_output and
-                isinstance(detailed_output["generated_text"], str)
-            )
-            
-            results["cpu_standard_handler"] = "Success (REAL)" if is_valid_standard_output else "Failed CPU standard handler"
-            results["cpu_detailed_handler"] = "Success (REAL)" if is_valid_detailed_output else "Failed CPU detailed handler"
-            
-            # Extract implementation types
-            standard_implementation_type = "UNKNOWN"
-            detailed_implementation_type = "UNKNOWN"
-            
-            if isinstance(standard_output, dict) and "implementation_type" in standard_output:
-                standard_implementation_type = standard_output["implementation_type"]
-                
-            if isinstance(detailed_output, dict) and "implementation_type" in detailed_output:
-                detailed_implementation_type = detailed_output["implementation_type"]
-            
-            # Record examples
-            self.examples.append({
-                "input": str(self.test_input),
-                "output": {
-                    "generated_text": standard_output.get("generated_text", ""),
-                    "implementation_type": standard_implementation_type,
-                    "num_frames": standard_output.get("num_frames_processed", 0)
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": standard_elapsed_time,
-                "implementation_type": standard_implementation_type,
-                "platform": "CPU",
-                "prompt_type": "standard"
-            })
-            
-            self.examples.append({
-                "input": str(self.test_input_detailed),
-                "output": {
-                    "generated_text": detailed_output.get("generated_text", ""),
-                    "implementation_type": detailed_implementation_type,
-                    "num_frames": detailed_output.get("num_frames_processed", 0)
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": detailed_elapsed_time,
-                "implementation_type": detailed_implementation_type,
-                "platform": "CPU",
-                "prompt_type": "detailed"
-            })
-                
-        except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
-
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available():
-            try:
-                print("Testing Video-LLaVA on CUDA...")
-                # Initialize for CUDA
-                endpoint, processor, handler, queue, batch_size = self.model.init_cuda(
-                    self.model_name,
-                    "visual-question-answering",
-                    "cuda:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cuda_init"] = "Success (REAL)" if valid_init else "Failed CUDA initialization"
-                
-                # Run actual inference
-                print("Testing standard prompt on CUDA...")
-                start_time = time.time()
-                standard_output = handler(self.test_input)
-                standard_elapsed_time = time.time() - start_time
-                
-                print("Testing detailed prompt on CUDA...")
-                start_time = time.time()
-                detailed_output = handler(self.test_input_detailed)
-                detailed_elapsed_time = time.time() - start_time
-                
-                # Verify the outputs
-                is_valid_standard_output = (
-                    standard_output is not None and 
-                    isinstance(standard_output, dict) and
-                    "generated_text" in standard_output and
-                    isinstance(standard_output["generated_text"], str)
-                )
-                
-                is_valid_detailed_output = (
-                    detailed_output is not None and 
-                    isinstance(detailed_output, dict) and
-                    "generated_text" in detailed_output and
-                    isinstance(detailed_output["generated_text"], str)
-                )
-                
-                results["cuda_standard_handler"] = "Success (REAL)" if is_valid_standard_output else "Failed CUDA standard handler"
-                results["cuda_detailed_handler"] = "Success (REAL)" if is_valid_detailed_output else "Failed CUDA detailed handler"
-                
-                # Extract implementation types
-                standard_implementation_type = "UNKNOWN"
-                detailed_implementation_type = "UNKNOWN"
-                
-                if isinstance(standard_output, dict) and "implementation_type" in standard_output:
-                    standard_implementation_type = standard_output["implementation_type"]
-                    
-                if isinstance(detailed_output, dict) and "implementation_type" in detailed_output:
-                    detailed_implementation_type = detailed_output["implementation_type"]
-                
-                # Extract performance metrics
-                standard_performance_metrics = {}
-                detailed_performance_metrics = {}
-                
-                if isinstance(standard_output, dict):
-                    if "inference_time_seconds" in standard_output:
-                        standard_performance_metrics["inference_time"] = standard_output["inference_time_seconds"]
-                    if "gpu_memory_mb" in standard_output:
-                        standard_performance_metrics["gpu_memory_mb"] = standard_output["gpu_memory_mb"]
-                        
-                if isinstance(detailed_output, dict):
-                    if "inference_time_seconds" in detailed_output:
-                        detailed_performance_metrics["inference_time"] = detailed_output["inference_time_seconds"]
-                    if "gpu_memory_mb" in detailed_output:
-                        detailed_performance_metrics["gpu_memory_mb"] = detailed_output["gpu_memory_mb"]
-                
-                # Record examples
-                self.examples.append({
-                    "input": str(self.test_input),
-                    "output": {
-                        "generated_text": standard_output.get("generated_text", ""),
-                        "implementation_type": standard_implementation_type,
-                        "performance_metrics": standard_performance_metrics,
-                        "num_frames": standard_output.get("num_frames_processed", 0)
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": standard_elapsed_time,
-                    "implementation_type": standard_implementation_type,
-                    "platform": "CUDA",
-                    "prompt_type": "standard",
-                    "is_simulated": standard_output.get("is_simulated", False)
-                })
-                
-                self.examples.append({
-                    "input": str(self.test_input_detailed),
-                    "output": {
-                        "generated_text": detailed_output.get("generated_text", ""),
-                        "implementation_type": detailed_implementation_type,
-                        "performance_metrics": detailed_performance_metrics,
-                        "num_frames": detailed_output.get("num_frames_processed", 0)
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": detailed_elapsed_time,
-                    "implementation_type": detailed_implementation_type,
-                    "platform": "CUDA",
-                    "prompt_type": "detailed",
-                    "is_simulated": detailed_output.get("is_simulated", False)
-                })
-                    
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
-        else:
-            results["cuda_tests"] = "CUDA not available"
-            self.status_messages["cuda"] = "CUDA not available"
-
-        # ====== OPENVINO TESTS ======
-        try:
-            # First check if OpenVINO is installed
-            try:
-                import openvino
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "OpenVINO not installed"
-                
-            if has_openvino:
-                print("Testing Video-LLaVA on OpenVINO...")
-                # Import the existing OpenVINO utils from the main package
-                from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                
-                # Initialize openvino_utils
-                ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-                
-                # Initialize for OpenVINO
-                endpoint, processor, handler, queue, batch_size = self.model.init_openvino(
-                    self.model_name,
-                    "visual-question-answering",
-                    "CPU",
-                    openvino_label="openvino:0",
-                    get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-                    get_openvino_model=ov_utils.get_openvino_model,
-                    get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-                    openvino_cli_convert=ov_utils.openvino_cli_convert
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
-                
-                # Run actual inference
-                print("Testing standard prompt on OpenVINO...")
-                start_time = time.time()
-                standard_output = handler(self.test_input)
-                standard_elapsed_time = time.time() - start_time
-                
-                print("Testing detailed prompt on OpenVINO...")
-                start_time = time.time()
-                detailed_output = handler(self.test_input_detailed)
-                detailed_elapsed_time = time.time() - start_time
-                
-                # Verify the outputs
-                is_valid_standard_output = (
-                    standard_output is not None and 
-                    isinstance(standard_output, dict) and
-                    "generated_text" in standard_output and
-                    isinstance(standard_output["generated_text"], str)
-                )
-                
-                is_valid_detailed_output = (
-                    detailed_output is not None and 
-                    isinstance(detailed_output, dict) and
-                    "generated_text" in detailed_output and
-                    isinstance(detailed_output["generated_text"], str)
-                )
-                
-                results["openvino_standard_handler"] = "Success (REAL)" if is_valid_standard_output else "Failed OpenVINO standard handler"
-                results["openvino_detailed_handler"] = "Success (REAL)" if is_valid_detailed_output else "Failed OpenVINO detailed handler"
-                
-                # Extract implementation types
-                standard_implementation_type = "UNKNOWN"
-                detailed_implementation_type = "UNKNOWN"
-                
-                if isinstance(standard_output, dict) and "implementation_type" in standard_output:
-                    standard_implementation_type = standard_output["implementation_type"]
-                    
-                if isinstance(detailed_output, dict) and "implementation_type" in detailed_output:
-                    detailed_implementation_type = detailed_output["implementation_type"]
-                
-                # Record examples
-                self.examples.append({
-                    "input": str(self.test_input),
-                    "output": {
-                        "generated_text": standard_output.get("generated_text", ""),
-                        "implementation_type": standard_implementation_type,
-                        "num_frames": standard_output.get("num_frames_processed", 0)
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": standard_elapsed_time,
-                    "implementation_type": standard_implementation_type,
-                    "platform": "OpenVINO",
-                    "prompt_type": "standard"
-                })
-                
-                self.examples.append({
-                    "input": str(self.test_input_detailed),
-                    "output": {
-                        "generated_text": detailed_output.get("generated_text", ""),
-                        "implementation_type": detailed_implementation_type,
-                        "num_frames": detailed_output.get("num_frames_processed", 0)
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": detailed_elapsed_time,
-                    "implementation_type": detailed_implementation_type,
-                    "platform": "OpenVINO",
-                    "prompt_type": "detailed"
-                })
-                    
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
-
-        # Create structured results with status, examples and metadata
-        structured_results = {
-            "status": results,
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
             "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
             "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": self.status_messages
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_pil": HAS_PIL
             }
         }
 
-        return structured_results
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_video_llava_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
 
-    def __test__(self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-        """
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {
-                "status": {"test_error": str(e)},
-                "examples": [],
-                "metadata": {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            }
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_video_llava_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved collected results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_video_llava_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                
-                # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # More detailed comparison of results
-                all_match = True
-                mismatches = []
-                
-                for key in set(status_expected.keys()) | set(status_actual.keys()):
-                    if key not in status_expected:
-                        mismatches.append(f"Missing expected key: {key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append(f"Missing actual key: {key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if (
-                            isinstance(status_expected[key], str) and 
-                            isinstance(status_actual[key], str) and
-                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
-                            "Success" in status_expected[key] and "Success" in status_actual[key]
-                        ):
-                            continue
-                        
-                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
-                        all_match = False
-                
-                if not all_match:
-                    print("Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print(f"- {mismatch}")
-                    print("\nWould you like to update the expected results? (y/n)")
-                    user_input = input().strip().lower()
-                    if user_input == 'y':
-                        with open(expected_file, 'w') as ef:
-                            json.dump(test_results, ef, indent=2)
-                            print(f"Updated expected results file: {expected_file}")
-                    else:
-                        print("Expected results not updated.")
-                else:
-                    print("All test results match expected results.")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                print("Creating new expected results file.")
-                with open(expected_file, 'w') as ef:
-                    json.dump(test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+def get_available_models():
+    """Get a list of all available Video-LLaVA models in the registry."""
+    return list(VIDEO-LLAVA_MODELS_REGISTRY.keys())
 
-        return test_results
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered Video-LLaVA models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestVideoLlavaModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_video_llava_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test Video-LLaVA-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable Video-LLaVA-family models:")
+        for model in models:
+            info = VIDEO-LLAVA_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nVideo-LLaVA Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "LanguageBind/Video-LLaVA-7B"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestVideoLlavaModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        print("Starting Video-LLaVA test...")
-        test_instance = test_hf_video_llava()
-        results = test_instance.__test__()
-        print("Video-LLaVA test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get("status", {})
-        examples = results.get("examples", [])
-        metadata = results.get("metadata", {})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get("platform", "")
-            impl_type = example.get("implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-        print("\nVIDEO-LLAVA TEST RESULTS SUMMARY")
-        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print performance information if available
-        for example in examples:
-            if "output" in example and "performance_metrics" in example["output"] and example["output"]["performance_metrics"]:
-                platform = example.get("platform", "")
-                prompt_type = example.get("prompt_type", "")
-                metrics = example["output"]["performance_metrics"]
-                print(f"\n{platform} {prompt_type.upper()} PERFORMANCE METRICS:")
-                for k, v in metrics.items():
-                    print(f"  {k}: {v}")
-        
-        # Print a JSON representation to make it easier to parse
-        print("\nstructured_results")
-        print(json.dumps({
-            "status": {
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-            },
-            "model_name": metadata.get("model_name", "Unknown"),
-            "examples": examples
-        }))
-        
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error during testing: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+    main()
