@@ -934,6 +934,66 @@ class test_hf_{normalized_name}:
             results["openvino_error"] = str(e)
             self.status_messages["openvino"] = f"Failed: {{str(e)}}"
         
+        # Test Apple Silicon (MPS) if available
+        if HAS_TORCH and hasattr(torch, 'mps') and hasattr(torch.mps, 'is_available') and torch.mps.is_available():
+            try:
+                # Check if model has MPS initialization method
+                if hasattr(self.model, 'init_mps'):
+                    mps_results = self.test_platform("mps", self.model.init_mps, "mps")
+                    results.update(mps_results)
+                else:
+                    results["mps_tests"] = "MPS initialization method not implemented"
+                    self.status_messages["mps"] = "Not implemented"
+            except Exception as e:
+                print(f"Error in Apple Silicon MPS tests: {{e}}")
+                results["mps_error"] = str(e)
+                self.status_messages["mps"] = f"Failed: {{str(e)}}"
+        else:
+            results["mps_tests"] = "Apple Silicon MPS not available"
+            self.status_messages["mps"] = "MPS not available"
+            
+        # Test AMD ROCm if available
+        if HAS_TORCH and hasattr(torch, 'hip') and hasattr(torch.hip, 'is_available') and torch.hip.is_available():
+            try:
+                # Check if model has ROCm initialization method
+                if hasattr(self.model, 'init_rocm'):
+                    rocm_results = self.test_platform("rocm", self.model.init_rocm, "rocm")
+                    results.update(rocm_results)
+                else:
+                    results["rocm_tests"] = "ROCm initialization method not implemented"
+                    self.status_messages["rocm"] = "Not implemented"
+            except Exception as e:
+                print(f"Error in AMD ROCm tests: {{e}}")
+                results["rocm_error"] = str(e)
+                self.status_messages["rocm"] = f"Failed: {{str(e)}}"
+        else:
+            results["rocm_tests"] = "AMD ROCm not available"
+            self.status_messages["rocm"] = "ROCm not available"
+            
+        # Test Qualcomm AI if available
+        try:
+            import qnnpack
+            has_qualcomm = True
+        except ImportError:
+            has_qualcomm = False
+            
+        if has_qualcomm:
+            try:
+                # Check if model has Qualcomm initialization method
+                if hasattr(self.model, 'init_qualcomm'):
+                    qualcomm_results = self.test_platform("qualcomm", self.model.init_qualcomm, "qualcomm")
+                    results.update(qualcomm_results)
+                else:
+                    results["qualcomm_tests"] = "Qualcomm initialization method not implemented"
+                    self.status_messages["qualcomm"] = "Not implemented"
+            except Exception as e:
+                print(f"Error in Qualcomm AI tests: {{e}}")
+                results["qualcomm_error"] = str(e)
+                self.status_messages["qualcomm"] = f"Failed: {{str(e)}}"
+        else:
+            results["qualcomm_tests"] = "Qualcomm AI SDK not available" 
+            self.status_messages["qualcomm"] = "Qualcomm AI not available"
+        
         # Return structured results
         return {{
             "status": results,
@@ -1004,6 +1064,9 @@ def extract_implementation_status(results):
     cpu_status = "UNKNOWN"
     cuda_status = "UNKNOWN"
     openvino_status = "UNKNOWN"
+    mps_status = "UNKNOWN"
+    rocm_status = "UNKNOWN"
+    qualcomm_status = "UNKNOWN"
     
     # Check CPU status
     for key, value in status_dict.items():
@@ -1025,18 +1088,49 @@ def extract_implementation_status(results):
             openvino_status = "MOCK"
         elif key == "openvino_tests" and value == "OpenVINO not installed":
             openvino_status = "NOT INSTALLED"
+            
+        if key.startswith("mps_") and "REAL" in value:
+            mps_status = "REAL"
+        elif key.startswith("mps_") and "MOCK" in value:
+            mps_status = "MOCK"
+        elif key == "mps_tests" and "not available" in value.lower():
+            mps_status = "NOT AVAILABLE"
+        elif key == "mps_tests" and "not implemented" in value.lower():
+            mps_status = "NOT IMPLEMENTED"
+            
+        if key.startswith("rocm_") and "REAL" in value:
+            rocm_status = "REAL"
+        elif key.startswith("rocm_") and "MOCK" in value:
+            rocm_status = "MOCK"
+        elif key == "rocm_tests" and "not available" in value.lower():
+            rocm_status = "NOT AVAILABLE"
+        elif key == "rocm_tests" and "not implemented" in value.lower():
+            rocm_status = "NOT IMPLEMENTED"
+            
+        if key.startswith("qualcomm_") and "REAL" in value:
+            qualcomm_status = "REAL"
+        elif key.startswith("qualcomm_") and "MOCK" in value:
+            qualcomm_status = "MOCK"
+        elif key == "qualcomm_tests" and "not available" in value.lower():
+            qualcomm_status = "NOT AVAILABLE"
+        elif key == "qualcomm_tests" and "not implemented" in value.lower():
+            qualcomm_status = "NOT IMPLEMENTED"
     
     return {{
         "cpu": cpu_status,
         "cuda": cuda_status,
-        "openvino": openvino_status
+        "openvino": openvino_status,
+        "mps": mps_status,
+        "rocm": rocm_status,
+        "qualcomm": qualcomm_status
     }}
 
 if __name__ == "__main__":
     # Parse command line arguments
     import argparse
     parser = argparse.ArgumentParser(description='{model} model test')
-    parser.add_argument('--platform', type=str, choices=['cpu', 'cuda', 'openvino', 'all'], 
+    parser.add_argument('--platform', type=str, 
+                        choices=['cpu', 'cuda', 'openvino', 'mps', 'rocm', 'qualcomm', 'all'], 
                         default='all', help='Platform to test')
     parser.add_argument('--model', type=str, help='Override model name')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
@@ -1061,6 +1155,9 @@ if __name__ == "__main__":
     print(f"CPU STATUS: {{status['cpu']}}")
     print(f"CUDA STATUS: {{status['cuda']}}")
     print(f"OPENVINO STATUS: {{status['openvino']}}")
+    print(f"APPLE SILICON STATUS: {{status['mps']}}")
+    print(f"AMD ROCM STATUS: {{status['rocm']}}")
+    print(f"QUALCOMM AI STATUS: {{status['qualcomm']}}")
 """
 
     # Save file

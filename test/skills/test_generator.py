@@ -73,7 +73,8 @@ MODEL_REGISTRY = {
         "tasks": ["fill-mask"],
         "inputs": {
             "text": "The quick brown fox jumps over the [MASK] dog."
-        
+        }
+    },
     "qdqbert": {
         "family_name": "QDQBERT",
         "description": "Quantized-Dequantized BERT models",
@@ -97,7 +98,7 @@ MODEL_REGISTRY = {
                 "class": "QDQBertForMaskedLM"
             }
         }
-    }
+    },
     "flan": {
         "family_name": "FLAN",
         "description": "FLAN instruction-tuned models",
@@ -121,7 +122,7 @@ MODEL_REGISTRY = {
                 "class": "FlanT5ForConditionalGeneration"
             }
         }
-    }
+    },
     "open-llama": {
         "family_name": "Open-LLaMA",
         "description": "Open-LLaMA causal language models",
@@ -146,7 +147,7 @@ MODEL_REGISTRY = {
                 "class": "OpenLlamaForCausalLM"
             }
         }
-    }
+    },
     "mpt": {
         "family_name": "MPT",
         "description": "MPT causal language models",
@@ -171,7 +172,7 @@ MODEL_REGISTRY = {
                 "class": "MptForCausalLM"
             }
         }
-    }
+    },
     "bloom-7b1": {
         "family_name": "BLOOM-7B1",
         "description": "BLOOM-7B1 language model",
@@ -196,7 +197,7 @@ MODEL_REGISTRY = {
                 "class": "BloomForCausalLM"
             }
         }
-    }
+    },
     "auto": {
         "family_name": "Auto",
         "description": "Auto-detected model classes",
@@ -219,7 +220,7 @@ MODEL_REGISTRY = {
                 "class": "AutoModel"
             }
         }
-    }
+    },
     "falcon-7b": {
         "family_name": "Falcon-7B",
         "description": "Falcon-7B causal language model",
@@ -244,7 +245,7 @@ MODEL_REGISTRY = {
                 "class": "FalconForCausalLM"
             }
         }
-    }
+    },
     "galactica": {
         "family_name": "Galactica",
         "description": "Galactica scientific language models",
@@ -269,7 +270,7 @@ MODEL_REGISTRY = {
                 "class": "OPTForCausalLM"
             }
         }
-    }
+    },
     "qwen3_vl": {
         "family_name": "Qwen3-VL",
         "description": "Qwen3 vision-language models",
@@ -295,172 +296,178 @@ MODEL_REGISTRY = {
             }
         }
     }
-},
-        "dependencies": ["transformers", "tokenizers", "sentencepiece"],
-        "task_specific_args": {
-            "fill-mask": {"top_k": 5}
-        },
-        "models": {
-            "bert-base-uncased": {
-                "description": "BERT base model (uncased)",
-                "class": "BertForMaskedLM",
-                "vocab_size": 30522
-            },
-            "distilbert-base-uncased": {
-                "description": "DistilBERT base model (uncased)",
-                "class": "DistilBertForMaskedLM",
-                "vocab_size": 30522
-            },
-            "roberta-base": {
-                "description": "RoBERTa base model",
-                "class": "RobertaForMaskedLM",
-                "vocab_size": 50265
-            }
-        }
+}
+
+# End of model registry
+
+# Add bert family dependencies and attributes
+MODEL_REGISTRY["bert"]["dependencies"] = ["transformers", "tokenizers", "sentencepiece"]
+MODEL_REGISTRY["bert"]["task_specific_args"] = {
+    "fill-mask": {"top_k": 5}
+}
+MODEL_REGISTRY["bert"]["models"] = {
+    "bert-base-uncased": {
+        "description": "BERT base model (uncased)",
+        "class": "BertForMaskedLM",
+        "vocab_size": 30522
     },
-    "gpt2": {
-        "family_name": "GPT-2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "GPT2LMHeadModel",
-        "test_class": "TestGpt2Models",
-        "module_name": "test_hf_gpt2",
-        "tasks": ["text-generation"],
-        "inputs": {
-            "text": "Once upon a time"
-        },
-        "dependencies": ["transformers", "tokenizers"],
-        "task_specific_args": {
-            "text-generation": {"max_length": 50, "min_length": 20}
-        },
-        "models": {
-            "gpt2": {
-                "description": "GPT-2 small model",
-                "class": "GPT2LMHeadModel"
-            },
-            "gpt2-medium": {
-                "description": "GPT-2 medium model",
-                "class": "GPT2LMHeadModel"
-            },
-            "distilgpt2": {
-                "description": "DistilGPT-2 model",
-                "class": "GPT2LMHeadModel"
-            }
-        }
+    "distilbert-base-uncased": {
+        "description": "DistilBERT base model (uncased)",
+        "class": "DistilBertForMaskedLM",
+        "vocab_size": 30522
     },
-    "t5": {
-        "family_name": "T5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "T5ForConditionalGeneration",
-        "test_class": "TestT5Models",
-        "module_name": "test_hf_t5",
-        "tasks": ["translation_en_to_fr", "summarization"],
-        "inputs": {
-            "translation_en_to_fr": "My name is Sarah and I live in London",
-            "summarization": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building. Its base is square, measuring 125 metres (410 ft) on each side. It was the first structure to reach a height of 300 metres."
-        },
-        "dependencies": ["transformers", "sentencepiece"],
-        "task_specific_args": {
-            "translation_en_to_fr": {"max_length": 40},
-            "summarization": {"max_length": 100, "min_length": 30}
-        },
-        "models": {
-            "t5-small": {
-                "description": "T5 small model",
-                "class": "T5ForConditionalGeneration"
-            },
-            "t5-base": {
-                "description": "T5 base model",
-                "class": "T5ForConditionalGeneration"
-            },
-            "google/flan-t5-small": {
-                "description": "Flan-T5 small model",
-                "class": "T5ForConditionalGeneration"
-            }
-        }
+    "roberta-base": {
+        "description": "RoBERTa base model",
+        "class": "RobertaForMaskedLM",
+        "vocab_size": 50265
+    }
+}
+
+# Add remaining model families
+MODEL_REGISTRY["gpt2"] = {
+    "family_name": "GPT-2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "GPT2LMHeadModel",
+    "test_class": "TestGpt2Models",
+    "module_name": "test_hf_gpt2",
+    "tasks": ["text-generation"],
+    "inputs": {
+        "text": "Once upon a time"
     },
-    "clip": {
-        "family_name": "CLIP",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "CLIPModel",
-        "test_class": "TestClipModels",
-        "module_name": "test_hf_clip",
-        "tasks": ["zero-shot-image-classification"],
-        "inputs": {
-            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
-            "candidate_labels": ["a photo of a cat", "a photo of a dog"]
-        },
-        "dependencies": ["transformers", "pillow", "requests"],
-        "task_specific_args": {
-            "zero-shot-image-classification": {}
-        },
-        "models": {
-            "openai/clip-vit-base-patch32": {
-                "description": "CLIP ViT-Base-Patch32 model",
-                "class": "CLIPModel"
-            },
-            "openai/clip-vit-base-patch16": {
-                "description": "CLIP ViT-Base-Patch16 model",
-                "class": "CLIPModel"
-            }
-        }
+    "dependencies": ["transformers", "tokenizers"],
+    "task_specific_args": {
+        "text-generation": {"max_length": 50, "min_length": 20}
     },
-    "llama": {
-        "family_name": "LLaMA",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "LlamaForCausalLM",
-        "test_class": "TestLlamaModels",
-        "module_name": "test_hf_llama",
-        "tasks": ["text-generation"],
-        "inputs": {
-            "text": "In this paper, we propose"
+    "models": {
+        "gpt2": {
+            "description": "GPT-2 small model",
+            "class": "GPT2LMHeadModel"
         },
-        "dependencies": ["transformers", "tokenizers", "accelerate"],
-        "task_specific_args": {
-            "text-generation": {"max_length": 50, "min_length": 20}
+        "gpt2-medium": {
+            "description": "GPT-2 medium model",
+            "class": "GPT2LMHeadModel"
         },
-        "models": {
-            "meta-llama/Llama-2-7b-hf": {
-                "description": "LLaMA 2 7B model",
-                "class": "LlamaForCausalLM"
-            },
-            "meta-llama/Llama-2-7b-chat-hf": {
-                "description": "LLaMA 2 7B chat model",
-                "class": "LlamaForCausalLM"
-            }
+        "distilgpt2": {
+            "description": "DistilGPT-2 model",
+            "class": "GPT2LMHeadModel"
         }
+    }
+}
+
+MODEL_REGISTRY["t5"] = {
+    "family_name": "T5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "T5ForConditionalGeneration",
+    "test_class": "TestT5Models",
+    "module_name": "test_hf_t5",
+    "tasks": ["translation_en_to_fr", "summarization"],
+    "inputs": {
+        "translation_en_to_fr": "My name is Sarah and I live in London",
+        "summarization": "The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building. Its base is square, measuring 125 metres (410 ft) on each side. It was the first structure to reach a height of 300 metres."
     },
-    "whisper": {
-        "family_name": "Whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "WhisperForConditionalGeneration",
-        "test_class": "TestWhisperModels",
-        "module_name": "test_hf_whisper",
-        "tasks": ["automatic-speech-recognition"],
-        "inputs": {
-            "audio_file": "audio_sample.mp3"
+    "dependencies": ["transformers", "sentencepiece"],
+    "task_specific_args": {
+        "translation_en_to_fr": {"max_length": 40},
+        "summarization": {"max_length": 100, "min_length": 30}
+    },
+    "models": {
+        "t5-small": {
+            "description": "T5 small model",
+            "class": "T5ForConditionalGeneration"
         },
-        "dependencies": ["transformers", "librosa", "soundfile"],
-        "task_specific_args": {
-            "automatic-speech-recognition": {"max_length": 448}
+        "t5-base": {
+            "description": "T5 base model",
+            "class": "T5ForConditionalGeneration"
         },
-        "models": {
-            "openai/whisper-tiny": {
-                "description": "Whisper tiny model",
-                "class": "WhisperForConditionalGeneration"
-            },
-            "openai/whisper-base": {
-                "description": "Whisper base model",
-                "class": "WhisperForConditionalGeneration"
-            }
+        "google/flan-t5-small": {
+            "description": "Flan-T5 small model",
+            "class": "T5ForConditionalGeneration"
         }
+    }
+
+MODEL_REGISTRY["clip"] = {
+    "family_name": "CLIP",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "CLIPModel",
+    "test_class": "TestClipModels",
+    "module_name": "test_hf_clip",
+    "tasks": ["zero-shot-image-classification"],
+    "inputs": {
+        "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+        "candidate_labels": ["a photo of a cat", "a photo of a dog"]
     },
-    "wav2vec2": {
-        "family_name": "Wav2Vec2",
+    "dependencies": ["transformers", "pillow", "requests"],
+    "task_specific_args": {
+        "zero-shot-image-classification": {}
+    },
+    "models": {
+        "openai/clip-vit-base-patch32": {
+            "description": "CLIP ViT-Base-Patch32 model",
+            "class": "CLIPModel"
+        },
+        "openai/clip-vit-base-patch16": {
+            "description": "CLIP ViT-Base-Patch16 model",
+            "class": "CLIPModel"
+        }
+    }
+
+MODEL_REGISTRY["llama"] = {
+    "family_name": "LLaMA",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "LlamaForCausalLM",
+    "test_class": "TestLlamaModels",
+    "module_name": "test_hf_llama",
+    "tasks": ["text-generation"],
+    "inputs": {
+        "text": "In this paper, we propose"
+    },
+    "dependencies": ["transformers", "tokenizers", "accelerate"],
+    "task_specific_args": {
+        "text-generation": {"max_length": 50, "min_length": 20}
+    },
+    "models": {
+        "meta-llama/Llama-2-7b-hf": {
+            "description": "LLaMA 2 7B model",
+            "class": "LlamaForCausalLM"
+        },
+        "meta-llama/Llama-2-7b-chat-hf": {
+            "description": "LLaMA 2 7B chat model",
+            "class": "LlamaForCausalLM"
+        }
+    }
+
+MODEL_REGISTRY["whisper"] = {
+    "family_name": "Whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "WhisperForConditionalGeneration",
+    "test_class": "TestWhisperModels",
+    "module_name": "test_hf_whisper",
+    "tasks": ["automatic-speech-recognition"],
+    "inputs": {
+        "audio_file": "audio_sample.mp3"
+    },
+    "dependencies": ["transformers", "librosa", "soundfile"],
+    "task_specific_args": {
+        "automatic-speech-recognition": {"max_length": 448}
+    },
+    "models": {
+        "openai/whisper-tiny": {
+            "description": "Whisper tiny model",
+            "class": "WhisperForConditionalGeneration"
+        },
+        "openai/whisper-base": {
+            "description": "Whisper base model",
+            "class": "WhisperForConditionalGeneration"
+        }
+    }
+
+MODEL_REGISTRY["wav2vec2"] = {
+    "family_name": "Wav2Vec2",
         "description": "Wav2Vec2 speech models",
         "default_model": "facebook/wav2vec2-base",
         "class": "Wav2Vec2ForCTC",

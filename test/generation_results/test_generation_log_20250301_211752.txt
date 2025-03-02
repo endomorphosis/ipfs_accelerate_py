@@ -1,0 +1,81 @@
+2025-03-01 21:17:52,297 - INFO - Starting test generator validation against all HF model skills
+2025-03-01 21:17:52,297 - INFO - Found 13 HF model modules in skillset directory
+2025-03-01 21:17:52,298 - INFO - Found 13 HF model modules in skillset directory
+2025-03-01 21:17:52,298 - INFO - Found 299 total model types in huggingface_model_types.json
+2025-03-01 21:17:52,298 - INFO - Generating test for bert...
+2025-03-01 21:17:52,357 - INFO - Successfully generated test for bert
+2025-03-01 21:17:52,357 - INFO - Running test: test_hf_bert.py...
+2025-03-01 21:18:19,145 - INFO - Successfully executed test: test_hf_bert.py
+2025-03-01 21:18:19,146 - INFO - Generating test for clap...
+2025-03-01 21:18:19,238 - ERROR - Failed to generate test for clap, return code: 1
+2025-03-01 21:18:19,239 - ERROR - STDOUT: Generating test for model family: clap
+Error: Model family 'clap' not found in registry
+
+2025-03-01 21:18:19,239 - ERROR - STDERR: 
+2025-03-01 21:18:19,239 - INFO - Generating test for clip...
+2025-03-01 21:18:19,323 - ERROR - Failed to generate test for clip, return code: 1
+2025-03-01 21:18:19,323 - ERROR - STDOUT: Generating test for model family: clip
+Error: Model family 'clip' not found in registry
+
+2025-03-01 21:18:19,323 - ERROR - STDERR: 
+2025-03-01 21:18:19,323 - INFO - Generating test for detr...
+2025-03-01 21:18:19,406 - ERROR - Failed to generate test for detr, return code: 1
+2025-03-01 21:18:19,406 - ERROR - STDOUT: Generating test for model family: detr
+Error: Model family 'detr' not found in registry
+
+2025-03-01 21:18:19,406 - ERROR - STDERR: 
+2025-03-01 21:18:19,406 - INFO - Generating test for llama...
+2025-03-01 21:18:19,505 - ERROR - Failed to generate test for llama, return code: 1
+2025-03-01 21:18:19,505 - ERROR - STDOUT: Generating test for model family: llama
+Error: Model family 'llama' not found in registry
+
+2025-03-01 21:18:19,505 - ERROR - STDERR: 
+2025-03-01 21:18:19,505 - INFO - Generating test for llava...
+2025-03-01 21:18:19,598 - ERROR - Failed to generate test for llava, return code: 1
+2025-03-01 21:18:19,598 - ERROR - STDOUT: Generating test for model family: llava
+Error: Model family 'llava' not found in registry
+
+2025-03-01 21:18:19,598 - ERROR - STDERR: 
+2025-03-01 21:18:19,598 - INFO - Generating test for llava_next...
+2025-03-01 21:18:19,684 - ERROR - Failed to generate test for llava_next, return code: 1
+2025-03-01 21:18:19,684 - ERROR - STDOUT: Generating test for model family: llava_next
+Error: Model family 'llava_next' not found in registry
+
+2025-03-01 21:18:19,684 - ERROR - STDERR: 
+2025-03-01 21:18:19,684 - INFO - Generating test for qwen2...
+2025-03-01 21:18:19,758 - ERROR - Failed to generate test for qwen2, return code: 1
+2025-03-01 21:18:19,758 - ERROR - STDOUT: Generating test for model family: qwen2
+Error: Model family 'qwen2' not found in registry
+
+2025-03-01 21:18:19,758 - ERROR - STDERR: 
+2025-03-01 21:18:19,759 - INFO - Generating test for t5...
+2025-03-01 21:18:19,839 - ERROR - Failed to generate test for t5, return code: 1
+2025-03-01 21:18:19,839 - ERROR - STDOUT: Generating test for model family: t5
+Error: Model family 't5' not found in registry
+
+2025-03-01 21:18:19,839 - ERROR - STDERR: 
+2025-03-01 21:18:19,839 - INFO - Generating test for vit...
+2025-03-01 21:18:19,922 - ERROR - Failed to generate test for vit, return code: 1
+2025-03-01 21:18:19,922 - ERROR - STDOUT: Generating test for model family: vit
+Error: Model family 'vit' not found in registry
+
+2025-03-01 21:18:19,922 - ERROR - STDERR: 
+2025-03-01 21:18:19,922 - INFO - Generating test for wav2vec2...
+2025-03-01 21:18:19,999 - ERROR - Failed to generate test for wav2vec2, return code: 1
+2025-03-01 21:18:19,999 - ERROR - STDOUT: Generating test for model family: wav2vec2
+Error: Model family 'wav2vec2' not found in registry
+
+2025-03-01 21:18:19,999 - ERROR - STDERR: 
+2025-03-01 21:18:19,999 - INFO - Generating test for whisper...
+2025-03-01 21:18:20,073 - ERROR - Failed to generate test for whisper, return code: 1
+2025-03-01 21:18:20,073 - ERROR - STDOUT: Generating test for model family: whisper
+Error: Model family 'whisper' not found in registry
+
+2025-03-01 21:18:20,073 - ERROR - STDERR: 
+2025-03-01 21:18:20,073 - INFO - Generating test for xclip...
+2025-03-01 21:18:20,159 - ERROR - Failed to generate test for xclip, return code: 1
+2025-03-01 21:18:20,160 - ERROR - STDOUT: Generating test for model family: xclip
+Error: Model family 'xclip' not found in registry
+
+2025-03-01 21:18:20,160 - ERROR - STDERR: 
+2025-03-01 21:18:20,161 - INFO - Summary saved to: /home/barberb/ipfs_accelerate_py/test/generation_results/test_generation_summary_20250301_211752.json

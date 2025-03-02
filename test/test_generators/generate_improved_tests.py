@@ -896,6 +896,9 @@ def extract_implementation_status(results):
     cpu_status = "UNKNOWN"
     cuda_status = "UNKNOWN"
     openvino_status = "UNKNOWN"
+    mps_status = "UNKNOWN"
+    rocm_status = "UNKNOWN"
+    qualcomm_status = "UNKNOWN"
     
     for key, value in status_dict.items():
         if "cpu_" in key and "REAL" in value:
@@ -907,11 +910,42 @@ def extract_implementation_status(results):
             cuda_status = "REAL"
         elif "cuda_" in key and "MOCK" in value:
             cuda_status = "MOCK"
+        elif "cuda_tests" in key and "not available" in str(value).lower():
+            cuda_status = "NOT AVAILABLE"
             
         if "openvino_" in key and "REAL" in value:
             openvino_status = "REAL"
         elif "openvino_" in key and "MOCK" in value:
             openvino_status = "MOCK"
+        elif "openvino_tests" in key and "not installed" in str(value).lower():
+            openvino_status = "NOT INSTALLED"
+            
+        if "mps_" in key and "REAL" in value:
+            mps_status = "REAL"
+        elif "mps_" in key and "MOCK" in value:
+            mps_status = "MOCK"
+        elif "mps_tests" in key and "not available" in str(value).lower():
+            mps_status = "NOT AVAILABLE"
+        elif "mps_tests" in key and "not implemented" in str(value).lower():
+            mps_status = "NOT IMPLEMENTED"
+            
+        if "rocm_" in key and "REAL" in value:
+            rocm_status = "REAL"
+        elif "rocm_" in key and "MOCK" in value:
+            rocm_status = "MOCK"
+        elif "rocm_tests" in key and "not available" in str(value).lower():
+            rocm_status = "NOT AVAILABLE"
+        elif "rocm_tests" in key and "not implemented" in str(value).lower():
+            rocm_status = "NOT IMPLEMENTED"
+            
+        if "qualcomm_" in key and "REAL" in value:
+            qualcomm_status = "REAL"
+        elif "qualcomm_" in key and "MOCK" in value:
+            qualcomm_status = "MOCK"
+        elif "qualcomm_tests" in key and "not available" in str(value).lower():
+            qualcomm_status = "NOT AVAILABLE"
+        elif "qualcomm_tests" in key and "not implemented" in str(value).lower():
+            qualcomm_status = "NOT IMPLEMENTED"
             
     # Also look in examples
     for example in examples:
@@ -932,11 +966,29 @@ def extract_implementation_status(results):
             openvino_status = "REAL"
         elif platform == "OPENVINO" and "MOCK" in impl_type:
             openvino_status = "MOCK"
+            
+        if platform == "MPS" and "REAL" in impl_type:
+            mps_status = "REAL"
+        elif platform == "MPS" and "MOCK" in impl_type:
+            mps_status = "MOCK"
+            
+        if platform == "ROCM" and "REAL" in impl_type:
+            rocm_status = "REAL"
+        elif platform == "ROCM" and "MOCK" in impl_type:
+            rocm_status = "MOCK"
+            
+        if platform == "QUALCOMM" and "REAL" in impl_type:
+            qualcomm_status = "REAL"
+        elif platform == "QUALCOMM" and "MOCK" in impl_type:
+            qualcomm_status = "MOCK"
     
     return {{
         "cpu": cpu_status,
         "cuda": cuda_status,
-        "openvino": openvino_status
+        "openvino": openvino_status,
+        "mps": mps_status,
+        "rocm": rocm_status,
+        "qualcomm": qualcomm_status
     }}
 
 if __name__ == "__main__":
@@ -946,8 +998,10 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser(description='{normalized_name} model test')
         parser.add_argument('--real', action='store_true', help='Force real implementation')
         parser.add_argument('--mock', action='store_true', help='Force mock implementation')
-        parser.add_argument('--platform', type=str, choices=['cpu', 'cuda', 'openvino', 'all'], default='all', 
-                            help='Platform to test (cpu, cuda, openvino, all)')
+        parser.add_argument('--platform', type=str, 
+                           choices=['cpu', 'cuda', 'openvino', 'mps', 'rocm', 'qualcomm', 'all'], 
+                           default='all', 
+                           help='Platform to test (cpu, cuda, openvino, mps, rocm, qualcomm, all)')
         args = parser.parse_args()
         
         print("Starting {normalized_name} test...")
@@ -964,6 +1018,9 @@ if __name__ == "__main__":
         print(f"CPU_STATUS: {{status['cpu']}}")
         print(f"CUDA_STATUS: {{status['cuda']}}")
         print(f"OPENVINO_STATUS: {{status['openvino']}}")
+        print(f"MPS_STATUS: {{status['mps']}}")
+        print(f"ROCM_STATUS: {{status['rocm']}}")
+        print(f"QUALCOMM_STATUS: {{status['qualcomm']}}")
         
         # Print a JSON representation
         print("\\nstructured_results")
@@ -971,7 +1028,15 @@ if __name__ == "__main__":
             "status": status,
             "model_name": results.get("metadata", {{}}).get("model_name", "Unknown"),
             "primary_task": "{primary_task}",
-            "examples": results.get("examples", [])
+            "examples": results.get("examples", []),
+            "hardware_compatibility": {{
+                "cpu": status["cpu"],
+                "cuda": status["cuda"],
+                "openvino": status["openvino"],
+                "mps": status.get("mps", "NOT TESTED"),
+                "rocm": status.get("rocm", "NOT TESTED"),
+                "qualcomm": status.get("qualcomm", "NOT TESTED")
+            }}
         }}))
         
     except KeyboardInterrupt:

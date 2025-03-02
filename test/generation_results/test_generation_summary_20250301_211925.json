@@ -1,0 +1,123 @@
+{
+  "timestamp": "20250301_211925",
+  "total_skillset_modules": 13,
+  "total_model_types": 299,
+  "models_tested": [
+    "bert",
+    "clap",
+    "clip",
+    "detr",
+    "llama",
+    "llava",
+    "llava_next",
+    "qwen2",
+    "t5",
+    "vit",
+    "wav2vec2",
+    "whisper",
+    "xclip"
+  ],
+  "missing_from_official_list": [],
+  "generation_stats": {
+    "total": 13,
+    "successful": 1,
+    "failed": 12,
+    "success_rate": 0.07692307692307693
+  },
+  "execution_stats": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "success_rate": 1.0
+  },
+  "generation_results": [
+    {
+      "model_type": "bert",
+      "success": true,
+      "output_file": "/home/barberb/ipfs_accelerate_py/test/generated_skills/test_hf_bert.py",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "clap",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "clip",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "detr",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "llama",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "llava",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "llava_next",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "qwen2",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "t5",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "vit",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "wav2vec2",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "whisper",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    },
+    {
+      "model_type": "xclip",
+      "success": false,
+      "error": "File not found after bulk generation",
+      "elapsed_time": 0
+    }
+  ],
+  "execution_results": [
+    {
+      "test_file": "/home/barberb/ipfs_accelerate_py/test/generated_skills/test_hf_bert.py",
+      "success": true,
+      "return_code": 0,
+      "elapsed_time": 6.411231756210327,
+      "stdout": "Warning: test utils not available, using mock implementation\nTesting the model on CPU...\nLoading distilroberta-base for CPU inference...\nError loading model: RobertaModel.__init__() got an unexpected keyword argument 'return_dict'\nFalling back to mock implementation\n(MOCK) Created mock BERT tokenizer\n(MOCK) Created mock BERT endpoint for distilroberta-base on cpu\nTesting batch inference on CPU with batch size: 0\nTesting the model on CUDA...\nCUDA utilities imported successfully\nUsing CUDA device: Quadro P4000 (index 0)\nCUDA memory: 7.76GB free / 7.92GB total\nLoading distilroberta-base for CUDA inference on cuda:0...\nDynamic batch size based on available memory: 15\nFailed to load model: RobertaModel.__init__() got an unexpected keyword argument 'return_dict'\nTraceback: Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/hf_bert.py\", line 397, in init_cuda\n    endpoint = self.transformers.AutoModel.from_pretrained(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/.venv/lib/python3.12/site-packages/transformers/models/auto/auto_factory.py\", line 564, in from_pretrained\n    return model_class.from_pretrained(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4096, in from_pretrained\n    model = cls(config, *model_args, **model_kwargs)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: RobertaModel.__init__() got an unexpected keyword argument 'return_dict'\n\nFalling back to mock implementation\nCUDA utilities imported successfully for handler\nProcessing string input with 1 items\nOpenVINO is installed\nTesting the model on OPENVINO...\nError in OPENVINO tests: hf_bert.init_openvino() missing 1 required positional argument: 'openvino_label'\nSaved collected results to /home/barberb/ipfs_accelerate_py/test/generated_skills/collected_results/hf_bert_test_results.json\nTest results differ from expected results!\n- Key 'cpu_batch_speedup' differs: Expected '3.58x', got '5.17x'\n\nWould you like to update the expected results? (y/n)\nError comparing results with /home/barberb/ipfs_accelerate_py/test/generated_skills/expected_results/hf_bert_test_results.json: EOF when reading a line\nCreating new expected results file.\nTest completed successfully\n",
+      "stderr": "huggingface/tokenizers: The current process just got forked, after parallelism has already been used. Disabling parallelism to avoid deadlocks...\nTo disable this warning, you can either:\n\t- Avoid using `tokenizers` before the fork if possible\n\t- Explicitly set the environment variable TOKENIZERS_PARALLELISM=(true | false)\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/generated_skills/test_hf_bert.py\", line 846, in _run_platform_test\n    endpoint, processor, handler, queue, batch_size = init_method(\n                                                      ^^^^^^^^^^^^\nTypeError: hf_bert.init_openvino() missing 1 required positional argument: 'openvino_label'\n"
+    }
+  ]
+}

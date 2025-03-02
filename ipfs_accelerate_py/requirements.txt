@@ -43,3 +43,7 @@ websocket
 websocket-client
 anthropic
 google-generativeai
+pyarrow
+pandas
+datasets
+duckdb
