@@ -1,0 +1,122 @@
+{
+  "results": {
+    "pipeline_cuda": {
+      "model": "bert-base-uncased",
+      "device": "cuda",
+      "task": "fill-mask",
+      "class": "BertForMaskedLM",
+      "pipeline_success": true,
+      "pipeline_avg_time": 0.010031302769978842,
+      "pipeline_min_time": 0.009520530700683594,
+      "pipeline_max_time": 0.01102447509765625,
+      "pipeline_load_time": 40.948771238327026,
+      "pipeline_error_type": "none"
+    },
+    "from_pretrained_cuda": {
+      "model": "bert-base-uncased",
+      "device": "cuda",
+      "task": "fill-mask",
+      "class": "BertForMaskedLM",
+      "from_pretrained_success": true,
+      "from_pretrained_avg_time": 0.008558114369710287,
+      "from_pretrained_min_time": 0.006712913513183594,
+      "from_pretrained_max_time": 0.009623289108276367,
+      "tokenizer_load_time": 0.18070697784423828,
+      "model_load_time": 0.6707127094268799,
+      "model_size_mb": 417.7638931274414,
+      "from_pretrained_error_type": "none",
+      "predictions": [
+        {
+          "token": "little",
+          "probability": 0.10617635399103165
+        },
+        {
+          "token": "big",
+          "probability": 0.06955324113368988
+        },
+        {
+          "token": "small",
+          "probability": 0.0475974902510643
+        },
+        {
+          "token": "startled",
+          "probability": 0.023747291415929794
+        },
+        {
+          "token": "sleeping",
+          "probability": 0.02024276927113533
+        }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "method": "pipeline() on cuda",
+      "input": "The quick brown fox jumps over the [MASK] dog.",
+      "output_preview": "[{'score': 0.10617641359567642, 'token': 2210, 'token_str': 'little', 'sequence': 'the quick brown fox jumps over the little dog.'}, {'score': 0.06955327838659286, 'token': 2502, 'token_str': 'big', '..."
+    },
+    {
+      "method": "from_pretrained() on cuda",
+      "input": "The quick brown fox jumps over the [MASK] dog.",
+      "predictions": [
+        {
+          "token": "little",
+          "probability": 0.10617635399103165
+        },
+        {
+          "token": "big",
+          "probability": 0.06955324113368988
+        },
+        {
+          "token": "small",
+          "probability": 0.0475974902510643
+        },
+        {
+          "token": "startled",
+          "probability": 0.023747291415929794
+        },
+        {
+          "token": "sleeping",
+          "probability": 0.02024276927113533
+        }
+      ]
+    }
+  ],
+  "performance": {
+    "pipeline_cuda": {
+      "avg_time": 0.010031302769978842,
+      "min_time": 0.009520530700683594,
+      "max_time": 0.01102447509765625,
+      "load_time": 40.948771238327026,
+      "num_runs": 3
+    },
+    "from_pretrained_cuda": {
+      "avg_time": 0.008558114369710287,
+      "min_time": 0.006712913513183594,
+      "max_time": 0.009623289108276367,
+      "tokenizer_load_time": 0.18070697784423828,
+      "model_load_time": 0.6707127094268799,
+      "model_size_mb": 417.7638931274414,
+      "num_runs": 3
+    }
+  },
+  "hardware": {
+    "cpu": true,
+    "cuda": true,
+    "cuda_version": "12.4",
+    "cuda_devices": 1,
+    "mps": false,
+    "openvino": true
+  },
+  "metadata": {
+    "model": "bert-base-uncased",
+    "task": "fill-mask",
+    "class": "BertForMaskedLM",
+    "description": "BERT base model (uncased)",
+    "timestamp": "2025-03-01T16:54:12.692089",
+    "has_transformers": true,
+    "has_torch": true,
+    "has_tokenizers": true,
+    "has_sentencepiece": true
+  }
+}

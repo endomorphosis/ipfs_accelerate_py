@@ -1,0 +1,16 @@
+{
+  "results": {
+    "pipeline": {
+      "success": true,
+      "model": "bert-base-uncased"
+    },
+    "from_pretrained": {
+      "success": true,
+      "model": "bert-base-uncased"
+    }
+  },
+  "metadata": {
+    "model": "bert-base-uncased",
+    "timestamp": "2025-03-01T17:25:19.549255"
+  }
+}

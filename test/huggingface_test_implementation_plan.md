@@ -1,248 +1,171 @@
-# Hugging Face Test Implementation Plan
+# Hugging Face Model Test Implementation Plan
 
-This document outlines a strategic plan for implementing tests for remaining Hugging Face model types, prioritized by importance, usage frequency, and pipeline coverage. The plan is divided into implementation phases to focus development efforts most efficiently.
+## Overview
 
-## Current Implementation Status
-- **Models with Implemented Tests**: 127+ out of 300
-- **Implementation Rate**: 42.3%
-- **Models Needing Implementation**: 173 models
+This document outlines our approach to testing Hugging Face models in the IPFS Accelerate Python framework. Instead of generating individual tests for each model, our optimized approach focuses on testing transformer classes, allowing multiple models to be tested with the same code.
 
-## Implementation Priorities by Pipeline
+## Test Architecture - Class-Based Approach
 
-### Phase 1: High-Priority Models (Critical Pipeline Tasks)
+The key insight is that models sharing the same architecture class can be tested with the same code. For example, all BERT variants use `BertForMaskedLM`, all GPT variants use `GPTForCausalLM`, etc.
 
-These models represent critical capabilities with high usage and should be implemented first:
+### Benefits of a Class-Based Approach:
 
-#### Text Generation Models
-Text generation models are central to many applications and have high usage rates.
+1. **Efficiency**: One test file per transformer class instead of per model
+2. **Maintainability**: Updates to test logic only need to be made in one place
+3. **Consistency**: All models of the same class are tested identically
+4. **Scalability**: Adding new models of existing classes requires no new code
 
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| falcon | text-generation | Critical | ✅ Implemented |
-| gemma | text-generation | Critical | ✅ Implemented |
-| mamba | text-generation | Critical | ✅ Implemented |
-| phi3 | text-generation | Critical | ✅ Implemented |
-| olmo | text-generation | Critical | Not Implemented |
-| starcoder2 | text-generation | Critical | ✅ Implemented |
-| codellama | text-generation | High | ✅ Implemented |
-| qwen3 | text-generation | High | ✅ Implemented |
-| phi4 | text-generation | High | ✅ Implemented |
+## Transformers Class Map
 
-#### Multimodal Visual-Text Models
-Visual-language models represent cutting-edge AI capabilities with increasing adoption.
+We will organize tests based on core Hugging Face architecture classes:
 
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| blip | image-to-text, visual-question-answering | Critical | ✅ Implemented |
-| blip-2 | image-to-text, visual-question-answering | Critical | ✅ Implemented |
-| fuyu | visual-question-answering | Critical | ✅ Implemented |
-| instructblip | image-to-text, visual-question-answering | High | ✅ Implemented |
-| paligemma | image-to-text, visual-question-answering | High | ✅ Implemented |
-| idefics2 | image-to-text, visual-question-answering | High | ✅ Implemented |
-| kosmos-2 | image-to-text, visual-question-answering | High | ✅ Implemented |
-| qwen3_vl | image-to-text, visual-question-answering | High | Not Implemented |
-
-#### Vision Models
-Vision models provide essential capabilities for image understanding.
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| sam | image-segmentation | Critical | ✅ Implemented |
-| beit | image-classification | High | ✅ Implemented |
-| dinov2 | image-classification, feature-extraction | High | ✅ Implemented |
-| swinv2 | image-classification | High | Not Implemented |
-| vit_mae | image-classification | High | Not Implemented |
-| convnextv2 | image-classification | High | ✅ Implemented |
-| vitdet | object-detection | High | Not Implemented |
-| segformer | image-segmentation | High | ✅ Implemented |
-| owlvit | object-detection, visual-question-answering | High | ✅ Implemented |
-
-#### Audio Models
-Audio processing is increasingly important for multimodal AI applications.
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| musicgen | text-to-audio | Critical | ✅ Implemented |
-| speech_to_text | automatic-speech-recognition | High | ✅ Implemented |
-| speecht5 | text-to-audio, automatic-speech-recognition | High | ✅ Implemented |
-| wavlm | automatic-speech-recognition | High | ✅ Implemented |
-| qwen2_audio | automatic-speech-recognition, text-to-audio | High | ✅ Implemented |
-| bark | text-to-audio | High | ✅ Implemented |
-
-### Phase 2: Medium-Priority Models
-
-These models have moderate usage or provide specialized capabilities:
-
-#### Embedding and Understanding Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| ibert | fill-mask, text-classification | Medium | Not Implemented |
-| megatron-bert | fill-mask, text-classification | Medium | Not Implemented |
-| qdqbert | fill-mask, question-answering | Medium | Not Implemented |
-| rembert | fill-mask, text-classification | Medium | Not Implemented |
-| luke | token-classification, question-answering | Medium | Not Implemented |
-| realm | feature-extraction, question-answering | Medium | Not Implemented |
-| roberta-prelayernorm | fill-mask, text-classification | Medium | Not Implemented |
-| siglip | image-classification, feature-extraction | Medium | Not Implemented |
-| perceiver | image-classification, feature-extraction | Medium | Not Implemented |
-| xmod | fill-mask, text-classification | Medium | Not Implemented |
-
-#### Text2Text and Specialized Language Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| bigbird_pegasus | summarization, text2text-generation | Medium | Not Implemented |
-| longt5 | text2text-generation, summarization | Medium | Not Implemented |
-| pegasus_x | summarization, text2text-generation | Medium | Not Implemented |
-| plbart | text2text-generation | Medium | Not Implemented |
-| prophetnet | text2text-generation, summarization | Medium | Not Implemented |
-| switch_transformers | text2text-generation | Medium | Not Implemented |
-| umt5 | text2text-generation, summarization | Medium | Not Implemented |
-| xlm-prophetnet | text2text-generation, summarization | Medium | Not Implemented |
-
-#### Document Understanding Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| layoutlmv2 | document-question-answering, token-classification | Medium | Not Implemented |
-| layoutlmv3 | document-question-answering, token-classification | Medium | ✅ Implemented |
-| markuplm | token-classification, document-question-answering | Medium | Not Implemented |
-| donut-swin | document-question-answering, image-to-text | Medium | ✅ Implemented |
-| nougat | document-question-answering, image-to-text | Medium | Not Implemented |
-| pix2struct | image-to-text, document-question-answering | Medium | ✅ Implemented |
-| udop | document-question-answering, image-to-text | Medium | Not Implemented |
-| tapas | table-question-answering | Medium | ✅ Implemented |
-
-#### Specialized Vision Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| depth_anything | depth-estimation | Medium | ✅ Implemented |
-| dpt | depth-estimation | Medium | ✅ Implemented |
-| zoedepth | depth-estimation | Medium | ✅ Implemented |
-| conditional_detr | object-detection | Medium | Not Implemented |
-| deformable_detr | object-detection | Medium | Not Implemented |
-| mask2former | image-segmentation | Medium | ✅ Implemented |
-| maskformer | image-segmentation | Medium | Not Implemented |
-| upernet | image-segmentation | Medium | ✅ Implemented |
-
-### Phase 3: Lower-Priority Models
-
-These models can be implemented after higher-priority models are completed:
-
-#### Specialized Language Model Variants
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| fnet | fill-mask, text-classification | Low | Not Implemented |
-| nezha | fill-mask, text-classification | Low | Not Implemented |
-| nystromformer | fill-mask, text-classification | Low | Not Implemented |
-| funnel | fill-mask, text-classification, token-classification | Low | Not Implemented |
-| xglm | text-generation | Low | Not Implemented |
-| reformer | text-generation, question-answering | Low | Not Implemented |
-| transfo-xl | text-generation | Low | Not Implemented |
-| canine | token-classification, text-classification | Low | Not Implemented |
-| mega | fill-mask, text-classification | Low | Not Implemented |
-
-#### Translation/Multilingual Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| fsmt | translation_XX_to_YY | Low | Not Implemented |
-| lilt | translation_XX_to_YY | Low | Not Implemented |
-| m2m_100 | translation_XX_to_YY | Low | Not Implemented |
-| marian | translation_XX_to_YY | Low | Not Implemented |
-| nat | text2text-generation, translation_XX_to_YY | Low | Not Implemented |
-| nllb-moe | translation_XX_to_YY | Low | Not Implemented |
-| seamless_m4t | translation_XX_to_YY, automatic-speech-recognition, text-to-audio | Low | Not Implemented |
-| seamless_m4t_v2 | translation_XX_to_YY, automatic-speech-recognition, text-to-audio | Low | Not Implemented |
-
-#### Time Series and Specialized Models
-
-| Model Type | Pipeline Task | Priority | Implementation Status |
-|------------|---------------|----------|------------------------|
-| autoformer | time-series-prediction | Low | ✅ Implemented |
-| informer | time-series-prediction | Low | ✅ Implemented |
-| patchtsmixer | time-series-prediction | Low | ✅ Implemented |
-| patchtst | time-series-prediction | Low | ✅ Implemented |
-| time_series_transformer | time-series-prediction | Low | ✅ Implemented |
-| esm | feature-extraction, protein-folding | Low | ✅ Implemented |
+| Test File | Transformer Class | Example Models |
+|-----------|-------------------|----------------|
+| test_hf_bert.py | BertForMaskedLM | bert-base-uncased, bert-large-uncased, distilbert-base-uncased |
+| test_hf_gpt.py | GPT2LMHeadModel | gpt2, gpt2-medium, distilgpt2 |
+| test_hf_t5.py | T5ForConditionalGeneration | t5-small, t5-base, t5-large |
+| test_hf_llama.py | LlamaForCausalLM | meta-llama/Llama-2-7b, meta-llama/Llama-2-13b |
+| test_hf_vit.py | ViTForImageClassification | google/vit-base-patch16-224, facebook/deit-base |
+| test_hf_whisper.py | WhisperForConditionalGeneration | openai/whisper-tiny, openai/whisper-base |
+| test_hf_sam.py | SamModel | facebook/sam-vit-base, facebook/sam-vit-large |
+| test_hf_llava.py | LlavaForConditionalGeneration | llava-hf/llava-1.5-7b-hf |
 
 ## Implementation Approach
 
-For implementing these tests, we recommend the following approach:
+Each test file will:
 
-1. **Templated Implementation**: Use existing test files like `test_hf_bert.py` as templates, since they contain comprehensive implementations for multiple hardware backends (CPU, CUDA, OpenVINO).
+1. **Define a base test class** for the transformer architecture
+2. **Accept a model_id parameter** to specify which model to test
+3. **Handle common dependencies** required by all models of that class
+4. **Provide appropriate test inputs** for the model type
+5. **Include test methods** for both pipeline and direct API usage
 
-2. **Incremental Testing**: Focus first on making the CPU version work, then add GPU (CUDA) support, and finally OpenVINO support.
-
-3. **Minimal Dependencies**: Keep test dependencies minimal to ensure tests can run even when optional packages are not installed.
-
-4. **Consistent Structure**: Maintain a consistent structure across all test files:
-   - Standard imports section
-   - Model-specific configuration and setup
-   - Hardware-specific implementation methods
-   - Test class with consistent methods
-   - Result collection and validation
-
-5. **Error Handling**: Implement robust error handling to provide meaningful error messages and ensure graceful degradation.
-
-## Pipeline Coverage Analysis
-
-The implementation plan will improve pipeline coverage as follows:
-
-| Pipeline Task | Current Coverage | Phase 1 Coverage | Full Plan Coverage |
-|---------------|------------------|------------------|-------------------|
-| text-generation | 28% | 52% | 95% |
-| image-to-text | 12% | 47% | 85% |
-| visual-question-answering | 14% | 51% | 88% |
-| image-classification | 15% | 35% | 75% |
-| image-segmentation | 9% | 45% | 91% |
-| automatic-speech-recognition | 10% | 40% | 80% |
-| text-to-audio | 0% | 40% | 80% |
-| feature-extraction | 32% | 47% | 85% |
-| fill-mask | 35% | 35% | 95% |
-| question-answering | 40% | 40% | 90% |
-| document-question-answering | 10% | 10% | 95% |
-| table-question-answering | 0% | 0% | 100% |
-| time-series-prediction | 0% | 0% | 100% |
-
-## Implementation Timeline
-
-Based on current development velocity, we recommend the following timeline:
-
-- **Phase 1 (Critical Models)**: Complete in 3-4 weeks
-- **Phase 2 (Medium-Priority Models)**: Complete in 4-6 weeks after Phase 1
-- **Phase 3 (Lower-Priority Models)**: Complete in 6-8 weeks after Phase 2
-
-## Test Template Generation Script
-
-To facilitate rapid test implementation, we recommend creating a script that can generate test file templates for each model type. Example:
+### Example Structure:
 
 ```python
-def generate_model_test_template(model_type, pipeline_tasks):
-    """Generate a test file template for a specific model type.
+class TestBertModels:
+    """Base test class for all BERT-family models"""
     
-    Args:
-        model_type (str): The HuggingFace model type (e.g., "bert", "gpt2")
-        pipeline_tasks (list): List of pipeline tasks this model can perform
-    
-    Returns:
-        str: Generated test file content
-    """
-    # Load the template file
-    with open("templates/model_test_template.py", "r") as f:
-        template = f.read()
-    
-    # Replace placeholder values
-    template = template.replace("{{MODEL_TYPE}}", model_type)
-    template = template.replace("{{MODEL_CLASS}}", model_type.upper())
-    template = template.replace("{{PIPELINE_TASKS}}", ", ".join(pipeline_tasks))
-    
-    # Add more model-specific customizations as needed
-    
-    return template
+    def __init__(self, model_id=None):
+        self.model_id = model_id or "bert-base-uncased"  # Default model
+        self.task = "fill-mask"
+        self.dependencies = ["tokenizers>=0.11.0", "sentencepiece"]
+        
+    def run_tests(self, hardware="cpu"):
+        """Run tests for specified model on specified hardware"""
+        results = {}
+        results.update(self.test_pipeline(hardware))
+        results.update(self.test_from_pretrained(hardware))
+        return results
+        
+    def test_pipeline(self, hardware="cpu"):
+        # Test code that works for all BERT models
+        # ...
+        
+    def test_from_pretrained(self, hardware="cpu"):
+        # Test code that works for all BERT models
+        # ...
 ```
 
-This script could be expanded to automatically pull model information from the HuggingFace API and generate appropriate test files based on model capabilities.
+## Command-Line Usage
+
+The test framework will support:
+
+```bash
+# Test specific model with specific class
+python test_hf_bert.py --model bert-base-uncased
+
+# Test all models of a specific class
+python test_hf_bert.py --all-models
+
+# Test all models on all available hardware
+python test_hf_bert.py --all-models --all-hardware
+
+# Test specific model and report detailed performance metrics
+python test_hf_bert.py --model bert-base-uncased --performance
+```
+
+## Dependency Management
+
+Dependencies will be tracked per class rather than per model:
+
+```python
+CLASS_DEPENDENCIES = {
+    "BertForMaskedLM": ["tokenizers>=0.11.0", "sentencepiece"],
+    "GPT2LMHeadModel": ["regex"],
+    "LlamaForCausalLM": ["sentencepiece", "tokenizers>=0.13.3", "accelerate>=0.20.3"],
+    # ...
+}
+```
+
+Additional model-specific dependencies can be specified in a configuration file:
+
+```json
+{
+    "meta-llama/Llama-2-7b-hf": {
+        "additional_deps": ["bitsandbytes>=0.39.0"],
+        "requires_remote_code": true
+    }
+}
+```
+
+## Test Discovery and Registration
+
+To maintain a comprehensive catalog of testable models:
+
+1. Create a registry of model class mappings
+2. Use the Hugging Face API to find popular models for each class
+3. Generate a comprehensive model database with class information
+4. Allow tests to query compatible models for their class
+
+## Testing Matrix
+
+Instead of testing every model individually, we will:
+
+1. Ensure each transformer class has test coverage
+2. Select representative models from each class for regular testing
+3. Validate new models only need to be tested if they introduce new architecture classes
+
+## Reporting Structure
+
+Reports will be organized by class rather than by model:
+
+```
+test_results/
+├── by_class/
+│   ├── bert_models.json
+│   ├── gpt_models.json
+│   └── t5_models.json
+├── by_hardware/
+│   ├── cpu_results.json
+│   ├── cuda_results.json
+│   └── openvino_results.json
+└── summary.json
+```
+
+## Implementation Status
+
+Current test implementation status:
+
+| Model Class | Models Covered | Implementation |
+|-------------|----------------|---------------|
+| BertForMaskedLM | bert-base, distilbert | Completed |
+| GPT2LMHeadModel | gpt2, gpt2-medium | Completed |
+| LlamaForCausalLM | Llama-2-7b | In Progress |
+| ViTForImageClassification | vit-base | Completed |
+| WhisperForConditionalGeneration | whisper-tiny | Completed |
+| SamModel | sam-vit-base | In Progress |
+| T5ForConditionalGeneration | t5-small | Completed |
+| LlavaForConditionalGeneration | llava-1.5-7b | In Progress |
+
+## Next Steps
+
+1. **Create Base Test Classes**: Develop base test classes for each transformer architecture
+2. **Build Model Registry**: Create a comprehensive registry mapping models to classes
+3. **Implement Test Runner**: Develop a unified test runner for all model classes
+4. **Enhance Reporting**: Create consolidated reports showing coverage by class
+5. **Optimize Dependencies**: Refine dependency management by architecture class
+
+## Conclusion
+
+By organizing tests by transformer class rather than individual models, we can significantly reduce code duplication, improve maintainability, and ensure consistent test coverage. This approach allows us to efficiently test hundreds of models with a small set of test files while maintaining high test quality.

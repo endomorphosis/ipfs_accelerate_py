@@ -16,7 +16,9 @@ The test framework includes:
 
 - [MODEL_TESTING_GUIDE.md](MODEL_TESTING_GUIDE.md) - Complete guide to model testing
 - [MODEL_TESTING_README.md](MODEL_TESTING_README.md) - Detailed model test documentation
-- [MODEL_IMPLEMENTATION_PROGRESS.md](MODEL_IMPLEMENTATION_PROGRESS.md) - Implementation status tracker
+- [MODEL_TESTING_PROGRESS.md](MODEL_TESTING_PROGRESS.md) - Implementation status and progress
+- [MODEL_DEPENDENCIES.md](MODEL_DEPENDENCIES.md) - Model dependency tracking matrix
+- [huggingface_test_implementation_plan.md](huggingface_test_implementation_plan.md) - Implementation priorities
 - [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
 - [API_IMPLEMENTATION_STATUS.md](API_IMPLEMENTATION_STATUS.md) - API implementation status
 
@@ -25,6 +27,7 @@ The test framework includes:
 The framework includes several tools for generating new tests:
 
 - [generate_model_tests.py](generate_model_tests.py) - Primary test generator for HuggingFace models
+- [simple_model_test_generator.py](simple_model_test_generator.py) - Enhanced generator with dependency tracking
 - [generate_missing_test_files.py](generate_missing_test_files.py) - Older test generator
 - [generate_comprehensive_tests.py](generate_comprehensive_tests.py) - Advanced test generator (WIP)
 
@@ -62,34 +65,38 @@ python test_hardware_backend.py
 
 ## Current Test Coverage (March 2025)
 
-- **HuggingFace Models**: 127+ of 300 models (42.3%)
+- **HuggingFace Models**: 137 of 299 models (45.8%)
 - **API Backends**: 11 API types with comprehensive testing
 - **Hardware Support**: CPU (100%), CUDA (93.8%), OpenVINO (89.6%)
+- **Test Quality**: Dual-method testing, dependency tracking, remote code support
 
 ## Generating New Tests
 
 To generate tests for missing models:
 
 ```bash
-# List all missing tests
+# Using the primary generator
 python generate_model_tests.py --list-only
-
-# Generate high-priority model tests
 python generate_model_tests.py --models layoutlmv2 nougat swinv2 vit_mae
-
-# Generate tests by category
 python generate_model_tests.py --category vision --limit 5
+
+# Using the enhanced generator with dependency tracking
+python simple_model_test_generator.py --batch  # Generate batch of tests with dependency tracking
+python simple_model_test_generator.py --model llama-3-70b-instruct --task text-generation  # Specific model
 ```
 
 ## Recent Improvements
 
 Recent improvements to the testing framework include:
 
-1. **Enhanced Test Generator** - The new test generator creates more comprehensive tests with better coverage
-2. **Batch Testing Support** - All generated tests now include batch processing validation
-3. **Advanced Error Handling** - Improved degradation mechanisms for handling missing dependencies
-4. **Performance Monitoring** - Added inference time and memory usage tracking
-5. **Documentation Updates** - Expanded documentation with usage guides and status tracking
+1. **Dual-Method Testing** - Tests now cover both pipeline() and from_pretrained() methods
+2. **Dependency Tracking** - Automatic detection and documentation of model dependencies
+3. **Remote Code Support** - Proper handling of models requiring custom code execution
+4. **Enhanced Mock Objects** - Sophisticated mock implementations for various dependencies
+5. **Batch Testing Support** - All generated tests now include batch processing validation
+6. **Advanced Error Handling** - Improved degradation mechanisms for handling missing dependencies
+7. **Performance Monitoring** - Added inference time and memory usage tracking
+8. **Documentation Updates** - Expanded documentation with dependency matrix and progress tracking
 
 ## Contributing
 

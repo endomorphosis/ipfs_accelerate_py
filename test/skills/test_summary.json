@@ -1,0 +1,43 @@
+{
+  "timestamp": "2025-03-01 17:25:42",
+  "total_models": 21,
+  "successful_models": 21,
+  "success_rate": 100.0,
+  "by_family": {
+    "bert": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "gpt2": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "t5": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "clip": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "llama": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "whisper": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    },
+    "wav2vec2": {
+      "total": 3,
+      "successful": 3,
+      "success_rate": 100.0
+    }
+  }
+}

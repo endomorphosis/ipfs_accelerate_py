@@ -1,4 +1,36 @@
+#!/usr/bin/env python
+"""
+Regenerate the Gemini API implementation with proper queue and backoff functionality.
+This script completely replaces the current implementation with a clean one.
+"""
+
 import os
+import sys
+from pathlib import Path
+
+def main():
+    """Generate a minimal but complete Gemini API implementation"""
+    # Path to the Gemini API implementation
+    src_dir = Path(__file__).parent.parent / "ipfs_accelerate_py" / "api_backends"
+    gemini_file = src_dir / "gemini.py"
+    
+    if not os.path.exists(src_dir):
+        print(f"Error: API backends directory not found at {src_dir}")
+        return 1
+    
+    # Create backup if file exists
+    if gemini_file.exists():
+        backup_file = gemini_file.with_suffix('.py.broken')
+        try:
+            with open(gemini_file, 'r') as src, open(backup_file, 'w') as dst:
+                dst.write(src.read())
+            print(f"Created backup at {backup_file}")
+        except Exception as e:
+            print(f"Error creating backup: {e}")
+            return 1
+    
+    # New implementation with proper queue and backoff
+    implementation = '''import os
 import json
 import time
 import uuid
@@ -501,3 +533,17 @@ class gemini:
         except Exception as e:
             logger.error(f"Error testing Gemini endpoint: {e}")
             return False
+'''
+    
+    # Write new implementation
+    try:
+        with open(gemini_file, 'w') as f:
+            f.write(implementation)
+        print(f"Successfully wrote new Gemini API implementation to {gemini_file}")
+        return 0
+    except Exception as e:
+        print(f"Error writing implementation: {e}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

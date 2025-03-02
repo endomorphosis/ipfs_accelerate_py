@@ -1287,7 +1287,7 @@ class gemini:
                             result = response.json()
                         
                         # Update tracking with response
-                        if self.request_tracking:
+                        if self.request_tracking and request_id in self.recent_requests:
                             self.recent_requests[request_id]["completed"] = True
                             self.recent_requests[request_id]["success"] = True
                             
@@ -1302,7 +1302,7 @@ class gemini:
                         
                         if retry_count > self.max_retries:
                             # Update tracking with error
-                            if self.request_tracking:
+                            if self.request_tracking and request_id in self.recent_requests:
                                 self.recent_requests[request_id]["completed"] = True
                                 self.recent_requests[request_id]["success"] = False
                                 self.recent_requests[request_id]["error"] = str(e)
@@ -1321,7 +1321,7 @@ class gemini:
                     
                     except Exception as e:
                         # Update tracking with error
-                        if self.request_tracking:
+                        if self.request_tracking and request_id in self.recent_requests:
                             self.recent_requests[request_id]["completed"] = True
                             self.recent_requests[request_id]["success"] = False
                             self.recent_requests[request_id]["error"] = str(e)

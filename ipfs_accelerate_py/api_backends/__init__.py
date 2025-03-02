@@ -34,6 +34,14 @@ for module_name in module_names:
             globals()[module_name] = class_obj
             # Store in dictionary
             api_modules[module_name] = class_obj
+        # The groq module has a class named 'groq', make sure it's properly imported
+        elif module_name == "groq" and hasattr(module, "groq"):
+            class_obj = getattr(module, "groq")
+            # Add to globals to support "from .module import module" syntax
+            globals()[module_name] = class_obj
+            # Store in dictionary
+            api_modules[module_name] = class_obj
+            logger.info(f"Successfully imported groq module")
         else:
             logger.warning(f"Module {module_name} imported but class {module_name} not found in it")
     except ImportError as e:

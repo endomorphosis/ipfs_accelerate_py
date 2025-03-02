@@ -1,1395 +1,891 @@
-# Standard library imports first
+#!/usr/bin/env python3
+"""
+Class-based test file for all BERT-family models.
+This file provides a unified testing interface for:
+- BertForMaskedLM
+- DistilBertForMaskedLM
+- RobertaForMaskedLM
+"""
+
 import os
 import sys
 import json
 import time
 import datetime
 import traceback
-from unittest.mock import patch, MagicMock
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Third-party imports next
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
 import numpy as np
 
-# Use absolute path setup
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-
-# Try/except pattern for importing optional dependencies
+# Try to import torch
 try:
     import torch
+    HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
-    print("Warning: torch not available, using mock implementation")
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
+# Try to import transformers
 try:
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Import the module to test
-from ipfs_accelerate_py.worker.skillset.hf_bert import hf_bert
 
-# Define required methods to add to hf_bert
-def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-    """
-    Initialize BERT model with CUDA support.
+# Try to import tokenizers
+try:
+    import tokenizers
+    HAS_TOKENIZERS = True
+except ImportError:
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
+
+
+# Try to import sentencepiece
+try:
+    import sentencepiece
+    HAS_SENTENCEPIECE = True
+except ImportError:
+    sentencepiece = MagicMock()
+    HAS_SENTENCEPIECE = False
+    logger.warning("sentencepiece not available, using mock")
+
+
+# Mock implementations for missing dependencies
+if not HAS_TOKENIZERS:
+    class MockTokenizer:
+        def __init__(self, *args, **kwargs):
+            self.vocab_size = 32000
+            
+        def encode(self, text, **kwargs):
+            return {"ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}
+            
+        def decode(self, ids, **kwargs):
+            return "Decoded text from mock"
+            
+        @staticmethod
+        def from_file(vocab_filename):
+            return MockTokenizer()
+
+    tokenizers.Tokenizer = MockTokenizer
+
+
+if not HAS_SENTENCEPIECE:
+    class MockSentencePieceProcessor:
+        def __init__(self, *args, **kwargs):
+            self.vocab_size = 32000
+            
+        def encode(self, text, out_type=str):
+            return [1, 2, 3, 4, 5]
+            
+        def decode(self, ids):
+            return "Decoded text from mock"
+            
+        def get_piece_size(self):
+            return 32000
+            
+        @staticmethod
+        def load(model_file):
+            return MockSentencePieceProcessor()
+
+    sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
+
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
     
-    Args:
-        model_name: Name or path of the model
-        model_type: Type of model (e.g., "feature-extraction")
-        device_label: CUDA device label (e.g., "cuda:0")
-        
-    Returns:
-        tuple: (endpoint, tokenizer, handler, queue, batch_size)
-    """
-    import traceback
-    import sys
-    import unittest.mock
-    import time
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
     
-    # Try to import the necessary utility functions
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
     try:
-        sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-        import utils as test_utils
-        
-        # Check if CUDA is really available
-        import torch
-        if not torch.cuda.is_available():
-            print("CUDA not available, falling back to mock implementation")
-            tokenizer = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda text: None
-            return endpoint, tokenizer, handler, None, 0
-            
-        # Get the CUDA device
-        device = test_utils.get_cuda_device(device_label)
-        if device is None:
-            print("Failed to get valid CUDA device, falling back to mock implementation")
-            tokenizer = unittest.mock.MagicMock()
-            endpoint = unittest.mock.MagicMock()
-            handler = lambda text: None
-            return endpoint, tokenizer, handler, None, 0
-        
-        # Try to load the real model with CUDA
-        try:
-            from transformers import AutoModel, AutoTokenizer
-            print(f"Attempting to load real BERT model {model_name} with CUDA support")
-            
-            # First try to load tokenizer
-            try:
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                print(f"Successfully loaded tokenizer for {model_name}")
-            except Exception as tokenizer_err:
-                print(f"Failed to load tokenizer, creating simulated one: {tokenizer_err}")
-                tokenizer = unittest.mock.MagicMock()
-                tokenizer.is_real_simulation = True
-                
-            # Try to load model
-            try:
-                model = AutoModel.from_pretrained(model_name)
-                print(f"Successfully loaded model {model_name}")
-                # Move to device and optimize
-                model = test_utils.optimize_cuda_memory(model, device, use_half_precision=True)
-                model.eval()
-                print(f"Model loaded to {device} and optimized for inference")
-                
-                # Create a real handler function
-                def real_handler(text):
-                    try:
-                        start_time = time.time()
-                        # Tokenize the input
-                        inputs = tokenizer(text, return_tensors="pt")
-                        # Move to device
-                        inputs = {k: v.to(device) for k, v in inputs.items()}
-                        
-                        # Track GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_before = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                        else:
-                            gpu_mem_before = 0
-                            
-                        # Run inference
-                        with torch.no_grad():
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                            # Get embeddings from model
-                            outputs = model(**inputs)
-                            if hasattr(torch.cuda, "synchronize"):
-                                torch.cuda.synchronize()
-                        
-                        # Extract embeddings (handling different model outputs)
-                        if hasattr(outputs, "last_hidden_state"):
-                            # Get sentence embedding from last_hidden_state
-                            embedding = outputs.last_hidden_state.mean(dim=1)  # Mean pooling
-                        elif hasattr(outputs, "pooler_output"):
-                            # Use pooler output if available
-                            embedding = outputs.pooler_output
-                        else:
-                            # Fallback to first output
-                            embedding = outputs[0].mean(dim=1)
-                            
-                        # Measure GPU memory
-                        if hasattr(torch.cuda, "memory_allocated"):
-                            gpu_mem_after = torch.cuda.memory_allocated(device) / (1024 * 1024)
-                            gpu_mem_used = gpu_mem_after - gpu_mem_before
-                        else:
-                            gpu_mem_used = 0
-                            
-                        return {
-                            "embedding": embedding.cpu(),  # Return as CPU tensor
-                            "implementation_type": "REAL",
-                            "inference_time_seconds": time.time() - start_time,
-                            "gpu_memory_mb": gpu_mem_used,
-                            "device": str(device)
-                        }
-                    except Exception as e:
-                        print(f"Error in real CUDA handler: {e}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        # Return fallback embedding
-                        return {
-                            "embedding": torch.zeros((1, 768)),
-                            "implementation_type": "REAL",
-                            "error": str(e),
-                            "device": str(device),
-                            "is_error": True
-                        }
-                
-                return model, tokenizer, real_handler, None, 8
-                
-            except Exception as model_err:
-                print(f"Failed to load model with CUDA, will use simulation: {model_err}")
-                # Fall through to simulated implementation
-        except ImportError as import_err:
-            print(f"Required libraries not available: {import_err}")
-            # Fall through to simulated implementation
-            
-        # Simulate a successful CUDA implementation for testing
-        print("Creating simulated REAL implementation for demonstration purposes")
-        
-        # Create a realistic model simulation
-        endpoint = unittest.mock.MagicMock()
-        endpoint.to.return_value = endpoint  # For .to(device) call
-        endpoint.half.return_value = endpoint  # For .half() call
-        endpoint.eval.return_value = endpoint  # For .eval() call
-        
-        # Add config with hidden_size to make it look like a real model
-        config = unittest.mock.MagicMock()
-        config.hidden_size = 768
-        config.type_vocab_size = 2
-        endpoint.config = config
-        
-        # Set up realistic processor simulation
-        tokenizer = unittest.mock.MagicMock()
-        
-        # Mark these as simulated real implementations
-        endpoint.is_real_simulation = True
-        tokenizer.is_real_simulation = True
-        
-        # Create a simulated handler that returns realistic embeddings
-        def simulated_handler(text):
-            # Simulate model processing with realistic timing
-            start_time = time.time()
-            if hasattr(torch.cuda, "synchronize"):
-                torch.cuda.synchronize()
-            
-            # Simulate processing time
-            time.sleep(0.05)
-            
-            # Create a tensor that looks like a real embedding
-            embedding = torch.zeros((1, 768))
-            
-            # Simulate memory usage (realistic for BERT)
-            gpu_memory_allocated = 2.1  # GB, simulated for BERT base
-            
-            # Return a dictionary with REAL implementation markers
-            return {
-                "embedding": embedding,
-                "implementation_type": "REAL",
-                "inference_time_seconds": time.time() - start_time,
-                "gpu_memory_mb": gpu_memory_allocated * 1024,  # Convert to MB
-                "device": str(device),
-                "is_simulated": True
-            }
-            
-        print(f"Successfully loaded simulated BERT model on {device}")
-        return endpoint, tokenizer, simulated_handler, None, 8  # Higher batch size for CUDA
-            
-    except Exception as e:
-        print(f"Error in init_cuda: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        
-    # Fallback to mock implementation
-    tokenizer = unittest.mock.MagicMock()
-    endpoint = unittest.mock.MagicMock()
-    handler = lambda text: {"embedding": torch.zeros((1, 768)), "implementation_type": "MOCK"}
-    return endpoint, tokenizer, handler, None, 0
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
+    
+    return capabilities
 
-# Add the method to the class
-hf_bert.init_cuda = init_cuda
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
 
-class test_hf_bert:
-    def __init__(self, resources=None, metadata=None):
-        """
-        Initialize the BERT test class.
+# Models registry - Maps model IDs to their specific configurations
+BERT_MODELS_REGISTRY = {
+    "bert-base-uncased": {
+        "description": "BERT base model (uncased)",
+        "class": "BertForMaskedLM",
+        "vocab_size": 30522,
+    },
+    "distilbert-base-uncased": {
+        "description": "DistilBERT base model (uncased)",
+        "class": "DistilBertForMaskedLM",
+        "vocab_size": 30522,
+    },
+    "roberta-base": {
+        "description": "RoBERTa base model",
+        "class": "RobertaForMaskedLM",
+        "vocab_size": 50265,
+    },
+}
+
+class TestBertModels:
+    """Base test class for all BERT-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "bert-base-uncased"
         
-        Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }
-        self.metadata = metadata if metadata else {}
-        self.bert = hf_bert(resources=self.resources, metadata=self.metadata)
+        # Verify model exists in registry
+        if self.model_id not in BERT_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = BERT_MODELS_REGISTRY["bert-base-uncased"]
+        else:
+            self.model_info = BERT_MODELS_REGISTRY[self.model_id]
         
-        # Use a small open-access model by default
-        self.model_name = "prajjwal1/bert-tiny"  # Only ~17MB in size
+        # Define model parameters
+        self.task = "fill-mask"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
         
-        # Alternative models in increasing size order
-        self.alternative_models = [
-            "prajjwal1/bert-tiny",       # ~17MB
-            "distilbert/distilbert-base-uncased", # ~260MB
-            "bert-base-uncased"           # ~420MB
+        # Define test inputs
+        self.test_text = "The quick brown fox jumps over the [MASK] dog."
+        self.test_texts = [
+            "The quick brown fox jumps over the [MASK] dog.",
+            "The quick brown fox jumps over the [MASK] dog. (alternative)"
         ]
         
-        try:
-            print(f"Attempting to use primary model: {self.model_name}")
-            
-            # Try to import transformers for validation
-            if not isinstance(self.resources["transformers"], MagicMock):
-                from transformers import AutoConfig
-                try:
-                    # Try to access the config to verify model works
-                    AutoConfig.from_pretrained(self.model_name)
-                    print(f"Successfully validated primary model: {self.model_name}")
-                except Exception as config_error:
-                    print(f"Primary model validation failed: {config_error}")
-                    
-                    # Try alternatives one by one
-                    for alt_model in self.alternative_models[1:]:  # Skip first as it's the same as primary
-                        try:
-                            print(f"Trying alternative model: {alt_model}")
-                            AutoConfig.from_pretrained(alt_model)
-                            self.model_name = alt_model
-                            print(f"Successfully validated alternative model: {self.model_name}")
-                            break
-                        except Exception as alt_error:
-                            print(f"Alternative model validation failed: {alt_error}")
-                            
-                    # If all alternatives failed, check local cache
-                    if self.model_name == self.alternative_models[0]:
-                        # Try to find cached models
-                        cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub", "models")
-                        if os.path.exists(cache_dir):
-                            # Look for any BERT models in cache
-                            bert_models = [name for name in os.listdir(cache_dir) if "bert" in name.lower()]
-                            if bert_models:
-                                # Use the first model found
-                                bert_model_name = bert_models[0].replace("--", "/")
-                                print(f"Found local BERT model: {bert_model_name}")
-                                self.model_name = bert_model_name
-                            else:
-                                # Create local test model
-                                print("No suitable models found in cache, creating local test model")
-                                self.model_name = self._create_test_model()
-                                print(f"Created local test model: {self.model_name}")
-                        else:
-                            # Create local test model
-                            print("No cache directory found, creating local test model")
-                            self.model_name = self._create_test_model()
-                            print(f"Created local test model: {self.model_name}")
-            else:
-                # If transformers is mocked, use local test model
-                print("Transformers is mocked, using local test model")
-                self.model_name = self._create_test_model()
-                
-        except Exception as e:
-            print(f"Error finding model: {e}")
-            # Fall back to local test model as last resort
-            self.model_name = self._create_test_model()
-            print("Falling back to local test model due to error")
-            
-        print(f"Using model: {self.model_name}")
-        self.test_text = "The quick brown fox jumps over the lazy dog"
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
+        else:
+            self.preferred_device = "cpu"
         
-        # Initialize collection arrays for examples and status
+        logger.info(f"Using {self.preferred_device} as preferred device")
+        
+        # Results storage
+        self.results = {}
         self.examples = []
-        self.status_messages = {}
-        return None
+        self.performance_stats = {}
         
-    def _create_test_model(self):
+    def run_tests(self, all_hardware=False):
         """
-        Create a tiny BERT model for testing without needing Hugging Face authentication.
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
         
         Returns:
-            str: Path to the created model
+            Dict containing test results
         """
-        try:
-            print("Creating local test model for BERT testing...")
-            
-            # Create model directory in /tmp for tests
-            test_model_dir = os.path.join("/tmp", "bert_test_model")
-            os.makedirs(test_model_dir, exist_ok=True)
-            
-            # Create a minimal config file
-            config = {
-                "architectures": ["BertModel"],
-                "attention_probs_dropout_prob": 0.1,
-                "hidden_act": "gelu",
-                "hidden_dropout_prob": 0.1,
-                "hidden_size": 768,
-                "initializer_range": 0.02,
-                "intermediate_size": 3072,
-                "layer_norm_eps": 1e-12,
-                "max_position_embeddings": 512,
-                "model_type": "bert",
-                "num_attention_heads": 12,
-                "num_hidden_layers": 1,  # Use just 1 layer to minimize size
-                "pad_token_id": 0,
-                "type_vocab_size": 2,
-                "vocab_size": 30522
-            }
-            
-            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
-                json.dump(config, f)
-                
-            # Create a minimal vocabulary file (required for tokenizer)
-            vocab = {
-                "[PAD]": 0,
-                "[UNK]": 1,
-                "[CLS]": 2,
-                "[SEP]": 3,
-                "[MASK]": 4,
-                "the": 5,
-                "quick": 6,
-                "brown": 7,
-                "fox": 8,
-                "jumps": 9,
-                "over": 10,
-                "lazy": 11,
-                "dog": 12
-            }
-            
-            # Create vocab.txt for tokenizer
-            with open(os.path.join(test_model_dir, "vocab.txt"), "w") as f:
-                for token in vocab:
-                    f.write(f"{token}\n")
-                    
-            # Create a small random model weights file if torch is available
-            if hasattr(torch, "save") and not isinstance(torch, MagicMock):
-                # Create random tensors for model weights
-                model_state = {}
-                
-                # Create minimal layers
-                model_state["bert.embeddings.word_embeddings.weight"] = torch.randn(30522, 768)
-                model_state["bert.embeddings.position_embeddings.weight"] = torch.randn(512, 768)
-                model_state["bert.embeddings.token_type_embeddings.weight"] = torch.randn(2, 768)
-                model_state["bert.embeddings.LayerNorm.weight"] = torch.ones(768)
-                model_state["bert.embeddings.LayerNorm.bias"] = torch.zeros(768)
-                
-                # Add one attention layer
-                model_state["bert.encoder.layer.0.attention.self.query.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.query.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.self.key.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.key.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.self.value.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.self.value.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.output.dense.weight"] = torch.randn(768, 768)
-                model_state["bert.encoder.layer.0.attention.output.dense.bias"] = torch.zeros(768)
-                model_state["bert.encoder.layer.0.attention.output.LayerNorm.weight"] = torch.ones(768)
-                model_state["bert.encoder.layer.0.attention.output.LayerNorm.bias"] = torch.zeros(768)
-                
-                # Save model weights
-                torch.save(model_state, os.path.join(test_model_dir, "pytorch_model.bin"))
-                print(f"Created PyTorch model weights in {test_model_dir}/pytorch_model.bin")
-            
-            print(f"Test model created at {test_model_dir}")
-            return test_model_dir
-            
-        except Exception as e:
-            print(f"Error creating test model: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            # Fall back to a model name that won't need to be downloaded for mocks
-            return "bert-test"
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
         
-    def test(self):
-        """
-        Run all tests for the BERT text embedding model, organized by hardware platform.
-        Tests CPU, CUDA, OpenVINO, Apple, and Qualcomm implementations.
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
+            
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
+            
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
         
-        Returns:
-            dict: Structured test results with status, examples and metadata
-        """
-        results = {}
-        
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.bert is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # ====== CPU TESTS ======
-        try:
-            print("Testing BERT on CPU...")
-            # Initialize for CPU without mocks
-            endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cpu(
-                self.model_name,
-                "cpu", 
-                "cpu"
-            )
-            
-            valid_init = endpoint is not None and tokenizer is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
-            
-            # Get handler for CPU directly from initialization
-            test_handler = handler
-            
-            # Run actual inference
-            start_time = time.time()
-            output = test_handler(self.test_text)
-            elapsed_time = time.time() - start_time
-            
-            # Verify the output is a real embedding tensor
-            is_valid_embedding = (
-                output is not None and 
-                isinstance(output, torch.Tensor) and 
-                output.dim() == 2 and 
-                output.size(0) == 1  # batch size
-            )
-            
-            results["cpu_handler"] = "Success (REAL)" if is_valid_embedding else "Failed CPU handler"
-            
-            # Record example
-            self.examples.append({
-                "input": self.test_text,
-                "output": {
-                    "embedding_shape": list(output.shape) if is_valid_embedding else None,
-                    "embedding_type": str(output.dtype) if is_valid_embedding else None
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": elapsed_time,
-                "implementation_type": "REAL",
-                "platform": "CPU"
-            })
-            
-            # Add embedding shape to results
-            if is_valid_embedding:
-                results["cpu_embedding_shape"] = list(output.shape)
-                results["cpu_embedding_type"] = str(output.dtype)
-                
-        except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
-
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available():
-            try:
-                print("Testing BERT on CUDA...")
-                # Import utilities if available
-                try:
-                    # Import utils directly from file path
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location("utils", "/home/barberb/ipfs_accelerate_py/test/utils.py")
-                    utils = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(utils)
-                    get_cuda_device = utils.get_cuda_device
-                    optimize_cuda_memory = utils.optimize_cuda_memory
-                    benchmark_cuda_inference = utils.benchmark_cuda_inference
-                    enhance_cuda_implementation_detection = utils.enhance_cuda_implementation_detection
-                    cuda_utils_available = True
-                    print("Successfully imported CUDA utilities from direct path")
-                except Exception as e:
-                    print(f"Error importing CUDA utilities: {e}")
-                    cuda_utils_available = False
-                    print("CUDA utilities not available, using basic implementation")
-                
-                # Initialize for CUDA without mocks - try to use real implementation
-                endpoint, tokenizer, handler, queue, batch_size = self.bert.init_cuda(
-                    self.model_name,
-                    "cuda",
-                    "cuda:0"
-                )
-                
-                # Check if initialization succeeded
-                valid_init = endpoint is not None and tokenizer is not None and handler is not None
-                
-                # More robust check for determining if we got a real implementation
-                is_mock_endpoint = False
-                implementation_type = "(REAL)"  # Default to REAL
-                
-                # Check for various indicators of mock implementations
-                if isinstance(endpoint, MagicMock) or (hasattr(endpoint, 'is_real_simulation') and not endpoint.is_real_simulation):
-                    is_mock_endpoint = True
-                    implementation_type = "(MOCK)"
-                    print("Detected mock endpoint based on direct MagicMock instance check")
-                
-                # Double-check by looking for attributes that real models have
-                if hasattr(endpoint, 'config') and hasattr(endpoint.config, 'hidden_size'):
-                    # This is likely a real model, not a mock
-                    is_mock_endpoint = False
-                    implementation_type = "(REAL)"
-                    print("Found real model with config.hidden_size, confirming REAL implementation")
-                
-                # Check for simulated real implementation
-                if hasattr(endpoint, 'is_real_simulation') and endpoint.is_real_simulation:
-                    is_mock_endpoint = False
-                    implementation_type = "(REAL)"
-                    print("Found simulated real implementation marked with is_real_simulation=True")
-                
-                # Update the result status with proper implementation type
-                results["cuda_init"] = f"Success {implementation_type}" if valid_init else f"Failed CUDA initialization"
-                self.status_messages["cuda"] = f"Ready {implementation_type}" if valid_init else "Failed initialization"
-                
-                print(f"CUDA initialization: {results['cuda_init']}")
-                
-                # Get handler for CUDA directly from initialization and enhance it
-                if cuda_utils_available and 'enhance_cuda_implementation_detection' in locals():
-                    # Enhance the handler to ensure proper implementation type detection
-                    test_handler = enhance_cuda_implementation_detection(
-                        self.bert, 
-                        handler, 
-                        is_real=(not is_mock_endpoint)
-                    )
-                    print(f"Enhanced CUDA handler with implementation type markers: {implementation_type}")
-                else:
-                    test_handler = handler
-                
-                # Run benchmark to warm up CUDA (if available)
-                if valid_init and cuda_utils_available:
-                    try:
-                        print("Running CUDA benchmark as warmup...")
-                        # Try to prepare inputs based on the model's expected inputs
-                        device_str = "cuda:0"
-                        
-                        # Create inputs based on what we know about BERT models
-                        max_length = 10  # Short sequence for warmup
-                        inputs = {
-                            "input_ids": torch.ones((1, max_length), dtype=torch.long).to(device_str),
-                            "attention_mask": torch.ones((1, max_length), dtype=torch.long).to(device_str)
-                        }
-                        
-                        # Add token_type_ids if the model expects it (BERT does, RoBERTa doesn't)
-                        if hasattr(endpoint, 'config') and hasattr(endpoint.config, 'type_vocab_size') and not isinstance(endpoint.config.type_vocab_size, MagicMock):
-                            if endpoint.config.type_vocab_size > 0:
-                                inputs["token_type_ids"] = torch.zeros((1, max_length), dtype=torch.long).to(device_str)
-                        
-                        # Direct benchmark with the handler instead of the model
-                        # This will work even if the model is a custom test model or mock
-                        try:
-                            # Try direct handler warmup first - more reliable
-                            print("Running direct handler warmup...")
-                            start_time = time.time()
-                            warmup_output = handler(self.test_text)
-                            warmup_time = time.time() - start_time
-                            
-                            # If handler works, check its output for implementation type
-                            if warmup_output is not None:
-                                # If we get a tensor output with CUDA device, it's likely real
-                                if isinstance(warmup_output, torch.Tensor) and warmup_output.is_cuda:
-                                    print("Handler produced CUDA tensor - confirming REAL implementation")
-                                    is_mock_endpoint = False
-                                    implementation_type = "(REAL)"
-                                
-                                # Check for dict output with implementation info
-                                if isinstance(warmup_output, dict) and "implementation_type" in warmup_output:
-                                    if warmup_output["implementation_type"] == "REAL":
-                                        print("Handler confirmed REAL implementation")
-                                        is_mock_endpoint = False
-                                        implementation_type = "(REAL)"
-                            
-                            print(f"Direct handler warmup completed in {warmup_time:.4f}s")
-                            
-                            # Create a simpler benchmark result
-                            benchmark_result = {
-                                "average_inference_time": warmup_time,
-                                "iterations": 1,
-                                "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "Unknown",
-                                "cuda_memory_used_mb": torch.cuda.memory_allocated() / (1024**2) if torch.cuda.is_available() else 0
-                            }
-                            
-                        except Exception as handler_err:
-                            print(f"Handler warmup failed, trying model benchmark: {handler_err}")
-                            # Fall back to model benchmark
-                            try:
-                                # Run warmup inference with benchmark
-                                # A real implementation will pass this benchmark, a mock likely won't
-                                benchmark_result = benchmark_cuda_inference(
-                                    endpoint,
-                                    inputs,
-                                    iterations=2  # Increase to 2 iterations for better reliability
-                                )
-                            except Exception as model_bench_err:
-                                print(f"Model benchmark also failed: {model_bench_err}")
-                                # Create basic benchmark result to avoid further errors
-                                benchmark_result = {
-                                    "error": str(model_bench_err),
-                                    "average_inference_time": 0.1,
-                                    "iterations": 0,
-                                    "cuda_device": "Unknown",
-                                    "cuda_memory_used_mb": 0
-                                }
-                        
-                        print(f"CUDA benchmark results: {benchmark_result}")
-                        
-                        # Check if benchmark result looks valid
-                        if isinstance(benchmark_result, dict):
-                            # A real benchmark result should have these keys
-                            if 'average_inference_time' in benchmark_result and 'cuda_memory_used_mb' in benchmark_result:
-                                # Real implementations typically use more memory
-                                mem_allocated = benchmark_result.get('cuda_memory_used_mb', 0)
-                                if mem_allocated > 100:  # If using more than 100MB, likely real
-                                    print(f"Significant CUDA memory usage ({mem_allocated:.2f} MB) indicates real implementation")
-                                    is_mock_endpoint = False
-                                    implementation_type = "(REAL)"
-                                
-                                print("CUDA warmup completed successfully with valid benchmarks")
-                                # If benchmark_result contains real device info, it's definitely real
-                                if 'cuda_device' in benchmark_result and 'nvidia' in str(benchmark_result['cuda_device']).lower():
-                                    print(f"Verified real NVIDIA device: {benchmark_result['cuda_device']}")
-                                    # If we got here, we definitely have a real implementation
-                                    is_mock_endpoint = False
-                                    implementation_type = "(REAL)"
-                            
-                            # Save the benchmark info for reporting
-                            results["cuda_benchmark"] = benchmark_result
-                        
-                    except Exception as bench_error:
-                        print(f"Error running benchmark warmup: {bench_error}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        # Don't assume it's a mock just because benchmark failed
-                
-                # Run actual inference with more detailed error handling
-                start_time = time.time()
-                try:
-                    output = test_handler(self.test_text)
-                    elapsed_time = time.time() - start_time
-                    print(f"CUDA inference completed in {elapsed_time:.4f} seconds")
-                except Exception as handler_error:
-                    elapsed_time = time.time() - start_time
-                    print(f"Error in CUDA handler execution: {handler_error}")
-                    # Create mock output for graceful degradation
-                    output = torch.rand((1, 768))
-                    output.mock_implementation = True
-                    output.implementation_type = "MOCK"
-                    output.error = str(handler_error)
-                
-                # More robust verification of the output to detect real implementations
-                is_valid_embedding = False
-                # Don't reset implementation_type here - use what we already detected
-                output_implementation_type = implementation_type
-                
-                # Enhanced detection for simulated real implementations
-                if callable(handler) and handler != "mock_handler" and hasattr(endpoint, "is_real_simulation"):
-                    print("Detected simulated REAL handler function - updating implementation type")
-                    implementation_type = "(REAL)"
-                    output_implementation_type = "(REAL)"
-                
-                if isinstance(output, dict):
-                    # Check if there's an explicit implementation_type in the output
-                    if 'implementation_type' in output:
-                        output_implementation_type = f"({output['implementation_type']})"
-                        print(f"Found implementation_type in output dict: {output['implementation_type']}")
-                    
-                    # Check if it's a simulated real implementation
-                    if 'is_simulated' in output and output['is_simulated']:
-                        if output.get('implementation_type', '') == 'REAL':
-                            output_implementation_type = "(REAL)"
-                            print("Detected simulated REAL implementation from output")
-                        else:
-                            output_implementation_type = "(MOCK)"
-                            print("Detected simulated MOCK implementation from output")
-                            
-                    # Check for memory usage - real implementations typically use more memory
-                    if 'gpu_memory_mb' in output and output['gpu_memory_mb'] > 100:
-                        print(f"Significant GPU memory usage detected: {output['gpu_memory_mb']} MB")
-                        output_implementation_type = "(REAL)"
-                        
-                    # Check for device info that indicates real CUDA
-                    if 'device' in output and 'cuda' in str(output['device']).lower():
-                        print(f"CUDA device detected in output: {output['device']}")
-                        output_implementation_type = "(REAL)"
-                        
-                    # Check for hidden_states in dict output
-                    if 'hidden_states' in output:
-                        hidden_states = output['hidden_states']
-                        is_valid_embedding = (
-                            hidden_states is not None and
-                            hidden_states.shape[0] > 0
-                        )
-                    # Check for embedding in dict output (common for BERT)
-                    elif 'embedding' in output:
-                        is_valid_embedding = (
-                            output['embedding'] is not None and
-                            hasattr(output['embedding'], 'shape') and
-                            output['embedding'].shape[0] > 0
-                        )
-                        
-                        # Check if the embedding tensor is on CUDA
-                        if hasattr(output['embedding'], 'is_cuda') and output['embedding'].is_cuda:
-                            print("Found CUDA tensor in output - indicates real implementation")
-                            output_implementation_type = "(REAL)"
-                    elif hasattr(output, 'keys') and len(output.keys()) > 0:
-                        # Just verify any output exists
-                        is_valid_embedding = True
-                        
-                elif isinstance(output, torch.Tensor) or isinstance(output, np.ndarray):
-                    is_valid_embedding = (
-                        output is not None and
-                        output.shape[0] > 0
-                    )
-                    
-                    # A successful tensor output usually means real implementation
-                    if not is_mock_endpoint:
-                        output_implementation_type = "(REAL)"
-                    
-                    # Check tensor metadata for implementation info
-                    if hasattr(output, 'real_implementation') and output.real_implementation:
-                        output_implementation_type = "(REAL)"
-                        print("Found tensor with real_implementation=True")
-                    
-                    if hasattr(output, 'implementation_type'):
-                        output_implementation_type = f"({output.implementation_type})"
-                        print(f"Found implementation_type attribute on tensor: {output.implementation_type}")
-                    
-                    if hasattr(output, 'mock_implementation') and output.mock_implementation:
-                        output_implementation_type = "(MOCK)"
-                        print("Found tensor with mock_implementation=True")
-                    
-                    if hasattr(output, 'is_simulated') and output.is_simulated:
-                        # Check the implementation type for simulated outputs
-                        if hasattr(output, 'implementation_type') and output.implementation_type == 'REAL':
-                            output_implementation_type = "(REAL)"
-                            print("Detected simulated REAL implementation from tensor")
-                        else:
-                            output_implementation_type = "(MOCK)"
-                            print("Detected simulated MOCK implementation from tensor")
-                        
-                # Use the most reliable implementation type info
-                # If output says REAL but we know endpoint is mock, prefer the output info
-                if output_implementation_type == "(REAL)" and implementation_type == "(MOCK)":
-                    print("Output indicates REAL implementation, updating from MOCK to REAL")
-                    implementation_type = "(REAL)"
-                # Similarly, if output says MOCK but endpoint seemed real, use output info
-                elif output_implementation_type == "(MOCK)" and implementation_type == "(REAL)":
-                    print("Output indicates MOCK implementation, updating from REAL to MOCK")
-                    implementation_type = "(MOCK)"
-                
-                # Use detected implementation type in result status
-                results["cuda_handler"] = f"Success {implementation_type}" if is_valid_embedding else f"Failed CUDA handler {implementation_type}"
-                
-                # Record example
-                output_shape = None
-                if is_valid_embedding:
-                    if isinstance(output, dict) and 'hidden_states' in output:
-                        output_shape = list(output['hidden_states'].shape)
-                    elif isinstance(output, dict) and 'embedding' in output:
-                        output_shape = list(output['embedding'].shape)
-                    elif isinstance(output, torch.Tensor):
-                        output_shape = list(output.shape)
-                    elif isinstance(output, np.ndarray):
-                        output_shape = list(output.shape)
-                
-                # Record performance metrics if available
-                performance_metrics = {}
-                
-                # Extract metrics from handler output
-                if isinstance(output, dict):
-                    if 'inference_time_seconds' in output:
-                        performance_metrics['inference_time'] = output['inference_time_seconds']
-                    if 'total_time' in output:
-                        performance_metrics['total_time'] = output['total_time']
-                    if 'gpu_memory_mb' in output:
-                        performance_metrics['gpu_memory_mb'] = output['gpu_memory_mb']
-                    if 'gpu_memory_allocated_gb' in output:
-                        performance_metrics['gpu_memory_gb'] = output['gpu_memory_allocated_gb']
-                
-                # Also try object attributes
-                if hasattr(output, 'inference_time'):
-                    performance_metrics['inference_time'] = output.inference_time
-                if hasattr(output, 'total_time'):
-                    performance_metrics['total_time'] = output.total_time
-                
-                # Strip outer parentheses for consistency in example
-                impl_type_value = implementation_type.strip('()')
-                
-                # Extract GPU memory usage if available in dictionary output
-                gpu_memory_mb = None
-                if isinstance(output, dict) and 'gpu_memory_mb' in output:
-                    gpu_memory_mb = output['gpu_memory_mb']
-                
-                # Extract inference time if available
-                inference_time = None
-                if isinstance(output, dict):
-                    if 'inference_time_seconds' in output:
-                        inference_time = output['inference_time_seconds']
-                    elif 'generation_time_seconds' in output:
-                        inference_time = output['generation_time_seconds']
-                    elif 'total_time' in output:
-                        inference_time = output['total_time']
-                
-                # Add additional CUDA-specific metrics
-                cuda_metrics = {}
-                if gpu_memory_mb is not None:
-                    cuda_metrics['gpu_memory_mb'] = gpu_memory_mb
-                if inference_time is not None:
-                    cuda_metrics['inference_time'] = inference_time
-                
-                # Detect if this is a simulated implementation
-                is_simulated = False
-                if isinstance(output, dict) and 'is_simulated' in output:
-                    is_simulated = output['is_simulated']
-                    cuda_metrics['is_simulated'] = is_simulated
-                
-                # Combine all performance metrics
-                if cuda_metrics:
-                    if performance_metrics:
-                        performance_metrics.update(cuda_metrics)
-                    else:
-                        performance_metrics = cuda_metrics
-                
-                self.examples.append({
-                    "input": self.test_text,
-                    "output": {
-                        "embedding_shape": output_shape,
-                        "embedding_type": str(output.dtype) if hasattr(output, 'dtype') else None,
-                        "performance_metrics": performance_metrics if performance_metrics else None
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": impl_type_value,  # Use cleaned value without parentheses
-                    "platform": "CUDA",
-                    "is_simulated": is_simulated
-                })
-                
-                # Add embedding shape to results
-                if is_valid_embedding and output_shape:
-                    results["cuda_embedding_shape"] = output_shape
-                
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
-        else:
-            results["cuda_tests"] = "CUDA not available"
-            self.status_messages["cuda"] = "CUDA not available"
-
-        # ====== OPENVINO TESTS ======
-        try:
-            # First check if OpenVINO is installed
-            try:
-                import openvino
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "OpenVINO not installed"
-                
-            if has_openvino:
-                # Import the existing OpenVINO utils from the main package
-                from ipfs_accelerate_py.worker.openvino_utils import openvino_utils
-                
-                # Initialize openvino_utils
-                ov_utils = openvino_utils(resources=self.resources, metadata=self.metadata)
-                
-                # Create a custom model class for testing
-                class CustomOpenVINOModel:
-                    def __init__(self):
-                        pass
-                        
-                    def infer(self, inputs):
-                        batch_size = 1
-                        seq_len = 10
-                        hidden_size = 768
-                        
-                        if isinstance(inputs, dict) and "input_ids" in inputs:
-                            # Get shapes from actual inputs if available
-                            if hasattr(inputs["input_ids"], "shape"):
-                                batch_size = inputs["input_ids"].shape[0]
-                                seq_len = inputs["input_ids"].shape[1]
-                        
-                        # Create output tensor (simulated hidden states)
-                        output = np.random.rand(batch_size, seq_len, hidden_size).astype(np.float32)
-                        return {"last_hidden_state": output}
-                        
-                    def __call__(self, inputs):
-                        return self.infer(inputs)
-                
-                # Create a mock model instance
-                mock_model = CustomOpenVINOModel()
-                
-                # Create mock get_openvino_model function
-                def mock_get_openvino_model(model_name, model_type=None):
-                    print(f"Mock get_openvino_model called for {model_name}")
-                    return mock_model
-                    
-                # Create mock get_optimum_openvino_model function
-                def mock_get_optimum_openvino_model(model_name, model_type=None):
-                    print(f"Mock get_optimum_openvino_model called for {model_name}")
-                    return mock_model
-                    
-                # Create mock get_openvino_pipeline_type function  
-                def mock_get_openvino_pipeline_type(model_name, model_type=None):
-                    return "feature-extraction"
-                    
-                # Create mock openvino_cli_convert function
-                def mock_openvino_cli_convert(model_name, model_dst_path=None, task=None, weight_format=None, ratio=None, group_size=None, sym=None):
-                    print(f"Mock openvino_cli_convert called for {model_name}")
-                    return True
-                
-                # Try with real OpenVINO utils first
-                try:
-                    print("Trying real OpenVINO initialization...")
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
-                        model_name=self.model_name,
-                        model_type="feature-extraction",
-                        device="CPU",
-                        openvino_label="openvino:0",
-                        get_optimum_openvino_model=ov_utils.get_optimum_openvino_model,
-                        get_openvino_model=ov_utils.get_openvino_model,
-                        get_openvino_pipeline_type=ov_utils.get_openvino_pipeline_type,
-                        openvino_cli_convert=ov_utils.openvino_cli_convert
-                    )
-                    
-                    # If we got a handler back, we succeeded
-                    valid_init = handler is not None
-                    is_real_impl = True
-                    results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
-                    print(f"Real OpenVINO initialization: {results['openvino_init']}")
-                    
-                except Exception as e:
-                    print(f"Real OpenVINO initialization failed: {e}")
-                    print("Falling back to mock implementation...")
-                    
-                    # Fall back to mock implementation
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_openvino(
-                        model_name=self.model_name,
-                        model_type="feature-extraction",
-                        device="CPU",
-                        openvino_label="openvino:0",
-                        get_optimum_openvino_model=mock_get_optimum_openvino_model,
-                        get_openvino_model=mock_get_openvino_model,
-                        get_openvino_pipeline_type=mock_get_openvino_pipeline_type,
-                        openvino_cli_convert=mock_openvino_cli_convert
-                    )
-                    
-                    # If we got a handler back, the mock succeeded
-                    valid_init = handler is not None
-                    is_real_impl = False
-                    results["openvino_init"] = "Success (MOCK)" if valid_init else "Failed OpenVINO initialization"
-                
-                # Run inference
-                start_time = time.time()
-                output = handler(self.test_text)
-                elapsed_time = time.time() - start_time
-                
-                is_valid_embedding = (
-                    output is not None and
-                    hasattr(output, 'shape') and
-                    output.shape[0] == 1  # batch size 1
-                )
-                
-                # Set the appropriate success message based on real vs mock implementation
-                implementation_type = "REAL" if is_real_impl else "MOCK"
-                results["openvino_handler"] = f"Success ({implementation_type})" if is_valid_embedding else f"Failed OpenVINO handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": self.test_text,
-                    "output": {
-                        "embedding_shape": list(output.shape) if is_valid_embedding else None,
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": implementation_type,
-                    "platform": "OpenVINO"
-                })
-                
-                # Add embedding details if successful
-                if is_valid_embedding:
-                    results["openvino_embedding_shape"] = list(output.shape)
-                
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
-
-        # ====== APPLE SILICON TESTS ======
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            try:
-                print("Testing BERT on Apple Silicon...")
-                try:
-                    import coremltools  # Only try import if MPS is available
-                    has_coreml = True
-                except ImportError:
-                    has_coreml = False
-                    results["apple_tests"] = "CoreML Tools not installed"
-                    self.status_messages["apple"] = "CoreML Tools not installed"
-
-                if has_coreml:
-                    with patch('coremltools.convert') as mock_convert:
-                        mock_convert.return_value = MagicMock()
-                        
-                        endpoint, tokenizer, handler, queue, batch_size = self.bert.init_apple(
-                            self.model_name,
-                            "mps",
-                            "apple:0"
-                        )
-                        
-                        valid_init = handler is not None
-                        results["apple_init"] = "Success (MOCK)" if valid_init else "Failed Apple initialization"
-                        
-                        test_handler = self.bert.create_apple_text_embedding_endpoint_handler(
-                            endpoint_model=self.model_name,
-                            apple_label="apple:0",
-                            endpoint=endpoint,
-                            tokenizer=tokenizer
-                        )
-                        
-                        start_time = time.time()
-                        output = test_handler(self.test_text)
-                        elapsed_time = time.time() - start_time
-                        
-                        results["apple_handler"] = "Success (MOCK)" if output is not None else "Failed Apple handler"
-                        
-                        # Record example
-                        output_shape = list(output.shape) if output is not None and hasattr(output, 'shape') else None
-                        self.examples.append({
-                            "input": self.test_text,
-                            "output": {
-                                "embedding_shape": output_shape,
-                            },
-                            "timestamp": datetime.datetime.now().isoformat(),
-                            "elapsed_time": elapsed_time,
-                            "implementation_type": "MOCK",
-                            "platform": "Apple"
-                        })
-            except ImportError:
-                results["apple_tests"] = "CoreML Tools not installed"
-                self.status_messages["apple"] = "CoreML Tools not installed"
-            except Exception as e:
-                print(f"Error in Apple tests: {e}")
-                traceback.print_exc()
-                results["apple_tests"] = f"Error: {str(e)}"
-                self.status_messages["apple"] = f"Failed: {str(e)}"
-        else:
-            results["apple_tests"] = "Apple Silicon not available"
-            self.status_messages["apple"] = "Apple Silicon not available"
-
-        # ====== QUALCOMM TESTS ======
-        try:
-            print("Testing BERT on Qualcomm...")
-            try:
-                from ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils import get_snpe_utils
-                has_snpe = True
-            except ImportError:
-                has_snpe = False
-                results["qualcomm_tests"] = "SNPE SDK not installed"
-                self.status_messages["qualcomm"] = "SNPE SDK not installed"
-                
-            if has_snpe:
-                # For Qualcomm, we need to mock since it's unlikely to be available in test environment
-                with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
-                    mock_snpe_utils = MagicMock()
-                    mock_snpe_utils.is_available.return_value = True
-                    mock_snpe_utils.convert_model.return_value = "mock_converted_model"
-                    mock_snpe_utils.load_model.return_value = MagicMock()
-                    mock_snpe_utils.optimize_for_device.return_value = "mock_optimized_model"
-                    mock_snpe_utils.run_inference.return_value = {
-                        "last_hidden_state": np.random.rand(1, 10, 768)
-                    }
-                    mock_snpe.return_value = mock_snpe_utils
-                    
-                    endpoint, tokenizer, handler, queue, batch_size = self.bert.init_qualcomm(
-                        self.model_name,
-                        "qualcomm",
-                        "qualcomm:0"
-                    )
-                    
-                    valid_init = handler is not None
-                    results["qualcomm_init"] = "Success (MOCK)" if valid_init else "Failed Qualcomm initialization"
-                    
-                    # For handler testing, create a mock tokenizer
-                    if tokenizer is None:
-                        tokenizer = MagicMock()
-                        tokenizer.return_value = {
-                            "input_ids": np.ones((1, 10)),
-                            "attention_mask": np.ones((1, 10))
-                        }
-                        
-                    test_handler = self.bert.create_qualcomm_text_embedding_endpoint_handler(
-                        endpoint_model=self.model_name,
-                        qualcomm_label="qualcomm:0",
-                        endpoint=endpoint,
-                        tokenizer=tokenizer
-                    )
-                    
-                    start_time = time.time()
-                    output = test_handler(self.test_text)
-                    elapsed_time = time.time() - start_time
-                    
-                    results["qualcomm_handler"] = "Success (MOCK)" if output is not None else "Failed Qualcomm handler"
-                    
-                    # Record example
-                    output_shape = list(output.shape) if output is not None and hasattr(output, 'shape') else None
-                    self.examples.append({
-                        "input": self.test_text,
-                        "output": {
-                            "embedding_shape": output_shape,
-                        },
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "elapsed_time": elapsed_time,
-                        "implementation_type": "MOCK",
-                        "platform": "Qualcomm"
-                    })
-        except ImportError:
-            results["qualcomm_tests"] = "SNPE SDK not installed"
-            self.status_messages["qualcomm"] = "SNPE SDK not installed"
-        except Exception as e:
-            print(f"Error in Qualcomm tests: {e}")
-            traceback.print_exc()
-            results["qualcomm_tests"] = f"Error: {str(e)}"
-            self.status_messages["qualcomm"] = f"Failed: {str(e)}"
-
-        # Create structured results with status, examples and metadata
-        structured_results = {
-            "status": results,
+        # Build final results
+        return {
+            "results": self.results,
             "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
             "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": self.status_messages
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_tokenizers": HAS_TOKENIZERS,
+                "has_sentencepiece": HAS_SENTENCEPIECE
+            }
+        }
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["pipeline_success"] = False
+        return results
+    if not HAS_SENTENCEPIECE:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["sentencepiece>=0.1.91"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        pipeline_input = self.test_text
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
+            try:
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
+
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_TOKENIZERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
+        results["from_pretrained_success"] = False
+        return results
+    if not HAS_SENTENCEPIECE:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["sentencepiece>=0.1.91"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "BertForMaskedLM":
+            model_class = transformers.BertForMaskedLM
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModelForMaskedLM
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = self.test_text
+        
+        # Tokenize input
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Get top predictions for masked position
+        if hasattr(tokenizer, "mask_token_id"):
+            mask_token_id = tokenizer.mask_token_id
+            mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
+            
+            if len(mask_positions) > 0:
+                mask_index = mask_positions[0][-1].item()
+                logits = outputs[0].logits[0, mask_index]
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                top_k = torch.topk(probs, 5)
+                
+                predictions = []
+                for i, (prob, idx) in enumerate(zip(top_k.values, top_k.indices)):
+                    if hasattr(tokenizer, "convert_ids_to_tokens"):
+                        token = tokenizer.convert_ids_to_tokens(idx.item())
+                    else:
+                        token = f"token_{idx.item()}"
+                    predictions.append({
+                        "token": token,
+                        "probability": prob.item()
+                    })
+            else:
+                predictions = []
+        else:
+            predictions = []
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModelForMaskedLM
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModelForMaskedLM.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare input
+        if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
+            mask_token = tokenizer.mask_token
+            test_input = self.test_text.replace("[MASK]", mask_token)
+        else:
+            test_input = self.test_text
+            
+        inputs = tokenizer(test_input, return_tensors="pt")
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Get predictions
+        if hasattr(tokenizer, "mask_token_id"):
+            mask_token_id = tokenizer.mask_token_id
+            mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
+            
+            if len(mask_positions) > 0:
+                mask_index = mask_positions[0][-1].item()
+                logits = outputs.logits[0, mask_index]
+                top_k_indices = torch.topk(logits, 5).indices.tolist()
+                
+                predictions = []
+                for idx in top_k_indices:
+                    if hasattr(tokenizer, "convert_ids_to_tokens"):
+                        token = tokenizer.convert_ids_to_tokens(idx)
+                    else:
+                        token = f"token_{idx}"
+                    predictions.append(token)
+            else:
+                predictions = []
+        else:
+            predictions = []
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
+        """
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
+        
+        Returns:
+            Dict containing test results
+        """
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
+        
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
+            
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
+            
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
+            "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
+            "metadata": {
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_tokenizers": HAS_TOKENIZERS,
+                "has_sentencepiece": HAS_SENTENCEPIECE
             }
         }
 
-        return structured_results
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_bert_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
 
-    def __test__(self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-        """
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {
-                "status": {"test_error": str(e)},
-                "examples": [],
-                "metadata": {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            }
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_bert_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved collected results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_bert_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                
-                # Filter out variable fields for comparison
-                def filter_variable_data(result):
-                    if isinstance(result, dict):
-                        # Create a copy to avoid modifying the original
-                        filtered = {}
-                        for k, v in result.items():
-                            # Skip timestamp and variable output data for comparison
-                            if k not in ["timestamp", "elapsed_time", "output"] and k != "examples" and k != "metadata":
-                                filtered[k] = filter_variable_data(v)
-                        return filtered
-                    elif isinstance(result, list):
-                        return [filter_variable_data(item) for item in result]
-                    else:
-                        return result
-                
-                # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # More detailed comparison of results
-                all_match = True
-                mismatches = []
-                
-                for key in set(status_expected.keys()) | set(status_actual.keys()):
-                    if key not in status_expected:
-                        mismatches.append(f"Missing expected key: {key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append(f"Missing actual key: {key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if (
-                            isinstance(status_expected[key], str) and 
-                            isinstance(status_actual[key], str) and
-                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
-                            "Success" in status_expected[key] and "Success" in status_actual[key]
-                        ):
-                            continue
-                        
-                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
-                        all_match = False
-                
-                if not all_match:
-                    print("Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print(f"- {mismatch}")
-                    print("\nWould you like to update the expected results? (y/n)")
-                    user_input = input().strip().lower()
-                    if user_input == 'y':
-                        with open(expected_file, 'w') as ef:
-                            json.dump(test_results, ef, indent=2)
-                            print(f"Updated expected results file: {expected_file}")
-                    else:
-                        print("Expected results not updated.")
-                else:
-                    print("All test results match expected results.")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                print("Creating new expected results file.")
-                with open(expected_file, 'w') as ef:
-                    json.dump(test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+def get_available_models():
+    """Get a list of all available BERT models in the registry."""
+    return list(BERT_MODELS_REGISTRY.keys())
 
-        return test_results
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered BERT models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestBertModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_bert_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test BERT-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable BERT-family models:")
+        for model in models:
+            info = BERT_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nBERT Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "bert-base-uncased"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestBertModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        print("Starting BERT test...")
-        this_bert = test_hf_bert()
-        results = this_bert.__test__()
-        print("BERT test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get("status", {})
-        examples = results.get("examples", [])
-        metadata = results.get("metadata", {})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get("platform", "")
-            impl_type = example.get("implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-        print("\nBERT TEST RESULTS SUMMARY")
-        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print performance information if available
-        for example in examples:
-            platform = example.get("platform", "")
-            output = example.get("output", {})
-            elapsed_time = example.get("elapsed_time", 0)
-            
-            print(f"\n{platform} PERFORMANCE METRICS:")
-            print(f"  Elapsed time: {elapsed_time:.4f}s")
-            
-            if "embedding_shape" in output:
-                print(f"  Embedding shape: {output['embedding_shape']}")
-                
-            # Check for detailed metrics
-            if "performance_metrics" in output:
-                metrics = output["performance_metrics"]
-                for k, v in metrics.items():
-                    print(f"  {k}: {v}")
-        
-        # Print a JSON representation to make it easier to parse
-        print("\nstructured_results")
-        print(json.dumps({
-            "status": {
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-            },
-            "model_name": metadata.get("model_name", "Unknown"),
-            "examples": examples
-        }))
-        
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error during testing: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+    main()

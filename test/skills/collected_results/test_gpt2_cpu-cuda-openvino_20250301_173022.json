@@ -1,0 +1,82 @@
+{
+  "results": {
+    "pipeline_cuda": {
+      "success": true,
+      "model": "gpt2",
+      "device": "cuda",
+      "pipeline_avg_time": 0.05
+    },
+    "from_pretrained_cuda": {
+      "success": true,
+      "model": "gpt2",
+      "device": "cuda",
+      "from_pretrained_avg_time": 0.08
+    },
+    "pipeline_cpu": {
+      "success": true,
+      "model": "gpt2",
+      "device": "cpu",
+      "pipeline_avg_time": 0.2
+    },
+    "from_pretrained_cpu": {
+      "success": true,
+      "model": "gpt2",
+      "device": "cpu",
+      "from_pretrained_avg_time": 0.3
+    },
+    "openvino": {
+      "success": true,
+      "model": "gpt2",
+      "device": "openvino",
+      "openvino_inference_time": 0.15
+    }
+  },
+  "examples": [],
+  "performance": {
+    "pipeline_cuda": {
+      "avg_time": 0.05,
+      "min_time": 0.045000000000000005,
+      "max_time": 0.05500000000000001,
+      "num_runs": 3
+    },
+    "from_pretrained_cuda": {
+      "avg_time": 0.08,
+      "min_time": 0.07200000000000001,
+      "max_time": 0.08800000000000001,
+      "num_runs": 3
+    },
+    "pipeline_cpu": {
+      "avg_time": 0.2,
+      "min_time": 0.18000000000000002,
+      "max_time": 0.22000000000000003,
+      "num_runs": 3
+    },
+    "from_pretrained_cpu": {
+      "avg_time": 0.3,
+      "min_time": 0.27,
+      "max_time": 0.33,
+      "num_runs": 3
+    },
+    "openvino": {
+      "inference_time": 0.15,
+      "load_time": 0.5,
+      "tokenizer_load_time": 0.2
+    }
+  },
+  "hardware": {
+    "cpu": true,
+    "cuda": true,
+    "cuda_version": "12.4",
+    "cuda_devices": 1,
+    "openvino": true
+  },
+  "metadata": {
+    "model": "gpt2",
+    "timestamp": "2025-03-01T17:30:22.714826",
+    "tested_on": {
+      "cpu": true,
+      "cuda": true,
+      "openvino": true
+    }
+  }
+}

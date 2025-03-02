@@ -1,986 +1,774 @@
+#!/usr/bin/env python3
+"""
+Class-based test file for all Whisper-family models.
+This file provides a unified testing interface for:
+- WhisperForConditionalGeneration
+"""
+
 import os
 import sys
 import json
 import time
-import torch
-import numpy as np
+import datetime
 import traceback
-from unittest.mock import MagicMock, patch
-from PIL import Image
-import importlib.util
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 
-# Use direct import with the absolute path
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Try to import transformers directly if available
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
+import numpy as np
+
+# Try to import torch
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Try to import transformers
 try:
     import transformers
-    transformers_module = transformers
-    # Try to use the token from environment if available
-    import os
-    token = os.getenv('HF_TOKEN')
-    if token:
-        try:
-            transformers_module.login(token=token)
-            print("Successfully logged in to Hugging Face Hub")
-        except Exception as e:
-            print(f"Failed to login with token: {e}")
+    HAS_TRANSFORMERS = True
 except ImportError:
-    transformers_module = MagicMock()
+    transformers = MagicMock()
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Create fallback functions that we can override if real modules are available
-def fallback_load_audio(audio_file):
-    """Fallback audio loading function when real libraries aren't available"""
-    print(f"Using fallback audio loader for {audio_file}")
-    # Return a silent audio sample of 1 second at 16kHz
-    return np.zeros(16000, dtype=np.float32), 16000
 
-# Try to import real audio handling libraries
+# Try to import audio processing libraries
 try:
     import librosa
     import soundfile as sf
-    
-    # Define real audio loading function if libraries are available
-    def real_load_audio(audio_file):
-        """Load audio with real libraries"""
-        try:
-            # For local files
-            if os.path.exists(audio_file):
-                audio, sr = librosa.load(audio_file, sr=16000)
-                return audio, sr
-            # For URLs, download and then load
-            else:
-                import requests
-                from io import BytesIO
-                response = requests.get(audio_file)
-                audio, sr = librosa.load(BytesIO(response.content), sr=16000)
-                return audio, sr
-        except Exception as e:
-            print(f"Error loading audio with librosa: {e}")
-            return fallback_load_audio(audio_file)
-    
-    # Define 16kHz resampling function
-    def real_load_audio_16khz(audio_file):
-        """Load and resample audio to 16kHz"""
-        audio_data, samplerate = real_load_audio(audio_file)
-        if samplerate != 16000:
-            audio_data = librosa.resample(y=audio_data, orig_sr=samplerate, target_sr=16000)
-        return audio_data, 16000
-            
-    # Use the real functions when available
-    load_audio = real_load_audio
-    load_audio_16khz = real_load_audio_16khz
+    HAS_AUDIO = True
 except ImportError:
-    # Use fallback when libraries aren't available
-    load_audio = fallback_load_audio
+    librosa = MagicMock()
+    sf = MagicMock()
+    HAS_AUDIO = False
+    logger.warning("librosa or soundfile not available, using mock")
+
+
+if not HAS_AUDIO:
+    def mock_load(file_path, sr=None, mono=True):
+        return (np.zeros(16000), 16000)
+        
+    class MockSoundFile:
+        @staticmethod
+        def write(file, data, samplerate):
+            pass
     
-    # Define fallback for 16kHz resampling
-    def fallback_load_audio_16khz(audio_file):
-        """Fallback for 16kHz audio loading"""
-        # Just return the same silent audio
-        return fallback_load_audio(audio_file)
+    if isinstance(librosa, MagicMock):
+        librosa.load = mock_load
     
-    load_audio_16khz = fallback_load_audio_16khz
+    if isinstance(sf, MagicMock):
+        sf.write = MockSoundFile.write
 
-# Import the whisper implementation
-from ipfs_accelerate_py.worker.skillset.hf_whisper import hf_whisper
 
-# Fix method name inconsistencies by adding aliases for all handler methods
-def create_missing_methods(whisper_class):
-    """Add necessary method aliases to a whisper class instance"""
-    # CPU methods
-    if hasattr(whisper_class, 'create_cpu_whisper_endpoint_handler'):
-        whisper_class.create_cpu_transcription_endpoint_handler = whisper_class.create_cpu_whisper_endpoint_handler
-        
-    # OpenVINO methods
-    if hasattr(whisper_class, 'create_openvino_whisper_endpoint_handler'):
-        whisper_class.create_openvino_transcription_endpoint_handler = whisper_class.create_openvino_whisper_endpoint_handler
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
     
-    # CUDA methods
-    if hasattr(whisper_class, 'create_cuda_whisper_endpoint_handler'):
-        whisper_class.create_cuda_transcription_endpoint_handler = whisper_class.create_cuda_whisper_endpoint_handler
-        
-    # Qualcomm methods
-    if hasattr(whisper_class, 'create_qualcomm_whisper_endpoint_handler'):
-        whisper_class.create_qualcomm_transcription_endpoint_handler = whisper_class.create_qualcomm_whisper_endpoint_handler
-        
-    # Apple methods
-    if hasattr(whisper_class, 'create_apple_whisper_endpoint_handler'):
-        whisper_class.create_apple_transcription_endpoint_handler = whisper_class.create_apple_whisper_endpoint_handler
-        
-    # Create empty stubs for any missing methods
-    for method_name in [
-        'create_cpu_whisper_endpoint_handler',
-        'create_openvino_whisper_endpoint_handler',
-        'create_cuda_whisper_endpoint_handler',
-        'create_qualcomm_whisper_endpoint_handler',
-        'create_apple_whisper_endpoint_handler',
-    ]:
-        if not hasattr(whisper_class, method_name):
-            # Create a stub method that returns a dummy handler
-            def stub_method(*args, **kwargs):
-                print(f"Using stub for {method_name}")
-                def stub_handler(*args, **kwargs):
-                    return "Stub transcription response"
-                return stub_handler
-            setattr(whisper_class, method_name, stub_method)
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
+    
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
+    try:
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
+    
+    return capabilities
 
-# Monkey patch the class to create these methods
-# before we instantiate it
-create_missing_methods(hf_whisper)
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
 
-class test_hf_whisper:
-    def _create_local_test_model(self):
+# Models registry - Maps model IDs to their specific configurations
+WHISPER_MODELS_REGISTRY = {
+    "openai/whisper-tiny": {
+        "description": "Whisper tiny model",
+        "class": "WhisperForConditionalGeneration",
+    },
+    "openai/whisper-base": {
+        "description": "Whisper base model",
+        "class": "WhisperForConditionalGeneration",
+    },
+}
+
+class TestWhisperModels:
+    """Base test class for all Whisper-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "openai/whisper-tiny"
+        
+        # Verify model exists in registry
+        if self.model_id not in WHISPER_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = WHISPER_MODELS_REGISTRY["openai/whisper-tiny"]
+        else:
+            self.model_info = WHISPER_MODELS_REGISTRY[self.model_id]
+        
+        # Define model parameters
+        self.task = "automatic-speech-recognition"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
+        
+        # Define test inputs
+        self.test_audio = "audio_sample.mp3"
+        
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
+        else:
+            self.preferred_device = "cpu"
+        
+        logger.info(f"Using {self.preferred_device} as preferred device")
+        
+        # Results storage
+        self.results = {}
+        self.examples = []
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_AUDIO:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        if os.path.exists(self.test_audio):
+            pipeline_input = self.test_audio
+        else:
+            # Use a sample array if file not found
+            pipeline_input = np.zeros(16000)
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
+            try:
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
+
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_AUDIO:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "WhisperForConditionalGeneration":
+            model_class = transformers.WhisperForConditionalGeneration
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModelForSpeechSeq2Seq
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = self.test_audio
+        
+        # Load audio
+        if HAS_AUDIO and os.path.exists(test_input):
+            waveform, sample_rate = librosa.load(test_input, sr=16000)
+            inputs = {"input_values": torch.tensor([waveform]).float()}
+        else:
+            # Mock audio input
+            inputs = {"input_values": torch.zeros(1, 16000).float()}
+            
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Process speech recognition output
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predicted_ids = torch.argmax(logits, dim=-1)
+            if hasattr(tokenizer, "decode"):
+                transcription = tokenizer.decode(predicted_ids[0])
+                predictions = [{"text": transcription}]
+            else:
+                predictions = [{"text": "Mock transcription"}]
+        else:
+            predictions = [{"text": "Mock transcription"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModelForSpeechSeq2Seq
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModelForSpeechSeq2Seq.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare input
+        test_input = self.test_audio
+        
+        # Load audio
+        if HAS_AUDIO and os.path.exists(test_input):
+            waveform, sample_rate = librosa.load(test_input, sr=16000)
+            inputs = {"input_values": torch.tensor([waveform]).float()}
+        else:
+            # Mock audio input
+            inputs = {"input_values": torch.zeros(1, 16000).float()}
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Process speech recognition output
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predicted_ids = torch.argmax(logits, dim=-1)
+            
+            if hasattr(tokenizer, "decode"):
+                transcription = tokenizer.decode(predicted_ids[0])
+                predictions = [transcription]
+            else:
+                predictions = ["<mock_transcription>"]
+        else:
+            predictions = ["<mock_transcription>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
         """
-        Create a simplified test directory structure to indicate we want mock implementations.
-        For performance testing, we want to avoid the complexity of creating real model weights.
+        Run all tests for this model.
+        
+        Args:
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
         
         Returns:
-            str: Path to the created model or "openai/whisper-tiny" for fallback
+            Dict containing test results
         """
-        try:
-            print("Creating simplified local test model for Whisper...")
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
+        
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
             
-            # Create model directory in /tmp for tests
-            test_model_dir = os.path.join("/tmp", "whisper_test_model_simple")
-            os.makedirs(test_model_dir, exist_ok=True)
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
             
-            # Create a minimal config file 
-            config = {
-                "model_type": "whisper",
-                "architectures": ["WhisperForConditionalGeneration"],
-                "_simulation_marker": "This is a simplified model config for performance testing only"
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
+            "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
+            "metadata": {
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_audio": HAS_AUDIO
             }
-            
-            # Write the basic config file
-            with open(os.path.join(test_model_dir, "config.json"), "w") as f:
-                json.dump(config, f)
-              
-            # Create the most minimal tokenizer file
-            with open(os.path.join(test_model_dir, "tokenizer_config.json"), "w") as f:
-                json.dump({"_simulation_marker": "This is a simplified tokenizer for testing only"}, f)
-                
-            # Instead of writing all the model files, just create a marker
-            with open(os.path.join(test_model_dir, "SIMULATED_MODEL.txt"), "w") as f:
-                f.write("This is a simulated model directory for testing.\n")
-                f.write("This model is intended to be used with mock implementations.\n")
-                f.write("Date: " + time.strftime("%Y-%m-%d %H:%M:%S") + "\n")
-            
-            print(f"Simplified test model created at {test_model_dir}")
-            
-            # Return the test model path - we want this path for metadata but we'll
-            # always use mocks during the actual test since we're focused on performance
-            return test_model_dir
-            
-        except Exception as e:
-            print(f"Error creating test model: {e}")
-            # Fall back to a model name that won't need to be downloaded for mocks
-            return "openai/whisper-tiny"
-
-    def __init__(self, resources=None, metadata=None):
-        """Initialize the test class for Whisper model"""
-        # Try to import soundfile if available
-        try:
-            import soundfile as sf
-            soundfile_module = sf
-        except ImportError:
-            soundfile_module = MagicMock()
-            
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers_module,
-            "soundfile": soundfile_module,
-            "librosa": librosa
         }
+
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_whisper_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
+
+def get_available_models():
+    """Get a list of all available Whisper models in the registry."""
+    return list(WHISPER_MODELS_REGISTRY.keys())
+
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered Whisper models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestWhisperModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
         
-        self.metadata = metadata if metadata else {}
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
         
-        # Initialize whisper with the resources
-        self.whisper = hf_whisper(resources=self.resources, metadata=self.metadata)
-        
-        # Create local test model for reliable testing without HF authentication
-        print("Creating local test model for better compatibility...")
-        local_model_path = self._create_local_test_model()
-        
-        # Use the local test model path
-        self.model_name = local_model_path  
-        print(f"Using local test model at: {self.model_name}")
-        
-        # Use a small test file for faster testing
-        test_audio_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "trans_test.mp3")
-        if not os.path.exists(test_audio_path):
-            test_audio_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "test.mp3")
-        self.test_audio = test_audio_path
-        print(f"Using test audio: {self.test_audio}")
-        
-        # Flag to track if we're using mocks
-        self.using_mocks = False
-        
-        # Status messages dictionary for better reporting
-        self.status_messages = {
-            "cpu": "Not tested yet",
-            "cuda": "Not tested yet",
-            "openvino": "Not tested yet",
-            "apple": "Not tested yet",
-            "qualcomm": "Not tested yet"
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
         }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_whisper_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test Whisper-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable Whisper-family models:")
+        for model in models:
+            info = WHISPER_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
-        # No return statement needed in __init__
-
-    def test(self):
-        """Run all tests for the Whisper speech recognition model"""
-        results = {}
+        # Print summary
+        print("\nWhisper Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "openai/whisper-tiny"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestWhisperModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
         
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.whisper is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # Check if we're using real transformers
-        transformers_available = not isinstance(self.resources["transformers"], MagicMock)
-        implementation_type = "(REAL)" if transformers_available else "(MOCK)"
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
         
-        # Add implementation type to all success messages
-        if results["init"] == "Success":
-            results["init"] = f"Success {implementation_type}"
-
-        # Test audio loading utilities 
-        try:
-            audio_data, sr = load_audio(self.test_audio)
-            if audio_data is not None:
-                results["load_audio"] = f"Success {implementation_type}"
-                results["audio_format"] = f"Shape: {audio_data.shape}, SR: {sr}"
-            else:
-                results["load_audio"] = "Failed audio loading"
-        except Exception as e:
-            print(f"Error loading audio: {e}")
-            # Fall back to mock audio
-            audio_data = np.zeros(16000, dtype=np.float32)
-            sr = 16000
-            results["load_audio"] = "Success (MOCK)"
-            results["audio_format"] = f"Shape: {audio_data.shape}, SR: {sr}"
-            implementation_type = "(MOCK)"
-            self.using_mocks = True
-
-        # Test CPU initialization and handler - always use mock for performance testing
-        try:
-            # Always use mock for performance testing to speed up and increase reliability
-            print("Using mock Whisper implementation for CPU performance testing")
-            self.status_messages["cpu"] = "Success (MOCK)"
-            implementation_type = "(MOCK)"
-            self.using_mocks = True
-            
-            # Set up basic CPU test results
-            results["cpu_init"] = f"Success {implementation_type}"
-            results["cpu_transcription_handler"] = f"Success {implementation_type}"
-            
-            # Create a simulated transcription output
-            transcription_output = "(MOCK) Transcription: This is simulated audio transcription for testing purposes"
-            results["cpu_transcription"] = transcription_output
-            
-            # Fake a quick transcription time for performance reporting
-            start_time = time.time()
-            time.sleep(0.01)  # Very small sleep to simulate work
-            elapsed_time = time.time() - start_time
-            
-            # Save a sample result
-            results["cpu_transcription_example"] = {
-                "input": self.test_audio,
-                "output": transcription_output,
-                "timestamp": time.time(),
-                "elapsed_time": elapsed_time,
-                "implementation_type": implementation_type,
-                "platform": "CPU",
-                "performance_metrics": {
-                    "processing_time_ms": elapsed_time * 1000,
-                    "audio_duration_seconds": 5.0,  # Assumed duration
-                    "realtime_factor": 500.0  # 500x realtime
-                }
-            }
-            
-            try:
-                print("Creating MOCK CPU implementation...")
-                
-                # Create a more realistic processor and model with functional mocks
-                class RealProcessor:
-                    def __init__(self):
-                        self.feature_extractor = MagicMock()
-                        self.tokenizer = MagicMock()
-                        self.feature_extractor.sampling_rate = 16000
-                        self.model_input_names = ["input_features"]
-                        
-                    def __call__(self, audio, **kwargs):
-                        # Return a properly shaped input tensor
-                        return {"input_features": torch.zeros((1, 80, 3000))}
-                        
-                    def batch_decode(self, *args, **kwargs):
-                        # Return actual text that indicates this is a mock implementation
-                        return ["(MOCK) TRANSCRIPTION: This audio contains speech in English"]
-                
-                class RealModel:
-                    def __init__(self):
-                        self.config = MagicMock()
-                        self.config.torchscript = False
-                        
-                    def generate(self, input_features):
-                        # Return a token sequence (doesn't matter what tokens)
-                        return torch.tensor([[10, 20, 30, 40, 50]])
-                        
-                    def eval(self):
-                        return self
-                    
-                    def to(self, device):
-                        return self
-                
-                # Create processor and model instances
-                processor = RealProcessor()
-                model = RealModel()
-                
-                # Create the handler directly
-                def mock_handler(audio):
-                    # Process audio input
-                    if isinstance(audio, np.ndarray):
-                        inputs = processor(audio, sampling_rate=16000, return_tensors="pt")
-                        # Generate output tokens
-                        with torch.no_grad():
-                            generated_ids = model.generate(inputs["input_features"])
-                        # Decode to text
-                        transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)
-                        return transcription[0]
-                    return "(MOCK) TRANSCRIPTION: This audio contains speech in English"
-                
-                # Run the handler with our audio data with timing
-                start_time = time.time()
-                output = mock_handler(audio_data)
-                elapsed_time = time.time() - start_time
-                
-                # Set results
-                results["cpu_init"] = f"Success {implementation_type}"
-                results["cpu_transcription_handler"] = f"Success {implementation_type}"
-                results["cpu_transcription"] = output
-                
-                # Save result to demonstrate working implementation
-                results["cpu_transcription_example"] = {
-                    "input": self.test_audio,
-                    "output": output,
-                    "timestamp": time.time(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": implementation_type,
-                    "platform": "CPU"
-                }
-            except Exception as mock_e:
-                results["cpu_mock_error"] = f"Mock setup failed: {str(mock_e)}"
-                results["cpu_transcription"] = "(MOCK) TRANSCRIPTION: This audio contains speech in English"
-                results["cpu_transcription_example"] = {
-                    "input": self.test_audio,
-                    "output": "(MOCK) TRANSCRIPTION: This audio contains speech in English",
-                    "timestamp": time.time(),
-                    "elapsed_time": 0.01,  # Placeholder for timing in fallback mock
-                    "implementation_type": implementation_type,
-                    "platform": "CPU"
-                }
-            finally:
-                pass  # Empty finally block to properly close the try/except
-        finally:
-            pass  # Empty finally block to properly close the outer try/except
-
-        # Test CUDA if available
-        if torch.cuda.is_available():
-            try:
-                print("Testing Whisper on CUDA...")
-                self.status_messages["cuda"] = "Testing"
-                
-                # Suppress excessive error messages from HF
-                import logging
-                logging.getLogger("transformers").setLevel(logging.ERROR)
-                logging.getLogger("datasets").setLevel(logging.ERROR)
-                
-                # Import CUDA utilities if available - try multiple approaches
-                try:
-                    # First try direct import using sys.path
-                    sys.path.insert(0, "/home/barberb/ipfs_accelerate_py/test")
-                    from utils import get_cuda_device, optimize_cuda_memory, benchmark_cuda_inference
-                    cuda_utils_available = True
-                    print("Successfully imported CUDA utilities via path insertion")
-                except ImportError:
-                    try:
-                        # Then try via importlib with absolute path
-                        import importlib.util
-                        spec = importlib.util.spec_from_file_location("utils", "/home/barberb/ipfs_accelerate_py/test/utils.py")
-                        utils = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(utils)
-                        get_cuda_device = utils.get_cuda_device
-                        optimize_cuda_memory = utils.optimize_cuda_memory
-                        benchmark_cuda_inference = utils.benchmark_cuda_inference
-                        cuda_utils_available = True
-                        print("Successfully imported CUDA utilities via importlib")
-                    except Exception as e:
-                        print(f"Error importing CUDA utilities: {e}")
-                        cuda_utils_available = False
-                        print("CUDA utilities not available, using basic implementation")
-                
-                # Use simulated CUDA implementation for performance testing 
-                try:
-                    print("Using simulated CUDA implementation for performance testing...")
-                    self.status_messages["cuda"] = "Success (REAL) - Simulated"
-                    
-                    # Skip actual model loading and create mock objects directly
-                    # Create mock endpoint with real simulation flag
-                    endpoint = MagicMock()
-                    endpoint.is_real_simulation = True
-                    endpoint.config = MagicMock()
-                    endpoint.config.model_type = "whisper"
-                    
-                    # Create mock processor
-                    processor = MagicMock()
-                    
-                    # Create handler that returns a simulated REAL implementation
-                    def simulated_handler(audio_input):
-                        # Simulate a small delay
-                        time.sleep(0.005)
-                        return {
-                            "text": "Simulated CUDA Whisper transcription: This audio contains speech about machine learning and AI technology.",
-                            "implementation_type": "REAL",
-                            "is_simulated": True,
-                            "device": "cuda:0",
-                            "memory_allocated_mb": 150.0,  # Simulate memory usage to trigger REAL detection
-                            "generation_time_seconds": 0.005,
-                            "tokens_per_second": 120.5,
-                            "performance_metrics": {
-                                "processing_time_ms": 5.0,
-                                "audio_duration_seconds": 5.0,
-                                "realtime_factor": 1000.0  # 1000x realtime on CUDA
-                            }
-                        }
-                    
-                    handler = simulated_handler
-                    queue, batch_size = None, 1
-                    
-                    # Set valid_init to indicate success
-                    valid_init = True
-                    implementation_type = "(REAL)"
-                    is_real_implementation = True
-                    
-                    # Mark results as successful with REAL implementation (simulated)
-                    results["cuda_init"] = f"Success {implementation_type}"
-                    print("Successfully created simulated CUDA implementation")
-                    
-                    # Get the handler
-                    test_handler = handler
-                    
-                    # Safety check for handler before trying to use it
-                    if test_handler is None:
-                        print("Warning: Handler is None. Creating a mock handler as fallback.")
-                        # Create a simple mock handler as fallback
-                        def mock_handler(audio_input):
-                            return {
-                                "text": "Mock CUDA transcription from fallback handler",
-                                "implementation_type": "MOCK",
-                                "is_simulated": True
-                            }
-                        test_handler = mock_handler
-                    
-                    # Run the real handler (if it's patching internally, that's part of its implementation)
-                    # Use either the provided audio data or the test audio file
-                    if audio_data is not None:
-                        audio_input = audio_data
-                    else:
-                        # Get the real audio if possible
-                        try:
-                            audio_input = self.test_audio
-                        except:
-                            # Fallback to random data if needed
-                            audio_input = np.random.randn(16000)
-                    
-                    # Time the execution
-                    start_time = time.time()
-                    try:
-                        output = test_handler(audio_input)
-                    except Exception as handler_error:
-                        print(f"Error calling handler: {handler_error}")
-                        # Create a fallback output with error information
-                        output = {
-                            "text": f"Error in CUDA handler: {str(handler_error)}",
-                            "implementation_type": "MOCK",
-                            "is_simulated": True,
-                            "error": str(handler_error)
-                        }
-                    elapsed_time = time.time() - start_time
-                    print(f"CUDA inference completed in {elapsed_time:.4f} seconds")
-                    
-                    # Enhanced output inspection to detect real implementations
-                    if output is not None:
-                        # Check for implementation type hints in the output
-                        if isinstance(output, dict) and "implementation_type" in output:
-                            output_impl_type = output["implementation_type"]
-                            print(f"Output explicitly indicates {output_impl_type} implementation")
-                            
-                            # Update our implementation type
-                            if output_impl_type.upper() == "REAL":
-                                implementation_type = "(REAL)"
-                                is_real_implementation = True
-                            elif output_impl_type.upper() == "MOCK":
-                                implementation_type = "(MOCK)"
-                                is_real_implementation = False
-                                
-                        elif isinstance(output, dict) and "device" in output:
-                            # Check for CUDA device references as indicator of real implementation
-                            if "cuda" in str(output["device"]).lower():
-                                implementation_type = "(REAL)"
-                                is_real_implementation = True
-                                print(f"Found CUDA device reference in output: {output['device']}")
-                            
-                        elif isinstance(output, str):
-                            # Check for mock markers in string output
-                            if "(MOCK)" in output or "MOCK " in output:
-                                implementation_type = "(MOCK)"
-                                is_real_implementation = False
-                                print("Found MOCK marker in output text")
-                            elif "(REAL)" in output or "REAL " in output:
-                                implementation_type = "(REAL)"
-                                is_real_implementation = True
-                                print("Found REAL marker in output text")
-                    
-                        # Format output for reporting
-                        if isinstance(output, dict) and "text" in output:
-                            display_output = output["text"]
-                        else:
-                            display_output = str(output)
-                    else:
-                        display_output = "(No output)"
-                        
-                    # Update results with final implementation type
-                    results["cuda_handler"] = f"Success {implementation_type}" if output is not None else f"Failed CUDA handler {implementation_type}"
-                    
-                    # Save transcription result with proper implementation type
-                    if output is not None:
-                        results["cuda_transcription"] = display_output
-                        
-                        # Get performance metrics if available
-                        performance_metrics = {}
-                        if isinstance(output, dict):
-                            if "generation_time_seconds" in output:
-                                performance_metrics["generation_time"] = output["generation_time_seconds"]
-                            if "gpu_memory_mb" in output:
-                                performance_metrics["gpu_memory_mb"] = output["gpu_memory_mb"]
-                        
-                        # Remove parentheses for consistency
-                        impl_type = implementation_type.strip("()")
-                        
-                        results["cuda_transcription_example"] = {
-                            "input": self.test_audio,
-                            "output": display_output,
-                            "timestamp": time.time(),
-                            "elapsed_time": elapsed_time,
-                            "implementation_type": impl_type,
-                            "platform": "CUDA",
-                            "performance_metrics": performance_metrics if performance_metrics else None
-                        }
-                except Exception as real_init_error:
-                    print(f"Real CUDA implementation failed: {real_init_error}")
-                    print("Falling back to mock implementation...")
-                    
-                    # Fall back to mock implementation if real implementation fails
-                    implementation_type = "(MOCK)"
-                    with patch('transformers.AutoConfig.from_pretrained') as mock_config, \
-                         patch('transformers.AutoProcessor.from_pretrained') as mock_processor, \
-                         patch('transformers.AutoModelForSpeechSeq2Seq.from_pretrained') as mock_model:
-                        
-                        mock_config.return_value = MagicMock()
-                        mock_processor.return_value = MagicMock()
-                        mock_model.return_value = MagicMock()
-                        mock_model.return_value.generate.return_value = torch.tensor([[1, 2, 3]])
-                        
-                        endpoint, processor, handler, queue, batch_size = self.whisper.init_cuda(
-                            self.model_name,
-                            "cuda",
-                            "cuda:0"
-                        )
-                        
-                        valid_init = endpoint is not None and processor is not None and handler is not None
-                        results["cuda_init"] = f"Success {implementation_type}" if valid_init else "Failed CUDA initialization"
-                        
-                        test_handler = self.whisper.create_cuda_transcription_endpoint_handler(
-                            endpoint,
-                            processor,
-                            self.model_name,
-                            "cuda:0"
-                        )
-                        
-                        with patch('soundfile.read') as mock_sf_read:
-                            mock_sf_read.return_value = (np.random.randn(16000), 16000)
-                            output = test_handler(self.test_audio)
-                            results["cuda_handler"] = f"Success {implementation_type}" if output is not None else "Failed CUDA handler"
-                            
-                            # Save transcription result
-                            if output is not None:
-                                results["cuda_transcription"] = output
-                                results["cuda_transcription_example"] = {
-                                    "input": self.test_audio,
-                                    "output": output,
-                                    "timestamp": time.time(),
-                                    "elapsed_time": 0.07,  # Placeholder for timing
-                                    "implementation_type": implementation_type,
-                                    "platform": "CUDA"
-                                }
-            except Exception as e:
-                results["cuda_tests"] = f"Error: {str(e)}"
-        else:
-            results["cuda_tests"] = "CUDA not available"
-
-        # Test OpenVINO if installed
-        try:
-            self.status_messages["openvino"] = "Testing"
-            
-            # Suppress excessive error messages
-            import logging
-            logging.getLogger("transformers").setLevel(logging.ERROR)
-            logging.getLogger("datasets").setLevel(logging.ERROR)
-            logging.getLogger("optimum").setLevel(logging.ERROR)
-            
-            try:
-                import openvino
-                print("OpenVINO import successful")
-            except ImportError:
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "Not installed"
-                return results
-            
-            # Use simulated OpenVINO implementation for performance testing
-            print("Using simulated OpenVINO implementation for performance testing")
-            is_direct_import_available = True  # Simulate having the direct import
-            self.status_messages["openvino"] = "Success (REAL) - Simulated"
-            
-            # Create simulated components for testing
-            try:
-                print("Creating simulated OpenVINO implementation...")
-                
-                # Simulate having a model without actually loading it
-                endpoint = MagicMock()
-                endpoint.is_real_simulation = True
-                
-                processor = MagicMock()
-                
-                # Create the handler function
-                def simulated_handler(audio_path=None, audio_array=None):
-                    # Simulate a delay
-                    time.sleep(0.01)
-                    
-                    # Return a simulated transcription with REAL implementation marker
-                    return {
-                        "text": "Simulated OpenVINO transcription: This audio contains speech about technology.",
-                        "implementation_type": "REAL",
-                        "is_simulated": True,
-                        "device": "CPU",
-                        "processing_time_seconds": 0.01,
-                        "performance_metrics": {
-                            "processing_time_ms": 10.0,
-                            "audio_duration_seconds": 5.0,
-                            "realtime_factor": 500.0  # 500x realtime on OpenVINO
-                        }
-                    }
-                
-                # Set up handler and implementation info
-                handler = simulated_handler
-                queue = None
-                batch_size = 1
-                
-                # Mark as REAL implementation (simulated)
-                is_real_impl = True
-                implementation_type = "(REAL)"
-                
-                # Update results with success status and implementation type
-                results["openvino_init"] = f"Success {implementation_type}"
-                results["openvino_implementation_type"] = "REAL - simulated for performance testing"
-                
-                # Simulate a test with the handler
-                print("Testing simulated OpenVINO handler...")
-                test_output = handler(self.test_audio)
-                results["openvino_direct_test"] = "Success (REAL) - Simulated"
-                
-                # Get the text from the simulated output
-                if isinstance(test_output, dict) and "text" in test_output:
-                    transcription = test_output["text"]
-                else:
-                    transcription = str(test_output)
-                
-                # Simulate elapsed time
-                elapsed_time = 0.01
-                
-                # Add transcription result to results
-                results["openvino_transcription"] = transcription
-                
-                # Save example with implementation type
-                results["openvino_transcription_example"] = {
-                    "input": self.test_audio,
-                    "output": transcription,
-                    "timestamp": time.time(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": "REAL",
-                    "platform": "OpenVINO",
-                    "performance_metrics": {
-                        "processing_time_ms": 10.0,
-                        "audio_duration_seconds": 5.0,
-                        "realtime_factor": 500.0
-                    }
-                }
-                
-            except Exception as e:
-                # Fall back to mock if anything goes wrong
-                print(f"Error in OpenVINO simulation: {e}")
-                implementation_type = "(MOCK)"
-                transcription = "(MOCK) OpenVINO transcription after error"
-                elapsed_time = 0.001
-                
-                # Add transcription result to results
-                results["openvino_transcription"] = transcription
-                
-                # Save example with mock implementation type
-                results["openvino_transcription_example"] = {
-                    "input": self.test_audio,
-                    "output": transcription,
-                    "timestamp": time.time(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": "MOCK",
-                    "platform": "OpenVINO"
-                }
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
-
-        # Test Apple Silicon if available
-        if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            try:
-                try:
-                    import coremltools  # Only try import if MPS is available
-                except ImportError:
-                    results["apple_tests"] = "CoreML Tools not installed"
-                    return results
-
-                implementation_type = "(MOCK)"  # Always use mocks for Apple tests
-                with patch('coremltools.convert') as mock_convert:
-                    mock_convert.return_value = MagicMock()
-                    
-                    endpoint, processor, handler, queue, batch_size = self.whisper.init_apple(
-                        self.model_name,
-                        "mps",
-                        "apple:0"
-                    )
-                    
-                    valid_init = handler is not None
-                    results["apple_init"] = f"Success {implementation_type}" if valid_init else "Failed Apple initialization"
-                    
-                    test_handler = self.whisper.create_apple_transcription_endpoint_handler(
-                        endpoint,
-                        processor,
-                        self.model_name,
-                        "apple:0"
-                    )
-                    
-                    with patch('soundfile.read') as mock_sf_read:
-                        mock_sf_read.return_value = (np.random.randn(16000), 16000)
-                        output = test_handler(self.test_audio)
-                        results["apple_handler"] = f"Success {implementation_type}" if output is not None else "Failed Apple handler"
-                        
-                        # Save transcription result
-                        if output is not None:
-                            results["apple_transcription"] = output
-                            results["apple_transcription_example"] = {
-                                "input": self.test_audio,
-                                "output": output,
-                                "timestamp": time.time(),
-                                "elapsed_time": 0.06,  # Placeholder for timing
-                                "implementation_type": implementation_type,
-                                "platform": "Apple"
-                            }
-            except ImportError:
-                results["apple_tests"] = "CoreML Tools not installed"
-            except Exception as e:
-                results["apple_tests"] = f"Error: {str(e)}"
-        else:
-            results["apple_tests"] = "Apple Silicon not available"
-
-        # Test Qualcomm if available
-        try:
-            try:
-                from ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils import get_snpe_utils
-            except ImportError:
-                results["qualcomm_tests"] = "SNPE SDK not installed"
-                return results
-                
-            implementation_type = "(MOCK)"  # Always use mocks for Qualcomm tests
-            with patch('ipfs_accelerate_py.worker.skillset.qualcomm_snpe_utils.get_snpe_utils') as mock_snpe:
-                mock_snpe.return_value = MagicMock()
-                
-                # Initialize Qualcomm backend
-                try:
-                    endpoint, processor, handler, queue, batch_size = self.whisper.init_qualcomm(
-                        self.model_name,
-                        "qualcomm",
-                        "qualcomm:0"
-                    )
-                    
-                    valid_init = handler is not None
-                    results["qualcomm_init"] = f"Success {implementation_type}" if valid_init else "Failed Qualcomm initialization"
-                    
-                    # Create handler
-                    test_handler = self.whisper.create_qualcomm_transcription_endpoint_handler(
-                        processor,
-                        self.model_name,
-                        "qualcomm:0",
-                        endpoint
-                    )
-                    
-                    output = test_handler(self.test_audio)
-                    results["qualcomm_handler"] = f"Success {implementation_type}" if output is not None else "Failed Qualcomm handler"
-                    
-                    # Save transcription result
-                    if output is not None:
-                        results["qualcomm_transcription"] = output
-                        results["qualcomm_transcription_example"] = {
-                            "input": self.test_audio,
-                            "output": output,
-                            "timestamp": time.time(),
-                            "elapsed_time": 0.09,  # Placeholder for timing
-                            "implementation_type": implementation_type,
-                            "platform": "Qualcomm"
-                        }
-                except Exception as e:
-                    # Predetermined failure for Qualcomm to match expected results
-                    results["qualcomm_init"] = "Failed Qualcomm initialization"
-                    results["qualcomm_tests"] = f"Error: {str(e)}"
-        except ImportError:
-            results["qualcomm_tests"] = "SNPE SDK not installed"
-        except Exception as e:
-            results["qualcomm_tests"] = f"Error: {str(e)}"
-
-        return results
-
-    def __test__(self):
-        """Run tests and compare/save results"""
-        test_results = {}
-        start_time = time.time()
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
         
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {"test_error": str(e), "traceback": traceback.format_exc()}
-        
-        total_execution_time = time.time() - start_time
-        test_results["total_execution_time"] = total_execution_time
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Add metadata about the environment to the results
-        test_results["metadata"] = {
-            "timestamp": time.time(),
-            "torch_version": torch.__version__,
-            "numpy_version": np.__version__,
-            "transformers_version": transformers_module.__version__ if hasattr(transformers_module, "__version__") else "mocked",
-            "cuda_available": torch.cuda.is_available(),
-            "cuda_device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
-            "mps_available": hasattr(torch.backends, 'mps') and torch.backends.mps.is_available(),
-            "transformers_mocked": isinstance(self.resources["transformers"], MagicMock),
-            "test_audio": self.test_audio,
-            "test_model": self.model_name,
-            "test_run_id": f"whisper-test-{int(time.time())}",
-            "python_version": sys.version,
-            "total_execution_time": total_execution_time,
-            "platform_status": self.status_messages,
-            "is_local_model": os.path.exists(self.model_name) if self.model_name else False
-        }
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_whisper_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved test results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_whisper_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                    
-                    # Only compare the non-variable parts 
-                    excluded_keys = ["metadata", "cpu_transcription", "cuda_transcription", "openvino_transcription", 
-                                    "apple_transcription", "qualcomm_transcription",
-                                    "cpu_transcription_example", "cuda_transcription_example", "openvino_transcription_example", 
-                                    "apple_transcription_example", "qualcomm_transcription_example"]
-                    
-                    # Also exclude timestamp and variable fields
-                    variable_fields = ["timestamp", "elapsed_time"]
-                    for field in variable_fields:
-                        field_keys = [k for k in test_results.keys() if field in k]
-                        excluded_keys.extend(field_keys)
-                    
-                    expected_copy = {k: v for k, v in expected_results.items() if k not in excluded_keys}
-                    results_copy = {k: v for k, v in test_results.items() if k not in excluded_keys}
-                    
-                    mismatches = []
-                    for key in set(expected_copy.keys()) | set(results_copy.keys()):
-                        if key not in expected_copy:
-                            mismatches.append(f"Key '{key}' missing from expected results")
-                        elif key not in results_copy:
-                            mismatches.append(f"Key '{key}' missing from current results")
-                        elif expected_copy[key] != results_copy[key]:
-                            mismatches.append(f"Key '{key}' differs: Expected '{expected_copy[key]}', got '{results_copy[key]}'")
-                    
-                    if mismatches:
-                        print("Test results differ from expected results!")
-                        for mismatch in mismatches:
-                            print(f"- {mismatch}")
-                        
-                        print("\nConsider updating the expected results file if these differences are intentional.")
-                        
-                        # Automatically update expected results
-                        print("Automatically updating expected results file")
-                        with open(expected_file, 'w') as f:
-                            json.dump(test_results, f, indent=2)
-                            print(f"Updated expected results file: {expected_file}")
-                    else:
-                        print("Core test results match expected results (excluding variable outputs)")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                # Create or update the expected results file
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Updated expected results file: {expected_file}")
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
-
-        return test_results
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        this_whisper = test_hf_whisper()
-        results = this_whisper.__test__()
-        print(f"Whisper Test Results: {json.dumps(results, indent=2)}")
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
+    main()
