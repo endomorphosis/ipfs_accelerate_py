@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Class-based test file for all MAMBA2-family models.
+Class-based test file for all VIPLLAVA-family models.
 This file provides a unified testing interface for:
-- Mamba2Model
+- VipllavaModel
 """
 
 import os
@@ -108,27 +108,27 @@ HW_CAPABILITIES = check_hardware()
 
 
 # Models registry - Maps model IDs to their specific configurations
-mamba2_MODELS_REGISTRY = {
-    "mamba2-base": {
-        "description": "MAMBA2 models",
-        "class": "Mamba2Model"
+vipllava_MODELS_REGISTRY = {
+    "vipllava-base": {
+        "description": "VIPLLAVA models",
+        "class": "VipllavaModel"
     }
 
 }
 
-class TestMamba2Models:
-    """Base test class for all MAMBA2-family models."""
+class TestVipllavaModels:
+    """Base test class for all VIPLLAVA-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "mamba2-base"
+        self.model_id = model_id or "vipllava-base"
         
         # Verify model exists in registry
-        if self.model_id not in mamba2_MODELS_REGISTRY:
+        if self.model_id not in vipllava_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = mamba2_MODELS_REGISTRY["mamba2-base"]
+            self.model_info = vipllava_MODELS_REGISTRY["vipllava-base"]
         else:
-            self.model_info = mamba2_MODELS_REGISTRY[self.model_id]
+            self.model_info = vipllava_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
         self.task = "audio-classification"
@@ -630,7 +630,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_mamba2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_vipllava_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -641,17 +641,17 @@ def save_results(model_id, results, output_dir="collected_results"):
     return output_path
 
 def get_available_models():
-    """Get a list of all available MAMBA2 models in the registry."""
-    return list(mamba2_MODELS_REGISTRY.keys())
+    """Get a list of all available VIPLLAVA models in the registry."""
+    return list(vipllava_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered MAMBA2 models."""
+    """Test all registered VIPLLAVA models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestMamba2Models(model_id)
+        tester = TestVipllavaModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -664,7 +664,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_mamba2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_vipllava_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -673,7 +673,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test MAMBA2-family models")
+    parser = argparse.ArgumentParser(description="Test VIPLLAVA-family models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -696,9 +696,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable MAMBA2-family models:")
+        print("\nAvailable VIPLLAVA-family models:")
         for model in models:
-            info = mamba2_MODELS_REGISTRY[model]
+            info = vipllava_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -711,7 +711,7 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nMAMBA2 Models Testing Summary:")
+        print("\nVIPLLAVA Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
@@ -726,7 +726,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestMamba2Models(model_id)
+    tester = TestVipllavaModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested

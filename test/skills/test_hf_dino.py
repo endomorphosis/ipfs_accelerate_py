@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Class-based test file for all MAMBA2-family models.
+Class-based test file for all DINO-family models.
 This file provides a unified testing interface for:
-- Mamba2Model
+- DinoForImageClassification
 """
 
 import os
@@ -45,31 +45,18 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Try to import audio processing libraries
+# Try to import PIL
 try:
-    import librosa
-    import soundfile as sf
-    HAS_AUDIO = True
+    from PIL import Image
+    import requests
+    from io import BytesIO
+    HAS_PIL = True
 except ImportError:
-    librosa = MagicMock()
-    sf = MagicMock()
-    HAS_AUDIO = False
-    logger.warning("librosa or soundfile not available, using mock")
-
-if not HAS_AUDIO:
-    def mock_load(file_path, sr=None, mono=True):
-        return (np.zeros(16000), 16000)
-        
-    class MockSoundFile:
-        @staticmethod
-        def write(file, data, samplerate):
-            pass
-    
-    if isinstance(librosa, MagicMock):
-        librosa.load = mock_load
-    
-    if isinstance(sf, MagicMock):
-        sf.write = MockSoundFile.write
+    Image = MagicMock()
+    requests = MagicMock()
+    BytesIO = MagicMock()
+    HAS_PIL = False
+    logger.warning("PIL or requests not available, using mock")
 
 # Hardware detection
 def check_hardware():
@@ -106,37 +93,39 @@ def check_hardware():
 # Get hardware capabilities
 HW_CAPABILITIES = check_hardware()
 
-
 # Models registry - Maps model IDs to their specific configurations
-mamba2_MODELS_REGISTRY = {
-    "mamba2-base": {
-        "description": "MAMBA2 models",
-        "class": "Mamba2Model"
+DINO_MODELS_REGISTRY = {
+    "facebook/dino-vitb16": {
+        "description": "DINO ViT-B/16 model",
+        "class": "DinoForImageClassification",
+    },
+    "facebook/dino-vits16": {
+        "description": "DINO ViT-S/16 model",
+        "class": "DinoForImageClassification",
     }
-
 }
 
-class TestMamba2Models:
-    """Base test class for all MAMBA2-family models."""
+class TestDinoModels:
+    """Base test class for all DINO-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "mamba2-base"
+        self.model_id = model_id or "facebook/dino-vitb16"
         
         # Verify model exists in registry
-        if self.model_id not in mamba2_MODELS_REGISTRY:
+        if self.model_id not in DINO_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = mamba2_MODELS_REGISTRY["mamba2-base"]
+            self.model_info = DINO_MODELS_REGISTRY["facebook/dino-vitb16"]
         else:
-            self.model_info = mamba2_MODELS_REGISTRY[self.model_id]
+            self.model_info = DINO_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.task = "audio-classification"
+        self.task = "image-classification"
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
         
         # Define test inputs
-        self.test_text = "This is a test input for the model."
+        self.test_image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
         
         # Configure hardware preference
         if HW_CAPABILITIES["cuda"]:
@@ -172,9 +161,9 @@ class TestMamba2Models:
             results["pipeline_success"] = False
             return results
             
-        if not HAS_AUDIO:
+        if not HAS_PIL:
             results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+            results["pipeline_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
             results["pipeline_success"] = False
             return results
         
@@ -194,11 +183,10 @@ class TestMamba2Models:
             load_time = time.time() - load_start_time
             
             # Prepare test input
-            if os.path.exists(self.test_audio):
-                pipeline_input = self.test_audio
+            if HAS_PIL:
+                pipeline_input = requests.get(self.test_image_url).content
             else:
-                # Use a sample array if file not found
-                pipeline_input = np.zeros(16000)
+                pipeline_input = self.test_image_url
             
             # Run warmup inference if on CUDA
             if device == "cuda":
@@ -235,7 +223,7 @@ class TestMamba2Models:
             # Add to examples
             self.examples.append({
                 "method": f"pipeline() on {device}",
-                "input": str(pipeline_input),
+                "input": str(self.test_image_url),
                 "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
             })
             
@@ -291,9 +279,9 @@ class TestMamba2Models:
             results["from_pretrained_success"] = False
             return results
             
-        if not HAS_AUDIO:
+        if not HAS_PIL:
             results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+            results["from_pretrained_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
             results["from_pretrained_success"] = False
             return results
         
@@ -305,21 +293,21 @@ class TestMamba2Models:
                 "local_files_only": False
             }
             
-            # Time tokenizer loading - for AST models, we use the processor
-            tokenizer_load_start = time.time()
-            processor = transformers.AutoProcessor.from_pretrained(
+            # Load processor
+            processor_load_start = time.time()
+            processor = transformers.AutoFeatureExtractor.from_pretrained(
                 self.model_id,
                 **pretrained_kwargs
             )
-            tokenizer_load_time = time.time() - tokenizer_load_start
+            processor_load_time = time.time() - processor_load_start
             
-            # Use appropriate model class based on model type
+            # Use appropriate model class
             model_class = None
-            if self.class_name == "ASTForAudioClassification":
-                model_class = transformers.ASTForAudioClassification
+            if self.class_name == "DinoForImageClassification":
+                model_class = transformers.AutoModelForImageClassification
             else:
                 # Fallback to Auto class
-                model_class = transformers.AutoModelForAudioClassification
+                model_class = transformers.AutoModel
             
             # Time model loading
             model_load_start = time.time()
@@ -334,17 +322,23 @@ class TestMamba2Models:
                 model = model.to(device)
             
             # Prepare test input
-            test_input = self.test_audio
+            test_input = self.test_image_url
             
-            # Load audio
-            if HAS_AUDIO and os.path.exists(test_input):
-                waveform, sample_rate = librosa.load(test_input, sr=16000)
-                inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
+            # Get image
+            if HAS_PIL:
+                response = requests.get(test_input)
+                image = Image.open(BytesIO(response.content)).convert("RGB")
             else:
-                # Mock audio input
-                dummy_waveform = np.zeros(16000)
-                inputs = processor(dummy_waveform, sampling_rate=16000, return_tensors="pt")
+                # Mock image
+                image = None
                 
+            if HAS_PIL:
+                # Process image
+                inputs = processor(images=image, return_tensors="pt")
+            else:
+                # Create mock inputs
+                inputs = {"pixel_values": torch.randn(1, 3, 224, 224)}
+            
             # Move inputs to device
             if device != "cpu":
                 inputs = {key: val.to(device) for key, val in inputs.items()}
@@ -375,22 +369,21 @@ class TestMamba2Models:
             min_time = min(times)
             max_time = max(times)
             
-            # Process output for audio classification
+            # Process classification output
             if hasattr(outputs[0], "logits"):
                 logits = outputs[0].logits
-                predicted_class_id = torch.argmax(logits, dim=-1).item()
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                top_k = torch.topk(probs, 5, dim=-1)
                 
-                # Get class label if available
-                predicted_label = f"class_{predicted_class_id}"
-                if hasattr(processor, "config") and hasattr(processor.config, "id2label"):
-                    predicted_label = processor.config.id2label.get(predicted_class_id, predicted_label)
-                
-                predictions = {
-                    "label": predicted_label,
-                    "score": torch.nn.functional.softmax(logits, dim=-1)[0, predicted_class_id].item()
-                }
+                # Get class indices
+                predictions = []
+                for i, (prob, idx) in enumerate(zip(top_k.values[0], top_k.indices[0])):
+                    predictions.append({
+                        "label": f"LABEL_{idx.item()}",
+                        "score": prob.item()
+                    })
             else:
-                predictions = {"output": "Model output processed successfully"}
+                predictions = [{"label": "Mock label", "score": 0.95}]
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -401,23 +394,18 @@ class TestMamba2Models:
             results["from_pretrained_avg_time"] = avg_time
             results["from_pretrained_min_time"] = min_time
             results["from_pretrained_max_time"] = max_time
-            results["tokenizer_load_time"] = tokenizer_load_time
+            results["processor_load_time"] = processor_load_time
             results["model_load_time"] = model_load_time
             results["model_size_mb"] = model_size_mb
             results["from_pretrained_error_type"] = "none"
-            
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["predictions"] = predictions
+            results["predictions"] = predictions
             
             # Add to examples
             example_data = {
                 "method": f"from_pretrained() on {device}",
-                "input": str(test_input)
+                "input": str(test_input),
+                "predictions": predictions
             }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
             
             self.examples.append(example_data)
             
@@ -426,7 +414,7 @@ class TestMamba2Models:
                 "avg_time": avg_time,
                 "min_time": min_time,
                 "max_time": max_time,
-                "tokenizer_load_time": tokenizer_load_time,
+                "processor_load_time": processor_load_time,
                 "model_load_time": model_load_time,
                 "model_size_mb": model_size_mb,
                 "num_runs": num_runs
@@ -479,17 +467,17 @@ class TestMamba2Models:
             return results
         
         try:
-            from optimum.intel import OVModelForAudioClassification
+            from optimum.intel import OVModelForImageClassification
             logger.info(f"Testing {self.model_id} with OpenVINO...")
             
-            # Time tokenizer loading
-            tokenizer_load_start = time.time()
-            processor = transformers.AutoProcessor.from_pretrained(self.model_id)
-            tokenizer_load_time = time.time() - tokenizer_load_start
+            # Time processor loading
+            processor_load_start = time.time()
+            processor = transformers.AutoFeatureExtractor.from_pretrained(self.model_id)
+            processor_load_time = time.time() - processor_load_start
             
             # Time model loading
             model_load_start = time.time()
-            model = OVModelForAudioClassification.from_pretrained(
+            model = OVModelForImageClassification.from_pretrained(
                 self.model_id,
                 export=True,
                 provider="CPU"
@@ -497,56 +485,53 @@ class TestMamba2Models:
             model_load_time = time.time() - model_load_start
             
             # Prepare input
-            test_input = self.test_audio
+            test_input = self.test_image_url
             
-            # Load audio
-            if HAS_AUDIO and os.path.exists(test_input):
-                waveform, sample_rate = librosa.load(test_input, sr=16000)
-                inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
+            # Process image
+            if HAS_PIL:
+                response = requests.get(test_input)
+                image = Image.open(BytesIO(response.content)).convert("RGB")
+                inputs = processor(images=image, return_tensors="pt")
             else:
-                # Mock audio input
-                dummy_waveform = np.zeros(16000)
-                inputs = processor(dummy_waveform, sampling_rate=16000, return_tensors="pt")
+                # Mock inputs
+                inputs = {
+                    "pixel_values": torch.zeros(1, 3, 224, 224)
+                }
             
             # Run inference
             start_time = time.time()
             outputs = model(**inputs)
             inference_time = time.time() - start_time
             
-            # Process output for audio classification
+            # Process classification output
             if hasattr(outputs, "logits"):
                 logits = outputs.logits
-                predicted_class_id = torch.argmax(logits, dim=-1).item()
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                top_indices = torch.topk(probs, 5, dim=-1).indices.tolist()[0]
                 
-                # Get class label if available
-                predicted_label = f"class_{predicted_class_id}"
-                if hasattr(processor, "config") and hasattr(processor.config, "id2label"):
-                    predicted_label = processor.config.id2label.get(predicted_class_id, predicted_label)
-                
-                predictions = [predicted_label]
+                predictions = []
+                for idx in top_indices:
+                    predictions.append({
+                        "label": f"LABEL_{idx}",
+                        "score": float(probs[0][idx])
+                    })
             else:
-                predictions = ["Processed OpenVINO output"]
+                predictions = [{"label": "LABEL_0", "score": 0.95}]
             
             # Store results
             results["openvino_success"] = True
             results["openvino_load_time"] = model_load_time
             results["openvino_inference_time"] = inference_time
-            results["openvino_tokenizer_load_time"] = tokenizer_load_time
-            
-            # Add predictions if available
-            if 'predictions' in locals():
-                results["openvino_predictions"] = predictions
-            
+            results["openvino_processor_load_time"] = processor_load_time
+            results["openvino_predictions"] = predictions
             results["openvino_error_type"] = "none"
             
             # Add to examples
             example_data = {
                 "method": "OpenVINO inference",
-                "input": str(test_input)
+                "input": str(test_input),
+                "predictions": predictions
             }
-            
-            if 'predictions' in locals():
-                example_data["predictions"] = predictions
             
             self.examples.append(example_data)
             
@@ -554,7 +539,7 @@ class TestMamba2Models:
             self.performance_stats["openvino"] = {
                 "inference_time": inference_time,
                 "load_time": model_load_time,
-                "tokenizer_load_time": tokenizer_load_time
+                "processor_load_time": processor_load_time
             }
             
         except Exception as e:
@@ -619,7 +604,7 @@ class TestMamba2Models:
                 "timestamp": datetime.datetime.now().isoformat(),
                 "has_transformers": HAS_TRANSFORMERS,
                 "has_torch": HAS_TORCH,
-                "has_audio": HAS_AUDIO
+                "has_pil": HAS_PIL
             }
         }
 
@@ -630,7 +615,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_mamba2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_dino_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -641,17 +626,17 @@ def save_results(model_id, results, output_dir="collected_results"):
     return output_path
 
 def get_available_models():
-    """Get a list of all available MAMBA2 models in the registry."""
-    return list(mamba2_MODELS_REGISTRY.keys())
+    """Get a list of all available DINO models in the registry."""
+    return list(DINO_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered MAMBA2 models."""
+    """Test all registered DINO models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestMamba2Models(model_id)
+        tester = TestDinoModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -664,7 +649,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_mamba2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_dino_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -673,7 +658,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test MAMBA2-family models")
+    parser = argparse.ArgumentParser(description="Test DINO-family models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -696,9 +681,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable MAMBA2-family models:")
+        print("\nAvailable DINO-family models:")
         for model in models:
-            info = mamba2_MODELS_REGISTRY[model]
+            info = DINO_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -711,14 +696,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nMAMBA2 Models Testing Summary:")
+        print("\nDINO Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "MIT/ast-finetuned-audioset-10-10-0.4593"
+    model_id = args.model or "facebook/dino-vitb16"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -726,7 +711,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestMamba2Models(model_id)
+    tester = TestDinoModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested

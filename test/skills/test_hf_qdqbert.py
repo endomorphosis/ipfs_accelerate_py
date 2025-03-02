@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Class-based test file for all MAMBA2-family models.
+Class-based test file for all QDQBERT-family models.
 This file provides a unified testing interface for:
-- Mamba2Model
+- QDQBertForMaskedLM
 """
 
 import os
@@ -45,31 +45,14 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 
-# Try to import audio processing libraries
+# Try to import tokenizers
 try:
-    import librosa
-    import soundfile as sf
-    HAS_AUDIO = True
+    import tokenizers
+    HAS_TOKENIZERS = True
 except ImportError:
-    librosa = MagicMock()
-    sf = MagicMock()
-    HAS_AUDIO = False
-    logger.warning("librosa or soundfile not available, using mock")
-
-if not HAS_AUDIO:
-    def mock_load(file_path, sr=None, mono=True):
-        return (np.zeros(16000), 16000)
-        
-    class MockSoundFile:
-        @staticmethod
-        def write(file, data, samplerate):
-            pass
-    
-    if isinstance(librosa, MagicMock):
-        librosa.load = mock_load
-    
-    if isinstance(sf, MagicMock):
-        sf.write = MockSoundFile.write
+    tokenizers = MagicMock()
+    HAS_TOKENIZERS = False
+    logger.warning("tokenizers not available, using mock")
 
 # Hardware detection
 def check_hardware():
@@ -106,37 +89,43 @@ def check_hardware():
 # Get hardware capabilities
 HW_CAPABILITIES = check_hardware()
 
-
 # Models registry - Maps model IDs to their specific configurations
-mamba2_MODELS_REGISTRY = {
-    "mamba2-base": {
-        "description": "MAMBA2 models",
-        "class": "Mamba2Model"
+QDQBERT_MODELS_REGISTRY = {
+    "bert-base-uncased-qdq": {
+        "description": "Quantized-Dequantized BERT base model (uncased)",
+        "class": "QDQBertForMaskedLM"
+    },
+    "bert-large-uncased-qdq": {
+        "description": "Quantized-Dequantized BERT large model (uncased)",
+        "class": "QDQBertForMaskedLM"
     }
-
 }
 
-class TestMamba2Models:
-    """Base test class for all MAMBA2-family models."""
+class TestQdqbertModels:
+    """Base test class for all QDQBERT-family models."""
     
     def __init__(self, model_id=None):
         """Initialize the test class for a specific model or default."""
-        self.model_id = model_id or "mamba2-base"
+        self.model_id = model_id or "bert-base-uncased-qdq"
         
         # Verify model exists in registry
-        if self.model_id not in mamba2_MODELS_REGISTRY:
+        if self.model_id not in QDQBERT_MODELS_REGISTRY:
             logger.warning(f"Model {self.model_id} not in registry, using default configuration")
-            self.model_info = mamba2_MODELS_REGISTRY["mamba2-base"]
+            self.model_info = QDQBERT_MODELS_REGISTRY["bert-base-uncased-qdq"]
         else:
-            self.model_info = mamba2_MODELS_REGISTRY[self.model_id]
+            self.model_info = QDQBERT_MODELS_REGISTRY[self.model_id]
         
         # Define model parameters
-        self.task = "audio-classification"
+        self.task = "fill-mask"
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
         
         # Define test inputs
-        self.test_text = "This is a test input for the model."
+        self.test_text = "The quick brown fox jumps over the [MASK] dog."
+        self.test_texts = [
+            "The quick brown fox jumps over the [MASK] dog.",
+            "Paris is the [MASK] of France."
+        ]
         
         # Configure hardware preference
         if HW_CAPABILITIES["cuda"]:
@@ -172,9 +161,9 @@ class TestMamba2Models:
             results["pipeline_success"] = False
             return results
             
-        if not HAS_AUDIO:
+        if not HAS_TOKENIZERS:
             results["pipeline_error_type"] = "missing_dependency"
-            results["pipeline_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+            results["pipeline_missing_deps"] = ["tokenizers>=0.11.0"]
             results["pipeline_success"] = False
             return results
         
@@ -185,7 +174,8 @@ class TestMamba2Models:
             pipeline_kwargs = {
                 "task": self.task,
                 "model": self.model_id,
-                "device": device
+                "device": device,
+                "top_k": 5
             }
             
             # Time the model loading
@@ -194,11 +184,7 @@ class TestMamba2Models:
             load_time = time.time() - load_start_time
             
             # Prepare test input
-            if os.path.exists(self.test_audio):
-                pipeline_input = self.test_audio
-            else:
-                # Use a sample array if file not found
-                pipeline_input = np.zeros(16000)
+            pipeline_input = self.test_text
             
             # Run warmup inference if on CUDA
             if device == "cuda":
@@ -291,9 +277,9 @@ class TestMamba2Models:
             results["from_pretrained_success"] = False
             return results
             
-        if not HAS_AUDIO:
+        if not HAS_TOKENIZERS:
             results["from_pretrained_error_type"] = "missing_dependency"
-            results["from_pretrained_missing_deps"] = ["librosa>=0.8.0", "soundfile>=0.10.0"]
+            results["from_pretrained_missing_deps"] = ["tokenizers>=0.11.0"]
             results["from_pretrained_success"] = False
             return results
         
@@ -305,9 +291,9 @@ class TestMamba2Models:
                 "local_files_only": False
             }
             
-            # Time tokenizer loading - for AST models, we use the processor
+            # Time tokenizer loading
             tokenizer_load_start = time.time()
-            processor = transformers.AutoProcessor.from_pretrained(
+            tokenizer = transformers.AutoTokenizer.from_pretrained(
                 self.model_id,
                 **pretrained_kwargs
             )
@@ -315,11 +301,11 @@ class TestMamba2Models:
             
             # Use appropriate model class based on model type
             model_class = None
-            if self.class_name == "ASTForAudioClassification":
-                model_class = transformers.ASTForAudioClassification
+            if self.class_name == "QDQBertForMaskedLM":
+                model_class = transformers.AutoModelForMaskedLM
             else:
                 # Fallback to Auto class
-                model_class = transformers.AutoModelForAudioClassification
+                model_class = transformers.AutoModelForMaskedLM
             
             # Time model loading
             model_load_start = time.time()
@@ -334,17 +320,11 @@ class TestMamba2Models:
                 model = model.to(device)
             
             # Prepare test input
-            test_input = self.test_audio
+            test_input = self.test_text
             
-            # Load audio
-            if HAS_AUDIO and os.path.exists(test_input):
-                waveform, sample_rate = librosa.load(test_input, sr=16000)
-                inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
-            else:
-                # Mock audio input
-                dummy_waveform = np.zeros(16000)
-                inputs = processor(dummy_waveform, sampling_rate=16000, return_tensors="pt")
-                
+            # Tokenize input
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
             # Move inputs to device
             if device != "cpu":
                 inputs = {key: val.to(device) for key, val in inputs.items()}
@@ -375,22 +355,31 @@ class TestMamba2Models:
             min_time = min(times)
             max_time = max(times)
             
-            # Process output for audio classification
-            if hasattr(outputs[0], "logits"):
-                logits = outputs[0].logits
-                predicted_class_id = torch.argmax(logits, dim=-1).item()
+            # Get top predictions for masked position
+            if hasattr(tokenizer, "mask_token_id"):
+                mask_token_id = tokenizer.mask_token_id
+                mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
                 
-                # Get class label if available
-                predicted_label = f"class_{predicted_class_id}"
-                if hasattr(processor, "config") and hasattr(processor.config, "id2label"):
-                    predicted_label = processor.config.id2label.get(predicted_class_id, predicted_label)
-                
-                predictions = {
-                    "label": predicted_label,
-                    "score": torch.nn.functional.softmax(logits, dim=-1)[0, predicted_class_id].item()
-                }
+                if len(mask_positions) > 0:
+                    mask_index = mask_positions[0][-1].item()
+                    logits = outputs[0].logits[0, mask_index]
+                    probs = torch.nn.functional.softmax(logits, dim=-1)
+                    top_k = torch.topk(probs, 5)
+                    
+                    predictions = []
+                    for i, (prob, idx) in enumerate(zip(top_k.values, top_k.indices)):
+                        if hasattr(tokenizer, "convert_ids_to_tokens"):
+                            token = tokenizer.convert_ids_to_tokens(idx.item())
+                        else:
+                            token = f"token_{idx.item()}"
+                        predictions.append({
+                            "token": token,
+                            "probability": prob.item()
+                        })
+                else:
+                    predictions = []
             else:
-                predictions = {"output": "Model output processed successfully"}
+                predictions = []
             
             # Calculate model size
             param_count = sum(p.numel() for p in model.parameters())
@@ -479,17 +468,17 @@ class TestMamba2Models:
             return results
         
         try:
-            from optimum.intel import OVModelForAudioClassification
+            from optimum.intel import OVModelForMaskedLM
             logger.info(f"Testing {self.model_id} with OpenVINO...")
             
             # Time tokenizer loading
             tokenizer_load_start = time.time()
-            processor = transformers.AutoProcessor.from_pretrained(self.model_id)
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
             tokenizer_load_time = time.time() - tokenizer_load_start
             
             # Time model loading
             model_load_start = time.time()
-            model = OVModelForAudioClassification.from_pretrained(
+            model = OVModelForMaskedLM.from_pretrained(
                 self.model_id,
                 export=True,
                 provider="CPU"
@@ -497,35 +486,40 @@ class TestMamba2Models:
             model_load_time = time.time() - model_load_start
             
             # Prepare input
-            test_input = self.test_audio
-            
-            # Load audio
-            if HAS_AUDIO and os.path.exists(test_input):
-                waveform, sample_rate = librosa.load(test_input, sr=16000)
-                inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
+            if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
+                mask_token = tokenizer.mask_token
+                test_input = self.test_text.replace("[MASK]", mask_token)
             else:
-                # Mock audio input
-                dummy_waveform = np.zeros(16000)
-                inputs = processor(dummy_waveform, sampling_rate=16000, return_tensors="pt")
+                test_input = self.test_text
+                
+            inputs = tokenizer(test_input, return_tensors="pt")
             
             # Run inference
             start_time = time.time()
             outputs = model(**inputs)
             inference_time = time.time() - start_time
             
-            # Process output for audio classification
-            if hasattr(outputs, "logits"):
-                logits = outputs.logits
-                predicted_class_id = torch.argmax(logits, dim=-1).item()
+            # Get predictions
+            if hasattr(tokenizer, "mask_token_id"):
+                mask_token_id = tokenizer.mask_token_id
+                mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
                 
-                # Get class label if available
-                predicted_label = f"class_{predicted_class_id}"
-                if hasattr(processor, "config") and hasattr(processor.config, "id2label"):
-                    predicted_label = processor.config.id2label.get(predicted_class_id, predicted_label)
-                
-                predictions = [predicted_label]
+                if len(mask_positions) > 0:
+                    mask_index = mask_positions[0][-1].item()
+                    logits = outputs.logits[0, mask_index]
+                    top_k_indices = torch.topk(logits, 5).indices.tolist()
+                    
+                    predictions = []
+                    for idx in top_k_indices:
+                        if hasattr(tokenizer, "convert_ids_to_tokens"):
+                            token = tokenizer.convert_ids_to_tokens(idx)
+                        else:
+                            token = f"token_{idx}"
+                        predictions.append(token)
+                else:
+                    predictions = []
             else:
-                predictions = ["Processed OpenVINO output"]
+                predictions = []
             
             # Store results
             results["openvino_success"] = True
@@ -619,7 +613,7 @@ class TestMamba2Models:
                 "timestamp": datetime.datetime.now().isoformat(),
                 "has_transformers": HAS_TRANSFORMERS,
                 "has_torch": HAS_TORCH,
-                "has_audio": HAS_AUDIO
+                "has_tokenizers": HAS_TOKENIZERS
             }
         }
 
@@ -630,7 +624,7 @@ def save_results(model_id, results, output_dir="collected_results"):
     
     # Create filename from model ID
     safe_model_id = model_id.replace("/", "__")
-    filename = f"hf_mamba2_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"hf_qdqbert_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     output_path = os.path.join(output_dir, filename)
     
     # Save results
@@ -641,17 +635,17 @@ def save_results(model_id, results, output_dir="collected_results"):
     return output_path
 
 def get_available_models():
-    """Get a list of all available MAMBA2 models in the registry."""
-    return list(mamba2_MODELS_REGISTRY.keys())
+    """Get a list of all available QDQBERT models in the registry."""
+    return list(QDQBERT_MODELS_REGISTRY.keys())
 
 def test_all_models(output_dir="collected_results", all_hardware=False):
-    """Test all registered MAMBA2 models."""
+    """Test all registered QDQBERT models."""
     models = get_available_models()
     results = {}
     
     for model_id in models:
         logger.info(f"Testing model: {model_id}")
-        tester = TestMamba2Models(model_id)
+        tester = TestQdqbertModels(model_id)
         model_results = tester.run_tests(all_hardware=all_hardware)
         
         # Save individual results
@@ -664,7 +658,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
         }
     
     # Save summary
-    summary_path = os.path.join(output_dir, f"hf_mamba2_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    summary_path = os.path.join(output_dir, f"hf_qdqbert_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
     with open(summary_path, "w") as f:
         json.dump(results, f, indent=2)
     
@@ -673,7 +667,7 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
 
 def main():
     """Command-line entry point."""
-    parser = argparse.ArgumentParser(description="Test MAMBA2-family models")
+    parser = argparse.ArgumentParser(description="Test QDQBERT-family models")
     
     # Model selection
     model_group = parser.add_mutually_exclusive_group()
@@ -696,9 +690,9 @@ def main():
     # List models if requested
     if args.list_models:
         models = get_available_models()
-        print("\nAvailable MAMBA2-family models:")
+        print("\nAvailable QDQBERT-family models:")
         for model in models:
-            info = mamba2_MODELS_REGISTRY[model]
+            info = QDQBERT_MODELS_REGISTRY[model]
             print(f"  - {model} ({info['class']}): {info['description']}")
         return
     
@@ -711,14 +705,14 @@ def main():
         results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
         
         # Print summary
-        print("\nMAMBA2 Models Testing Summary:")
+        print("\nQDQBERT Models Testing Summary:")
         total = len(results)
         successful = sum(1 for r in results.values() if r["success"])
         print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
         return
     
     # Test single model (default or specified)
-    model_id = args.model or "MIT/ast-finetuned-audioset-10-10-0.4593"
+    model_id = args.model or "bert-base-uncased-qdq"
     logger.info(f"Testing model: {model_id}")
     
     # Override preferred device if CPU only
@@ -726,7 +720,7 @@ def main():
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     
     # Run test
-    tester = TestMamba2Models(model_id)
+    tester = TestQdqbertModels(model_id)
     results = tester.run_tests(all_hardware=args.all_hardware)
     
     # Save results if requested

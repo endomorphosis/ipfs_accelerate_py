@@ -73,7 +73,229 @@ MODEL_REGISTRY = {
         "tasks": ["fill-mask"],
         "inputs": {
             "text": "The quick brown fox jumps over the [MASK] dog."
+        
+    "qdqbert": {
+        "family_name": "QDQBERT",
+        "description": "Quantized-Dequantized BERT models",
+        "default_model": "bert-base-uncased-qdq",
+        "class": "QDQBertForMaskedLM",
+        "test_class": "TestQDQBERTModels",
+        "module_name": "test_hf_qdqbert",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "The quick brown fox jumps over the [MASK] dog.",
         },
+        "dependencies": ['transformers', 'tokenizers'],
+        "task_specific_args": {
+            "fill-mask": {
+                "top_k": 5,
+            }
+        },
+        "models": {
+            "bert-base-uncased-qdq": {
+                "description": "QDQBERT model",
+                "class": "QDQBertForMaskedLM"
+            }
+        }
+    }
+    "flan": {
+        "family_name": "FLAN",
+        "description": "FLAN instruction-tuned models",
+        "default_model": "google/flan-t5-small",
+        "class": "FlanT5ForConditionalGeneration",
+        "test_class": "TestFLANModels",
+        "module_name": "test_hf_flan",
+        "tasks": ["text2text-generation"],
+        "inputs": {
+            "text": "Translate to French: How are you?",
+        },
+        "dependencies": ['transformers', 'tokenizers', 'sentencepiece'],
+        "task_specific_args": {
+            "text2text-generation": {
+                "max_length": 50,
+            }
+        },
+        "models": {
+            "google/flan-t5-small": {
+                "description": "FLAN model",
+                "class": "FlanT5ForConditionalGeneration"
+            }
+        }
+    }
+    "open-llama": {
+        "family_name": "Open-LLaMA",
+        "description": "Open-LLaMA causal language models",
+        "default_model": "openlm-research/open_llama_7b",
+        "class": "OpenLlamaForCausalLM",
+        "test_class": "TestOpenLLaMAModels",
+        "module_name": "test_hf_open_llama",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Open-LLaMA is a model that",
+        },
+        "dependencies": ['transformers', 'tokenizers', 'accelerate'],
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 30,
+            }
+        },
+        "models": {
+            "openlm-research/open_llama_7b": {
+                "description": "Open-LLaMA model",
+                "class": "OpenLlamaForCausalLM"
+            }
+        }
+    }
+    "mpt": {
+        "family_name": "MPT",
+        "description": "MPT causal language models",
+        "default_model": "mosaicml/mpt-7b",
+        "class": "MptForCausalLM",
+        "test_class": "TestMPTModels",
+        "module_name": "test_hf_mpt",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "MPT is a language model that",
+        },
+        "dependencies": ['transformers', 'tokenizers', 'accelerate'],
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 30,
+            }
+        },
+        "models": {
+            "mosaicml/mpt-7b": {
+                "description": "MPT model",
+                "class": "MptForCausalLM"
+            }
+        }
+    }
+    "bloom-7b1": {
+        "family_name": "BLOOM-7B1",
+        "description": "BLOOM-7B1 language model",
+        "default_model": "bigscience/bloom-7b1",
+        "class": "BloomForCausalLM",
+        "test_class": "TestBLOOM7B1Models",
+        "module_name": "test_hf_bloom_7b1",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "BLOOM is a language model that",
+        },
+        "dependencies": ['transformers', 'tokenizers', 'accelerate'],
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 30,
+            }
+        },
+        "models": {
+            "bigscience/bloom-7b1": {
+                "description": "BLOOM-7B1 model",
+                "class": "BloomForCausalLM"
+            }
+        }
+    }
+    "auto": {
+        "family_name": "Auto",
+        "description": "Auto-detected model classes",
+        "default_model": "bert-base-uncased",
+        "class": "AutoModel",
+        "test_class": "TestAutoModels",
+        "module_name": "test_hf_auto",
+        "tasks": ["feature-extraction"],
+        "inputs": {
+            "text": "This is a test input for Auto model classes.",
+        },
+        "dependencies": ['transformers', 'tokenizers'],
+        "task_specific_args": {
+            "feature-extraction": {
+            }
+        },
+        "models": {
+            "bert-base-uncased": {
+                "description": "Auto model",
+                "class": "AutoModel"
+            }
+        }
+    }
+    "falcon-7b": {
+        "family_name": "Falcon-7B",
+        "description": "Falcon-7B causal language model",
+        "default_model": "tiiuae/falcon-7b",
+        "class": "FalconForCausalLM",
+        "test_class": "TestFalcon7BModels",
+        "module_name": "test_hf_falcon_7b",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Falcon is a language model that",
+        },
+        "dependencies": ['transformers', 'tokenizers', 'accelerate'],
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 30,
+            }
+        },
+        "models": {
+            "tiiuae/falcon-7b": {
+                "description": "Falcon-7B model",
+                "class": "FalconForCausalLM"
+            }
+        }
+    }
+    "galactica": {
+        "family_name": "Galactica",
+        "description": "Galactica scientific language models",
+        "default_model": "facebook/galactica-125m",
+        "class": "OPTForCausalLM",
+        "test_class": "TestGalacticaModels",
+        "module_name": "test_hf_galactica",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "The theory of relativity states that",
+        },
+        "dependencies": ['transformers', 'tokenizers'],
+        "task_specific_args": {
+            "text-generation": {
+                "max_length": 100,
+                "min_length": 30,
+            }
+        },
+        "models": {
+            "facebook/galactica-125m": {
+                "description": "Galactica model",
+                "class": "OPTForCausalLM"
+            }
+        }
+    }
+    "qwen3_vl": {
+        "family_name": "Qwen3-VL",
+        "description": "Qwen3 vision-language models",
+        "default_model": "Qwen/Qwen3-VL-7B",
+        "class": "Qwen3VLForConditionalGeneration",
+        "test_class": "TestQwen3VLModels",
+        "module_name": "test_hf_qwen3_vl",
+        "tasks": ["image-to-text"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What do you see in this image?",
+        },
+        "dependencies": ['transformers', 'pillow', 'requests', 'accelerate'],
+        "task_specific_args": {
+            "image-to-text": {
+                "max_length": 100,
+            }
+        },
+        "models": {
+            "Qwen/Qwen3-VL-7B": {
+                "description": "Qwen3-VL model",
+                "class": "Qwen3VLForConditionalGeneration"
+            }
+        }
+    }
+},
         "dependencies": ["transformers", "tokenizers", "sentencepiece"],
         "task_specific_args": {
             "fill-mask": {"top_k": 5}
