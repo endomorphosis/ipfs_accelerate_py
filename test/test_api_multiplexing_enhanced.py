@@ -15,7 +15,7 @@ import sys
 import json
 import time
 import threading
-import concurrent.futures
+from concurrent import futures as concurrent_futures
 import random
 from pathlib import Path
 from datetime import datetime
@@ -287,7 +287,7 @@ class EnhancedApiMultiplexingTest:
         start_time = time.time()
         
         # Use ThreadPoolExecutor for concurrent requests
-        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent) as executor:
+        with concurrent_futures.ThreadPoolExecutor(max_workers=concurrent) as executor:
             # Submit all tasks
             futures = []
             for i in range(num_requests):
@@ -295,7 +295,7 @@ class EnhancedApiMultiplexingTest:
                 futures.append(executor.submit(request_fn, prompt))
             
             # Process results as they complete
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            for i, future in enumerate(concurrent_futures.as_completed(futures)):
                 try:
                     result = future.result()
                     request_results.append(result)
@@ -409,13 +409,13 @@ class EnhancedApiMultiplexingTest:
         request_results = []
         start_time = time.time()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent) as executor:
+        with concurrent_futures.ThreadPoolExecutor(max_workers=concurrent) as executor:
             futures = []
             for i in range(num_requests):
                 prompt = random.choice(self.test_prompts)
                 futures.append(executor.submit(make_request_with_fallback, prompt))
             
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            for i, future in enumerate(concurrent_futures.as_completed(futures)):
                 try:
                     result = future.result()
                     request_results.append(result)
@@ -494,10 +494,10 @@ class EnhancedApiMultiplexingTest:
         multiplexed_results = []
         multiplexed_start = time.time()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=requests_per_test) as executor:
+        with concurrent_futures.ThreadPoolExecutor(max_workers=requests_per_test) as executor:
             futures = [executor.submit(test_fn, prompt) for prompt in prompts]
             
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            for i, future in enumerate(concurrent_futures.as_completed(futures)):
                 try:
                     result = future.result()
                     multiplexed_results.append(result)
@@ -531,10 +531,10 @@ class EnhancedApiMultiplexingTest:
         single_results = []
         single_start = time.time()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=requests_per_test) as executor:
+        with concurrent_futures.ThreadPoolExecutor(max_workers=requests_per_test) as executor:
             futures = [executor.submit(single_test_fn, prompt) for prompt in prompts]
             
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            for i, future in enumerate(concurrent_futures.as_completed(futures)):
                 try:
                     result = future.result()
                     single_results.append(result)

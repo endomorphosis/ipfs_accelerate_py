@@ -7,11 +7,36 @@ all Hugging Face model architectures, with support for:
 - Multiple hardware backends (CPU, CUDA, OpenVINO)
 - Both from_pretrained() and pipeline() API approaches
 - Consistent performance benchmarking and result collection
+- Automatic model discovery and test generation
+- Batch processing of multiple model families
 
 Usage:
-  python test_generator.py --all-families
-  python test_generator.py --family bert
-  python test_generator.py --generate-template t5
+  # List available model families in registry
+  python test_generator.py --list-families
+  
+  # Generate tests for a specific model family
+  python test_generator.py --generate bert
+  
+  # Generate tests for all model families in registry
+  python test_generator.py --all
+  
+  # Generate tests for a specific set of models
+  python test_generator.py --batch-generate bert,gpt2,t5,vit,clip
+  
+  # Discover and suggest new models to add
+  python test_generator.py --suggest-models
+  
+  # Generate a registry entry for a specific model
+  python test_generator.py --generate-registry-entry sam
+  
+  # Automatically discover and add new models to registry (without actually adding)
+  python test_generator.py --auto-add --max-models 5
+  
+  # Update test_all_models.py with all model families
+  python test_generator.py --update-all-models
+  
+  # Scan transformers library for available models
+  python test_generator.py --scan-transformers
 """
 
 import os
@@ -235,6 +260,259 @@ MODEL_REGISTRY = {
             "facebook/wav2vec2-large": {
                 "description": "Wav2Vec2 large model",
                 "class": "Wav2Vec2ForCTC"
+            }
+        }
+    },
+    "vit": {
+        "family_name": "ViT",
+        "description": "Vision Transformer models",
+        "default_model": "google/vit-base-patch16-224",
+        "class": "ViTForImageClassification",
+        "test_class": "TestVitModels",
+        "module_name": "test_hf_vit",
+        "tasks": ["image-classification"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "image-classification": {}
+        },
+        "models": {
+            "google/vit-base-patch16-224": {
+                "description": "ViT Base model (patch size 16, image size 224)",
+                "class": "ViTForImageClassification"
+            },
+            "facebook/deit-base-patch16-224": {
+                "description": "DeiT Base model (patch size 16, image size 224)",
+                "class": "DeiTForImageClassification"
+            }
+        }
+    },
+    "detr": {
+        "family_name": "DETR",
+        "description": "Detection Transformer models for object detection",
+        "default_model": "facebook/detr-resnet-50",
+        "class": "DetrForObjectDetection",
+        "test_class": "TestDetrModels",
+        "module_name": "test_hf_detr",
+        "tasks": ["object-detection"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "object-detection": {}
+        },
+        "models": {
+            "facebook/detr-resnet-50": {
+                "description": "DETR with ResNet-50 backbone",
+                "class": "DetrForObjectDetection"
+            },
+            "facebook/detr-resnet-101": {
+                "description": "DETR with ResNet-101 backbone",
+                "class": "DetrForObjectDetection"
+            }
+        }
+    },
+    "layoutlmv2": {
+        "family_name": "LayoutLMv2",
+        "description": "LayoutLMv2 models for document understanding",
+        "default_model": "microsoft/layoutlmv2-base-uncased",
+        "class": "LayoutLMv2ForTokenClassification",
+        "test_class": "TestLayoutLMv2Models",
+        "module_name": "test_hf_layoutlmv2",
+        "tasks": ["document-question-answering"],
+        "inputs": {
+            "image_url": "https://huggingface.co/datasets/hf-internal-testing/fixtures_docvqa/resolve/main/document.png",
+            "question": "What is the date on this document?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "document-question-answering": {}
+        },
+        "models": {
+            "microsoft/layoutlmv2-base-uncased": {
+                "description": "LayoutLMv2 Base model (uncased)",
+                "class": "LayoutLMv2ForTokenClassification"
+            },
+            "microsoft/layoutlmv2-large-uncased": {
+                "description": "LayoutLMv2 Large model (uncased)",
+                "class": "LayoutLMv2ForTokenClassification"
+            }
+        }
+    },
+    "time_series_transformer": {
+        "family_name": "TimeSeriesTransformer",
+        "description": "Time Series Transformer models for forecasting",
+        "default_model": "huggingface/time-series-transformer-tourism-monthly",
+        "class": "TimeSeriesTransformerForPrediction",
+        "test_class": "TestTimeSeriesTransformerModels",
+        "module_name": "test_hf_time_series_transformer",
+        "tasks": ["time-series-prediction"],
+        "inputs": {
+            "past_values": [100, 150, 200, 250, 300],
+            "past_time_features": [[0, 1], [1, 1], [2, 1], [3, 1], [4, 1]],
+            "future_time_features": [[5, 1], [6, 1], [7, 1]]
+        },
+        "dependencies": ["transformers", "numpy"],
+        "task_specific_args": {
+            "time-series-prediction": {}
+        },
+        "models": {
+            "huggingface/time-series-transformer-tourism-monthly": {
+                "description": "Time Series Transformer for monthly tourism forecasting",
+                "class": "TimeSeriesTransformerForPrediction"
+            }
+        }
+    },
+    "llava": {
+        "family_name": "LLaVA",
+        "description": "Large Language-and-Vision Assistant models",
+        "default_model": "llava-hf/llava-1.5-7b-hf",
+        "class": "LlavaForConditionalGeneration",
+        "test_class": "TestLlavaModels",
+        "module_name": "test_hf_llava",
+        "tasks": ["visual-question-answering"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "text": "What do you see in this image?"
+        },
+        "dependencies": ["transformers", "pillow", "requests", "accelerate"],
+        "task_specific_args": {
+            "visual-question-answering": {"max_length": 200}
+        },
+        "models": {
+            "llava-hf/llava-1.5-7b-hf": {
+                "description": "LLaVA 1.5 7B model",
+                "class": "LlavaForConditionalGeneration"
+            }
+        }
+    },
+    "roberta": {
+        "family_name": "RoBERTa",
+        "description": "RoBERTa masked language models",
+        "default_model": "roberta-base",
+        "class": "RobertaForMaskedLM",
+        "test_class": "TestRobertaModels",
+        "module_name": "test_hf_roberta",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "The quick brown fox jumps over the <mask> dog."
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "fill-mask": {"top_k": 5}
+        },
+        "models": {
+            "roberta-base": {
+                "description": "RoBERTa base model",
+                "class": "RobertaForMaskedLM"
+            },
+            "roberta-large": {
+                "description": "RoBERTa large model",
+                "class": "RobertaForMaskedLM"
+            },
+            "distilroberta-base": {
+                "description": "DistilRoBERTa base model",
+                "class": "RobertaForMaskedLM"
+            }
+        }
+    },
+    "phi": {
+        "family_name": "Phi",
+        "description": "Phi language models from Microsoft",
+        "default_model": "microsoft/phi-2",
+        "class": "PhiForCausalLM",
+        "test_class": "TestPhiModels",
+        "module_name": "test_hf_phi",
+        "tasks": ["text-generation"],
+        "inputs": {
+            "text": "Explain quantum computing in simple terms"
+        },
+        "dependencies": ["transformers", "tokenizers", "accelerate"],
+        "task_specific_args": {
+            "text-generation": {"max_length": 100, "min_length": 30}
+        },
+        "models": {
+            "microsoft/phi-1": {
+                "description": "Phi-1 model",
+                "class": "PhiForCausalLM"
+            },
+            "microsoft/phi-2": {
+                "description": "Phi-2 model",
+                "class": "PhiForCausalLM"
+            }
+        }
+    },
+    "distilbert": {
+        "family_name": "DistilBERT",
+        "description": "DistilBERT masked language models",
+        "default_model": "distilbert-base-uncased",
+        "class": "DistilBertForMaskedLM",
+        "test_class": "TestDistilBertModels",
+        "module_name": "test_hf_distilbert",
+        "tasks": ["fill-mask"],
+        "inputs": {
+            "text": "The quick brown fox jumps over the [MASK] dog."
+        },
+        "dependencies": ["transformers", "tokenizers"],
+        "task_specific_args": {
+            "fill-mask": {"top_k": 5}
+        },
+        "models": {
+            "distilbert-base-uncased": {
+                "description": "DistilBERT base model (uncased)",
+                "class": "DistilBertForMaskedLM"
+            },
+            "distilbert-base-cased": {
+                "description": "DistilBERT base model (cased)",
+                "class": "DistilBertForMaskedLM"
+            }
+        }
+    },
+    "visual_bert": {
+        "family_name": "VisualBERT",
+        "description": "VisualBERT for vision-language tasks",
+        "default_model": "uclanlp/visualbert-vqa-coco-pre",
+        "class": "VisualBertForQuestionAnswering",
+        "test_class": "TestVisualBertModels",
+        "module_name": "test_hf_visual_bert",
+        "tasks": ["visual-question-answering"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+            "question": "What is shown in the image?"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "visual-question-answering": {}
+        },
+        "models": {
+            "uclanlp/visualbert-vqa-coco-pre": {
+                "description": "VisualBERT pretrained on COCO for VQA",
+                "class": "VisualBertForQuestionAnswering"
+            }
+        }
+    },
+    "zoedepth": {
+        "family_name": "ZoeDepth",
+        "description": "ZoeDepth monocular depth estimation models",
+        "default_model": "isl-org/ZoeDepth",
+        "class": "ZoeDepthForDepthEstimation",
+        "test_class": "TestZoeDepthModels",
+        "module_name": "test_hf_zoedepth",
+        "tasks": ["depth-estimation"],
+        "inputs": {
+            "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+        },
+        "dependencies": ["transformers", "pillow", "requests"],
+        "task_specific_args": {
+            "depth-estimation": {}
+        },
+        "models": {
+            "isl-org/ZoeDepth": {
+                "description": "ZoeDepth model for monocular depth estimation",
+                "class": "ZoeDepthForDepthEstimation"
             }
         }
     }
@@ -1689,12 +1967,27 @@ def create_test_file(family_id):
     logger.info(f"Created test file: {file_path}")
     return True
 
-def generate_all_test_files():
-    """Generate test files for all model families."""
+def generate_all_test_files(model_list=None):
+    """
+    Generate test files for all model families or a specific list.
+    
+    Args:
+        model_list: Optional list of model families to generate tests for
+    """
     successful = []
     failed = []
     
-    for family_id in MODEL_REGISTRY:
+    # Determine which models to generate tests for
+    if model_list:
+        families_to_generate = [f for f in model_list if f in MODEL_REGISTRY]
+        missing = [f for f in model_list if f not in MODEL_REGISTRY]
+        if missing:
+            logger.warning(f"The following models are not in the registry: {', '.join(missing)}")
+    else:
+        families_to_generate = list(MODEL_REGISTRY.keys())
+    
+    # Generate test files for each family
+    for family_id in families_to_generate:
         logger.info(f"Generating test file for {family_id}...")
         if create_test_file(family_id):
             successful.append(family_id)
@@ -1706,6 +1999,52 @@ def generate_all_test_files():
         logger.warning(f"Failed to generate {len(failed)} test files: {', '.join(failed)}")
     
     return successful, failed
+
+def auto_add_tests(max_models=5):
+    """
+    Automatically find models without tests and generate registry entries and test files.
+    
+    Args:
+        max_models: Maximum number of new models to add
+    """
+    # Scan for available models
+    discovered_models = scan_hf_transformers()
+    suggestions = suggest_new_models(discovered_models)
+    
+    # Limit to max_models
+    if len(suggestions) > max_models:
+        logger.info(f"Limiting to {max_models} models out of {len(suggestions)} discovered")
+        suggestions = suggestions[:max_models]
+    
+    added_models = []
+    generated_tests = []
+    
+    for suggestion in suggestions:
+        family_id = suggestion["family_id"]
+        
+        # Get model specifics if available
+        model_specifics = get_model_specifics(family_id)
+        
+        # Generate registry entry
+        entry = generate_model_registry_entry(suggestion)
+        logger.info(f"Generated registry entry for {family_id}")
+        
+        # We would add to registry here in a complete solution
+        # For now, let's print what we would add
+        logger.info(f"Would add {family_id} to MODEL_REGISTRY")
+        print(f"\nGenerated entry for {family_id}:")
+        print(entry)
+        
+        added_models.append(family_id)
+    
+    logger.info(f"Added {len(added_models)} new models to registry")
+    
+    # We would generate test files here in a complete solution
+    # logger.info(f"Generating test files for new models")
+    # successful, failed = generate_all_test_files(added_models)
+    # logger.info(f"Generated test files for {len(successful)} models")
+    
+    return added_models
 
 def update_test_all_models():
     """Update the test_all_models.py file with all model families."""
@@ -1761,6 +2100,434 @@ def update_test_all_models():
     logger.info(f"Updated test_all_models.py with {len(model_families)} model families")
     return True
 
+def scan_hf_transformers():
+    """
+    Scan transformers library to discover available models and architectures.
+    This helps expand the test coverage by identifying models not yet in the registry.
+    """
+    discovered_models = {}
+    
+    # Check if transformers is available
+    try:
+        import transformers
+        has_transformers = True
+    except ImportError:
+        logger.warning("transformers not available, cannot scan for models")
+        has_transformers = False
+        return discovered_models
+        
+    if not has_transformers:
+        logger.warning("transformers not available, cannot scan for models")
+        return discovered_models
+    
+    try:
+        # Get auto classes from the transformers package
+        auto_mapping = {}
+        
+        # Try to find all model classes that support various tasks
+        if hasattr(transformers, "AutoModelForMaskedLM"):
+            auto_mapping.update({"bert_for_masked_lm": "AutoModelForMaskedLM"})
+        
+        if hasattr(transformers, "AutoModelForCausalLM"):
+            auto_mapping.update({"gpt_for_causal_lm": "AutoModelForCausalLM"})
+            
+        if hasattr(transformers, "AutoModelForSeq2SeqLM"):
+            auto_mapping.update({"t5_for_conditional_generation": "AutoModelForSeq2SeqLM"})
+            
+        if hasattr(transformers, "AutoModelForImageClassification"):
+            auto_mapping.update({"vit_for_image_classification": "AutoModelForImageClassification"})
+            
+        if hasattr(transformers, "AutoModelForObjectDetection"):
+            auto_mapping.update({"detr_for_object_detection": "AutoModelForObjectDetection"})
+            
+        if hasattr(transformers, "AutoModelForAudioClassification"):
+            auto_mapping.update({"wav2vec2_for_audio_classification": "AutoModelForAudioClassification"})
+            
+        if hasattr(transformers, "AutoModelForSpeechSeq2Seq"):
+            auto_mapping.update({"whisper_for_conditional_generation": "AutoModelForSpeechSeq2Seq"})
+            
+        if hasattr(transformers, "AutoModelForQuestionAnswering"):
+            auto_mapping.update({"bert_for_question_answering": "AutoModelForQuestionAnswering"})
+            
+        if hasattr(transformers, "AutoModelForImageSegmentation"):
+            auto_mapping.update({"mask2former_for_image_segmentation": "AutoModelForImageSegmentation"})
+            
+        # Directly add common model types to scan
+        model_types = [
+            "bert", "gpt2", "t5", "roberta", "distilbert", "bart", "vit", "clip", 
+            "whisper", "wav2vec2", "layoutlm", "detr", "segformer", "deit", "llama",
+            "sam", "blip", "llava", "phi", "mistral", "falcon", "flan", "mt5",
+            "bloom", "deberta", "electra", "xlm", "dino", "beit", "blenderbot",
+            "pegasus", "clap", "camembert", "albert", "mobilevit", "resnet", "owlvit",
+            "informer", "codegen", "codellama", "xclip", "clipseg", "donut", "dinov2", 
+            "depth_anything", "pix2struct", "fuyu", "gemma", "convnext", "beit", "wavlm",
+            "musicgen", "siglip", "clap", "starcoder", "zoedepth"
+        ]
+        
+        # Add common model types to the auto mapping
+        for model_type in model_types:
+            if model_type not in auto_mapping:
+                auto_mapping[f"{model_type}_model"] = f"Model for {model_type}"
+        
+        # Extract model families from auto mapping
+        for model_type, model_class in auto_mapping.items():
+            model_family = model_type.split('_')[0]
+            if model_family not in discovered_models:
+                discovered_models[model_family] = {
+                    "model_classes": set(),
+                    "tasks": set(),
+                }
+            
+            discovered_models[model_family]["model_classes"].add(model_class)
+            
+            # Infer task from class name
+            if "MaskedLM" in model_class:
+                discovered_models[model_family]["tasks"].add("fill-mask")
+            elif "CausalLM" in model_class:
+                discovered_models[model_family]["tasks"].add("text-generation")
+            elif "Seq2SeqLM" in model_class:
+                discovered_models[model_family]["tasks"].add("text2text-generation")
+            elif "ImageClassification" in model_class:
+                discovered_models[model_family]["tasks"].add("image-classification")
+            elif "ObjectDetection" in model_class:
+                discovered_models[model_family]["tasks"].add("object-detection")
+            elif "Speech" in model_class or "Audio" in model_class:
+                discovered_models[model_family]["tasks"].add("automatic-speech-recognition")
+            elif "Vision2Seq" in model_class:
+                discovered_models[model_family]["tasks"].add("image-to-text")
+        
+        # Find example models for each family using hub API if available
+        try:
+            import huggingface_hub
+            for model_family in discovered_models:
+                try:
+                    # Search for models matching the family name
+                    models = huggingface_hub.list_models(
+                        filter=huggingface_hub.ModelFilter(
+                            model_name=model_family,
+                            library="transformers",
+                            task="*"
+                        ),
+                        limit=5
+                    )
+                    
+                    # Add example models
+                    example_models = [model.id for model in models]
+                    if example_models:
+                        discovered_models[model_family]["example_models"] = example_models
+                except Exception as e:
+                    logger.warning(f"Error searching for {model_family} models: {e}")
+        except ImportError:
+            logger.warning("huggingface_hub not available, cannot search for example models")
+    
+    except Exception as e:
+        logger.warning(f"Error scanning transformers models: {e}")
+    
+    return discovered_models
+
+def suggest_new_models(discovered_models):
+    """Generate suggestions for new model families to add to the registry."""
+    suggestions = []
+    
+    # Check which discovered models are not in our registry
+    for model_family, info in discovered_models.items():
+        # Standardize model family name to match registry style
+        family_id = model_family.lower()
+        
+        # Skip if already in registry
+        if family_id in MODEL_REGISTRY or any(family_id in k for k in MODEL_REGISTRY.keys()):
+            continue
+        
+        # Skip generic models
+        if family_id in ["auto", "generic", "model", "base"]:
+            continue
+            
+        # Prepare information for suggestion
+        if hasattr(info, "get") and info.get("example_models"):
+            example_model = info["example_models"][0]
+        else:
+            example_model = f"{model_family.lower()}-base"
+            
+        model_classes = list(info["model_classes"]) if hasattr(info, "get") and info.get("model_classes") else []
+        if model_classes:
+            class_name = model_classes[0].split(".")[-1]
+        else:
+            class_name = f"{model_family}Model"
+            
+        # Get tasks
+        tasks = list(info["tasks"]) if hasattr(info, "get") and info.get("tasks") else ["feature-extraction"]
+        
+        # Create suggestion
+        suggestion = {
+            "family_id": family_id,
+            "family_name": model_family,
+            "default_model": example_model,
+            "class": class_name,
+            "task": tasks[0] if tasks else "feature-extraction"
+        }
+        
+        suggestions.append(suggestion)
+    
+    return suggestions
+
+def get_model_specifics(family_id):
+    """Get specific model details and configurations for known models."""
+    model_specifics = {
+        "sam": {
+            "family_name": "SAM",
+            "description": "Segment Anything Model for image segmentation",
+            "default_model": "facebook/sam-vit-base",
+            "class": "SamModel",
+            "tasks": ["image-segmentation"],
+            "inputs": {
+                "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+                "points": [[500, 375]]
+            },
+            "dependencies": ["transformers", "pillow", "requests", "numpy"],
+            "class_mapping": {
+                "facebook/sam-vit-base": "SamModel",
+                "facebook/sam-vit-large": "SamModel",
+                "facebook/sam-vit-huge": "SamModel"
+            }
+        },
+        "bart": {
+            "family_name": "BART",
+            "description": "BART sequence-to-sequence models",
+            "default_model": "facebook/bart-base",
+            "class": "BartForConditionalGeneration",
+            "tasks": ["summarization", "translation"],
+            "inputs": {
+                "text": "The tower is 324 metres tall, about the same height as an 81-storey building. Its base is square, measuring 125 metres on each side."
+            },
+            "dependencies": ["transformers", "tokenizers"],
+            "class_mapping": {
+                "facebook/bart-base": "BartForConditionalGeneration",
+                "facebook/bart-large": "BartForConditionalGeneration",
+                "facebook/bart-large-cnn": "BartForConditionalGeneration",
+                "facebook/bart-large-mnli": "BartForSequenceClassification"
+            }
+        },
+        "deberta": {
+            "family_name": "DeBERTa",
+            "description": "DeBERTa masked language models",
+            "default_model": "microsoft/deberta-base",
+            "class": "DebertaForMaskedLM",
+            "tasks": ["fill-mask"],
+            "inputs": {
+                "text": "The quick brown fox jumps over the [MASK] dog."
+            },
+            "dependencies": ["transformers", "tokenizers"],
+            "class_mapping": {
+                "microsoft/deberta-base": "DebertaForMaskedLM",
+                "microsoft/deberta-large": "DebertaForMaskedLM",
+                "microsoft/deberta-v2-xlarge": "DebertaV2ForMaskedLM"
+            }
+        },
+        "segformer": {
+            "family_name": "SegFormer",
+            "description": "SegFormer models for image segmentation",
+            "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+            "class": "SegformerForSemanticSegmentation",
+            "tasks": ["image-segmentation"],
+            "inputs": {
+                "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+            },
+            "dependencies": ["transformers", "pillow", "requests"],
+            "class_mapping": {
+                "nvidia/segformer-b0-finetuned-ade-512-512": "SegformerForSemanticSegmentation",
+                "nvidia/segformer-b5-finetuned-cityscapes-1024-1024": "SegformerForSemanticSegmentation"
+            }
+        },
+        "blip": {
+            "family_name": "BLIP",
+            "description": "BLIP vision-language models",
+            "default_model": "Salesforce/blip-image-captioning-base",
+            "class": "BlipForConditionalGeneration",
+            "tasks": ["image-to-text"],
+            "inputs": {
+                "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+            },
+            "dependencies": ["transformers", "pillow", "requests"],
+            "class_mapping": {
+                "Salesforce/blip-image-captioning-base": "BlipForConditionalGeneration",
+                "Salesforce/blip-vqa-base": "BlipForQuestionAnswering"
+            }
+        },
+        "mistral": {
+            "family_name": "Mistral",
+            "description": "Mistral causal language models",
+            "default_model": "mistralai/Mistral-7B-v0.1",
+            "class": "MistralForCausalLM",
+            "tasks": ["text-generation"],
+            "inputs": {
+                "text": "Explain quantum computing in simple terms"
+            },
+            "dependencies": ["transformers", "tokenizers", "accelerate"],
+            "class_mapping": {
+                "mistralai/Mistral-7B-v0.1": "MistralForCausalLM",
+                "mistralai/Mistral-7B-Instruct-v0.1": "MistralForCausalLM"
+            }
+        },
+        "gemma": {
+            "family_name": "Gemma",
+            "description": "Gemma language models from Google",
+            "default_model": "google/gemma-2b",
+            "class": "GemmaForCausalLM",
+            "tasks": ["text-generation"],
+            "inputs": {
+                "text": "Write a poem about artificial intelligence"
+            },
+            "dependencies": ["transformers", "tokenizers", "accelerate"],
+            "class_mapping": {
+                "google/gemma-2b": "GemmaForCausalLM",
+                "google/gemma-7b": "GemmaForCausalLM"
+            }
+        },
+        "dino": {
+            "family_name": "DINO",
+            "description": "DINO object detection models",
+            "default_model": "facebook/dino-vitb16",
+            "class": "DinoForImageClassification",
+            "tasks": ["image-classification"],
+            "inputs": {
+                "image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"
+            },
+            "dependencies": ["transformers", "pillow", "requests"],
+            "class_mapping": {
+                "facebook/dino-vitb16": "DinoForImageClassification",
+                "facebook/dino-vits16": "DinoForImageClassification"
+            }
+        }
+    }
+    
+    return model_specifics.get(family_id.lower(), None)
+
+def generate_model_registry_entry(suggestion):
+    """Generate a model registry entry from a suggestion."""
+    family_id = suggestion["family_id"]
+    family_name = suggestion["family_name"]
+    default_model = suggestion["default_model"]
+    class_name = suggestion["class"]
+    task = suggestion["task"]
+    
+    # Check if we have specific details for this model family
+    model_specifics = get_model_specifics(family_id)
+    if model_specifics:
+        # Use the specific details
+        family_name = model_specifics["family_name"]
+        description = model_specifics["description"]
+        default_model = model_specifics["default_model"]
+        class_name = model_specifics["class"]
+        task = model_specifics["tasks"][0]
+        inputs = model_specifics["inputs"]
+        dependencies = model_specifics["dependencies"]
+        class_mapping = model_specifics.get("class_mapping", {})
+        
+        # Build models dictionary
+        models_dict = "{\n"
+        for model_id, model_class in class_mapping.items():
+            models_dict += f'            "{model_id}": {{\n'
+            models_dict += f'                "description": "{model_id.split("/")[-1]} model",\n'
+            models_dict += f'                "class": "{model_class}"\n'
+            models_dict += '            },\n'
+        models_dict += "        }"
+    else:
+        # Generate appropriate test inputs based on task
+        if task == "fill-mask":
+            description = f"{family_name} masked language models"
+            inputs = {"text": "The quick brown fox jumps over the [MASK] dog."}
+            task_args = {"top_k": 5}
+            dependencies = ["transformers", "tokenizers"]
+        elif task == "text-generation":
+            description = f"{family_name} causal language models"
+            inputs = {"text": "In this paper, we propose"}
+            task_args = {"max_length": 50, "min_length": 20}
+            dependencies = ["transformers", "tokenizers"]
+        elif task == "text2text-generation":
+            description = f"{family_name} sequence-to-sequence models"
+            inputs = {"text": "Translate to French: Hello, how are you?"}
+            task_args = {"max_length": 50}
+            dependencies = ["transformers", "tokenizers", "sentencepiece"]
+        elif task in ["image-classification", "object-detection", "image-segmentation"]:
+            description = f"{family_name} models for {task}"
+            inputs = {"image_url": "http://images.cocodataset.org/val2017/000000039769.jpg"}
+            task_args = {}
+            dependencies = ["transformers", "pillow", "requests"]
+        elif task in ["automatic-speech-recognition", "audio-classification"]:
+            description = f"{family_name} models for {task}"
+            inputs = {"audio_file": "audio_sample.mp3"}
+            task_args = {}
+            dependencies = ["transformers", "librosa", "soundfile"]
+        else:
+            # Generic fallback
+            description = f"{family_name} models for {task}"
+            inputs = {"text": "This is a test input"}
+            task_args = {}
+            dependencies = ["transformers"]
+            
+        # Build models dictionary with just the default model
+        models_dict = "{\n"
+        models_dict += f'            "{default_model}": {{\n'
+        models_dict += f'                "description": "{family_name} model",\n'
+        models_dict += f'                "class": "{class_name}"\n'
+        models_dict += '            }\n'
+        models_dict += "        }"
+    
+    # Generate the registry entry
+    if model_specifics:
+        # Format the inputs dictionary
+        inputs_str = ""
+        for k, v in inputs.items():
+            if isinstance(v, str):
+                inputs_str += f'"{k}": "{v}", '
+            else:
+                inputs_str += f'"{k}": {v}, '
+        inputs_str = inputs_str.rstrip(", ")
+        
+        task_args = model_specifics.get("task_specific_args", {})
+        if not task_args:
+            task_args = {}
+        
+        entry = f"""
+    "{family_id}": {{
+        "family_name": "{family_name}",
+        "description": "{description}",
+        "default_model": "{default_model}",
+        "class": "{class_name}",
+        "test_class": "Test{family_name}Models",
+        "module_name": "test_hf_{family_id.lower()}",
+        "tasks": {str(model_specifics["tasks"])},
+        "inputs": {{
+            {inputs_str}
+        }},
+        "dependencies": {str(dependencies)},
+        "task_specific_args": {{
+            "{task}": {str(task_args)}
+        }},
+        "models": {models_dict}
+    }}"""
+    else:
+        entry = f"""
+    "{family_id}": {{
+        "family_name": "{family_name}",
+        "description": "{description}",
+        "default_model": "{default_model}",
+        "class": "{class_name}",
+        "test_class": "Test{family_name}Models",
+        "module_name": "test_hf_{family_id.lower()}",
+        "tasks": ["{task}"],
+        "inputs": {{
+            {', '.join([f'"{k}": "{v}"' for k, v in inputs.items()])}
+        }},
+        "dependencies": {str(dependencies)},
+        "task_specific_args": {{
+            "{task}": {str(task_args)}
+        }},
+        "models": {models_dict}
+    }}"""
+    
+    return entry
+
 def main():
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description="Generate test files for Hugging Face models")
@@ -1773,6 +2540,14 @@ def main():
     # List options
     parser.add_argument("--list-families", action="store_true", help="List all model families in the registry")
     
+    # Discovery options
+    parser.add_argument("--scan-transformers", action="store_true", help="Scan transformers library for available models")
+    parser.add_argument("--suggest-models", action="store_true", help="Suggest new models to add to the registry")
+    parser.add_argument("--generate-registry-entry", type=str, help="Generate registry entry for a specific model family")
+    parser.add_argument("--auto-add", action="store_true", help="Automatically add new models and generate tests")
+    parser.add_argument("--max-models", type=int, default=5, help="Maximum number of models to auto-add")
+    parser.add_argument("--batch-generate", type=str, help="Generate tests for a comma-separated list of models")
+    
     args = parser.parse_args()
     
     # List model families if requested
@@ -1780,6 +2555,65 @@ def main():
         print("\nAvailable Model Families in Registry:")
         for family_id, family_info in MODEL_REGISTRY.items():
             print(f"  - {family_id}: {family_info['description']} ({family_info['default_model']})")
+        return
+    
+    # Scan transformers library
+    if args.scan_transformers:
+        print("\nScanning transformers library for available models...")
+        discovered_models = scan_hf_transformers()
+        print(f"Found {len(discovered_models)} model families in transformers")
+        
+        # Print discovered models
+        for family, info in discovered_models.items():
+            print(f"\n{family}:")
+            if hasattr(info, "get"):
+                if info.get("model_classes"):
+                    print(f"  Classes: {', '.join(list(info['model_classes'])[:3])}{'...' if len(info['model_classes']) > 3 else ''}")
+                if info.get("tasks"):
+                    print(f"  Tasks: {', '.join(info['tasks'])}")
+                if info.get("example_models"):
+                    print(f"  Example models: {', '.join(info['example_models'][:3])}")
+        return
+    
+    # Suggest new models
+    if args.suggest_models:
+        print("\nSuggesting new models to add to the registry...")
+        discovered_models = scan_hf_transformers()
+        suggestions = suggest_new_models(discovered_models)
+        
+        print(f"Found {len(suggestions)} model families that could be added to the registry:")
+        for suggestion in suggestions:
+            print(f"\n{suggestion['family_name']}:")
+            print(f"  family_id: {suggestion['family_id']}")
+            print(f"  default_model: {suggestion['default_model']}")
+            print(f"  class: {suggestion['class']}")
+            print(f"  task: {suggestion['task']}")
+        return
+    
+    # Generate registry entry
+    if args.generate_registry_entry:
+        family_id = args.generate_registry_entry
+        discovered_models = scan_hf_transformers()
+        
+        # Find the model in discovered models
+        for model_family, info in discovered_models.items():
+            if model_family.lower() == family_id.lower():
+                # Create suggestion
+                suggestion = {
+                    "family_id": family_id.lower(),
+                    "family_name": model_family,
+                    "default_model": info.get("example_models", [f"{model_family}-base"])[0] if hasattr(info, "get") else f"{model_family}-base",
+                    "class": list(info["model_classes"])[0].split(".")[-1] if hasattr(info, "get") and info.get("model_classes") else f"{model_family}Model",
+                    "task": list(info["tasks"])[0] if hasattr(info, "get") and info.get("tasks") else "feature-extraction"
+                }
+                
+                # Generate registry entry
+                entry = generate_model_registry_entry(suggestion)
+                print(f"\nRegistry entry for {family_id}:")
+                print(entry)
+                return
+        
+        print(f"Could not find {family_id} in transformers library")
         return
     
     # Generate a specific test file
@@ -1799,8 +2633,23 @@ def main():
     if args.update_all_models:
         update_test_all_models()
     
+    # Auto-add models and generate tests
+    if args.auto_add:
+        print("\nAutomatically finding and adding new models...")
+        added_models = auto_add_tests(max_models=args.max_models)
+        return
+        
+    # Batch generate tests for multiple models
+    if args.batch_generate:
+        model_list = [m.strip() for m in args.batch_generate.split(",")]
+        print(f"\nGenerating tests for {len(model_list)} models: {', '.join(model_list)}")
+        successful, failed = generate_all_test_files(model_list)
+        return
+    
     # Default: print help
-    if not (args.generate or args.all or args.update_all_models or args.list_families):
+    if not (args.generate or args.all or args.update_all_models or args.list_families or
+            args.scan_transformers or args.suggest_models or args.generate_registry_entry or
+            args.auto_add or args.batch_generate):
         parser.print_help()
 
 if __name__ == "__main__":

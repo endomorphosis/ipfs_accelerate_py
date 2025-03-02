@@ -14,10 +14,18 @@ import sys
 import subprocess
 import argparse
 import json
+import importlib
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Try to import the api_backends module
+try:
+    from ipfs_accelerate_py import api_backends
+except ImportError:
+    print("Could not import api_backends module")
+    api_backends = None
 
 def update_api_status_file(status_data):
     """Update the API implementation status file"""

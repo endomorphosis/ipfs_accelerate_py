@@ -1,15 +1,10 @@
 {
+  "queue_implemented": "Success",
+  "max_concurrent_requests": "Success",
+  "queue_size": "Success",
+  "max_retries": "Success",
+  "initial_retry_delay": "Success",
+  "backoff_factor": "Success",
   "endpoint_handler": "Success",
-  "test_endpoint": "Failed endpoint test",
-  "test_endpoint_params": "Failed to pass correct parameters",
-  "post_request": "Success",
-  "post_request_headers": "Success",
-  "format_request_simple": "Success",
-  "format_request_batch": "Success",
-  "format_request_params": "Success",
-  "error_handling_connection": "Success",
-  "error_handling_500": "Success",
-  "error_handling_invalid_json": "Success",
-  "batch_processing": "Failed batch processing",
-  "model_info": "Success"
+  "test_endpoint": "Success"
 }

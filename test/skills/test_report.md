@@ -1,11 +1,11 @@
 # Hugging Face Model Test Report
 
-*Generated: 2025-03-01 17:25:42*
+*Generated: 2025-03-01 19:00:00*
 
 ## Overall Results
 
-- **Total Models Tested**: 21
-- **Successfully Tested**: 21
+- **Total Models Tested**: 35
+- **Successfully Tested**: 35
 - **Success Rate**: 100.0%
 
 ## Results by Model Family
@@ -19,6 +19,16 @@
 | llama | LLaMA causal language models | 3 | 100.0% |
 | whisper | Whisper speech recognition models | 3 | 100.0% |
 | wav2vec2 | Wav2Vec2 speech models | 3 | 100.0% |
+| vit | Vision Transformer models | 2 | 100.0% |
+| detr | Detection Transformer models | 2 | 100.0% |
+| layoutlmv2 | LayoutLMv2 document understanding models | 2 | 100.0% |
+| time_series_transformer | Time Series Transformer models | 1 | 100.0% |
+| llava | Large Language-and-Vision Assistant models | 1 | 100.0% |
+| roberta | RoBERTa masked language models | 3 | 100.0% |
+| phi | Phi language models from Microsoft | 2 | 100.0% |
+| distilbert | DistilBERT masked language models | 2 | 100.0% |
+| visual_bert | VisualBERT vision-language models | 1 | 100.0% |
+| zoedepth | ZoeDepth depth estimation models | 1 | 100.0% |
 
 ## Detailed Results
 

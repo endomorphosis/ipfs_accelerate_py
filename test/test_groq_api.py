@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_a
 
 try:
     # Import the groq implementation
-    from api_backends import groq as groq_module
+    from ipfs_accelerate_py.api_backends import groq as groq_module
     
     # Get API key from environment
     api_key = os.environ.get("GROQ_API_KEY")

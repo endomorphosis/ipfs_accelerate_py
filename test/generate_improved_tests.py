@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
-Improved test generator for HuggingFace model tests.
+Enhanced Comprehensive Test Generator for HuggingFace Models
 
-This script combines features from both existing generators and adds new capabilities:
-1. Automatic pipeline task detection from HuggingFace API
-2. Smart template selection based on model architecture
-3. Improved test structure with better error handling and batch processing
-4. Specialized test inputs for different model types
-5. Support for batch processing tests
-6. Advanced error handling with detailed fallback mechanisms
-7. Priority-based generation with customizable filters
-8. Parallel test generation for improved performance
+This script generates comprehensive test files for all HuggingFace model types with:
+1. Complete testing for both pipeline() and from_pretrained() APIs
+2. Guaranteed coverage for all three hardware backends: CPU, CUDA, and OpenVINO
+3. Batch processing tests for input handling
+4. Memory usage tracking and detailed performance benchmarking
+5. Thread-safe implementation for parallel testing
+6. Flexible test selection with model type categorization
+7. Customizable test generation with detailed error reporting
+8. Automatic model-specific test input generation
+9. Environment capability detection with graceful fallbacks
+
+The generated tests utilize a unified comprehensive test framework that ensures
+consistent evaluation across all model types and hardware platforms.
 """
 
 import os

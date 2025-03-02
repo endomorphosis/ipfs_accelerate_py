@@ -2,9 +2,9 @@
 """
 Class-based test file for all BERT-family models.
 This file provides a unified testing interface for:
-- BertForMaskedLM
 - DistilBertForMaskedLM
 - RobertaForMaskedLM
+- BertForMaskedLM
 """
 
 import os
@@ -202,55 +202,6 @@ class TestBertModels:
         self.results = {}
         self.examples = []
         self.performance_stats = {}
-        
-    def run_tests(self, all_hardware=False):
-        """
-        Run all tests for this model.
-        
-        Args:
-            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
-        
-        Returns:
-            Dict containing test results
-        """
-        # Always test on default device
-        self.test_pipeline()
-        self.test_from_pretrained()
-        
-        # Test on all available hardware if requested
-        if all_hardware:
-            # Always test on CPU
-            if self.preferred_device != "cpu":
-                self.test_pipeline(device="cpu")
-                self.test_from_pretrained(device="cpu")
-            
-            # Test on CUDA if available
-            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
-                self.test_pipeline(device="cuda")
-                self.test_from_pretrained(device="cuda")
-            
-            # Test on OpenVINO if available
-            if HW_CAPABILITIES["openvino"]:
-                self.test_with_openvino()
-        
-        # Build final results
-        return {
-            "results": self.results,
-            "examples": self.examples,
-            "performance": self.performance_stats,
-            "hardware": HW_CAPABILITIES,
-            "metadata": {
-                "model": self.model_id,
-                "task": self.task,
-                "class": self.class_name,
-                "description": self.description,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "has_transformers": HAS_TRANSFORMERS,
-                "has_torch": HAS_TORCH,
-                "has_tokenizers": HAS_TOKENIZERS,
-                "has_sentencepiece": HAS_SENTENCEPIECE
-            }
-        }
     
     
 def test_pipeline(self, device="auto"):

@@ -1,135 +1,23 @@
 {
-  "init": "Success",
-  "cpu_init": "Success (REAL)",
-  "cpu_similarity": "Success (REAL)",
-  "cpu_similarity_shape": [
-    1,
-    1
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success (UNKNOWN)"
+  },
+  "examples": [
+    {
+      "input": "Test input for clip",
+      "output": {
+        "type": "<class 'dict'>",
+        "implementation_type": "UNKNOWN"
+      },
+      "timestamp": "2025-03-01T18:28:03.234156",
+      "platform": "CPU"
+    }
   ],
-  "cpu_similarity_range": [
-    -0.2,
-    1.0
-  ],
-  "cpu_image_embedding": "Success (REAL)",
-  "cpu_image_embedding_shape": [
-    1,
-    512
-  ],
-  "cpu_image_example": {
-    "input": "image input (binary data not shown)",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806057.0844088,
-    "implementation": "(REAL)"
-  },
-  "cpu_text_embedding": "Success (REAL)",
-  "cpu_text_embedding_shape": [
-    1,
-    512
-  ],
-  "cpu_text_example": {
-    "input": "a red square",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806057.0844505,
-    "implementation": "(REAL)"
-  },
-  "cpu_similarity_example": {
-    "input": {
-      "text": "a red square",
-      "image": "image input (binary data not shown)"
-    },
-    "output": 0.011785322800278664,
-    "timestamp": 1740806057.0844624,
-    "implementation": "(REAL)"
-  },
-  "cuda_init": "Success (REAL)",
-  "cuda_handler": "Success (REAL)",
-  "cuda_similarity_example": {
-    "input": {
-      "text": "a red square",
-      "image": "image input (binary data not shown)"
-    },
-    "output": 0.75,
-    "timestamp": 1740806059.9839826,
-    "implementation_type": "REAL",
-    "performance": {
-      "inference_time": 0.007719278335571289
-    },
-    "is_simulated": false
-  },
-  "cuda_image_example": {
-    "input": "image input (binary data not shown)",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806059.9839833,
-    "implementation_type": "REAL",
-    "is_simulated": false
-  },
-  "cuda_text_example": {
-    "input": "a red square",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806059.9839842,
-    "implementation_type": "REAL",
-    "is_simulated": false
-  },
-  "cuda_device": "cuda:0",
-  "cuda_capabilities": {
-    "device_name": "Quadro P4000",
-    "device_count": 1,
-    "memory_allocated_mb": 301.58447265625,
-    "memory_reserved_mb": 318.0
-  },
-  "openvino_init": "Success (REAL)",
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success (MOCK)",
-  "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_similarity_example": {
-    "input": {
-      "text": "a red square",
-      "image": "image input (binary data not shown)"
-    },
-    "output": 0.75,
-    "timestamp": 1740806078.0929356,
-    "implementation": "(MOCK)"
-  },
-  "qualcomm_image_example": {
-    "input": "image input (binary data not shown)",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806078.092939,
-    "implementation": "(MOCK)"
-  },
-  "qualcomm_text_example": {
-    "input": "a red square",
-    "output_shape": [
-      1,
-      512
-    ],
-    "timestamp": 1740806078.0929396,
-    "implementation": "(MOCK)"
-  },
   "metadata": {
-    "timestamp": 1740806078.0930548,
-    "torch_version": "2.6.0+cu124",
-    "numpy_version": "2.1.3",
-    "transformers_version": "4.46.0",
-    "cuda_available": true,
-    "cuda_device_count": 1,
-    "mps_available": false,
-    "transformers_mocked": false,
-    "test_model": "openai/clip-vit-base-patch16",
-    "test_run_id": "clip-test-1740806078"
+    "model_name": "bert-base-uncased",
+    "model_type": "clip",
+    "test_timestamp": "2025-03-01T18:28:03.234165"
   }
 }

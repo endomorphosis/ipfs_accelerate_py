@@ -5,18 +5,20 @@ This guide documents the comprehensive testing framework for HuggingFace models 
 ## Current Test Coverage Status (March 2025)
 
 - **Total Hugging Face model types**: 300
-- **Tests implemented**: 127+ (42.3% coverage)
-- **Recent additions**: kosmos-2, grounding-dino, tapas, and various vision models
-- **High-priority models remaining**: swinv2, vit_mae, layoutlmv2, nougat
+- **Tests implemented**: 70+ (23.3% coverage)
+- **Real implementations**: 13 model types have real implementations (18.5% of tested models)
+- **Recent improvements**: New smart model selection and error handling
+- **High-priority models for real implementation**: Sam, Phi3, QWen3, Mamba
 
 ### Coverage by Category
 
-| Category | Implemented | Total | Coverage |
-|----------|-------------|-------|----------|
-| Language Models | 65+ | 92 | 70.7% |
-| Vision Models | 32+ | 51 | 62.7% |
-| Audio Models | 15+ | 20 | 75.0% |
-| Multimodal Models | 15+ | 19 | 78.9% |
+| Category | Total Models | Implemented Tests | Real Implementations |
+|----------|--------------|-------------------|---------------------|
+| Language Models | 150+ | 30+ (20%) | 5 (BERT, T5, LLaMA, GPT2, QWen2) |
+| Vision Models | 70+ | 15+ (21%) | 4 (CLIP, ViT, DETR, XCLIP) |
+| Audio Models | 30+ | 10+ (33%) | 3 (Whisper, Wav2Vec2, CLAP) |
+| Multimodal Models | 30+ | 10+ (33%) | 1 (LLaVA) |
+| Specialized Models | 20+ | 5+ (25%) | 0 |
 
 ## Running Tests
 
@@ -26,70 +28,92 @@ To run an individual test:
 
 ```bash
 # Basic test run
-python skills/test_hf_bert.py
+cd skills && python test_hf_bert.py
 
-# With platform selection
-python skills/test_hf_bert.py --platform cpu
-python skills/test_hf_bert.py --platform cuda
-python skills/test_hf_bert.py --platform openvino
+# With verbose output
+cd skills && python test_hf_bert.py --verbose
 
-# With model override
-python skills/test_hf_bert.py --model bert-base-uncased
+# With model override (choose a smaller model for faster testing)
+cd skills && python test_hf_bert.py --model bert-base-uncased
 ```
 
-### Batch Testing
+### Using the Unified Test Runner
 
-To run multiple tests at once:
+Our new unified test runner supports parallel execution and detailed reporting:
 
 ```bash
-# Run all tests
-python run_skills_tests.py --all
+# Run all model tests
+python run_unified_tests.py --type model
 
 # Run tests for specific models
-python run_skills_tests.py --models bert,roberta,gpt2
+python run_unified_tests.py --type model --models bert t5 llama
 
-# Run tests by category
-python run_skills_tests.py --category language
-python run_skills_tests.py --category vision
-python run_skills_tests.py --category audio
-python run_skills_tests.py --category multimodal
+# Run tests with increased parallelism (faster)
+python run_unified_tests.py --workers 8 --type all
+
+# Run tests by implementation type
+python run_unified_tests.py --type model --impl-type real
+python run_unified_tests.py --type model --impl-type mock
+
+# Generate a detailed test report
+python run_unified_tests.py --type model --report model_test_report.md
 ```
 
 ## Generating New Tests
 
 The test framework includes advanced scripts for generating high-quality tests for new models.
 
-### Using the Recommended Generator
+### Using the Test Generators
 
-The `generate_model_tests.py` script is the recommended way to generate new tests:
+The framework provides two recommended test generators:
+
+#### 1. Basic Test Generator (Simple & Fast)
+
+The `generate_basic_tests.py` script is the recommended way to quickly generate new tests:
+
+```bash
+# Generate tests for specific models with automatic task selection
+python generate_basic_tests.py bert t5 llama clip
+
+# Generate tests with explicit task
+python generate_basic_tests.py detr --task object-detection
+python generate_basic_tests.py whisper --task automatic-speech-recognition
+
+# Check models by type for proper test generation
+python generate_basic_tests.py --list-models
+```
+
+#### 2. Comprehensive Test Generator (Advanced)
+
+For more comprehensive tests with advanced options, use `generate_unified_test.py`:
 
 ```bash
 # List all models missing test implementations
-python generate_model_tests.py --list-only
+python generate_unified_test.py --type model --list-missing
 
 # Generate tests for specific models
-python generate_model_tests.py --models kosmos-2 tapas layoutlmv2
+python generate_unified_test.py --type model --models bert t5 llama
 
 # Generate tests by category
-python generate_model_tests.py --category vision --limit 5
-python generate_model_tests.py --category audio --limit 10
+python generate_unified_test.py --type model --category vision --limit 5
+python generate_unified_test.py --type model --category audio --limit 10
 
 # Generate tests with a custom output directory
-python generate_model_tests.py --output-dir custom_tests --limit 3
+python generate_unified_test.py --type model --output-dir custom_tests --limit 3
 ```
 
 ### Test Generator Features
 
-The test generator automatically:
+Our test generators automatically:
 
-1. **Categorizes models** based on their pipeline tasks
-2. **Selects appropriate examples** for each model type
-3. **Creates specialized test inputs** for different model capabilities
-4. **Implements batch testing** for comprehensive validation
-5. **Handles hardware-specific implementations** (CPU, CUDA, OpenVINO)
-6. **Incorporates robust error handling** with graceful degradation
-7. **Collects performance metrics** when possible
-8. **Creates expected results** for validation
+1. **Categorizes models** by task type (language, vision, audio, multimodal)
+2. **Selects appropriate test models** based on model type (e.g., bert-base-uncased for BERT)
+3. **Creates specialized test inputs** for each model's needs (text, images, audio)
+4. **Implements intelligent output handling** for different return types
+5. **Handles hardware-specific tests** (CPU, CUDA, OpenVINO)
+6. **Provides robust error handling** with graceful degradation to mock implementations
+7. **Collects performance metrics** including inference time and memory usage
+8. **Creates standardized test outputs** in JSON format for easy comparison
 
 ## Test Structure
 
@@ -158,16 +182,18 @@ While the test generator handles most cases, you can create custom tests:
 4. Adjust the processor and model initialization
 5. Run the test to generate expected results
 
-## High-Priority Test Targets
+## High-Priority Implementation Targets
 
-The highest priority models for new test implementation are:
+The highest priority models for real implementation (beyond test coverage) are:
 
-1. **NOUGAT**: Document understanding model for academic papers
-2. **SwinV2**: Advanced vision transformer for image understanding
-3. **ViTMAE**: Vision transformer with masked autoencoder pretraining
-4. **LayoutLMv2**: Document understanding model with spatial layout
-5. **Depth-Anything**: Depth estimation model
-6. **OLMo**: Open language model
+1. **Sam**: Segment Anything Model for advanced image segmentation
+2. **Phi3**: Microsoft's newest language model with strong performance
+3. **QWen3**: Alibaba's powerful multilingual language model
+4. **Mamba**: State-space model with efficient sequence modeling
+5. **Depth-Anything**: Universal depth estimation model
+6. **Mistral-Next**: Latest generation of the Mistral language model family
+
+These models already have test coverage but need real implementations to replace the mock versions.
 
 ## Contributing New Tests
 

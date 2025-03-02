@@ -30,17 +30,17 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 try:
-    from ipfs_accelerate_py.api_backends.claude import claude
-    from ipfs_accelerate_py.api_backends.groq import groq
-    from ipfs_accelerate_py.api_backends.gemini import gemini
-    from ipfs_accelerate_py.api_backends.openai_api import openai_api
-    from ipfs_accelerate_py.api_backends.ollama import ollama
-    from ipfs_accelerate_py.api_backends.hf_tgi import hf_tgi
-    from ipfs_accelerate_py.api_backends.hf_tei import hf_tei
-    from ipfs_accelerate_py.api_backends.llvm import llvm
-    from ipfs_accelerate_py.api_backends.opea import opea
-    from ipfs_accelerate_py.api_backends.ovms import ovms
-    from ipfs_accelerate_py.api_backends.s3_kit import s3_kit
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.claude import claude
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.gemini import gemini
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.openai_api import openai_api
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ollama import ollama
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.hf_tgi import hf_tgi
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.hf_tei import hf_tei
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.llvm import llvm
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.opea import opea
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ovms import ovms
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.s3_kit import s3_kit
 except ImportError as e:
     print(f"Error importing API backends: {e}")
 

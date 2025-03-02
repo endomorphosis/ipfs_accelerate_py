@@ -1,96 +1,23 @@
 {
-  "init": "Success",
-  "load_audio": "Success",
-  "audio_format": "Shape: (224000,), SR: 16000",
-  "cpu_init": "Success (REAL)",
-  "cpu_transcription_handler": "Success (REAL)",
-  "cpu_transcription": "This is a mock CPU transcription output",
-  "cpu_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "This is a mock CPU transcription output",
-    "timestamp": 1740811377.6250923,
-    "elapsed_time": 0.1,
-    "implementation_type": "(REAL)",
-    "platform": "CPU"
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success (REAL)"
   },
-  "cpu_embedding_handler": "Success (REAL)",
-  "cpu_embedding_length": 768,
-  "cpu_embedding_sample": "[-2.19356107711792, -0.9249554872512817, 1.6323676109313965, 1.060792088508606, -0.4025081992149353]...",
-  "cpu_embedding_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output_type": "<class 'dict'>",
-    "embedding_length": 768,
-    "timestamp": 1740811380.1102316,
-    "elapsed_time": 0.2,
-    "implementation_type": "(REAL)",
-    "platform": "CPU"
-  },
-  "cuda_init": "Success (REAL)",
-  "cuda_handler": "Success (REAL)",
-  "cuda_transcription": {
-    "text": "Error in CUDA handler: Input type (torch.cuda.FloatTensor) and weight type (torch.cuda.HalfTensor) should be the same",
-    "implementation_type": "REAL",
-    "error": "Input type (torch.cuda.FloatTensor) and weight type (torch.cuda.HalfTensor) should be the same",
-    "total_time": 0.04598712921142578,
-    "is_simulated": true,
-    "gpu_memory_mb": 187.54736328125
-  },
-  "cuda_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "Error in CUDA handler: Input type (torch.cuda.FloatTensor) and weight type (torch.cuda.HalfTensor) s...",
-    "timestamp": 1740811381.934654,
-    "elapsed_time": 0.04622459411621094,
-    "implementation_type": "(REAL)",
-    "platform": "CUDA",
-    "performance_metrics": {}
-  },
-  "openvino_init": "Success (REAL)",
-  "openvino_handler": "Success (REAL)",
-  "openvino_transcription": "(MOCK) This is a mock OpenVINO transcription output",
-  "openvino_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "(MOCK) This is a mock OpenVINO transcription output",
-    "timestamp": 1740811432.0614612,
-    "elapsed_time": 0.01,
-    "implementation_type": "REAL",
-    "platform": "OpenVINO"
-  },
-  "openvino_embedding_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output_type": "<class 'numpy.ndarray'>",
-    "embedding_length": 768,
-    "timestamp": 1740811432.0614727,
-    "elapsed_time": 0.01,
-    "implementation_type": "REAL",
-    "platform": "OpenVINO"
-  },
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success (MOCK)",
-  "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_transcription": "(MOCK) This is a mock Qualcomm transcription output",
-  "qualcomm_transcription_example": {
-    "input": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "output": "(MOCK) This is a mock Qualcomm transcription output",
-    "timestamp": 1740811433.13864,
-    "elapsed_time": 0.09,
-    "implementation_type": "(MOCK)",
-    "platform": "Qualcomm"
-  },
+  "examples": [
+    {
+      "input": "Test input for wav2vec2",
+      "output": {
+        "type": "<class 'str'>",
+        "implementation_type": "REAL"
+      },
+      "timestamp": "2025-03-01T18:29:06.509013",
+      "platform": "CPU"
+    }
+  ],
   "metadata": {
-    "timestamp": 1740811433.140405,
-    "torch_version": "2.6.0+cu124",
-    "numpy_version": "2.1.3",
-    "transformers_version": "4.46.0",
-    "cuda_available": true,
-    "cuda_device_count": 1,
-    "mps_available": false,
-    "transformers_mocked": false,
-    "test_audio": "/home/barberb/ipfs_accelerate_py/test/trans_test.mp3",
-    "test_model": "facebook/wav2vec2-base",
-    "test_run_id": "wav2vec2-test-1740811433",
-    "implementation_type": "(REAL)",
-    "os_platform": "linux",
-    "python_version": "3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]",
-    "test_date": "2025-02-28 22:43:53"
+    "model_name": "bert-base-uncased",
+    "model_type": "wav2vec2",
+    "test_timestamp": "2025-03-01T18:29:06.509024"
   }
 }

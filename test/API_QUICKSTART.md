@@ -4,7 +4,7 @@ This guide provides simple examples for using the IPFS Accelerate API backends w
 
 ## Overview
 
-The IPFS Accelerate framework provides a standardized interface to multiple LLM API providers. All 7 high-priority API backends are now fully implemented with REAL functionality:
+The IPFS Accelerate framework provides a standardized interface to multiple LLM API providers. All API backends are now fully implemented with REAL functionality:
 
 | API | Status | Used For |
 |-----|--------|----------|
@@ -15,6 +15,10 @@ The IPFS Accelerate framework provides a standardized interface to multiple LLM 
 | HF TGI | ✅ REAL | Text generation with Hugging Face models |
 | HF TEI | ✅ REAL | Embeddings with Hugging Face models |
 | Gemini | ✅ REAL | Google's models, multimodal capabilities |
+| LLVM | ✅ REAL | Optimized local inference |
+| OVMS | ✅ REAL | OpenVINO Model Server integration |
+| OPEA | ✅ REAL | Open Platform for Enterprise AI |
+| S3 Kit | ✅ REAL | Model storage and retrieval |
 
 ## Setting Up Credentials
 
@@ -551,3 +555,241 @@ For more detailed information:
 - Check API_IMPLEMENTATION_STATUS.md for current implementation status
 - Review test scripts for working examples of each API
 - Examine CLAUDE.md for implementation patterns and architecture
+
+## Advanced Features Added (March 2025)
+
+All API backends now include these advanced features:
+
+### 1. Queue and Backoff System (COMPLETED) 
+- Thread-safe request queueing with proper locking
+- Configurable concurrency limits with queue overflow handling
+- Exponential backoff with retry mechanism for transient errors
+- Queue processing with background thread management
+- Request tracking with unique IDs for diagnostics
+
+```python
+# Configure queue and backoff settings
+from ipfs_accelerate_py.api_backends import openai_api
+
+client = openai_api()
+
+# Configure queue settings
+client.queue_enabled = True               # Enable/disable queue (default: True)
+client.max_concurrent_requests = 5        # Max concurrent requests (default: 5)
+client.queue_size = 100                   # Maximum queue size (default: 100)
+
+# Configure backoff settings
+client.max_retries = 5                    # Max retry attempts (default: 5)
+client.initial_retry_delay = 1            # Initial delay in seconds (default: 1)
+client.backoff_factor = 2                 # Multiplier for each retry (default: 2)
+client.max_retry_delay = 60               # Maximum delay cap in seconds (default: 60)
+
+# Send request with a unique request ID for tracking
+response = client.chat(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+    request_id="req_12345"                # Optional custom ID for tracking
+)
+
+# Check queue status (if supported)
+if hasattr(client, "get_queue_info"):
+    info = client.get_queue_info()
+    print(f"Queue size: {info.get('size', 0)} requests")
+    print(f"Active requests: {info.get('active_requests', 0)}")
+    print(f"Queue capacity: {info.get('capacity', 0)}")
+```
+
+### 2. Priority Queue System
+- Three-tier priority levels (HIGH, NORMAL, LOW)
+- Thread-safe request queueing with concurrency limits
+- Dynamic queue size configuration with overflow handling
+- Priority-based scheduling and processing
+- Queue status monitoring and metrics
+
+```python
+# Example usage of priority queue
+from ipfs_accelerate_py.api_backends import openai_api
+
+client = openai_api()
+
+# Set request priority
+response = client.chat(
+    model="gpt-4o", 
+    messages=[{"role": "user", "content": "Critical task"}],
+    priority="HIGH"  # Will be processed before NORMAL and LOW priority requests
+)
+
+# Check queue status
+if hasattr(client, "get_queue_status"):
+    status = client.get_queue_status()
+    print(f"High priority queue: {status.get('high_priority', 0)} requests")
+    print(f"Normal priority queue: {status.get('normal_priority', 0)} requests")
+    print(f"Low priority queue: {status.get('low_priority', 0)} requests")
+```
+
+### 3. Circuit Breaker Pattern
+- Three-state machine (CLOSED, OPEN, HALF-OPEN)
+- Automatic service outage detection
+- Self-healing capabilities with configurable timeouts
+- Failure threshold configuration
+- Fast-fail for unresponsive services
+
+```python
+# Configure circuit breaker
+client.circuit_failure_threshold = 5  # Number of failures before opening circuit
+client.circuit_reset_timeout = 30     # Seconds before trying half-open state
+client.circuit_success_threshold = 3  # Successes needed to close circuit
+
+# Check circuit state
+if hasattr(client, "get_circuit_state"):
+    state = client.get_circuit_state()
+    print(f"Circuit state: {state}")  # CLOSED, OPEN, or HALF-OPEN
+    
+    # Get detailed circuit metrics
+    metrics = client.get_circuit_metrics()
+    print(f"Recent failures: {metrics.get('recent_failures', 0)}")
+    print(f"Failure rate: {metrics.get('failure_rate', 0):.2f}%")
+```
+
+### 4. API Key Multiplexing
+- Multiple API key management for each provider
+- Automatic round-robin key rotation
+- Least-loaded key selection strategy
+- Per-key usage tracking and metrics
+
+```python
+# Configure multiple API keys
+from ipfs_accelerate_py.api_backends import openai_api
+
+client = openai_api()
+
+# Add multiple API keys
+client.add_api_key("key1", "sk-abc123...")
+client.add_api_key("key2", "sk-def456...")
+client.add_api_key("key3", "sk-ghi789...")
+
+# Set selection strategy
+client.key_selection_strategy = "least-loaded"  # or "round-robin"
+
+# Use specific key if needed
+response = client.chat(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello"}],
+    api_key_name="key2"  # Use this specific key
+)
+
+# Get key usage statistics
+if hasattr(client, "get_key_usage_stats"):
+    stats = client.get_key_usage_stats()
+    for key_name, usage in stats.items():
+        print(f"Key: {key_name}")
+        print(f"  Requests: {usage.get('requests', 0)}")
+        print(f"  Tokens: {usage.get('tokens', 0)}")
+        print(f"  Cost: ${usage.get('cost', 0):.4f}")
+```
+
+### 5. Semantic Caching
+- Caching based on semantic similarity
+- Automatic embedding of queries for cache matching
+- Configurable similarity threshold
+- Customizable cache expiry
+
+```python
+# Enable semantic caching
+from ipfs_accelerate_py.api_backends import claude
+
+client = claude()
+
+# Configure semantic cache
+client.enable_semantic_cache(
+    similarity_threshold=0.92,     # 0.0-1.0, higher means more strict matching
+    cache_size=1000,               # Maximum number of entries to store
+    ttl=3600,                      # Time-to-live in seconds
+    embedding_model="mini"         # Model to use for embeddings
+)
+
+# Cache will be used automatically for similar requests
+response1 = client.chat([{"role": "user", "content": "Explain quantum computing"}])
+response2 = client.chat([{"role": "user", "content": "What is quantum computing?"}])
+# Second request might use cached response if similarity exceeds threshold
+
+# Get cache statistics
+if hasattr(client, "get_cache_stats"):
+    stats = client.get_cache_stats()
+    print(f"Cache hits: {stats.get('hits', 0)}")
+    print(f"Cache misses: {stats.get('misses', 0)}")
+    print(f"Hit rate: {stats.get('hit_rate', 0):.2f}%")
+    print(f"Estimated savings: ${stats.get('cost_savings', 0):.4f}")
+```
+
+### 6. Request Batching
+- Automatic request combining for compatible models
+- Configurable batch size and timeout
+- Model-specific batching strategies
+- Batch queue management
+
+```python
+# Configure request batching for embedding operations
+from ipfs_accelerate_py.api_backends import openai_api
+
+client = openai_api()
+
+# Enable batching for embeddings
+client.enable_embedding_batching(
+    max_batch_size=20,     # Maximum items in a batch
+    batch_timeout=0.1,     # Seconds to wait for batch to fill
+    auto_batching=True     # Automatically batch compatible requests
+)
+
+# Multiple single requests will be automatically batched together
+import concurrent.futures
+
+# These will likely be batched together for efficiency
+with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    futures = []
+    for i in range(10):
+        future = executor.submit(
+            client.embedding, 
+            "text-embedding-3-small", 
+            f"This is text sample {i}", 
+            "float"
+        )
+        futures.append(future)
+        
+    # Get results
+    results = [future.result() for future in futures]
+    
+# Get batching statistics
+if hasattr(client, "get_batching_stats"):
+    stats = client.get_batching_stats()
+    print(f"Batches processed: {stats.get('batches', 0)}")
+    print(f"Requests batched: {stats.get('batched_requests', 0)}")
+    print(f"Average batch size: {stats.get('avg_batch_size', 0):.1f}")
+    print(f"Estimated savings: ${stats.get('cost_savings', 0):.4f}")
+```
+
+## Testing Queue and Backoff Functionality
+
+The framework includes comprehensive tests for queue and backoff functionality:
+
+```python
+# Test basic queue functionality
+python test_api_backoff_queue.py --api [api_name]
+
+# Run comprehensive Ollama tests
+python test_ollama_backoff_comprehensive.py --model llama3 --host http://localhost:11434
+
+# Test different queue sizes
+python test_ollama_backoff_comprehensive.py --queue-size 10 --max-concurrent 2
+
+# Run all queue and backoff tests
+python run_queue_backoff_tests.py
+
+# Test specific APIs
+python run_queue_backoff_tests.py --apis openai groq claude
+
+# Skip specific APIs
+python run_queue_backoff_tests.py --skip-apis llvm opea ovms
+```
+
+These advanced features provide significant performance improvements, cost savings, and system reliability for all API backends implemented in the IPFS Accelerate framework.

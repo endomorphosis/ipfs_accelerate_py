@@ -1,68 +1,23 @@
 {
-  "init": "Success",
-  "transform": "Success (REAL)",
-  "preprocess": "Success (REAL)",
-  "load_image_file": "Success (REAL)",
-  "load_image_url": "Success (REAL)",
-  "cpu_init": "Success (REAL)",
-  "cpu_text_only": "Success (REAL)",
-  "cpu_text_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-28 01:23:13]: This image with the provided content con...",
-  "cpu_text_example": {
-    "input": "What's in this image?",
-    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-28 01:23:13]: This image with the provided content con...",
-    "timestamp": 1740734593.7710047,
-    "implementation": "(REAL)"
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success (REAL)"
   },
-  "cpu_image_text": "Success (REAL)",
-  "cpu_image_output": "(REAL) CPU LLaVA response [timestamp: 2025-02-28 01:23:13]: This image of size (100, 100) contains c...",
-  "cpu_image_example": {
-    "input_text": "What's in this image?",
-    "input_image": "Red square 100x100",
-    "output": "(REAL) CPU LLaVA response [timestamp: 2025-02-28 01:23:13]: This image of size (100, 100) contains c...",
-    "timestamp": 1740734593.7710145,
-    "implementation": "(REAL)"
-  },
-  "cuda_init": "Success (REAL)",
-  "cuda_handler": "Success (REAL)",
-  "cuda_total_time": 0.23,
-  "cuda_generation_time": 0.2,
-  "cuda_memory_allocated_gb": 2.45,
-  "cuda_generated_tokens": 37,
-  "cuda_tokens_per_second": 185.0,
-  "cuda_device_used": "cuda:0",
-  "cuda_output": "(REAL CUDA) Analyzed image of size (100, 100) using LLaVA model on CUDA. The query was: 'What's in t...",
-  "cuda_example": {
-    "input_text": "What's in this image?",
-    "input_image": "Red square 100x100",
-    "output": "(REAL CUDA) Analyzed image of size (100, 100) using LLaVA model on CUDA. The query was: 'What's in t...",
-    "timestamp": 1740734593.9079435,
-    "elapsed_time": 0.10037446022033691,
-    "implementation_type": "(REAL)",
-    "platform": "CUDA"
-  },
-  "openvino_init": "Success (MOCK)",
-  "openvino_tests": "Error: OpenVINO endpoint initialization failed safely",
-  "apple_tests": "Apple Silicon not available",
-  "qualcomm_init": "Success (MOCK)",
-  "qualcomm_handler": "Success (MOCK)",
-  "qualcomm_output": "(MOCK) Qualcomm LLaVA response: Qualcomm SNPE not actually available in this environment",
-  "qualcomm_example": {
-    "input_text": "What's in this image?",
-    "input_image": "Red square 100x100",
-    "output": "(MOCK) Qualcomm LLaVA response: Qualcomm SNPE not actually available in this environment",
-    "timestamp": 1740734594.1682785,
-    "implementation": "(MOCK)"
-  },
+  "examples": [
+    {
+      "input": "Test input for llava",
+      "output": {
+        "type": "<class 'str'>",
+        "implementation_type": "REAL"
+      },
+      "timestamp": "2025-03-01T18:30:02.292670",
+      "platform": "CPU"
+    }
+  ],
   "metadata": {
-    "timestamp": 1740734594.1684046,
-    "torch_version": "2.4.0+cu121",
-    "numpy_version": "1.26.4",
-    "transformers_version": "4.49.0",
-    "cuda_available": true,
-    "cuda_device_count": 1,
-    "mps_available": false,
-    "transformers_mocked": false,
-    "test_model": "katuni4ka/tiny-random-llava",
-    "test_run_id": "llava-test-1740734594"
+    "model_name": "bert-base-uncased",
+    "model_type": "llava",
+    "test_timestamp": "2025-03-01T18:30:02.292685"
   }
 }

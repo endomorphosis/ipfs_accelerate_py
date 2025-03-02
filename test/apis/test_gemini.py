@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 # Import API backends
 try:
-    from api_backends import apis, gemini
+    from ipfs_accelerate_py.api_backends import apis, gemini
 except ImportError as e:
     print(f"Error importing API backends: {str(e)}")
     # Create mock modules if imports fail

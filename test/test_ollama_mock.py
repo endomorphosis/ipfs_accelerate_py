@@ -13,7 +13,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import the Ollama API
-from ipfs_accelerate_py.api_backends.ollama import ollama
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ollama import ollama
 
 class MockOllama(ollama):
     """Mock Ollama API client that doesn't make actual HTTP requests"""

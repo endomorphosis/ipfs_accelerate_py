@@ -16,7 +16,7 @@ logger = logging.getLogger("groq_test")
 
 # Import our groq implementation directly
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__))))
-from ipfs_accelerate_py.api_backends.groq import groq, ALL_MODELS
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq, ALL_MODELS
 
 def test_groq_standalone():
     """Test the Groq API implementation standalone"""

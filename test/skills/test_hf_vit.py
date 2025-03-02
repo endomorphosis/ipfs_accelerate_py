@@ -1,1024 +1,764 @@
-# Standard library imports first
+#!/usr/bin/env python3
+"""
+Class-based test file for all ViT-family models.
+This file provides a unified testing interface for:
+- ViTForImageClassification
+- DeiTForImageClassification
+"""
+
 import os
 import sys
 import json
 import time
 import datetime
 import traceback
-from unittest.mock import patch, MagicMock
+import logging
+import argparse
+from unittest.mock import patch, MagicMock, Mock
+from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
-# Third-party imports next
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Third-party imports
 import numpy as np
-from PIL import Image
 
-# Use absolute path setup
-sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
-
-# Try/except pattern for importing optional dependencies
+# Try to import torch
 try:
     import torch
+    HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
-    print("Warning: torch not available, using mock implementation")
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
 
+# Try to import transformers
 try:
     import transformers
+    HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
-    print("Warning: transformers not available, using mock implementation")
+    HAS_TRANSFORMERS = False
+    logger.warning("transformers not available, using mock")
 
-# Create the class implementation in advance to patch
-class hf_vit:
-    """
-    Hugging Face Vision Transformer (ViT) implementation for image classification.
-    """
-    def __init__(self, resources=None, metadata=None):
-        """Initialize Vision Transformer with resources."""
-        self.resources = resources if resources else {}
-        self.metadata = metadata if metadata else {}
-        return None
-        
-    def init_cpu(self, model_name, model_type, device_label="cpu", **kwargs):
-        """Initialize ViT model for CPU inference."""
-        print(f"Loading {model_name} for CPU inference...")
-        
-        try:
-            from transformers import AutoImageProcessor, AutoModelForImageClassification
-            
-            # Load the processor and model
-            processor = AutoImageProcessor.from_pretrained(model_name)
-            model = AutoModelForImageClassification.from_pretrained(model_name)
-            
-            print(f"Successfully loaded ViT model and processor for {model_name}")
-            
-            # Create handler function
-            def handler(image_path):
-                try:
-                    start_time = time.time()
-                    
-                    # Load image
-                    if isinstance(image_path, str):
-                        if os.path.exists(image_path):
-                            image = Image.open(image_path).convert("RGB")
-                        else:
-                            raise ValueError(f"Image path {image_path} does not exist")
-                    elif isinstance(image_path, Image.Image):
-                        image = image_path
-                    else:
-                        raise ValueError(f"Unsupported image input type: {type(image_path)}")
-                    
-                    # Process image
-                    inputs = processor(images=image, return_tensors="pt")
-                    
-                    # Run model inference
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    # Get classification results
-                    logits = outputs.logits
-                    predicted_class_idx = logits.argmax(-1).item()
-                    
-                    # Get class label if available, otherwise return index
-                    if hasattr(model.config, "id2label") and predicted_class_idx in model.config.id2label:
-                        class_label = model.config.id2label[predicted_class_idx]
-                    else:
-                        class_label = f"Class {predicted_class_idx}"
-                    
-                    # Calculate confidence scores
-                    probs = torch.softmax(logits, dim=-1)
-                    confidence = probs[0, predicted_class_idx].item()
-                    
-                    # Get top 5 predictions if available
-                    top_5_indices = probs[0].topk(min(5, probs.shape[1])).indices.tolist()
-                    top_5_probs = probs[0].topk(min(5, probs.shape[1])).values.tolist()
-                    
-                    top_5_predictions = []
-                    for idx, prob in zip(top_5_indices, top_5_probs):
-                        if hasattr(model.config, "id2label") and idx in model.config.id2label:
-                            label = model.config.id2label[idx]
-                        else:
-                            label = f"Class {idx}"
-                        top_5_predictions.append({"label": label, "confidence": prob})
-                    
-                    return {
-                        "class": class_label,
-                        "confidence": confidence,
-                        "top_predictions": top_5_predictions,
-                        "processing_time": time.time() - start_time,
-                        "implementation_type": "REAL"
-                    }
-                    
-                except Exception as e:
-                    print(f"Error in CPU handler: {e}")
-                    print(f"Traceback: {traceback.format_exc()}")
-                    return {
-                        "error": str(e),
-                        "implementation_type": "REAL",
-                        "is_error": True
-                    }
-            
-            return model, processor, handler, None, 1  # batch size 1
-            
-        except Exception as e:
-            print(f"Error loading model: {e}")
-            print("Falling back to mock implementation")
-            
-            # Create mock implementations
-            mock_model = MagicMock()
-            mock_processor = MagicMock()
-            
-            # Create a mock handler with realistic outputs
-            def mock_handler(image_path):
-                return {
-                    "class": "mock_class",
-                    "confidence": 0.95,
-                    "top_predictions": [
-                        {"label": "mock_class", "confidence": 0.95},
-                        {"label": "mock_class_2", "confidence": 0.03},
-                        {"label": "mock_class_3", "confidence": 0.01}
-                    ],
-                    "processing_time": 0.1,
-                    "implementation_type": "MOCK"
-                }
-            
-            return mock_model, mock_processor, mock_handler, None, 1
 
-    def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-        """Initialize ViT model with CUDA support."""
-        print(f"Loading {model_name} for CUDA inference...")
-        
-        try:
-            if not torch.cuda.is_available():
-                print("CUDA not available, falling back to CPU implementation")
-                return self.init_cpu(model_name, model_type, device_label="cpu")
-            
-            from transformers import AutoImageProcessor, AutoModelForImageClassification
-            import torch
-            
-            # Initialize CUDA
-            torch_device = torch.device(device_label)
-            print(f"Using CUDA device: {torch_device}")
-            
-            # Load the processor and model
-            processor = AutoImageProcessor.from_pretrained(model_name)
-            model = AutoModelForImageClassification.from_pretrained(model_name)
-            
-            # Move model to CUDA and optimize
-            model = model.to(torch_device)
-            model = model.eval()
-            
-            # Try to use half-precision for better CUDA performance
-            try:
-                model = model.half()  # Convert to FP16
-                print("Using FP16 precision for faster inference")
-            except Exception as half_err:
-                print(f"Unable to use half precision: {half_err}")
-            
-            print(f"Successfully loaded ViT model to {torch_device}")
-            
-            # Create handler function
-            def handler(image_path):
-                try:
-                    start_time = time.time()
-                    
-                    # Track GPU memory
-                    gpu_mem_before = torch.cuda.memory_allocated(torch_device) / (1024 * 1024)
-                    
-                    # Load image
-                    if isinstance(image_path, str):
-                        if os.path.exists(image_path):
-                            image = Image.open(image_path).convert("RGB")
-                        else:
-                            raise ValueError(f"Image path {image_path} does not exist")
-                    elif isinstance(image_path, Image.Image):
-                        image = image_path
-                    else:
-                        raise ValueError(f"Unsupported image input type: {type(image_path)}")
-                    
-                    # Process image
-                    inputs = processor(images=image, return_tensors="pt")
-                    
-                    # Move inputs to CUDA
-                    inputs = {key: val.to(torch_device) for key, val in inputs.items()}
-                    
-                    # Run model inference with CUDA synchronization
-                    torch.cuda.synchronize()
-                    inference_start = time.time()
-                    
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    torch.cuda.synchronize()
-                    inference_time = time.time() - inference_start
-                    
-                    # Measure GPU memory
-                    gpu_mem_after = torch.cuda.memory_allocated(torch_device) / (1024 * 1024)
-                    gpu_mem_used = gpu_mem_after - gpu_mem_before
-                    
-                    # Get classification results
-                    logits = outputs.logits
-                    predicted_class_idx = logits.argmax(-1).item()
-                    
-                    # Get class label if available
-                    if hasattr(model.config, "id2label") and predicted_class_idx in model.config.id2label:
-                        class_label = model.config.id2label[predicted_class_idx]
-                    else:
-                        class_label = f"Class {predicted_class_idx}"
-                    
-                    # Calculate confidence scores
-                    probs = torch.softmax(logits, dim=-1)
-                    confidence = probs[0, predicted_class_idx].item()
-                    
-                    # Get top 5 predictions if available
-                    top_5_indices = probs[0].topk(min(5, probs.shape[1])).indices.cpu().tolist()
-                    top_5_probs = probs[0].topk(min(5, probs.shape[1])).values.cpu().tolist()
-                    
-                    top_5_predictions = []
-                    for idx, prob in zip(top_5_indices, top_5_probs):
-                        if hasattr(model.config, "id2label") and idx in model.config.id2label:
-                            label = model.config.id2label[idx]
-                        else:
-                            label = f"Class {idx}"
-                        top_5_predictions.append({"label": label, "confidence": prob})
-                    
-                    return {
-                        "class": class_label,
-                        "confidence": confidence,
-                        "top_predictions": top_5_predictions,
-                        "processing_time": time.time() - start_time,
-                        "inference_time": inference_time,
-                        "gpu_memory_mb": gpu_mem_used,
-                        "device": str(torch_device),
-                        "implementation_type": "REAL"
-                    }
-                    
-                except Exception as e:
-                    print(f"Error in CUDA handler: {e}")
-                    print(f"Traceback: {traceback.format_exc()}")
-                    return {
-                        "error": str(e),
-                        "implementation_type": "REAL",
-                        "is_error": True
-                    }
-            
-            return model, processor, handler, None, 4  # batch size 4
-            
-        except Exception as e:
-            print(f"Error loading model with CUDA: {e}")
-            print("Falling back to mock implementation")
-            
-            # Create mock implementations
-            mock_model = MagicMock()
-            mock_processor = MagicMock()
-            
-            # Create a mock handler with realistic outputs
-            def mock_handler(image_path):
-                return {
-                    "class": "mock_class",
-                    "confidence": 0.95,
-                    "top_predictions": [
-                        {"label": "mock_class", "confidence": 0.95},
-                        {"label": "mock_class_2", "confidence": 0.03},
-                        {"label": "mock_class_3", "confidence": 0.01}
-                    ],
-                    "processing_time": 0.1,
-                    "inference_time": 0.05,
-                    "gpu_memory_mb": 150,
-                    "device": device_label,
-                    "implementation_type": "MOCK"
-                }
-            
-            return mock_model, mock_processor, mock_handler, None, 1
-
-    def init_openvino(self, model_name, model_type, device="CPU", openvino_label="openvino:0", **kwargs):
-        """Initialize ViT model with OpenVINO support."""
-        print(f"Loading {model_name} for OpenVINO inference...")
-        
-        try:
-            # Check if OpenVINO is available
-            try:
-                import openvino
-                from openvino.runtime import Core
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                print("OpenVINO not installed, falling back to mock implementation")
-                raise ImportError("OpenVINO not installed")
-            
-            # Try to use optimum-intel for OpenVINO
-            try:
-                from optimum.intel.openvino import OVModelForImageClassification
-                from transformers import AutoImageProcessor
-                
-                # Load the processor and model
-                processor = AutoImageProcessor.from_pretrained(model_name)
-                ov_model = OVModelForImageClassification.from_pretrained(
-                    model_name, 
-                    export=True,
-                    device=device
-                )
-                
-                print(f"Successfully loaded ViT model with OpenVINO")
-                
-                # Create handler function
-                def handler(image_path):
-                    try:
-                        start_time = time.time()
-                        
-                        # Load image
-                        if isinstance(image_path, str):
-                            if os.path.exists(image_path):
-                                image = Image.open(image_path).convert("RGB")
-                            else:
-                                raise ValueError(f"Image path {image_path} does not exist")
-                        elif isinstance(image_path, Image.Image):
-                            image = image_path
-                        else:
-                            raise ValueError(f"Unsupported image input type: {type(image_path)}")
-                        
-                        # Process image
-                        inputs = processor(images=image, return_tensors="pt")
-                        
-                        # Run model inference
-                        outputs = ov_model(**inputs)
-                        
-                        # Get classification results
-                        logits = outputs.logits
-                        predicted_class_idx = logits.argmax(-1).item()
-                        
-                        # Get class label if available
-                        if hasattr(ov_model.config, "id2label") and predicted_class_idx in ov_model.config.id2label:
-                            class_label = ov_model.config.id2label[predicted_class_idx]
-                        else:
-                            class_label = f"Class {predicted_class_idx}"
-                        
-                        # Calculate confidence scores
-                        probs = torch.softmax(logits, dim=-1)
-                        confidence = probs[0, predicted_class_idx].item()
-                        
-                        # Get top 5 predictions if available
-                        top_5_indices = probs[0].topk(min(5, probs.shape[1])).indices.tolist()
-                        top_5_probs = probs[0].topk(min(5, probs.shape[1])).values.tolist()
-                        
-                        top_5_predictions = []
-                        for idx, prob in zip(top_5_indices, top_5_probs):
-                            if hasattr(ov_model.config, "id2label") and idx in ov_model.config.id2label:
-                                label = ov_model.config.id2label[idx]
-                            else:
-                                label = f"Class {idx}"
-                            top_5_predictions.append({"label": label, "confidence": prob})
-                        
-                        return {
-                            "class": class_label,
-                            "confidence": confidence,
-                            "top_predictions": top_5_predictions,
-                            "processing_time": time.time() - start_time,
-                            "device": device,
-                            "implementation_type": "REAL"
-                        }
-                        
-                    except Exception as e:
-                        print(f"Error in OpenVINO handler: {e}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        return {
-                            "error": str(e),
-                            "implementation_type": "REAL",
-                            "is_error": True
-                        }
-                
-                return ov_model, processor, handler, None, 1
-                
-            except Exception as optimum_err:
-                print(f"Error using optimum-intel: {optimum_err}")
-                print("Falling back to direct OpenVINO implementation")
-                
-                # Manual conversion to OpenVINO IR
-                from transformers import AutoImageProcessor, AutoModelForImageClassification
-                
-                # Load the processor and model
-                processor = AutoImageProcessor.from_pretrained(model_name)
-                original_model = AutoModelForImageClassification.from_pretrained(model_name)
-                
-                # Cache directory for converted models
-                cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "openvino_models")
-                os.makedirs(cache_dir, exist_ok=True)
-                
-                model_hash = hash(model_name) % 10000
-                ov_model_path = os.path.join(cache_dir, f"vit_{model_hash}.xml")
-                
-                # Convert to ONNX and then to OpenVINO IR if not already converted
-                if not os.path.exists(ov_model_path):
-                    print(f"Converting {model_name} to OpenVINO IR format...")
-                    
-                    # Create a temp directory for ONNX
-                    import tempfile
-                    with tempfile.TemporaryDirectory() as tmpdirname:
-                        onnx_path = os.path.join(tmpdirname, "model.onnx")
-                        
-                        # Create dummy input for tracing
-                        dummy_input = {
-                            "pixel_values": torch.randn(1, 3, 224, 224)
-                        }
-                        
-                        # Export to ONNX
-                        torch.onnx.export(
-                            original_model,
-                            (dummy_input,),
-                            onnx_path,
-                            opset_version=12,
-                            input_names=["pixel_values"],
-                            output_names=["logits"],
-                            dynamic_axes={
-                                "pixel_values": {0: "batch_size"},
-                                "logits": {0: "batch_size"}
-                            }
-                        )
-                        
-                        # Convert ONNX to OpenVINO IR
-                        core = Core()
-                        ov_model = core.read_model(onnx_path)
-                        compiled_model = core.compile_model(ov_model, device)
-                        
-                        # Save the model
-                        from openvino.runtime import serialize
-                        serialize(ov_model, ov_model_path)
-                        
-                    print(f"Model converted and saved to {ov_model_path}")
-                    
-                # Load OpenVINO model
-                core = Core()
-                ov_model = core.read_model(ov_model_path)
-                compiled_model = core.compile_model(ov_model, device)
-                
-                output_layer = compiled_model.output(0)
-                
-                # Create handler function
-                def handler(image_path):
-                    try:
-                        start_time = time.time()
-                        
-                        # Load image
-                        if isinstance(image_path, str):
-                            if os.path.exists(image_path):
-                                image = Image.open(image_path).convert("RGB")
-                            else:
-                                raise ValueError(f"Image path {image_path} does not exist")
-                        elif isinstance(image_path, Image.Image):
-                            image = image_path
-                        else:
-                            raise ValueError(f"Unsupported image input type: {type(image_path)}")
-                        
-                        # Process image with processor
-                        inputs = processor(images=image, return_tensors="np")
-                        
-                        # Run inference
-                        results = compiled_model(inputs["pixel_values"])[output_layer]
-                        
-                        # Create torch tensors for processing
-                        logits = torch.from_numpy(results)
-                        
-                        # Get classification results
-                        predicted_class_idx = logits.argmax(-1).item()
-                        
-                        # Get class label if available
-                        if hasattr(original_model.config, "id2label") and predicted_class_idx in original_model.config.id2label:
-                            class_label = original_model.config.id2label[predicted_class_idx]
-                        else:
-                            class_label = f"Class {predicted_class_idx}"
-                        
-                        # Calculate confidence scores
-                        probs = torch.softmax(logits, dim=-1)
-                        confidence = probs[0, predicted_class_idx].item()
-                        
-                        # Get top 5 predictions if available
-                        top_5_indices = probs[0].topk(min(5, probs.shape[1])).indices.tolist()
-                        top_5_probs = probs[0].topk(min(5, probs.shape[1])).values.tolist()
-                        
-                        top_5_predictions = []
-                        for idx, prob in zip(top_5_indices, top_5_probs):
-                            if hasattr(original_model.config, "id2label") and idx in original_model.config.id2label:
-                                label = original_model.config.id2label[idx]
-                            else:
-                                label = f"Class {idx}"
-                            top_5_predictions.append({"label": label, "confidence": prob})
-                        
-                        return {
-                            "class": class_label,
-                            "confidence": confidence,
-                            "top_predictions": top_5_predictions,
-                            "processing_time": time.time() - start_time,
-                            "device": device,
-                            "implementation_type": "REAL"
-                        }
-                        
-                    except Exception as e:
-                        print(f"Error in OpenVINO handler: {e}")
-                        print(f"Traceback: {traceback.format_exc()}")
-                        return {
-                            "error": str(e),
-                            "implementation_type": "REAL",
-                            "is_error": True
-                        }
-                
-                return compiled_model, processor, handler, None, 1
-                
-        except Exception as e:
-            print(f"Error setting up OpenVINO: {e}")
-            print("Falling back to mock implementation")
-            
-            # Create mock implementations
-            mock_model = MagicMock()
-            mock_processor = MagicMock()
-            
-            # Create a mock handler with realistic outputs
-            def mock_handler(image_path):
-                return {
-                    "class": "mock_class",
-                    "confidence": 0.95,
-                    "top_predictions": [
-                        {"label": "mock_class", "confidence": 0.95},
-                        {"label": "mock_class_2", "confidence": 0.03},
-                        {"label": "mock_class_3", "confidence": 0.01}
-                    ],
-                    "processing_time": 0.15,
-                    "device": device,
-                    "implementation_type": "MOCK"
-                }
-            
-            return mock_model, mock_processor, mock_handler, None, 1
-
-# Try to get the module if it exists, otherwise use our implementation
+# Try to import PIL
 try:
-    from ipfs_accelerate_py.worker.skillset.hf_vit import hf_vit
+    from PIL import Image
+    import requests
+    from io import BytesIO
+    HAS_PIL = True
 except ImportError:
-    print("Using test-defined implementation of hf_vit")
+    Image = MagicMock()
+    requests = MagicMock()
+    BytesIO = MagicMock()
+    HAS_PIL = False
+    logger.warning("PIL or requests not available, using mock")
 
-class test_hf_vit:
-    def __init__(self, resources=None, metadata=None):
+
+if not HAS_PIL:
+    class MockImage:
+        @staticmethod
+        def open(file):
+            class MockImg:
+                def __init__(self):
+                    self.size = (224, 224)
+                def convert(self, mode):
+                    return self
+                def resize(self, size):
+                    return self
+            return MockImg()
+            
+    class MockRequests:
+        @staticmethod
+        def get(url):
+            class MockResponse:
+                def __init__(self):
+                    self.content = b"mock image data"
+                def raise_for_status(self):
+                    pass
+            return MockResponse()
+
+    Image.open = MockImage.open
+    requests.get = MockRequests.get
+
+
+# Hardware detection
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False
+    }
+    
+    # Check CUDA
+    if HAS_TORCH:
+        capabilities["cuda"] = torch.cuda.is_available()
+        if capabilities["cuda"]:
+            capabilities["cuda_devices"] = torch.cuda.device_count()
+            capabilities["cuda_version"] = torch.version.cuda
+    
+    # Check MPS (Apple Silicon)
+    if HAS_TORCH and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        capabilities["mps"] = torch.mps.is_available()
+    
+    # Check OpenVINO
+    try:
+        import openvino
+        capabilities["openvino"] = True
+    except ImportError:
+        pass
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+# Models registry - Maps model IDs to their specific configurations
+VIT_MODELS_REGISTRY = {
+    "google/vit-base-patch16-224": {
+        "description": "ViT Base model (patch size 16, image size 224)",
+        "class": "ViTForImageClassification",
+    },
+    "facebook/deit-base-patch16-224": {
+        "description": "DeiT Base model (patch size 16, image size 224)",
+        "class": "DeiTForImageClassification",
+    },
+}
+
+class TestVitModels:
+    """Base test class for all ViT-family models."""
+    
+    def __init__(self, model_id=None):
+        """Initialize the test class for a specific model or default."""
+        self.model_id = model_id or "google/vit-base-patch16-224"
+        
+        # Verify model exists in registry
+        if self.model_id not in VIT_MODELS_REGISTRY:
+            logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = VIT_MODELS_REGISTRY["google/vit-base-patch16-224"]
+        else:
+            self.model_info = VIT_MODELS_REGISTRY[self.model_id]
+        
+        # Define model parameters
+        self.task = "image-classification"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
+        
+        # Define test inputs
+        self.test_image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+        
+        # Configure hardware preference
+        if HW_CAPABILITIES["cuda"]:
+            self.preferred_device = "cuda"
+        elif HW_CAPABILITIES["mps"]:
+            self.preferred_device = "mps"
+        else:
+            self.preferred_device = "cpu"
+        
+        logger.info(f"Using {self.preferred_device} as preferred device")
+        
+        # Results storage
+        self.results = {}
+        self.examples = []
+        self.performance_stats = {}
+    
+    
+def test_pipeline(self, device="auto"):
+    """Test the model using transformers pipeline API."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_core"] = ["transformers"]
+        results["pipeline_success"] = False
+        return results
+        
+    if not HAS_PIL:
+        results["pipeline_error_type"] = "missing_dependency"
+        results["pipeline_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
+        results["pipeline_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with pipeline() on {device}...")
+        
+        # Create pipeline with appropriate parameters
+        pipeline_kwargs = {
+            "task": self.task,
+            "model": self.model_id,
+            "device": device
+        }
+        
+        # Time the model loading
+        load_start_time = time.time()
+        pipeline = transformers.pipeline(**pipeline_kwargs)
+        load_time = time.time() - load_start_time
+        
+        # Prepare test input
+        if HAS_PIL:
+            pipeline_input = requests.get(self.test_image_url).content
+        else:
+            pipeline_input = self.test_image_url
+        
+        # Run warmup inference if on CUDA
+        if device == "cuda":
+            try:
+                _ = pipeline(pipeline_input)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            output = pipeline(pipeline_input)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Store results
+        results["pipeline_success"] = True
+        results["pipeline_avg_time"] = avg_time
+        results["pipeline_min_time"] = min_time
+        results["pipeline_max_time"] = max_time
+        results["pipeline_load_time"] = load_time
+        results["pipeline_error_type"] = "none"
+        
+        # Add to examples
+        self.examples.append({
+            "method": f"pipeline() on {device}",
+            "input": str(pipeline_input),
+            "output_preview": str(outputs[0])[:200] + "..." if len(str(outputs[0])) > 200 else str(outputs[0])
+        })
+        
+        # Store in performance stats
+        self.performance_stats[f"pipeline_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "load_time": load_time,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["pipeline_success"] = False
+        results["pipeline_error"] = str(e)
+        results["pipeline_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing pipeline on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["pipeline_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["pipeline_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["pipeline_error_type"] = "missing_dependency"
+        else:
+            results["pipeline_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"pipeline_{device}"] = results
+    return results
+
+    
+    
+def test_from_pretrained(self, device="auto"):
+    """Test the model using direct from_pretrained loading."""
+    if device == "auto":
+        device = self.preferred_device
+    
+    results = {
+        "model": self.model_id,
+        "device": device,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for dependencies
+    if not HAS_TRANSFORMERS:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_core"] = ["transformers"]
+        results["from_pretrained_success"] = False
+        return results
+        
+    if not HAS_PIL:
+        results["from_pretrained_error_type"] = "missing_dependency"
+        results["from_pretrained_missing_deps"] = ["pillow>=8.0.0", "requests>=2.25.0"]
+        results["from_pretrained_success"] = False
+        return results
+    
+    try:
+        logger.info(f"Testing {self.model_id} with from_pretrained() on {device}...")
+        
+        # Common parameters for loading
+        pretrained_kwargs = {
+            "local_files_only": False
+        }
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Use appropriate model class based on model type
+        model_class = None
+        if self.class_name == "ViTForImageClassification":
+            model_class = transformers.ViTForImageClassification
+        else:
+            # Fallback to Auto class
+            model_class = transformers.AutoModel
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = model_class.from_pretrained(
+            self.model_id,
+            **pretrained_kwargs
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Move model to device
+        if device != "cpu":
+            model = model.to(device)
+        
+        # Prepare test input
+        test_input = "Generic input for testing"
+        
+        # Create generic inputs
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Move inputs to device
+        if device != "cpu":
+            inputs = {key: val.to(device) for key, val in inputs.items()}
+        
+        # Run warmup inference if using CUDA
+        if device == "cuda":
+            try:
+                with torch.no_grad():
+                    _ = model(**inputs)
+            except Exception:
+                pass
+        
+        # Run multiple inference passes
+        num_runs = 3
+        times = []
+        outputs = []
+        
+        for _ in range(num_runs):
+            start_time = time.time()
+            with torch.no_grad():
+                output = model(**inputs)
+            end_time = time.time()
+            times.append(end_time - start_time)
+            outputs.append(output)
+        
+        # Calculate statistics
+        avg_time = sum(times) / len(times)
+        min_time = min(times)
+        max_time = max(times)
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = [{"output": "Processed model output"}]
+        else:
+            predictions = [{"output": "Mock output"}]
+        
+        # Calculate model size
+        param_count = sum(p.numel() for p in model.parameters())
+        model_size_mb = (param_count * 4) / (1024 * 1024)  # Rough size in MB
+        
+        # Store results
+        results["from_pretrained_success"] = True
+        results["from_pretrained_avg_time"] = avg_time
+        results["from_pretrained_min_time"] = min_time
+        results["from_pretrained_max_time"] = max_time
+        results["tokenizer_load_time"] = tokenizer_load_time
+        results["model_load_time"] = model_load_time
+        results["model_size_mb"] = model_size_mb
+        results["from_pretrained_error_type"] = "none"
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["predictions"] = predictions
+        
+        # Add to examples
+        example_data = {
+            "method": f"from_pretrained() on {device}",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats[f"from_pretrained_{device}"] = {
+            "avg_time": avg_time,
+            "min_time": min_time,
+            "max_time": max_time,
+            "tokenizer_load_time": tokenizer_load_time,
+            "model_load_time": model_load_time,
+            "model_size_mb": model_size_mb,
+            "num_runs": num_runs
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["from_pretrained_success"] = False
+        results["from_pretrained_error"] = str(e)
+        results["from_pretrained_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing from_pretrained on {device}: {e}")
+        
+        # Classify error type
+        error_str = str(e).lower()
+        traceback_str = traceback.format_exc().lower()
+        
+        if "cuda" in error_str or "cuda" in traceback_str:
+            results["from_pretrained_error_type"] = "cuda_error"
+        elif "memory" in error_str:
+            results["from_pretrained_error_type"] = "out_of_memory"
+        elif "no module named" in error_str:
+            results["from_pretrained_error_type"] = "missing_dependency"
+        else:
+            results["from_pretrained_error_type"] = "other"
+    
+    # Add to overall results
+    self.results[f"from_pretrained_{device}"] = results
+    return results
+
+    
+    
+def test_with_openvino(self):
+    """Test the model using OpenVINO integration."""
+    results = {
+        "model": self.model_id,
+        "task": self.task,
+        "class": self.class_name
+    }
+    
+    # Check for OpenVINO support
+    if not HW_CAPABILITIES["openvino"]:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["openvino"]
+        results["openvino_success"] = False
+        return results
+    
+    # Check for transformers
+    if not HAS_TRANSFORMERS:
+        results["openvino_error_type"] = "missing_dependency"
+        results["openvino_missing_core"] = ["transformers"]
+        results["openvino_success"] = False
+        return results
+    
+    try:
+        from optimum.intel import OVModel
+        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        # Time tokenizer loading
+        tokenizer_load_start = time.time()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+        tokenizer_load_time = time.time() - tokenizer_load_start
+        
+        # Time model loading
+        model_load_start = time.time()
+        model = OVModel.from_pretrained(
+            self.model_id,
+            export=True,
+            provider="CPU"
+        )
+        model_load_time = time.time() - model_load_start
+        
+        # Prepare generic input
+        test_input = "Generic input for testing"
+        inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]])}
+        
+        # Run inference
+        start_time = time.time()
+        outputs = model(**inputs)
+        inference_time = time.time() - start_time
+        
+        # Generic output processing
+        if hasattr(outputs, "logits"):
+            logits = outputs.logits
+            predictions = ["Processed OpenVINO output"]
+        else:
+            predictions = ["<mock_output>"]
+        
+        # Store results
+        results["openvino_success"] = True
+        results["openvino_load_time"] = model_load_time
+        results["openvino_inference_time"] = inference_time
+        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        
+        # Add predictions if available
+        if 'predictions' in locals():
+            results["openvino_predictions"] = predictions
+        
+        results["openvino_error_type"] = "none"
+        
+        # Add to examples
+        example_data = {
+            "method": "OpenVINO inference",
+            "input": str(test_input)
+        }
+        
+        if 'predictions' in locals():
+            example_data["predictions"] = predictions
+        
+        self.examples.append(example_data)
+        
+        # Store in performance stats
+        self.performance_stats["openvino"] = {
+            "inference_time": inference_time,
+            "load_time": model_load_time,
+            "tokenizer_load_time": tokenizer_load_time
+        }
+        
+    except Exception as e:
+        # Store error information
+        results["openvino_success"] = False
+        results["openvino_error"] = str(e)
+        results["openvino_traceback"] = traceback.format_exc()
+        logger.error(f"Error testing with OpenVINO: {e}")
+        
+        # Classify error
+        error_str = str(e).lower()
+        if "no module named" in error_str:
+            results["openvino_error_type"] = "missing_dependency"
+        else:
+            results["openvino_error_type"] = "other"
+    
+    # Add to overall results
+    self.results["openvino"] = results
+    return results
+
+    
+    def run_tests(self, all_hardware=False):
         """
-        Initialize the ViT test class.
+        Run all tests for this model.
         
         Args:
-            resources (dict, optional): Resources dictionary
-            metadata (dict, optional): Metadata dictionary
-        """
-        self.resources = resources if resources else {
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }
-        self.metadata = metadata if metadata else {}
-        self.vit = hf_vit(resources=self.resources, metadata=self.metadata)
-        
-        # Use a small open-access model by default
-        self.model_name = "google/vit-base-patch16-224"
-        
-        # Alternative models in increasing size order
-        self.alternative_models = [
-            "google/vit-base-patch16-224",   # Common ViT model
-            "google/vit-base-patch32-224",   # Smaller patch size
-            "microsoft/beit-base-patch16-224"  # Alternative architecture
-        ]
-        
-        # Find a test image or create one
-        self.test_image_path = "/home/barberb/ipfs_accelerate_py/test/test.jpg"
-        if not os.path.exists(self.test_image_path):
-            # Create a simple test image (a red square)
-            test_image = Image.new('RGB', (224, 224), color='red')
-            test_image.save(self.test_image_path)
-            print(f"Created test image at {self.test_image_path}")
-        
-        # Initialize collection arrays for examples and status
-        self.examples = []
-        self.status_messages = {}
-        return None
-    
-    def test(self):
-        """
-        Run all tests for the ViT model, organized by hardware platform.
-        Tests CPU, CUDA, OpenVINO implementations.
+            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
         
         Returns:
-            dict: Structured test results with status, examples and metadata
+            Dict containing test results
         """
-        results = {}
+        # Always test on default device
+        self.test_pipeline()
+        self.test_from_pretrained()
         
-        # Test basic initialization
-        try:
-            results["init"] = "Success" if self.vit is not None else "Failed initialization"
-        except Exception as e:
-            results["init"] = f"Error: {str(e)}"
-
-        # ====== CPU TESTS ======
-        try:
-            print("Testing ViT on CPU...")
-            # Initialize for CPU without mocks
-            endpoint, processor, handler, queue, batch_size = self.vit.init_cpu(
-                self.model_name,
-                "image-classification", 
-                "cpu"
-            )
+        # Test on all available hardware if requested
+        if all_hardware:
+            # Always test on CPU
+            if self.preferred_device != "cpu":
+                self.test_pipeline(device="cpu")
+                self.test_from_pretrained(device="cpu")
             
-            valid_init = endpoint is not None and processor is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
+            # Test on CUDA if available
+            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                self.test_pipeline(device="cuda")
+                self.test_from_pretrained(device="cuda")
             
-            # Run actual inference
-            start_time = time.time()
-            output = handler(self.test_image_path)
-            elapsed_time = time.time() - start_time
-            
-            # Verify the output contains classification results
-            is_valid_output = (
-                output is not None and 
-                "class" in output and
-                "confidence" in output
-            )
-            
-            results["cpu_handler"] = "Success (REAL)" if is_valid_output else "Failed CPU handler"
-            
-            # Record example
-            self.examples.append({
-                "input": self.test_image_path,
-                "output": output,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "elapsed_time": elapsed_time,
-                "implementation_type": "REAL" if "implementation_type" not in output or output["implementation_type"] == "REAL" else output["implementation_type"],
-                "platform": "CPU"
-            })
-            
-            # Add classification details to results
-            if is_valid_output:
-                results["cpu_class"] = output["class"]
-                results["cpu_confidence"] = output["confidence"]
-                
-        except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
-            results["cpu_tests"] = f"Error: {str(e)}"
-            self.status_messages["cpu"] = f"Failed: {str(e)}"
-
-        # ====== CUDA TESTS ======
-        if torch.cuda.is_available():
-            try:
-                print("Testing ViT on CUDA...")
-                # Initialize for CUDA without mocks
-                endpoint, processor, handler, queue, batch_size = self.vit.init_cuda(
-                    self.model_name,
-                    "image-classification",
-                    "cuda:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                
-                # Determine if this is a real or mock implementation
-                is_mock_implementation = isinstance(endpoint, MagicMock)
-                implementation_type = "(MOCK)" if is_mock_implementation else "(REAL)"
-                
-                results["cuda_init"] = f"Success {implementation_type}" if valid_init else "Failed CUDA initialization"
-                
-                # Run inference
-                start_time = time.time()
-                output = handler(self.test_image_path)
-                elapsed_time = time.time() - start_time
-                
-                # Verify the output contains classification results
-                is_valid_output = (
-                    output is not None and 
-                    "class" in output and
-                    "confidence" in output
-                )
-                
-                # Extract implementation type from output if available
-                if isinstance(output, dict) and "implementation_type" in output:
-                    implementation_type = f"({output['implementation_type']})"
-                
-                results["cuda_handler"] = f"Success {implementation_type}" if is_valid_output else "Failed CUDA handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": self.test_image_path,
-                    "output": output,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": output.get("implementation_type", "UNKNOWN"),
-                    "platform": "CUDA"
-                })
-                
-                # Add classification details to results
-                if is_valid_output:
-                    results["cuda_class"] = output["class"]
-                    results["cuda_confidence"] = output["confidence"]
-                    
-                    # Add CUDA-specific performance metrics if available
-                    if "gpu_memory_mb" in output:
-                        results["cuda_memory_mb"] = output["gpu_memory_mb"]
-                    if "inference_time" in output:
-                        results["cuda_inference_time"] = output["inference_time"]
-                
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_tests"] = f"Error: {str(e)}"
-                self.status_messages["cuda"] = f"Failed: {str(e)}"
-        else:
-            results["cuda_tests"] = "CUDA not available"
-            self.status_messages["cuda"] = "CUDA not available"
-
-        # ====== OPENVINO TESTS ======
-        try:
-            # First check if OpenVINO is installed
-            try:
-                import openvino
-                has_openvino = True
-                print("OpenVINO is installed")
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-                self.status_messages["openvino"] = "OpenVINO not installed"
-                
-            if has_openvino:
-                print("Testing ViT on OpenVINO...")
-                
-                # Initialize for OpenVINO
-                endpoint, processor, handler, queue, batch_size = self.vit.init_openvino(
-                    self.model_name,
-                    "image-classification",
-                    device="CPU",
-                    openvino_label="openvino:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                
-                # Determine if this is a real or mock implementation
-                is_mock_implementation = isinstance(endpoint, MagicMock)
-                implementation_type = "(MOCK)" if is_mock_implementation else "(REAL)"
-                
-                results["openvino_init"] = f"Success {implementation_type}" if valid_init else "Failed OpenVINO initialization"
-                
-                # Run inference
-                start_time = time.time()
-                output = handler(self.test_image_path)
-                elapsed_time = time.time() - start_time
-                
-                # Verify the output contains classification results
-                is_valid_output = (
-                    output is not None and 
-                    "class" in output and
-                    "confidence" in output
-                )
-                
-                # Extract implementation type from output if available
-                if isinstance(output, dict) and "implementation_type" in output:
-                    implementation_type = f"({output['implementation_type']})"
-                
-                results["openvino_handler"] = f"Success {implementation_type}" if is_valid_output else "Failed OpenVINO handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": self.test_image_path,
-                    "output": output,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "elapsed_time": elapsed_time,
-                    "implementation_type": output.get("implementation_type", "UNKNOWN"),
-                    "platform": "OpenVINO"
-                })
-                
-                # Add classification details to results
-                if is_valid_output:
-                    results["openvino_class"] = output["class"]
-                    results["openvino_confidence"] = output["confidence"]
-                
-        except ImportError:
-            results["openvino_tests"] = "OpenVINO not installed"
-            self.status_messages["openvino"] = "OpenVINO not installed"
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
-            traceback.print_exc()
-            results["openvino_tests"] = f"Error: {str(e)}"
-            self.status_messages["openvino"] = f"Failed: {str(e)}"
-
-        # Create structured results with status, examples and metadata
-        structured_results = {
-            "status": results,
+            # Test on OpenVINO if available
+            if HW_CAPABILITIES["openvino"]:
+                self.test_with_openvino()
+        
+        # Build final results
+        return {
+            "results": self.results,
             "examples": self.examples,
+            "performance": self.performance_stats,
+            "hardware": HW_CAPABILITIES,
             "metadata": {
-                "model_name": self.model_name,
-                "test_timestamp": datetime.datetime.now().isoformat(),
-                "python_version": sys.version,
-                "torch_version": torch.__version__ if hasattr(torch, "__version__") else "Unknown",
-                "transformers_version": transformers.__version__ if hasattr(transformers, "__version__") else "Unknown",
-                "platform_status": self.status_messages
+                "model": self.model_id,
+                "task": self.task,
+                "class": self.class_name,
+                "description": self.description,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "has_transformers": HAS_TRANSFORMERS,
+                "has_torch": HAS_TORCH,
+                "has_pil": HAS_PIL
             }
         }
 
-        return structured_results
+def save_results(model_id, results, output_dir="collected_results"):
+    """Save test results to a file."""
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create filename from model ID
+    safe_model_id = model_id.replace("/", "__")
+    filename = f"hf_vit_{safe_model_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    output_path = os.path.join(output_dir, filename)
+    
+    # Save results
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved results to {output_path}")
+    return output_path
 
-    def __test__(self):
-        """
-        Run tests and compare/save results.
-        Handles result collection, comparison with expected results, and storage.
-        
-        Returns:
-            dict: Test results
-        """
-        test_results = {}
-        try:
-            test_results = self.test()
-        except Exception as e:
-            test_results = {
-                "status": {"test_error": str(e)},
-                "examples": [],
-                "metadata": {
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }
-            }
-        
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        
-        # Create directories with appropriate permissions
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
-        
-        # Save collected results
-        results_file = os.path.join(collected_dir, 'hf_vit_test_results.json')
-        try:
-            with open(results_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
-            print(f"Saved collected results to {results_file}")
-        except Exception as e:
-            print(f"Error saving results to {results_file}: {str(e)}")
-            
-        # Compare with expected results if they exist
-        expected_file = os.path.join(expected_dir, 'hf_vit_test_results.json')
-        if os.path.exists(expected_file):
-            try:
-                with open(expected_file, 'r') as f:
-                    expected_results = json.load(f)
-                
-                # Compare only status keys for backward compatibility
-                status_expected = expected_results.get("status", expected_results)
-                status_actual = test_results.get("status", test_results)
-                
-                # More detailed comparison of results
-                all_match = True
-                mismatches = []
-                
-                for key in set(status_expected.keys()) | set(status_actual.keys()):
-                    if key not in status_expected:
-                        mismatches.append(f"Missing expected key: {key}")
-                        all_match = False
-                    elif key not in status_actual:
-                        mismatches.append(f"Missing actual key: {key}")
-                        all_match = False
-                    elif status_expected[key] != status_actual[key]:
-                        # If the only difference is the implementation_type suffix, that's acceptable
-                        if (
-                            isinstance(status_expected[key], str) and 
-                            isinstance(status_actual[key], str) and
-                            status_expected[key].split(" (")[0] == status_actual[key].split(" (")[0] and
-                            "Success" in status_expected[key] and "Success" in status_actual[key]
-                        ):
-                            continue
-                        
-                        mismatches.append(f"Key '{key}' differs: Expected '{status_expected[key]}', got '{status_actual[key]}'")
-                        all_match = False
-                
-                if not all_match:
-                    print("Test results differ from expected results!")
-                    for mismatch in mismatches:
-                        print(f"- {mismatch}")
-                    print("Creating new expected results file due to standardization")
-                    with open(expected_file, 'w') as ef:
-                        json.dump(test_results, ef, indent=2)
-                        print(f"Updated expected results file: {expected_file}")
-                else:
-                    print("All test results match expected results.")
-            except Exception as e:
-                print(f"Error comparing results with {expected_file}: {str(e)}")
-                print("Creating new expected results file.")
-                with open(expected_file, 'w') as ef:
-                    json.dump(test_results, ef, indent=2)
-        else:
-            # Create expected results file if it doesn't exist
-            try:
-                with open(expected_file, 'w') as f:
-                    json.dump(test_results, f, indent=2)
-                    print(f"Created new expected results file: {expected_file}")
-            except Exception as e:
-                print(f"Error creating {expected_file}: {str(e)}")
+def get_available_models():
+    """Get a list of all available ViT models in the registry."""
+    return list(VIT_MODELS_REGISTRY.keys())
 
-        return test_results
+def test_all_models(output_dir="collected_results", all_hardware=False):
+    """Test all registered ViT models."""
+    models = get_available_models()
+    results = {}
+    
+    for model_id in models:
+        logger.info(f"Testing model: {model_id}")
+        tester = TestVitModels(model_id)
+        model_results = tester.run_tests(all_hardware=all_hardware)
+        
+        # Save individual results
+        save_results(model_id, model_results, output_dir=output_dir)
+        
+        # Add to summary
+        results[model_id] = {
+            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
+                          if r.get("pipeline_success") is not False)
+        }
+    
+    # Save summary
+    summary_path = os.path.join(output_dir, f"hf_vit_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    with open(summary_path, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_path}")
+    return results
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Test ViT-family models")
+    
+    # Model selection
+    model_group = parser.add_mutually_exclusive_group()
+    model_group.add_argument("--model", type=str, help="Specific model to test")
+    model_group.add_argument("--all-models", action="store_true", help="Test all registered models")
+    
+    # Hardware options
+    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    
+    # Output options
+    parser.add_argument("--output-dir", type=str, default="collected_results", help="Directory for output files")
+    parser.add_argument("--save", action="store_true", help="Save results to file")
+    
+    # List options
+    parser.add_argument("--list-models", action="store_true", help="List all available models")
+    
+    args = parser.parse_args()
+    
+    # List models if requested
+    if args.list_models:
+        models = get_available_models()
+        print("\nAvailable ViT-family models:")
+        for model in models:
+            info = VIT_MODELS_REGISTRY[model]
+            print(f"  - {model} ({info['class']}): {info['description']}")
+        return
+    
+    # Create output directory if needed
+    if args.save and not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Test all models if requested
+    if args.all_models:
+        results = test_all_models(output_dir=args.output_dir, all_hardware=args.all_hardware)
+        
+        # Print summary
+        print("\nViT Models Testing Summary:")
+        total = len(results)
+        successful = sum(1 for r in results.values() if r["success"])
+        print(f"Successfully tested {successful} of {total} models ({successful/total*100:.1f}%)")
+        return
+    
+    # Test single model (default or specified)
+    model_id = args.model or "google/vit-base-patch16-224"
+    logger.info(f"Testing model: {model_id}")
+    
+    # Override preferred device if CPU only
+    if args.cpu_only:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    
+    # Run test
+    tester = TestVitModels(model_id)
+    results = tester.run_tests(all_hardware=args.all_hardware)
+    
+    # Save results if requested
+    if args.save:
+        save_results(model_id, results, output_dir=args.output_dir)
+    
+    # Print summary
+    success = any(r.get("pipeline_success", False) for r in results["results"].values()
+                  if r.get("pipeline_success") is not False)
+    
+    print("\nTEST RESULTS SUMMARY:")
+    if success:
+        print(f"✅ Successfully tested {model_id}")
+        
+        # Print performance highlights
+        for device, stats in results["performance"].items():
+            if "avg_time" in stats:
+                print(f"  - {device}: {stats['avg_time']:.4f}s average inference time")
+        
+        # Print example outputs if available
+        if results.get("examples") and len(results["examples"]) > 0:
+            print("\nExample output:")
+            example = results["examples"][0]
+            if "predictions" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Predictions: {example['predictions']}")
+            elif "output_preview" in example:
+                print(f"  Input: {example['input']}")
+                print(f"  Output: {example['output_preview']}")
+    else:
+        print(f"❌ Failed to test {model_id}")
+        
+        # Print error information
+        for test_name, result in results["results"].items():
+            if "pipeline_error" in result:
+                print(f"  - Error in {test_name}: {result.get('pipeline_error_type', 'unknown')}")
+                print(f"    {result.get('pipeline_error', 'Unknown error')}")
+    
+    print("\nFor detailed results, use --save flag and check the JSON output file.")
 
 if __name__ == "__main__":
-    try:
-        print("Starting ViT test...")
-        vit_test = test_hf_vit()
-        results = vit_test.__test__()
-        print("ViT test completed")
-        
-        # Print test results in detailed format for better parsing
-        status_dict = results.get("status", {})
-        examples = results.get("examples", [])
-        metadata = results.get("metadata", {})
-        
-        # Extract implementation status
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-                
-        # Also look in examples
-        for example in examples:
-            platform = example.get("platform", "")
-            impl_type = example.get("implementation_type", "")
-            
-            if platform == "CPU" and "REAL" in impl_type:
-                cpu_status = "REAL"
-            elif platform == "CPU" and "MOCK" in impl_type:
-                cpu_status = "MOCK"
-                
-            if platform == "CUDA" and "REAL" in impl_type:
-                cuda_status = "REAL"
-            elif platform == "CUDA" and "MOCK" in impl_type:
-                cuda_status = "MOCK"
-                
-            if platform == "OpenVINO" and "REAL" in impl_type:
-                openvino_status = "REAL"
-            elif platform == "OpenVINO" and "MOCK" in impl_type:
-                openvino_status = "MOCK"
-        
-        # Print summary in a parser-friendly format
-        print("\nViT TEST RESULTS SUMMARY")
-        print(f"MODEL: {metadata.get('model_name', 'Unknown')}")
-        print(f"CPU_STATUS: {cpu_status}")
-        print(f"CUDA_STATUS: {cuda_status}")
-        print(f"OPENVINO_STATUS: {openvino_status}")
-        
-        # Print performance information if available
-        for example in examples:
-            platform = example.get("platform", "")
-            output = example.get("output", {})
-            elapsed_time = example.get("elapsed_time", 0)
-            
-            print(f"\n{platform} PERFORMANCE METRICS:")
-            print(f"  Elapsed time: {elapsed_time:.4f}s")
-            
-            if isinstance(output, dict):
-                if "class" in output:
-                    print(f"  Predicted class: {output['class']}")
-                if "confidence" in output:
-                    print(f"  Confidence: {output['confidence']:.4f}")
-                if "processing_time" in output:
-                    print(f"  Processing time: {output['processing_time']:.4f}s")
-                if "inference_time" in output:
-                    print(f"  Inference time: {output['inference_time']:.4f}s")
-                if "gpu_memory_mb" in output:
-                    print(f"  GPU memory usage: {output['gpu_memory_mb']:.2f} MB")
-                if "device" in output:
-                    print(f"  Device: {output['device']}")
-                if "top_predictions" in output:
-                    print("  Top predictions:")
-                    for i, pred in enumerate(output["top_predictions"][:3]):
-                        print(f"    {i+1}. {pred['label']} ({pred['confidence']:.4f})")
-        
-        # Print a JSON representation to make it easier to parse
-        print("\nstructured_results")
-        print(json.dumps({
-            "status": {
-                "cpu": cpu_status,
-                "cuda": cuda_status,
-                "openvino": openvino_status
-            },
-            "model_name": metadata.get("model_name", "Unknown"),
-            "examples": examples
-        }))
-        
-    except KeyboardInterrupt:
-        print("Tests stopped by user.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Unexpected error during testing: {str(e)}")
-        traceback.print_exc()
-        sys.exit(1)
+    main()

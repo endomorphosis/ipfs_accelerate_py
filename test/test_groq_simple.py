@@ -15,7 +15,7 @@ sys.path.insert(0, parent_dir)
 
 # Try to import the Groq API class
 try:
-    from ipfs_accelerate_py.api_backends.groq import groq
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq
     print("Successfully imported Groq API class")
 except ImportError as e:
     print(f"Failed to import Groq API class: {e}")

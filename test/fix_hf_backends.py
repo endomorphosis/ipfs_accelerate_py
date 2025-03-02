@@ -38,7 +38,8 @@ def find_hf_backend_files() -> Dict[str, str]:
         os.path.join(parent_dir, "api_backends"),
         os.path.join(parent_dir, "ipfs_accelerate", "api_backends"),
         os.path.join(parent_dir, "src", "api_backends"),
-        os.path.join(parent_dir, "backends")
+        os.path.join(parent_dir, "backends"),
+        os.path.join(parent_dir, "ipfs_accelerate_py", "api_backends")
     ]
     
     # Check common locations first

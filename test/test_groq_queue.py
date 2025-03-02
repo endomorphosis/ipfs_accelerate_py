@@ -10,7 +10,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import the Groq implementation with our queue/backoff enhancements
-from ipfs_accelerate_py.api_backends.groq import groq
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq
 
 def send_request(groq_client, message, model="llama3-8b-8192", tag=""):
     """Send a request and capture the timing information"""

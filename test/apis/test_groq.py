@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
-from api_backends import apis, groq
+from ipfs_accelerate_py.api_backends import apis, groq
 
 class test_groq:
     def __init__(self, resources=None, metadata=None):

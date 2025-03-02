@@ -3,12 +3,21 @@ import os
 import sys
 import json
 import uuid
+import importlib
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_accelerate_py'))
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# Try to import the api_backends module
+try:
+    from ipfs_accelerate_py import api_backends
+    print("Successfully imported api_backends module")
+except ImportError as e:
+    print(f"Error importing api_backends module: {e}")
+    api_backends = None
 
 class APIChecker:
     """Simple utility to check API implementation status"""
@@ -138,7 +147,16 @@ class APIChecker:
             
             # Create API instance
             try:
-                api = claude.claude(resources={}, metadata={"claude_api_key": api_key})
+                # Check if claude is a class or a module
+                if callable(claude):
+                    api = claude(resources={}, metadata={"claude_api_key": api_key})
+                else:
+                    # If it's a module, try to get the class from it
+                    if hasattr(claude, 'claude'):
+                        Claude = getattr(claude, 'claude')
+                        api = Claude(resources={}, metadata={"claude_api_key": api_key})
+                    else:
+                        raise TypeError("'module' object is not callable")
             except Exception as e:
                 print(f"  Error creating API instance: {str(e)}")
                 # Try alternate instantiation if the module is a class

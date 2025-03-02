@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import the Groq implementation
-from ipfs_accelerate_py.api_backends.groq import groq
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq
 
 def test_backoff_mechanism():
     """Test the exponential backoff mechanism with mocks"""

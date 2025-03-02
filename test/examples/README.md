@@ -1,16 +1,46 @@
-# API Examples & Semantic Similarity Caching
+# API Examples & Advanced Features
 
-This directory contains example implementations for working with the IPFS Accelerate API backends, including an advanced semantic similarity-based caching system.
+This directory contains example implementations for working with the IPFS Accelerate API backends, including queue and backoff systems, semantic caching, and other advanced features.
 
 ## Advanced API Features (March 2025)
 
 All API backends now implement these advanced features:
 
-- **Thread-Safe Request Queue**: Manages concurrent requests with proper locking
-- **Exponential Backoff**: Handles rate limits with progressive retry delays
+- **Queue and Backoff System**: Manages concurrent requests with exponential retry
 - **Circuit Breaker Pattern**: Detects service outages and provides fast-fail
-- **Request Tracking**: Generates and manages unique request IDs
-- **Multiple Endpoints**: Allows different configurations for different use cases
+- **API Key Multiplexing**: Manages multiple API keys with rotation strategies
+- **Semantic Caching**: Caches semantically similar requests to reduce API calls
+- **Request Batching**: Combines compatible requests for improved throughput
+
+## Example Scripts
+
+This directory contains example scripts demonstrating various features:
+
+- **queue_backoff_example.py**: Demonstrates queue and backoff functionality with multiple APIs
+- **semantic_cache.py**: Implements semantic caching based on embedding similarity
+- **groq_semantic_cache.py**: Groq-specific implementation of semantic caching
+- **openai_semantic_cache.py**: OpenAI-specific implementation of semantic caching
+- **claude_semantic_cache.py**: Claude-specific implementation of semantic caching
+
+### Running the Queue and Backoff Example
+
+```bash
+# Set API credentials (replace with your actual keys)
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-claude-key"
+export GROQ_API_KEY="your-groq-key"
+export OLLAMA_HOST="http://localhost:11434"
+
+# Run the example script
+python queue_backoff_example.py
+```
+
+The script demonstrates:
+- Queue functionality with varying concurrency limits
+- Exponential backoff behavior with rate limits
+- Circuit breaker pattern for service outages
+- Different queue sizes and their performance impact
+- Request tracking with unique IDs
 
 ### Example: Using the Queue and Backoff Systems
 
@@ -24,25 +54,13 @@ api = claude(resources={}, metadata={"anthropic_api_key": "your-key-here"})
 api.max_concurrent_requests = 5    # Maximum concurrent requests
 api.queue_size = 100               # Maximum queue size
 api.max_retries = 5                # Maximum retry attempts
+api.initial_retry_delay = 1        # Starting delay in seconds
 api.backoff_factor = 2             # Multiplier for retry delays
+api.max_retry_delay = 60           # Maximum delay cap in seconds
 
-# Create multiple endpoints with different configurations
-endpoint1 = api.create_endpoint(
-    api_key="key1",
-    max_concurrent_requests=3,     # Lower concurrency
-    max_retries=3                  # Fewer retries
-)
-
-endpoint2 = api.create_endpoint(
-    api_key="key2",
-    max_concurrent_requests=10,    # Higher concurrency
-    max_retries=7                  # More retries
-)
-
-# Use specific endpoint for request
+# Use with custom request ID for tracking
 response = api.chat(
     messages=[{"role": "user", "content": "Hello"}],
-    endpoint_id=endpoint1,
     request_id="custom-request-id"  # Optional custom tracking ID
 )
 ```

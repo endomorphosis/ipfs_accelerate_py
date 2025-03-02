@@ -14,7 +14,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import the Ollama API directly
-from ipfs_accelerate_py.api_backends.ollama import ollama
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ollama import ollama
 
 def test_ollama_api_basic():
     """Test basic functionality of the Ollama API"""

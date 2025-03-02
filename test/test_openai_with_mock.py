@@ -18,7 +18,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_a
 
 try:
     # Import the OpenAI API implementation
-    from api_backends import openai_api
+    from ipfs_accelerate_py.api_backends import openai_api
     
     print("Successfully imported the OpenAI API implementation")
     

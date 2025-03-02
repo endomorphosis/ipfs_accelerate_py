@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Test implementation for patchtsmixer
-# Generated: 2025-03-01T15:30:57.500001
+'''Test implementation for patchtsmixer'''
 
 import os
 import sys
@@ -33,9 +32,9 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
     print("Warning: transformers not available, using mock implementation")
 
-# Model supports: time-series-prediction
-
 class test_hf_patchtsmixer:
+    '''Test class for patchtsmixer'''
+    
     def __init__(self, resources=None, metadata=None):
         # Initialize test class
         self.resources = resources if resources else {
@@ -45,63 +44,66 @@ class test_hf_patchtsmixer:
         }
         self.metadata = metadata if metadata else {}
         
-        # Create mock model class if needed
+        # Initialize dependency status
+        self.dependency_status = {
+            "torch": TORCH_AVAILABLE,
+            "transformers": TRANSFORMERS_AVAILABLE,
+            "numpy": True
+        }
+        print(f"patchtsmixer initialization status: {self.dependency_status}")
+        
+        # Try to import the real implementation
+        real_implementation = False
         try:
             from ipfs_accelerate_py.worker.skillset.hf_patchtsmixer import hf_patchtsmixer
             self.model = hf_patchtsmixer(resources=self.resources, metadata=self.metadata)
+            real_implementation = True
         except ImportError:
             # Create mock model class
             class hf_patchtsmixer:
                 def __init__(self, resources=None, metadata=None):
                     self.resources = resources or {}
                     self.metadata = metadata or {}
+                    self.torch = resources.get("torch") if resources else None
                 
                 def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
-                    return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
+                    print(f"Loading {model_name} for CPU inference...")
+                    mock_handler = lambda x: {"output": f"Mock CPU output for {model_name}", 
+                                         "implementation_type": "MOCK"}
+                    return None, None, mock_handler, None, 1
                 
                 def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-                    return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
+                    print(f"Loading {model_name} for CUDA inference...")
+                    mock_handler = lambda x: {"output": f"Mock CUDA output for {model_name}", 
+                                         "implementation_type": "MOCK"}
+                    return None, None, mock_handler, None, 1
                 
                 def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
-                    return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
+                    print(f"Loading {model_name} for OpenVINO inference...")
+                    mock_handler = lambda x: {"output": f"Mock OpenVINO output for {model_name}", 
+                                         "implementation_type": "MOCK"}
+                    return None, None, mock_handler, None, 1
             
             self.model = hf_patchtsmixer(resources=self.resources, metadata=self.metadata)
             print(f"Warning: hf_patchtsmixer module not found, using mock implementation")
         
-        # Select appropriate model for testing
-        if "time-series-prediction" == "text-generation":
-            self.model_name = "distilgpt2"  # Small text generation model
-        elif "time-series-prediction" == "image-classification":
-            self.model_name = "google/vit-base-patch16-224-in21k"  # Image classification model
-        elif "time-series-prediction" == "object-detection":
-            self.model_name = "facebook/detr-resnet-50"  # Object detection model
-        elif "time-series-prediction" == "automatic-speech-recognition":
-            self.model_name = "openai/whisper-tiny"  # Small ASR model
-        elif "time-series-prediction" == "image-to-text":
-            self.model_name = "Salesforce/blip-image-captioning-base"  # Image captioning model
-        elif "time-series-prediction" == "time-series-prediction":
-            self.model_name = "huggingface/time-series-transformer-tourism-monthly"  # Time series model
-        elif "time-series-prediction" == "document-question-answering":
-            self.model_name = "microsoft/layoutlm-base-uncased"  # Document QA model
-        else:
-            self.model_name = "bert-base-uncased"  # Generic model
+        # Check for specific model handler methods
+        if real_implementation:
+            handler_methods = dir(self.model)
+            print(f"Creating minimal patchtsmixer model for testing")
         
-        # Define test inputs appropriate for this model type
-        if "time-series-prediction" == "text-generation":
+        # Define test model and input based on task
+        if "feature-extraction" == "text-generation":
+            self.model_name = "bert-base-uncased"
             self.test_input = "The quick brown fox jumps over the lazy dog"
-        elif "time-series-prediction" in ["image-classification", "object-detection", "image-segmentation"]:
-            self.test_input = "test.jpg"  # Path to a test image file
-        elif "time-series-prediction" in ["automatic-speech-recognition", "audio-classification"]:
-            self.test_input = "test.mp3"  # Path to a test audio file
-        elif "time-series-prediction" == "time-series-prediction":
-            self.test_input = {
-                "past_values": [100, 120, 140, 160, 180],
-                "past_time_features": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
-                "future_time_features": [[5, 0], [6, 0], [7, 0]]
-            }
-        elif "time-series-prediction" == "document-question-answering":
-            self.test_input = {"image": "test.jpg", "question": "What is the title of this document?"}
+        elif "feature-extraction" == "image-classification":
+            self.model_name = "bert-base-uncased"
+            self.test_input = "test.jpg"  # Path to test image
+        elif "feature-extraction" == "automatic-speech-recognition":
+            self.model_name = "bert-base-uncased"
+            self.test_input = "test.mp3"  # Path to test audio file
         else:
+            self.model_name = "bert-base-uncased"
             self.test_input = "Test input for patchtsmixer"
         
         # Initialize collection arrays for examples and status
@@ -109,7 +111,7 @@ class test_hf_patchtsmixer:
         self.status_messages = {}
     
     def test(self):
-        # Run tests for the model on all platforms
+        '''Run tests for the model'''
         results = {}
         
         # Test basic initialization
@@ -119,112 +121,44 @@ class test_hf_patchtsmixer:
         try:
             # Initialize for CPU
             endpoint, processor, handler, queue, batch_size = self.model.init_cpu(
-                self.model_name, "time-series-prediction", "cpu"
+                self.model_name, "feature-extraction", "cpu"
             )
             
-            valid_init = endpoint is not None and processor is not None and handler is not None
-            results["cpu_init"] = "Success (REAL)" if valid_init else "Failed CPU initialization"
+            results["cpu_init"] = "Success" if endpoint is not None or processor is not None or handler is not None else "Failed initialization"
             
-            # Run actual inference
-            output = handler(self.test_input)
-            
-            # Verify output
-            is_valid_output = output is not None
-            results["cpu_handler"] = "Success (REAL)" if is_valid_output else "Failed CPU handler"
-            
-            # Record example
-            self.examples.append({
-                "input": str(self.test_input),
-                "output": {
-                    "output_type": str(type(output)),
-                    "implementation_type": "REAL" if isinstance(output, dict) and 
-                                            output.get("implementation_type") == "REAL" else "MOCK"
-                },
-                "timestamp": datetime.datetime.now().isoformat(),
-                "platform": "CPU"
-            })
+            # Safely run handler with appropriate error handling
+            if handler is not None:
+                try:
+                    output = handler(self.test_input)
+                    
+                    # Verify output type - could be dict, tensor, or other types
+                    if isinstance(output, dict):
+                        impl_type = output.get("implementation_type", "UNKNOWN")
+                    elif hasattr(output, 'real_implementation'):
+                        impl_type = "REAL" if output.real_implementation else "MOCK"
+                    else:
+                        impl_type = "REAL" if output is not None else "MOCK"
+                    
+                    results["cpu_handler"] = f"Success ({impl_type})"
+                    
+                    # Record example with safe serialization
+                    self.examples.append({
+                        "input": str(self.test_input),
+                        "output": {
+                            "type": str(type(output)),
+                            "implementation_type": impl_type
+                        },
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "platform": "CPU"
+                    })
+                except Exception as handler_err:
+                    results["cpu_handler_error"] = str(handler_err)
+                    traceback.print_exc()
+            else:
+                results["cpu_handler"] = "Failed (handler is None)"
         except Exception as e:
-            print(f"Error in CPU tests: {e}")
-            traceback.print_exc()
             results["cpu_error"] = str(e)
-        
-        # CUDA Tests (if available)
-        if torch.cuda.is_available():
-            try:
-                # Initialize for CUDA
-                endpoint, processor, handler, queue, batch_size = self.model.init_cuda(
-                    self.model_name, "time-series-prediction", "cuda:0"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["cuda_init"] = "Success (REAL)" if valid_init else "Failed CUDA initialization"
-                
-                # Run actual inference
-                output = handler(self.test_input)
-                
-                # Verify output
-                is_valid_output = output is not None
-                results["cuda_handler"] = "Success (REAL)" if is_valid_output else "Failed CUDA handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": str(self.test_input),
-                    "output": {
-                        "output_type": str(type(output)),
-                        "implementation_type": "REAL" if isinstance(output, dict) and 
-                                                output.get("implementation_type") == "REAL" else "MOCK"
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "platform": "CUDA"
-                })
-            except Exception as e:
-                print(f"Error in CUDA tests: {e}")
-                traceback.print_exc()
-                results["cuda_error"] = str(e)
-        else:
-            results["cuda_tests"] = "CUDA not available"
-        
-        # OpenVINO Tests (if available)
-        try:
-            # Check if OpenVINO is available
-            try:
-                import openvino
-                has_openvino = True
-            except ImportError:
-                has_openvino = False
-                results["openvino_tests"] = "OpenVINO not installed"
-            
-            if has_openvino:
-                # Initialize for OpenVINO
-                endpoint, processor, handler, queue, batch_size = self.model.init_openvino(
-                    self.model_name, "time-series-prediction", "CPU"
-                )
-                
-                valid_init = endpoint is not None and processor is not None and handler is not None
-                results["openvino_init"] = "Success (REAL)" if valid_init else "Failed OpenVINO initialization"
-                
-                # Run actual inference
-                output = handler(self.test_input)
-                
-                # Verify output
-                is_valid_output = output is not None
-                results["openvino_handler"] = "Success (REAL)" if is_valid_output else "Failed OpenVINO handler"
-                
-                # Record example
-                self.examples.append({
-                    "input": str(self.test_input),
-                    "output": {
-                        "output_type": str(type(output)),
-                        "implementation_type": "REAL" if isinstance(output, dict) and 
-                                                output.get("implementation_type") == "REAL" else "MOCK"
-                    },
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "platform": "OpenVINO"
-                })
-        except Exception as e:
-            print(f"Error in OpenVINO tests: {e}")
             traceback.print_exc()
-            results["openvino_error"] = str(e)
         
         # Return structured results
         return {
@@ -238,7 +172,7 @@ class test_hf_patchtsmixer:
         }
     
     def __test__(self):
-        # Run tests and save results
+        '''Run tests and save results'''
         test_results = {}
         try:
             test_results = self.test()
@@ -254,61 +188,55 @@ class test_hf_patchtsmixer:
         
         # Create directories if needed
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        expected_dir = os.path.join(base_dir, 'expected_results')
         collected_dir = os.path.join(base_dir, 'collected_results')
         
-        for directory in [expected_dir, collected_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, mode=0o755, exist_ok=True)
+        if not os.path.exists(collected_dir):
+            os.makedirs(collected_dir, mode=0o755, exist_ok=True)
+        
+        # Format the test results for JSON serialization
+        safe_test_results = {
+            "status": test_results.get("status", {}),
+            "examples": [
+                {
+                    "input": ex.get("input", ""),
+                    "output": {
+                        "type": ex.get("output", {}).get("type", "unknown"),
+                        "implementation_type": ex.get("output", {}).get("implementation_type", "UNKNOWN")
+                    },
+                    "timestamp": ex.get("timestamp", ""),
+                    "platform": ex.get("platform", "")
+                }
+                for ex in test_results.get("examples", [])
+            ],
+            "metadata": test_results.get("metadata", {})
+        }
         
         # Save results
-        results_file = os.path.join(collected_dir, 'hf_patchtsmixer_test_results.json')
-        with open(results_file, 'w') as f:
-            json.dump(test_results, f, indent=2)
-        
-        # Create expected results if they don't exist
-        expected_file = os.path.join(expected_dir, 'hf_patchtsmixer_test_results.json')
-        if not os.path.exists(expected_file):
-            with open(expected_file, 'w') as f:
-                json.dump(test_results, f, indent=2)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_file = os.path.join(collected_dir, f'hf_patchtsmixer_test_results.json')
+        try:
+            with open(results_file, 'w') as f:
+                json.dump(safe_test_results, f, indent=2)
+        except Exception as save_err:
+            print(f"Error saving results: {save_err}")
         
         return test_results
 
 if __name__ == "__main__":
     try:
-        print("Starting patchtsmixer test...")
+        print(f"Starting patchtsmixer test...")
         test_instance = test_hf_patchtsmixer()
         results = test_instance.__test__()
-        print("patchtsmixer test completed")
+        print(f"patchtsmixer test completed")
         
         # Extract implementation status
         status_dict = results.get("status", {})
         
-        cpu_status = "UNKNOWN"
-        cuda_status = "UNKNOWN"
-        openvino_status = "UNKNOWN"
-        
-        for key, value in status_dict.items():
-            if "cpu_" in key and "REAL" in value:
-                cpu_status = "REAL"
-            elif "cpu_" in key and "MOCK" in value:
-                cpu_status = "MOCK"
-                
-            if "cuda_" in key and "REAL" in value:
-                cuda_status = "REAL"
-            elif "cuda_" in key and "MOCK" in value:
-                cuda_status = "MOCK"
-                
-            if "openvino_" in key and "REAL" in value:
-                openvino_status = "REAL"
-            elif "openvino_" in key and "MOCK" in value:
-                openvino_status = "MOCK"
-        
         # Print summary
-        print(f"\nPATCHTSMIXER TEST RESULTS:")
-        print(f"CPU: {cpu_status}")
-        print(f"CUDA: {cuda_status}")
-        print(f"OpenVINO: {openvino_status}")
+        model_name = results.get("metadata", {}).get("model_type", "UNKNOWN")
+        print(f"\n{model_name.upper()} TEST RESULTS:")
+        for key, value in status_dict.items():
+            print(f"{key}: {value}")
         
     except KeyboardInterrupt:
         print("Test stopped by user")

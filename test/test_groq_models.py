@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import Groq implementation
-from ipfs_accelerate_py.api_backends.groq import groq, CHAT_MODELS, VISION_MODELS, AUDIO_MODELS, ALL_MODELS
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq, CHAT_MODELS, VISION_MODELS, AUDIO_MODELS, ALL_MODELS
 
 class TestGroqModels:
     """Test all Groq models and endpoints"""

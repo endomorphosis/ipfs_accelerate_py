@@ -10,7 +10,7 @@ from datetime import datetime
 
 # Add parent directory to path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_accelerate_py'))
-import api_backends
+import ipfs_accelerate_py.api_backends
 
 # Import test modules directly with proper path resolution
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -202,7 +202,7 @@ class APIImplementationTester:
         
         # Initialize APIs
         if "apis" not in resources:
-            resources["apis"] = api_backends.apis(resources=resources, metadata=metadata)
+            resources["apis"] = ipfs_accelerate_py.ipfs_accelerate_py.api_backends.apis(resources=resources, metadata=metadata)
             
         print("\n=== Testing API Backend Implementations ===\n")
         

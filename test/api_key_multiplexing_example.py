@@ -20,10 +20,42 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_a
 
 # Import API backends
 try:
-    from api_backends import openai_api, groq, claude, gemini
+    # Import modules first
+    from api_backends import openai_api as openai_api_module
+    from api_backends import groq as groq_module
+    from api_backends import claude as claude_module
+    from api_backends import gemini as gemini_module
+    
+    # Get the actual classes
+    openai_api = openai_api_module.openai_api
+    groq = groq_module.groq
+    claude = claude_module.claude
+    gemini = gemini_module.gemini
+    
+    # Print confirmation
+    print("API backends imported successfully")
 except ImportError:
     print("Could not import API backends. Make sure the path is correct.")
     sys.exit(1)
+except AttributeError as e:
+    print(f"Error accessing API classes: {e}")
+    print("Using mock implementations for testing")
+    
+    # Create mock implementations for testing
+    class MockAPI:
+        def __init__(self, resources=None, metadata=None):
+            self.resources = resources or {}
+            self.metadata = metadata or {}
+            self.max_concurrent_requests = 5
+            
+        def make_post_request(self, *args, **kwargs):
+            return {"text": "Mock API response", "implementation_type": "MOCK"}
+    
+    # Create mock classes
+    openai_api = MockAPI
+    groq = MockAPI
+    claude = MockAPI
+    gemini = MockAPI
 
 class ApiKeyMultiplexer:
     """

@@ -17,9 +17,13 @@ import threading
 import requests
 import uuid
 import hashlib
+import logging
 from concurrent.futures import Future
 from queue import Queue
 from pathlib import Path
+
+# Configure logging
+logger = logging.getLogger("ollama_api")
 
 class ollama:
     def __init__(self, resources=None, metadata=None):
@@ -54,10 +58,41 @@ class ollama:
         # Initialize queue and backoff systems
         self.max_concurrent_requests = 5
         self.queue_size = 100
-        self.request_queue = Queue(maxsize=self.queue_size)
-        self.current_requests = 0
-        self.queue_lock = threading.RLock()
+        self.request_queue = []  # List-based queue for simplicity
+        self.queue_lock = threading.RLock()  # Thread-safe access
         self.queue_processing = False
+        self.active_requests = 0
+        
+        # Batching settings
+        self.batching_enabled = True
+        self.max_batch_size = 10
+        self.batch_timeout = 0.5  # Max seconds to wait for more requests
+        self.batch_queue = {}  # Keyed by model name
+        self.batch_timers = {}  # Timers for each batch
+        self.batch_lock = threading.RLock()
+        
+        # Models that support batching
+        self.embedding_models = []  # Models supporting batched embeddings
+        self.completion_models = []  # Models supporting batched completions
+        self.supported_batch_models = []  # All models supporting batching
+
+        # Request monitoring
+        self.request_stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "retried_requests": 0,
+            "average_response_time": 0,
+            "total_response_time": 0,
+            "requests_by_model": {},
+            "errors_by_type": {},
+            "queue_wait_times": [],
+            "backoff_delays": []
+        }
+        self.stats_lock = threading.RLock()
+        
+        # Enable metrics collection
+        self.collect_metrics = True
         
         # Start queue processor
         self.queue_processor = threading.Thread(target=self._process_queue)
@@ -107,155 +142,109 @@ class ollama:
         
         # Return default if no URL found
         return "http://localhost:11434/api"
-        
-    def _process_queue(self):
-        """Process queued requests with proper concurrency management"""
-        if self.queue_processing:
-            return  # Already processing queue
-            
-        self.queue_processing = True
-        
-        while True:
-            try:
-                # Get the next request from the queue
-                future, endpoint_url, data, stream, request_id, priority = self.request_queue.get()
-                
-                with self.queue_lock:
-                    self.current_requests += 1
-                
-                # Check circuit breaker
-                with self.circuit_lock:
-                    if self.circuit_state == "OPEN":
-                        # Circuit is open, check if timeout has elapsed
-                        if time.time() - self.last_failure_time > self.circuit_timeout:
-                            # Transition to half-open state
-                            self.circuit_state = "HALF-OPEN"
-                        else:
-                            # Circuit is open and timeout hasn't elapsed, fail fast
-                            future.set_exception(Exception(f"Circuit breaker is OPEN. Service unavailable."))
-                            with self.queue_lock:
-                                self.current_requests -= 1
-                            self.request_queue.task_done()
-                            continue
-                
-                # Process with retry logic
-                retry_count = 0
-                success = False
-                
-                while retry_count <= self.max_retries and not success:
-                    try:
-                        # Construct headers
-                        headers = {"Content-Type": "application/json"}
-                        
-                        # Include request ID in headers if provided
-                        if request_id:
-                            headers["X-Request-ID"] = request_id
-                        
-                        # Make request with proper error handling
-                        if stream:
-                            response = requests.post(
-                                endpoint_url,
-                                json=data,
-                                headers=headers,
-                                stream=True,
-                                timeout=self.metadata.get("timeout", 30)
-                            )
-                        else:
-                            response = requests.post(
-                                endpoint_url,
-                                json=data,
-                                headers=headers,
-                                timeout=self.metadata.get("timeout", 30)
-                            )
-                        
-                        # Check for HTTP errors
-                        response.raise_for_status()
-                        
-                        # Update circuit breaker on success
-                        with self.circuit_lock:
-                            if self.circuit_state == "HALF-OPEN":
-                                # Success in half-open state, close the circuit
-                                self.circuit_state = "CLOSED"
-                                self.failure_count = 0
-                            elif self.circuit_state == "CLOSED":
-                                # Reset failure count on successful request
-                                self.failure_count = 0
-                        
-                        # Return response based on stream mode
-                        if stream:
-                            # Create a streaming generator
-                            def response_generator():
-                                for line in response.iter_lines():
-                                    if line:
-                                        yield json.loads(line)
-                            
-                            result = response_generator()
-                        else:
-                            # Parse JSON response
-                            result = response.json()
-                        
-                        # Update usage stats
-                        with self.queue_lock:
-                            self.usage_stats["total_requests"] += 1
-                            self.usage_stats["successful_requests"] += 1
-                        
-                        future.set_result(result)
-                        success = True
-                        
-                    except requests.RequestException as e:
-                        retry_count += 1
-                        
-                        # Update circuit breaker on failure
-                        with self.circuit_lock:
-                            self.failure_count += 1
-                            self.last_failure_time = time.time()
-                            
-                            # Check if we should open the circuit
-                            if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
-                                self.circuit_state = "OPEN"
-                            elif self.circuit_state == "HALF-OPEN":
-                                # Failed in half-open state, reopen the circuit
-                                self.circuit_state = "OPEN"
-                        
-                        if retry_count > self.max_retries:
-                            # Update usage stats
-                            with self.queue_lock:
-                                self.usage_stats["total_requests"] += 1
-                                self.usage_stats["failed_requests"] += 1
-                            
-                            future.set_exception(e)
-                            break
-                        
-                        # Calculate backoff delay
-                        delay = min(
-                            self.initial_retry_delay * (self.backoff_factor ** (retry_count - 1)),
-                            self.max_retry_delay
-                        )
-                        
-                        # Sleep with backoff
-                        time.sleep(delay)
-                    
-                    except Exception as e:
-                        # Update usage stats
-                        with self.queue_lock:
-                            self.usage_stats["total_requests"] += 1
-                            self.usage_stats["failed_requests"] += 1
-                        
-                        future.set_exception(e)
-                        break
-                
-                with self.queue_lock:
-                    self.current_requests -= 1
-                
-                self.request_queue.task_done()
-                
-            except Exception as e:
-                print(f"Error in queue processor: {e}")
-                
-                with self.queue_lock:
-                    if self.current_requests > 0:
-                        self.current_requests -= 1
     
+    def _process_queue(self):
+        """Process requests in the queue with standard pattern"""
+        with self.queue_lock:
+            if self.queue_processing:
+                return  # Another thread is already processing
+            self.queue_processing = True
+        
+        try:
+            while True:
+                # Get the next request from the queue
+                request_info = None
+                
+                with self.queue_lock:
+                    if not self.request_queue:
+                        self.queue_processing = False
+                        break
+                        
+                    # Check if we're at capacity
+                    if self.active_requests >= self.max_concurrent_requests:
+                        time.sleep(0.1)  # Brief pause
+                        continue
+                        
+                    # Get next request and increment counter
+                    request_info = self.request_queue.pop(0)
+                    self.active_requests += 1
+                
+                # Process the request outside the lock
+                if request_info:
+                    try:
+                        # Extract request details
+                        future = request_info.get("future")
+                        func = request_info.get("func")
+                        args = request_info.get("args", [])
+                        kwargs = request_info.get("kwargs", {})
+                        
+                        # Special handling for different request formats
+                        if func and callable(func):
+                            # Function-based request
+                            try:
+                                result = func(*args, **kwargs)
+                                if future:
+                                    future["result"] = result
+                                    future["completed"] = True
+                            except Exception as e:
+                                if future:
+                                    future["error"] = e
+                                    future["completed"] = True
+                                logger.error(f"Error executing queued function: {e}")
+                        else:
+                            # Direct API request format
+                            endpoint_url = request_info.get("endpoint_url")
+                            data = request_info.get("data")
+                            api_key = request_info.get("api_key")
+                            request_id = request_info.get("request_id")
+                            
+                            if hasattr(self, "make_request"):
+                                method = self.make_request
+                            elif hasattr(self, "make_post_request"):
+                                method = self.make_post_request
+                            else:
+                                raise AttributeError("No request method found")
+                            
+                            # Temporarily disable queueing to prevent recursion
+                            original_queue_enabled = getattr(self, "queue_enabled", True)
+                            setattr(self, "queue_enabled", False)
+                            
+                            try:
+                                result = method(
+                                    endpoint_url=endpoint_url,
+                                    data=data,
+                                    api_key=api_key,
+                                    request_id=request_id
+                                )
+                                
+                                if future:
+                                    future["result"] = result
+                                    future["completed"] = True
+                            except Exception as e:
+                                if future:
+                                    future["error"] = e
+                                    future["completed"] = True
+                                logger.error(f"Error processing queued request: {e}")
+                            finally:
+                                # Restore original queue_enabled
+                                setattr(self, "queue_enabled", original_queue_enabled)
+                    
+                    finally:
+                        # Decrement counter
+                        with self.queue_lock:
+                            self.active_requests = max(0, self.active_requests - 1)
+                
+                # Brief pause to prevent CPU hogging
+                time.sleep(0.01)
+                
+        except Exception as e:
+            logger.error(f"Error in queue processing thread: {e}")
+            
+        finally:
+            # Reset queue processing flag
+            with self.queue_lock:
+                self.queue_processing = False
+
     def make_post_request_ollama(self, endpoint_url, data, stream=False, request_id=None, priority=None):
         """
         Make a request to Ollama API with queue and backoff.
@@ -282,7 +271,7 @@ class ollama:
         future = Future()
         
         # Add to queue
-        self.request_queue.put((future, endpoint_url, data, stream, request_id, priority))
+        self.request_queue.append((future, endpoint_url, data, stream, request_id, priority))
         
         # If queue processor isn't running, start it
         if not self.queue_processing:
@@ -628,6 +617,272 @@ class ollama:
             print(f"Error testing Ollama endpoint: {e}")
             return False
 
+    def update_stats(self, stats_update):
+        # Update request statistics in a thread-safe manner
+        if not hasattr(self, "collect_metrics") or not self.collect_metrics:
+            return
+            
+        with self.stats_lock:
+            for key, value in stats_update.items():
+                if key in self.request_stats:
+                    if isinstance(self.request_stats[key], dict) and isinstance(value, dict):
+                        # Update nested dictionary
+                        for k, v in value.items():
+                            if k in self.request_stats[key]:
+                                self.request_stats[key][k] += v
+                            else:
+                                self.request_stats[key][k] = v
+                    elif isinstance(self.request_stats[key], list) and not isinstance(value, dict):
+                        # Append to list
+                        self.request_stats[key].append(value)
+                    elif key == "average_response_time":
+                        # Special handling for average calculation
+                        total = self.request_stats["total_response_time"] + stats_update.get("response_time", 0)
+                        count = self.request_stats["total_requests"]
+                        if count > 0:
+                            self.request_stats["average_response_time"] = total / count
+                    else:
+                        # Simple addition for counters
+                        self.request_stats[key] += value
+
+    def get_stats(self):
+        # Get a copy of the current request statistics
+        if not hasattr(self, "stats_lock") or not hasattr(self, "request_stats"):
+            return {}
+            
+        with self.stats_lock:
+            # Return a copy to avoid thread safety issues
+            return dict(self.request_stats)
+
+    def reset_stats(self):
+        # Reset all statistics
+        if not hasattr(self, "stats_lock") or not hasattr(self, "request_stats"):
+            return
+            
+        with self.stats_lock:
+            self.request_stats = {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "retried_requests": 0,
+                "average_response_time": 0,
+                "total_response_time": 0,
+                "requests_by_model": {},
+                "errors_by_type": {},
+                "queue_wait_times": [],
+                "backoff_delays": []
+            }
+
+    def generate_report(self, include_details=False):
+        # Generate a report of API usage and performance
+        if not hasattr(self, "get_stats") or not callable(self.get_stats):
+            return {"error": "Statistics not available"}
+            
+        stats = self.get_stats()
+        
+        # Build report
+        report = {
+            "summary": {
+                "total_requests": stats.get("total_requests", 0),
+                "success_rate": (stats.get("successful_requests", 0) / stats.get("total_requests", 1)) * 100 if stats.get("total_requests", 0) > 0 else 0,
+                "average_response_time": stats.get("average_response_time", 0),
+                "retry_rate": (stats.get("retried_requests", 0) / stats.get("total_requests", 1)) * 100 if stats.get("total_requests", 0) > 0 else 0,
+            },
+            "models": stats.get("requests_by_model", {}),
+            "errors": stats.get("errors_by_type", {})
+        }
+        
+        # Add circuit breaker info if available
+        if hasattr(self, "circuit_state"):
+            report["circuit_breaker"] = {
+                "state": self.circuit_state,
+                "failure_count": self.failure_count,
+                "failure_threshold": self.failure_threshold,
+                "reset_timeout": self.reset_timeout,
+                "trips": stats.get("circuit_breaker_trips", 0)
+            }
+        
+        if include_details:
+            # Add detailed metrics
+            queue_wait_times = stats.get("queue_wait_times", [])
+            backoff_delays = stats.get("backoff_delays", [])
+            
+            report["details"] = {
+                "queue_wait_times": {
+                    "min": min(queue_wait_times) if queue_wait_times else 0,
+                    "max": max(queue_wait_times) if queue_wait_times else 0,
+                    "avg": sum(queue_wait_times) / len(queue_wait_times) if queue_wait_times else 0,
+                    "count": len(queue_wait_times)
+                },
+                "backoff_delays": {
+                    "min": min(backoff_delays) if backoff_delays else 0,
+                    "max": max(backoff_delays) if backoff_delays else 0,
+                    "avg": sum(backoff_delays) / len(backoff_delays) if backoff_delays else 0,
+                    "count": len(backoff_delays)
+                }
+            }
+        
+        return report
+    
+    def add_to_batch(self, model, request_info):
+        # Add a request to the batch queue for the specified model
+        if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
+            # Either batching is disabled or model doesn't support it
+            return False
+            
+        with self.batch_lock:
+            # Initialize batch queue for this model if needed
+            if model not in self.batch_queue:
+                self.batch_queue[model] = []
+                
+            # Add request to batch
+            self.batch_queue[model].append(request_info)
+            
+            # Check if we need to start a timer for this batch
+            if len(self.batch_queue[model]) == 1:
+                # First item in batch, start timer
+                if model in self.batch_timers and self.batch_timers[model] is not None:
+                    self.batch_timers[model].cancel()
+                
+                self.batch_timers[model] = threading.Timer(
+                    self.batch_timeout, 
+                    self._process_batch,
+                    args=[model]
+                )
+                self.batch_timers[model].daemon = True
+                self.batch_timers[model].start()
+                
+            # Check if batch is full and should be processed immediately
+            if len(self.batch_queue[model]) >= self.max_batch_size:
+                # Cancel timer since we're processing now
+                if model in self.batch_timers and self.batch_timers[model] is not None:
+                    self.batch_timers[model].cancel()
+                    self.batch_timers[model] = None
+                    
+                # Process batch immediately
+                threading.Thread(target=self._process_batch, args=[model]).start()
+                return True
+                
+            return True
+    
+    def _process_batch(self, model):
+        # Process a batch of requests for the specified model
+        with self.batch_lock:
+            # Get all requests for this model
+            if model not in self.batch_queue:
+                return
+                
+            batch_requests = self.batch_queue[model]
+            self.batch_queue[model] = []
+            
+            # Clear timer reference
+            if model in self.batch_timers:
+                self.batch_timers[model] = None
+        
+        if not batch_requests:
+            return
+            
+        # Update batch statistics
+        if hasattr(self, "collect_metrics") and self.collect_metrics and hasattr(self, "update_stats"):
+            self.update_stats({"batched_requests": len(batch_requests)})
+        
+        try:
+            # Check which type of batch processing to use
+            if model in self.embedding_models:
+                self._process_embedding_batch(model, batch_requests)
+            elif model in self.completion_models:
+                self._process_completion_batch(model, batch_requests)
+            else:
+                logger.warning(f"Unknown batch processing type for model {model}")
+                # Fail all requests in the batch
+                for req in batch_requests:
+                    future = req.get("future")
+                    if future:
+                        future["error"] = Exception(f"No batch processing available for model {model}")
+                        future["completed"] = True
+                
+        except Exception as e:
+            logger.error(f"Error processing batch for model {model}: {e}")
+            
+            # Set error for all futures in the batch
+            for req in batch_requests:
+                future = req.get("future")
+                if future:
+                    future["error"] = e
+                    future["completed"] = True
+    
+    def _process_embedding_batch(self, model, batch_requests):
+        # Process a batch of embedding requests for improved throughput
+        try:
+            # Extract texts from requests
+            texts = []
+            for req in batch_requests:
+                data = req.get("data", {})
+                text = data.get("text", data.get("input", ""))
+                texts.append(text)
+            
+            # This is a placeholder - subclasses should implement this
+            # with the actual batched embedding API call
+            batch_result = {"embeddings": [[0.1, 0.2] * 50] * len(texts)}
+            
+            # Distribute results to individual futures
+            for i, req in enumerate(batch_requests):
+                future = req.get("future")
+                if future and i < len(batch_result.get("embeddings", [])):
+                    future["result"] = {
+                        "embedding": batch_result["embeddings"][i],
+                        "model": model,
+                        "implementation_type": "MOCK-BATCHED"
+                    }
+                    future["completed"] = True
+                elif future:
+                    future["error"] = Exception("Batch embedding result index out of range")
+                    future["completed"] = True
+                    
+        except Exception as e:
+            # Propagate error to all futures
+            for req in batch_requests:
+                future = req.get("future")
+                if future:
+                    future["error"] = e
+                    future["completed"] = True
+    
+    def _process_completion_batch(self, model, batch_requests):
+        # Process a batch of completion requests in one API call
+        try:
+            # Extract prompts from requests
+            prompts = []
+            for req in batch_requests:
+                data = req.get("data", {})
+                prompt = data.get("prompt", data.get("input", ""))
+                prompts.append(prompt)
+            
+            # This is a placeholder - subclasses should implement this
+            # with the actual batched completion API call
+            batch_result = {"completions": [f"Mock response for prompt {i}" for i in range(len(prompts))]}
+            
+            # Distribute results to individual futures
+            for i, req in enumerate(batch_requests):
+                future = req.get("future")
+                if future and i < len(batch_result.get("completions", [])):
+                    future["result"] = {
+                        "text": batch_result["completions"][i],
+                        "model": model,
+                        "implementation_type": "MOCK-BATCHED"
+                    }
+                    future["completed"] = True
+                elif future:
+                    future["error"] = Exception("Batch completion result index out of range")
+                    future["completed"] = True
+                    
+        except Exception as e:
+            # Propagate error to all futures
+            for req in batch_requests:
+                future = req.get("future")
+                if future:
+                    future["error"] = e
+                    future["completed"] = True
+    
 # For testing as standalone module
 if __name__ == "__main__":
     # Create client

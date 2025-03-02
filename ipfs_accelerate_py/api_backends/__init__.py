@@ -1,55 +1,76 @@
-# Import modules with try/except blocks to handle missing dependencies
-import logging
-from importlib import import_module
+# ipfs_accelerate_py.api_backends module initialization
+# This module exposes all the API backend classes directly
 
+import logging
 logger = logging.getLogger(__name__)
 
-# Dictionary to store imported modules
-api_modules = {}
+try:
+    from .claude import claude
+except ImportError as e:
+    logger.debug(f"Failed to import claude: {e}")
+    claude = None
 
-# List of modules to try importing
-module_names = [
-    "chat_format",
-    "openai_api",
-    "s3_kit",
-    "hf_tei",
-    "hf_tgi", 
-    "groq",
-    "ovms",
-    "llvm",
-    "ollama",
-    "opea",
-    "apis",
-    # "api_models_registry"
+try:
+    from .openai_api import openai_api
+except ImportError as e:
+    logger.debug(f"Failed to import openai_api: {e}")
+    openai_api = None
+
+try:
+    from .groq import groq
+except ImportError as e:
+    logger.debug(f"Failed to import groq: {e}")
+    groq = None
+
+try:
+    from .gemini import gemini
+except ImportError as e:
+    logger.debug(f"Failed to import gemini: {e}")
+    gemini = None
+
+try:
+    from .ollama import ollama
+except ImportError as e:
+    logger.debug(f"Failed to import ollama: {e}")
+    ollama = None
+
+try:
+    from .hf_tgi import hf_tgi
+except ImportError as e:
+    logger.debug(f"Failed to import hf_tgi: {e}")
+    hf_tgi = None
+
+try:
+    from .hf_tei import hf_tei
+except ImportError as e:
+    logger.debug(f"Failed to import hf_tei: {e}")
+    hf_tei = None
+
+try:
+    from .llvm import llvm
+except ImportError as e:
+    logger.debug(f"Failed to import llvm: {e}")
+    llvm = None
+
+try:
+    from .opea import opea
+except ImportError as e:
+    logger.debug(f"Failed to import opea: {e}")
+    opea = None
+
+try:
+    from .ovms import ovms
+except ImportError as e:
+    logger.debug(f"Failed to import ovms: {e}")
+    ovms = None
+
+try:
+    from .s3_kit import s3_kit
+except ImportError as e:
+    logger.debug(f"Failed to import s3_kit: {e}")
+    s3_kit = None
+
+# List of all backend classes
+__all__ = [
+    "claude", "openai_api", "groq", "gemini", "ollama", "hf_tgi", "hf_tei", "llvm", "opea", "ovms", "s3_kit"
 ]
-
-# Import each module, handling import errors
-for module_name in module_names:
-    try:
-        module = import_module(f".{module_name}", package="ipfs_accelerate_py.api_backends")
-        # Get the class with the same name as the module
-        if hasattr(module, module_name):
-            class_obj = getattr(module, module_name)
-            # Add to globals to support "from .module import module" syntax
-            globals()[module_name] = class_obj
-            # Store in dictionary
-            api_modules[module_name] = class_obj
-        # The groq module has a class named 'groq', make sure it's properly imported
-        elif module_name == "groq" and hasattr(module, "groq"):
-            class_obj = getattr(module, "groq")
-            # Add to globals to support "from .module import module" syntax
-            globals()[module_name] = class_obj
-            # Store in dictionary
-            api_modules[module_name] = class_obj
-            logger.info(f"Successfully imported groq module")
-        else:
-            logger.warning(f"Module {module_name} imported but class {module_name} not found in it")
-    except ImportError as e:
-        logger.debug(f"Could not import module {module_name}: {e}")
-        # Create a placeholder that will raise a more helpful error if used
-        class ModuleNotAvailable:
-            def __init__(self, *args, **kwargs):
-                raise ImportError(f"The {module_name} module is not available: {e}")
-        
-        globals()[module_name] = ModuleNotAvailable
-        api_modules[module_name] = ModuleNotAvailable

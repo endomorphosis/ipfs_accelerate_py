@@ -1,0 +1,23 @@
+{
+  "status": {
+    "init": "Success",
+    "cpu_init": "Success",
+    "cpu_handler": "Success (REAL)"
+  },
+  "examples": [
+    {
+      "input": "test.jpg",
+      "output": {
+        "type": "<class 'dict'>",
+        "implementation_type": "REAL"
+      },
+      "timestamp": "2025-03-01T18:32:54.159757",
+      "platform": "CPU"
+    }
+  ],
+  "metadata": {
+    "model_name": "facebook/detr-resnet-50",
+    "model_type": "detr",
+    "test_timestamp": "2025-03-01T18:32:54.159765"
+  }
+}

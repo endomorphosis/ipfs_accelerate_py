@@ -6,7 +6,7 @@ import tempfile
 from unittest.mock import MagicMock, patch, patch
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
-from api_backends import apis, openai_api
+from ipfs_accelerate_py.api_backends import apis, openai_api
 
 class test_openai_api:
     def __init__(self, resources=None, metadata=None):

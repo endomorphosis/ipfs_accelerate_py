@@ -9,7 +9,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import Groq implementation
-from ipfs_accelerate_py.api_backends.groq import groq
+from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import groq
 
 class TestGroqFeatures:
     """Test specific features of the Groq API implementation"""
@@ -113,7 +113,7 @@ class TestGroqFeatures:
     def test_model_compatibility(self):
         """Test model compatibility checking"""
         # Import model constants from groq.py
-        from ipfs_accelerate_py.api_backends.groq import VISION_MODELS, AUDIO_MODELS, ALL_MODELS
+        from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.groq import VISION_MODELS, AUDIO_MODELS, ALL_MODELS
         
         # Test a valid chat model
         chat_result = self.groq_client.is_compatible_model(self.test_model, "chat")

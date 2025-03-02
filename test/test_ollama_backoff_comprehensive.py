@@ -21,7 +21,7 @@ from pathlib import Path
 
 # Add the project root to the Python path
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "ipfs_accelerate_py"))
-from api_backends import ollama
+from ipfs_accelerate_py.api_backends import ollama
 
 # Default settings
 DEFAULT_MODEL = "llama3"

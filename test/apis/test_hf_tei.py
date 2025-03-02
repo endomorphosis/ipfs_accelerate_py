@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import requests
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
-from api_backends import apis, hf_tei
+from ipfs_accelerate_py.api_backends import apis, hf_tei
 
 class test_hf_tei:
     def __init__(self, resources=None, metadata=None):

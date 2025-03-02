@@ -13,3 +13,5 @@ model_cache/*
 *_report_*
 *.log
 *_status_*
+*.bak
+*.py.bak

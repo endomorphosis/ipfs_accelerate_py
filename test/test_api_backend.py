@@ -16,7 +16,7 @@ from apis import (
 )
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ipfs_accelerate_py'))
-import api_backends
+import ipfs_accelerate_py.api_backends
 
 
 class test_api_backend:

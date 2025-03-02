@@ -448,40 +448,106 @@ class openai_api:
             request_info["future"] = future
             return future
 
+    
     def _process_queue(self):
-        # Process queued requests in order of priority
+        """Process requests in the queue with standard pattern"""
         with self.queue_lock:
             if self.queue_processing:
-                return  # Already processing
+                return  # Another thread is already processing
             self.queue_processing = True
-            
-        logger.info("Starting queue processing")
         
         try:
             while True:
-                # Check if there are requests in the queue
+                # Get the next request from the queue
+                request_info = None
+                
                 with self.queue_lock:
                     if not self.request_queue:
                         self.queue_processing = False
                         break
-                    
-                    # Check if we're at the concurrency limit
+                        
+                    # Check if we're at capacity
                     if self.active_requests >= self.max_concurrent_requests:
-                        # Wait and check again
-                        time.sleep(0.1)
+                        time.sleep(0.1)  # Brief pause
                         continue
-                    
-                    # Get the next request (highest priority first)
-                    priority, request_info = self.request_queue.pop(0)
+                        
+                    # Get next request and increment counter
+                    request_info = self.request_queue.pop(0)
                     self.active_requests += 1
                 
-                # Process the request in a separate thread
-                threading.Thread(target=self._process_request, args=[request_info]).start()
-        
+                # Process the request outside the lock
+                if request_info:
+                    try:
+                        # Extract request details
+                        future = request_info.get("future")
+                        func = request_info.get("func")
+                        args = request_info.get("args", [])
+                        kwargs = request_info.get("kwargs", {})
+                        
+                        # Special handling for different request formats
+                        if func and callable(func):
+                            # Function-based request
+                            try:
+                                result = func(*args, **kwargs)
+                                if future:
+                                    future["result"] = result
+                                    future["completed"] = True
+                            except Exception as e:
+                                if future:
+                                    future["error"] = e
+                                    future["completed"] = True
+                                logger.error(f"Error executing queued function: {e}")
+                        else:
+                            # Direct API request format
+                            endpoint_url = request_info.get("endpoint_url")
+                            data = request_info.get("data")
+                            api_key = request_info.get("api_key")
+                            request_id = request_info.get("request_id")
+                            
+                            if hasattr(self, "make_request"):
+                                method = self.make_request
+                            elif hasattr(self, "make_post_request"):
+                                method = self.make_post_request
+                            else:
+                                raise AttributeError("No request method found")
+                            
+                            # Temporarily disable queueing to prevent recursion
+                            original_queue_enabled = getattr(self, "queue_enabled", True)
+                            setattr(self, "queue_enabled", False)
+                            
+                            try:
+                                result = method(
+                                    endpoint_url=endpoint_url,
+                                    data=data,
+                                    api_key=api_key,
+                                    request_id=request_id
+                                )
+                                
+                                if future:
+                                    future["result"] = result
+                                    future["completed"] = True
+                            except Exception as e:
+                                if future:
+                                    future["error"] = e
+                                    future["completed"] = True
+                                logger.error(f"Error processing queued request: {e}")
+                            finally:
+                                # Restore original queue_enabled
+                                setattr(self, "queue_enabled", original_queue_enabled)
+                    
+                    finally:
+                        # Decrement counter
+                        with self.queue_lock:
+                            self.active_requests = max(0, self.active_requests - 1)
+                
+                # Brief pause to prevent CPU hogging
+                time.sleep(0.01)
+                
         except Exception as e:
-            logger.error(f"Error in queue processor: {e}")
-        
+            logger.error(f"Error in queue processing thread: {e}")
+            
         finally:
+            # Reset queue processing flag
             with self.queue_lock:
                 self.queue_processing = False
 
