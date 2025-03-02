@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-Template Test Generator
+Simple Test Generator
 
-This is a reference implementation for generating test files that are compatible
-with the ipfs_accelerate_py worker/skillset module structure.
-
-This file can serve as a guide for improving the merged_test_generator.py or
-for creating new test generation tools.
+This is a simplified test generator that creates basic test files for Hugging Face models.
 """
 
 import os
@@ -22,11 +18,12 @@ from typing import Dict, List, Any, Optional
 PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEST_DIR = PROJECT_ROOT / "test"
 SKILLS_DIR = TEST_DIR / "skills"
+SAMPLE_DIR = TEST_DIR / "sample_tests"
 WORKER_SKILLSET = PROJECT_ROOT / "ipfs_accelerate_py" / "worker" / "skillset"
 
 # Template for generating tests
-def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
-    """Generate a test file for the specified model type."""
+def generate_test_file(model_type, output_dir=SAMPLE_DIR, force=False):
+    """Generate a test file for the specified model type with enhanced model registry."""
     
     # Normalize the model name
     normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
@@ -256,7 +253,7 @@ class {template_vars['class_name']}:
             "default_sequence_length": {template_vars['token_sequence_length']}
         }}
         return None
-        
+    
     def _detect_hardware(self):
         """Detect available hardware and return capabilities dictionary."""
         capabilities = {{
@@ -1001,27 +998,64 @@ if __name__ == "__main__":
     return True
 
 def main():
-    """Main function."""
-    parser = argparse.ArgumentParser(description="Template Test Generator")
-    parser.add_argument("--model", type=str, required=True, help="Model type to generate a test for")
-    parser.add_argument("--output-dir", type=str, default=str(SKILLS_DIR), help="Output directory for the test file")
-    parser.add_argument("--force", action="store_true", help="Force overwrite if file exists")
+    """Simple test generator main function."""
+    if len(sys.argv) < 2:
+        print("Usage: python simple_test_generator.py MODEL_NAME [OUTPUT_DIR]")
+        return 1
+        
+    model_name = sys.argv[1]
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else str(SAMPLE_DIR)
     
-    args = parser.parse_args()
-    
-    # Create output directory if it doesn't exist
-    output_dir = Path(args.output_dir)
+    # Create output directory
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate the test file
-    success = generate_test_file(args.model, output_dir, args.force)
+    # Generate a simple test file
+    print(f"Generating test file for {model_name}...")
     
-    if success:
-        print(f"Successfully generated test for {args.model}")
-        return 0
-    else:
-        print(f"Failed to generate test for {args.model}")
-        return 1
+    # Basic template for a test file - simplified version
+    template = f"""#!/usr/bin/env python3
+\"\"\"Simple test for {model_name}\"\"\"
+
+import os
+import sys
+import torch
+import numpy as np
+from transformers import AutoModel, AutoTokenizer
+
+# Test {model_name}
+def test_{model_name.replace('-', '_')}():
+    print(f"Testing {model_name}")
+    
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained("{model_name}")
+    model = AutoModel.from_pretrained("{model_name}")
+    
+    # Test with a simple input
+    text = "This is a test input for {model_name}"
+    inputs = tokenizer(text, return_tensors="pt")
+    
+    # Run model
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    # Print results
+    print(f"Input: {{text}}")
+    print(f"Output shape: {{outputs.last_hidden_state.shape}}")
+    
+    return True
+
+if __name__ == "__main__":
+    test_{model_name.replace('-', '_')}()
+"""
+    
+    # Write to output file
+    output_file = output_dir / f"test_{model_name.replace('-', '_')}.py"
+    with open(output_file, 'w') as f:
+        f.write(template)
+    
+    print(f"Generated test file: {output_file}")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

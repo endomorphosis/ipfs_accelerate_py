@@ -1,6 +1,8 @@
-# Template Test Generator for IPFS Accelerate Models
+# Enhanced Template Test Generator for IPFS Accelerate Models
 
 A robust test file generator that creates test implementations compatible with the ipfs_accelerate_py worker/skillset module structure. This generator ensures consistent test coverage across all 300+ Hugging Face model types while maintaining alignment with the actual implementation structure.
+
+**NEW**: The generator now includes comprehensive model registry information with detailed input/output data types, endpoint handler parameters, and dependency requirements.
 
 ## Overview
 
@@ -17,17 +19,31 @@ The generator produces test files with the correct:
 ## Key Features
 
 - **Consistent Structure Alignment**: Ensures perfect alignment with the ipfs_accelerate_py worker/skillset implementation structure, including required methods and attributes
+- **Enhanced Model Registry**: Detailed model registry with comprehensive metadata about input/output formats, helper functions, and dependencies
 - **Model-Specific Task Support**: Automatically pulls task information from the huggingface_model_pipeline_map.json file to customize tests for each model's capabilities 
 - **Reference Implementation Integration**: Intelligently checks for existing model implementations in the worker/skillset directory to use as templates
 - **Complete Multi-Platform Support**: Creates robust tests for all supported hardware platforms: CPU, CUDA, OpenVINO, Apple Silicon (MPS), and Qualcomm AI
+- **Detailed Helper Functions**: Documents each helper function with its description, required arguments, and return types
+- **Endpoint Handler Parameters**: Specifies required and optional parameters for endpoint handlers with types and default values
+- **Dependency Management**: Lists all required Python packages, version requirements, and platform-specific dependencies
 - **Mock Implementations with Fallbacks**: Provides sophisticated mock implementations with proper fallback mechanisms for all components
 - **Hardware-Aware Testing**: Automatically detects available hardware and adapts tests accordingly, ensuring tests work in any environment
 - **Handler Method Verification**: Thoroughly tests all handler creation methods, verifying proper interface adherence
 - **Standardized Results Collection**: Implements consistent result collection and reporting across all models
 
+## Available Generators
+
+The framework now includes three test generators, each with different levels of detail and complexity:
+
+1. **Template Test Generator** (`template_test_generator.py`): The original generator that maintains compatibility with the worker/skillset structure.
+
+2. **Improved Template Generator** (`improved_template_generator.py`): Enhanced generator with comprehensive model registry information.
+
+3. **Basic Test Generator** (`generate_basic_test.py`): Simplified generator that still includes the enhanced model metadata.
+
 ## Usage
 
-### Basic Usage
+### Template Test Generator (Original)
 
 Generate a test for a specific model:
 
@@ -41,10 +57,38 @@ For example:
 python template_test_generator.py --model bert --output-dir ./test_output
 ```
 
-### Options
+### Improved Template Generator (Enhanced)
+
+The enhanced generator includes detailed model registry information:
+
+```bash
+python improved_template_generator.py --model <model_name> --output-dir <output_directory>
+```
+
+For example:
+
+```bash
+python improved_template_generator.py --model bert --output-dir ./sample_tests
+```
+
+### Basic Test Generator (Simplified)
+
+A simplified generator that still includes the enhanced model metadata:
+
+```bash
+python generate_basic_test.py <model_name> [<output_directory>]
+```
+
+For example:
+
+```bash
+python generate_basic_test.py bert-base-uncased ./sample_tests
+```
+
+### Options (Template and Improved Generators)
 
 - `--model`: The model type to generate a test for (required)
-- `--output-dir`: Directory to save the test file (defaults to test/skills)
+- `--output-dir`: Directory to save the test file (defaults to test/skills or sample_tests)
 - `--force`: Force overwrite if the file already exists
 
 ### Examples
@@ -99,10 +143,94 @@ The generated test files include:
 
 1. **Class Definition**: A class with the correct naming convention (`hf_<model_type>`)
 2. **Initialization Method**: Proper initialization with resources and metadata
-3. **Handler Creation Methods**: Methods to create handlers for different hardware platforms
-4. **Initialization Methods**: Methods to initialize the model on different hardware platforms
-5. **Test Method**: A `__test__` method to validate the implementation
-6. **Run Helper**: A `run_test()` function to easily run the test from the command line
+3. **Enhanced Model Registry**: Comprehensive model metadata including input/output specifications
+4. **Handler Creation Methods**: Methods to create handlers for different hardware platforms
+5. **Initialization Methods**: Methods to initialize the model on different hardware platforms
+6. **Test Method**: A `__test__` method to validate the implementation
+7. **Run Helper**: A `run_test()` function to easily run the test from the command line
+
+## Enhanced Model Registry Structure
+
+The improved generator includes a detailed model registry with comprehensive metadata:
+
+```python
+MODEL_REGISTRY = {
+    "model-name": {
+        "description": "Description of the model",
+        
+        # Model dimensions and capabilities
+        "embedding_dim": 768,
+        "sequence_length": 512,
+        "model_precision": "float32", 
+        "supports_half_precision": True,
+        "default_batch_size": 1,
+        
+        # Hardware compatibility
+        "hardware_compatibility": {
+            "cpu": True,
+            "cuda": True,
+            "openvino": True,
+            "apple": True,
+            "qualcomm": False
+        },
+        
+        # Input/Output specifications
+        "input": {
+            "format": "text",  # text, image, audio, multimodal
+            "tensor_type": "int64",
+            "uses_attention_mask": True,
+            "uses_position_ids": False,
+            "typical_shapes": ["batch_size, sequence_length"]
+        },
+        "output": {
+            "format": "embedding",  # text, image, audio, embedding
+            "tensor_type": "float32",
+            "typical_shapes": ["batch_size, sequence_length, hidden_size"]
+        },
+        
+        # Required helper functions with arguments
+        "helper_functions": {
+            "tokenizer": {
+                "description": "Tokenizes input text",
+                "args": ["text", "max_length", "padding", "truncation"],
+                "returns": "Dictionary with input_ids and attention_mask"
+            },
+            "model_loader": {
+                "description": "Loads model from pretrained weights",
+                "args": ["model_name", "cache_dir", "device"],
+                "returns": "Loaded model instance"
+            }
+        },
+        
+        # Endpoint handler parameters
+        "handler_params": {
+            "text": {
+                "description": "Input text to process",
+                "type": "str or List[str]",
+                "required": True
+            },
+            "max_length": {
+                "description": "Maximum sequence length",
+                "type": "int",
+                "required": False,
+                "default": 512
+            }
+        },
+        
+        # Dependencies
+        "dependencies": {
+            "python": ">=3.8,<3.11",
+            "pip": ["torch>=1.12.0", "transformers>=4.26.0", "numpy>=1.20.0"],
+            "system": [],
+            "optional": {
+                "cuda": ["nvidia-cuda-toolkit>=11.6", "nvidia-cudnn>=8.3"],
+                "openvino": ["openvino>=2022.1.0"],
+                "apple": ["torch>=1.12.0"],
+                "qualcomm": ["qti-aisw>=1.8.0"]
+            }
+        }
+    }
+}
 
 ## Customizing for Tasks
 
@@ -112,37 +240,51 @@ For models where task information is unavailable, the generator defaults to "tex
 
 ## Known Issues and Future Improvements
 
-1. **Torch Tensor Attribute Issue**: The generated code attempts to set attributes on torch tensors, which are not writable. The handlers currently fall back to dictionaries when this occurs, which works but isn't ideal. In future versions, this will be fixed by using a proper wrapper class that maintains both the tensor functionality and custom attributes.
+1. **Task-Specific Templates**: While the generator pulls task information and now provides more detailed helper function metadata, we still need more specialized templates for all 300+ task types. Future versions will include even more customized templates for each model family and task combination.
 
-2. **Task-Specific Templates**: While the generator pulls task information, it doesn't yet have fully customized templates for all 300+ task types. Future versions will include more specialized templates for each model family and task combination.
+2. **Real Implementation Testing**: The current implementation uses mocks for testing. Future versions will better integrate with real model implementations when available while still providing robust mocks for testing in environments without dependencies.
 
-3. **Real Implementation Testing**: The current implementation uses mocks for testing. Future versions will better integrate with real model implementations when available while still providing robust mocks for testing in environments without dependencies.
+3. **Dynamic Templating System**: A more sophisticated templating system is needed to handle the wide variety of model architectures and tasks, which will be implemented in future versions.
 
-4. **Dynamic Templating System**: A more sophisticated templating system is needed to handle the wide variety of model architectures and tasks, which will be implemented in future versions.
+4. **Automated Dependency Detection**: While the enhanced model registry includes dependency specifications, future improvements could include automated detection and installation of required dependencies.
+
+5. **Input/Output Shape Inference**: The current implementation provides typical shapes, but future versions could automatically infer the exact shapes from the model architecture.
 
 ## Integration Path
 
-The `template_test_generator.py` was designed as a reference implementation that demonstrates the correct approach for generating test files. The recommended integration path is:
+The generator system now includes multiple options with different levels of detail. The recommended integration path is:
 
-1. Use this generator as a reference for updating the `merged_test_generator.py`
-2. Apply the structural patterns from this generator to the merged generator
-3. Maintain the registry and model discovery capabilities of the merged generator
-4. Incorporate the hardware support and handler creation methods from this generator
+1. Use the `improved_template_generator.py` as the primary test generator for models that need detailed metadata
+2. Use the `generate_basic_test.py` for quick test generation when full details aren't required
+3. Apply the enhanced model registry structure to the `merged_test_generator.py`
+4. Incorporate the detailed helper function documentation and endpoint parameter specifications into all generators
 
 ## Contributing
 
 To improve the template generator:
 
-1. **Fix Torch Tensor Issue**: Implement a wrapper class or dictionary approach to solve the tensor attribute issue
+1. **Enhance Model Registry**: Further improve the model registry with additional metadata fields
 2. **Expand Task Templates**: Add specialized templates for different model tasks and architectures
 3. **Enhance Real Implementation Testing**: Improve integration with real implementations where available
-4. **Refine Hardware Detection**: Enhance the hardware platform detection and adaptation mechanisms
-5. **Improve Error Handling**: Add more sophisticated error handling and reporting
-6. **Add Batch Testing Capabilities**: Implement more efficient batch testing across multiple models
-7. **Integrate with CI/CD**: Enable integration with continuous testing pipelines
+4. **Add Dependency Management**: Implement automatic dependency installation during test setup
+5. **Improve Helper Function Documentation**: Expand documentation for helper functions with examples
+6. **Add Input/Output Shape Inference**: Implement automatic shape inference based on model architecture
+7. **Refine Hardware Detection**: Enhance the hardware platform detection and adaptation mechanisms
+8. **Improve Error Handling**: Add more sophisticated error handling and reporting
+9. **Add Batch Testing Capabilities**: Implement more efficient batch testing across multiple models
+10. **Integrate with CI/CD**: Enable integration with continuous testing pipelines
 
 ## Further Reading
 
 For more information, see:
 - [RECOMMENDATION_FOR_TEST_GENERATOR.md](RECOMMENDATION_FOR_TEST_GENERATOR.md): Detailed recommendations for improving the test generator
 - [SUMMARY_OF_IMPROVEMENTS.md](SUMMARY_OF_IMPROVEMENTS.md): Summary of the improvements made with this implementation
+
+### Sample Generated Test Files
+
+The following sample test files have been generated with the enhanced test generators:
+
+- [test_hf_bert_base_uncased.py](sample_tests/test_hf_bert_base_uncased.py): BERT text model with enhanced model registry
+- [test_hf_t5_small.py](sample_tests/test_hf_t5_small.py): T5 text generation model with enhanced model registry
+- [test_hf_vit.py](sample_tests/test_hf_vit.py): Vision Transformer model with image-specific helper functions
+- [test_hf_whisper.py](sample_tests/test_hf_whisper.py): Audio model with audio-specific dependencies and helper functions

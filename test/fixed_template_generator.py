@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-Template Test Generator
+Improved Template Test Generator
 
-This is a reference implementation for generating test files that are compatible
+This is an enhanced implementation for generating test files that are compatible
 with the ipfs_accelerate_py worker/skillset module structure.
 
-This file can serve as a guide for improving the merged_test_generator.py or
-for creating new test generation tools.
+This generator adds comprehensive model information including:
+- Detailed input/output data types
+- Endpoint handler parameters
+- Helper functions with argument specifications
+- Required dependencies
 """
 
 import os
@@ -22,11 +25,12 @@ from typing import Dict, List, Any, Optional
 PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEST_DIR = PROJECT_ROOT / "test"
 SKILLS_DIR = TEST_DIR / "skills"
+SAMPLE_DIR = TEST_DIR / "sample_tests"
 WORKER_SKILLSET = PROJECT_ROOT / "ipfs_accelerate_py" / "worker" / "skillset"
 
 # Template for generating tests
-def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
-    """Generate a test file for the specified model type."""
+def generate_test_file(model_type, output_dir=SAMPLE_DIR, force=False):
+    """Generate a test file for the specified model type with enhanced model registry."""
     
     # Normalize the model name
     normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
@@ -256,7 +260,7 @@ class {template_vars['class_name']}:
             "default_sequence_length": {template_vars['token_sequence_length']}
         }}
         return None
-        
+    
     def _detect_hardware(self):
         """Detect available hardware and return capabilities dictionary."""
         capabilities = {{
@@ -1002,9 +1006,9 @@ if __name__ == "__main__":
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Template Test Generator")
+    parser = argparse.ArgumentParser(description="Improved Template Test Generator")
     parser.add_argument("--model", type=str, required=True, help="Model type to generate a test for")
-    parser.add_argument("--output-dir", type=str, default=str(SKILLS_DIR), help="Output directory for the test file")
+    parser.add_argument("--output-dir", type=str, default=str(SAMPLE_DIR), help="Output directory for the test file")
     parser.add_argument("--force", action="store_true", help="Force overwrite if file exists")
     
     args = parser.parse_args()

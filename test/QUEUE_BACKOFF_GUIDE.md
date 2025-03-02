@@ -328,6 +328,172 @@ The queue and backoff implementation adds minimal overhead:
 - **Latency Impact**: <5ms per request for queue processing
 - **Throughput Impact**: Can actually improve throughput by preventing rate limit errors
 
+## S3 Kit API Usage
+
+The S3 Kit API supports both traditional queue/backoff patterns and advanced connection multiplexing for accessing multiple S3-compatible storage endpoints:
+
+### Basic Usage
+
+```python
+# Initialize S3 Kit
+from ipfs_accelerate_py.api_backends import s3_kit
+
+s3_kit_api = s3_kit(
+    metadata={
+        "s3cfg": {
+            "accessKey": "your_access_key",
+            "secretKey": "your_secret_key",
+            "endpoint": "https://s3.amazonaws.com"
+        }
+    }
+)
+
+# Create an endpoint handler
+endpoint_handler = s3_kit_api.create_s3_endpoint_handler("https://s3.amazonaws.com")
+
+# Use the endpoint handler
+result = endpoint_handler("upload_file", file_path="local.txt", bucket="my-bucket", key="remote.txt")
+```
+
+### Advanced Endpoint Configuration
+
+Each endpoint handler can have its own configuration, including credentials, circuit breaker settings, and retry policy:
+
+```python
+# Create an endpoint handler with custom settings
+custom_handler = s3_kit_api.create_s3_endpoint_handler(
+    endpoint_url="https://minio.example.com",
+    access_key="minio_access_key",
+    secret_key="minio_secret_key",
+    max_concurrent=10,                # Maximum concurrent requests
+    circuit_breaker_threshold=5,      # Failures before circuit opens
+    retries=3                         # Maximum retry attempts
+)
+
+# Use the custom endpoint handler
+result = custom_handler("list_objects", bucket="my-bucket", prefix="data/")
+```
+
+### Connection Multiplexing
+
+The S3 Kit API now supports multiplexing across multiple S3-compatible storage endpoints:
+
+```python
+import threading
+import time
+
+# Create a connection multiplexer
+class S3EndpointMultiplexer:
+    def __init__(self, s3_kit_instance):
+        self.s3_kit = s3_kit_instance
+        self.endpoint_handlers = {}
+        self.endpoints_lock = threading.RLock()
+        self.last_used = {}
+        self.requests_per_endpoint = {}
+        
+    def add_endpoint(self, name, endpoint_url, access_key, secret_key, max_concurrent=5, 
+                     circuit_breaker_threshold=5, retries=3):
+        """Add a new S3 endpoint with its own configuration"""
+        with self.endpoints_lock:
+            handler = self.s3_kit.create_s3_endpoint_handler(
+                endpoint_url=endpoint_url,
+                access_key=access_key,
+                secret_key=secret_key,
+                max_concurrent=max_concurrent,
+                circuit_breaker_threshold=circuit_breaker_threshold,
+                retries=retries
+            )
+            self.endpoint_handlers[name] = handler
+            self.last_used[name] = 0
+            self.requests_per_endpoint[name] = 0
+            return handler
+    
+    def get_endpoint(self, name=None, strategy="round-robin"):
+        """Get an endpoint by name or using a selection strategy"""
+        with self.endpoints_lock:
+            if not self.endpoint_handlers:
+                raise ValueError("No S3 endpoints have been added")
+                
+            # Return specific endpoint if requested
+            if name and name in self.endpoint_handlers:
+                self.last_used[name] = time.time()
+                self.requests_per_endpoint[name] += 1
+                return self.endpoint_handlers[name]
+                
+            # Apply selection strategy
+            if strategy == "round-robin":
+                # Choose least recently used endpoint
+                selected = min(self.last_used.items(), key=lambda x: x[1])[0]
+            elif strategy == "least-loaded":
+                # Choose endpoint with fewest requests
+                selected = min(self.requests_per_endpoint.items(), key=lambda x: x[1])[0]
+            else:
+                # Default to first endpoint
+                selected = next(iter(self.endpoint_handlers.keys()))
+                
+            self.last_used[selected] = time.time()
+            self.requests_per_endpoint[selected] += 1
+            return self.endpoint_handlers[selected]
+            
+    # Convenience methods for common operations
+    def upload_file(self, file_path, bucket, key, endpoint_name=None, strategy="round-robin"):
+        handler = self.get_endpoint(endpoint_name, strategy)
+        return handler("upload_file", file_path=file_path, bucket=bucket, key=key)
+        
+    def download_file(self, bucket, key, file_path, endpoint_name=None, strategy="round-robin"):
+        handler = self.get_endpoint(endpoint_name, strategy)
+        return handler("download_file", bucket=bucket, key=key, file_path=file_path)
+        
+    def list_objects(self, bucket, prefix=None, endpoint_name=None, strategy="round-robin"):
+        handler = self.get_endpoint(endpoint_name, strategy)
+        return handler("list_objects", bucket=bucket, prefix=prefix)
+```
+
+### Usage Example
+
+```python
+# Create multiplexer instance
+s3_multiplexer = S3EndpointMultiplexer(s3_kit_api)
+
+# Add multiple endpoints
+s3_multiplexer.add_endpoint(
+    name="aws-primary",
+    endpoint_url="https://s3.us-east-1.amazonaws.com",
+    access_key="aws_access_key",
+    secret_key="aws_secret_key"
+)
+
+s3_multiplexer.add_endpoint(
+    name="minio-local",
+    endpoint_url="http://localhost:9000",
+    access_key="minio_access_key",
+    secret_key="minio_secret_key",
+    max_concurrent=20  # Higher concurrency for local endpoint
+)
+
+# Use round-robin strategy for load balancing
+result = s3_multiplexer.list_objects("shared-bucket", strategy="round-robin")
+
+# Use least-loaded strategy for optimal performance
+result = s3_multiplexer.download_file("shared-bucket", "data.txt", "local.txt", strategy="least-loaded")
+
+# Direct access to specific endpoint
+result = s3_multiplexer.upload_file("local.txt", "minio-only-bucket", "backup.txt", endpoint_name="minio-local")
+```
+
+### Routing Strategies
+
+The S3 Kit multiplexer supports different routing strategies:
+
+1. **Round-Robin**: Distributes requests evenly across all endpoints based on last-used timestamps
+2. **Least-Loaded**: Routes requests to the endpoint with the fewest active requests
+3. **Specific Endpoint**: Directs request to a named endpoint when specific storage is required
+
+This approach allows for robust storage access patterns:
+- Load balancing across multiple regions or providers
+- Automatic failover if one storage endpoint fails
+- Targeted access to specific storage services when needed
+
 ## Conclusion
 
 The standardized queue and backoff implementation across all API backends ensures robust handling of rate limits, transient errors, and service outages. By configuring these systems appropriately, you can achieve optimal performance and reliability when using the IPFS Accelerate Python framework.

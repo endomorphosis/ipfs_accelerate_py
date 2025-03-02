@@ -106,7 +106,7 @@ All API backends have been successfully fixed and implemented with robust queue 
 - **LLVM**: Complete implementation for optimized local inference
 - **OVMS**: Complete implementation for OpenVINO Model Server
 - **OPEA**: Complete implementation for enterprise AI platform integration
-- **S3 Kit**: Complete implementation for model storage and retrieval
+- **S3 Kit**: Complete implementation for model storage and retrieval with support for multiple endpoint handlers, each with its own API credentials, circuit breaker, and backoff configuration. Advanced endpoint multiplexing allowing concurrent connections to different S3-compatible providers (AWS S3, MinIO, Ceph) with round-robin and least-loaded routing strategies.
 
 ### Statistics:
 - **Total APIs**: 11

@@ -4,9 +4,18 @@ import threading
 import hashlib
 import uuid
 import boto3
+import logging
 from concurrent.futures import Future
-from queue import Queue
 from dotenv import load_dotenv
+
+# Configure logger
+logger = logging.getLogger("s3_kit")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 class s3_kit:
     def __init__(self, resources=None, metadata=None):
@@ -19,9 +28,18 @@ class s3_kit:
         # Initialize queue and backoff systems
         self.max_concurrent_requests = 5
         self.queue_size = 100
-        self.request_queue = Queue(maxsize=self.queue_size)
         self.active_requests = 0
         self.queue_lock = threading.RLock()
+        self.queue_processing = False
+        
+        # Priority levels
+        self.PRIORITY_HIGH = 0
+        self.PRIORITY_NORMAL = 1
+        self.PRIORITY_LOW = 2
+        
+        # Use priority-based list queue instead of Queue
+        self.request_queue = []  # Will store (priority, request_info) tuples
+        
         # Batching settings
         self.batching_enabled = True
         self.max_batch_size = 10
@@ -42,31 +60,11 @@ class s3_kit:
         self.failure_count = 0
         self.last_failure_time = 0
         self.circuit_lock = threading.RLock()
-
-        # Priority levels
-        self.PRIORITY_HIGH = 0
-        self.PRIORITY_NORMAL = 1
-        self.PRIORITY_LOW = 2
-        
-        # Change request queue to priority-based
-        self.request_queue = []  # Will store (priority, request_info) tuples
-
         
         # Start queue processor
         self.queue_processor = threading.Thread(target=self._process_queue)
         self.queue_processor.daemon = True
         self.queue_processor.start()
-        
-        # Initialize backoff configuration
-        self.max_retries = 5
-        self.initial_retry_delay = 1
-        self.backoff_factor = 2
-        self.max_retry_delay = 16
-        
-        # Request tracking
-        self.request_tracking = True
-        self.recent_requests = {}
-        
         
         # Retry and backoff settings
         self.max_retries = 5
@@ -74,14 +72,22 @@ class s3_kit:
         self.backoff_factor = 2
         self.max_retry_delay = 60  # Maximum delay in seconds
         
-        # Request queue settings
+        # Request tracking and metrics
+        self.request_tracking = True
+        self.recent_requests = {}
         self.queue_enabled = True
-        self.queue_size = 100
-        self.queue_processing = False
-        self.current_requests = 0
-        self.max_concurrent_requests = 5
-        self.request_queue = []
-        self.queue_lock = threading.RLock()
+        self.collect_metrics = True
+        self.stats_lock = threading.RLock()
+        self.request_stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "retried_requests": 0,
+            "circuit_breaker_trips": 0,
+            "average_latency": 0,
+            "errors_by_type": {},
+            "operations": {}
+        }
         return None
 
     def _get_s3_config(self):
@@ -133,7 +139,7 @@ class s3_kit:
         try:
             while True:
                 # Get the next request from the queue
-                request_info = None
+                priority_and_request = None
                 
                 with self.queue_lock:
                     if not self.request_queue:
@@ -146,68 +152,96 @@ class s3_kit:
                         continue
                         
                     # Get next request and increment counter
-                    request_info = self.request_queue.pop(0)
+                    priority_and_request = self.request_queue.pop(0)
                     self.active_requests += 1
                 
                 # Process the request outside the lock
-                if request_info:
+                if priority_and_request:
+                    # Extract priority and request info
+                    priority, request_info = priority_and_request
+                    
                     try:
-                        # Extract request details
-                        future = request_info.get("future")
-                        func = request_info.get("func")
-                        args = request_info.get("args", [])
-                        kwargs = request_info.get("kwargs", {})
+                        # Check if circuit breaker allows this request
+                        if not self.check_circuit_breaker():
+                            error = Exception("Circuit breaker is open - service unavailable")
+                            future = request_info.get("future")
+                            if future:
+                                future.set_exception(error)
+                            logger.warning(f"Request blocked by circuit breaker: {request_info.get('request_id')}")
+                            continue
                         
-                        # Special handling for different request formats
-                        if func and callable(func):
-                            # Function-based request
-                            try:
-                                result = func(*args, **kwargs)
-                                if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error executing queued function: {e}")
-                        else:
-                            # Direct API request format
-                            endpoint_url = request_info.get("endpoint_url")
-                            data = request_info.get("data")
-                            api_key = request_info.get("api_key")
-                            request_id = request_info.get("request_id")
+                        # Extract operation and parameters
+                        operation = request_info.get("operation")
+                        kwargs = request_info.get("kwargs", {})
+                        future = request_info.get("future")
+                        retry_count = request_info.get("retry_count", 0)
+                        
+                        # Execute S3 operation
+                        start_time = time.time()
+                        try:
+                            s3_client = self._get_s3_client()
+                            method = getattr(s3_client, operation)
+                            result = method(**kwargs)
                             
-                            if hasattr(self, "make_request"):
-                                method = self.make_request
-                            elif hasattr(self, "make_post_request"):
-                                method = self.make_post_request
-                            else:
-                                raise AttributeError("No request method found")
+                            # Calculate latency
+                            latency = time.time() - start_time
                             
-                            # Temporarily disable queueing to prevent recursion
-                            original_queue_enabled = getattr(self, "queue_enabled", True)
-                            setattr(self, "queue_enabled", False)
+                            # Set result in future
+                            if future:
+                                future.set_result(result)
+                                
+                            # Track successful request with metrics
+                            self.track_request_result(
+                                success=True,
+                                operation=operation,
+                                latency=latency
+                            )
                             
-                            try:
-                                result = method(
-                                    endpoint_url=endpoint_url,
-                                    data=data,
-                                    api_key=api_key,
-                                    request_id=request_id
+                        except Exception as e:
+                            # Calculate latency even for errors
+                            latency = time.time() - start_time
+                            
+                            logger.error(f"Error executing S3 operation {operation}: {e}")
+                            
+                            # Track failed request with metrics
+                            self.track_request_result(
+                                success=False,
+                                error_type=type(e).__name__,
+                                operation=operation,
+                                latency=latency
+                            )
+                            
+                            # Check if we should retry
+                            if retry_count < self.max_retries:
+                                # Calculate backoff delay
+                                delay = min(
+                                    self.initial_retry_delay * (self.backoff_factor ** retry_count),
+                                    self.max_retry_delay
                                 )
                                 
+                                # Re-queue with increased retry count
+                                request_info["retry_count"] = retry_count + 1
+                                
+                                logger.info(f"Retrying request {request_info.get('request_id')} after {delay}s delay (retry {retry_count + 1}/{self.max_retries})")
+                                
+                                # Wait for backoff delay
+                                time.sleep(delay)
+                                
+                                # Re-queue with same priority
+                                with self.queue_lock:
+                                    self.request_queue.append((priority, request_info))
+                                    self.request_queue.sort(key=lambda x: x[0])
+                            else:
+                                # Max retries exceeded
                                 if future:
-                                    future["result"] = result
-                                    future["completed"] = True
-                            except Exception as e:
-                                if future:
-                                    future["error"] = e
-                                    future["completed"] = True
-                                logger.error(f"Error processing queued request: {e}")
-                            finally:
-                                # Restore original queue_enabled
-                                setattr(self, "queue_enabled", original_queue_enabled)
+                                    future.set_exception(e)
+                                logger.error(f"Max retries exceeded for request {request_info.get('request_id')}")
+                    
+                    except Exception as e:
+                        logger.error(f"Unexpected error processing queued request: {e}")
+                        future = request_info.get("future")
+                        if future and not future.done():
+                            future.set_exception(e)
                     
                     finally:
                         # Decrement counter
@@ -269,11 +303,43 @@ class s3_kit:
         # Generate unique request ID
         request_id = str(uuid.uuid4())
         
+        if not self.queue_enabled:
+            # Direct execution if queue is disabled
+            try:
+                s3_client = self._get_s3_client()
+                method = getattr(s3_client, operation)
+                return method(**kwargs)
+            except Exception as e:
+                logger.error(f"Error executing S3 operation {operation}: {e}")
+                raise
+        
         # Queue system with proper concurrency management
         future = Future()
         
-        # Add to queue
-        self.request_queue.put((future, operation, [], kwargs, request_id))
+        # Create request info
+        request_info = {
+            "future": future,
+            "operation": operation,
+            "kwargs": kwargs,
+            "request_id": request_id,
+            "retry_count": 0,
+            "start_time": time.time()
+        }
+        
+        # Add to queue with normal priority
+        with self.queue_lock:
+            # Check if queue is full
+            if len(self.request_queue) >= self.queue_size:
+                raise ValueError(f"Request queue is full ({self.queue_size} items). Try again later.")
+                
+            self.request_queue.append((self.PRIORITY_NORMAL, request_info))
+            
+            # Sort queue by priority
+            self.request_queue.sort(key=lambda x: x[0])
+            
+            # Start queue processing if not already running
+            if not self.queue_processing:
+                threading.Thread(target=self._process_queue).start()
         
         # Get result (blocks until request is processed)
         return future.result()
@@ -329,71 +395,398 @@ class s3_kit:
             ExpiresIn=expiration
         )
         
-    def create_s3_endpoint_handler(self, endpoint_url=None):
-        """Create an endpoint handler for S3 operations"""
-        # Use provided endpoint or default from config
-        if endpoint_url:
-            self.s3cfg["endpoint"] = endpoint_url
-            
-        async def endpoint_handler(operation, **kwargs):
-            """Handle requests to S3 endpoint"""
-            try:
-                if operation == "upload_file":
-                    return self.upload_file(
-                        kwargs.get("file_path"),
-                        kwargs.get("bucket"),
-                        kwargs.get("key")
-                    )
-                elif operation == "download_file":
-                    return self.download_file(
-                        kwargs.get("bucket"),
-                        kwargs.get("key"),
-                        kwargs.get("file_path")
-                    )
-                elif operation == "list_objects":
-                    return self.list_objects(
-                        kwargs.get("bucket"),
-                        kwargs.get("prefix")
-                    )
-                elif operation == "delete_object":
-                    return self.delete_object(
-                        kwargs.get("bucket"),
-                        kwargs.get("key")
-                    )
-                elif operation == "head_object":
-                    return self.head_object(
-                        kwargs.get("bucket"),
-                        kwargs.get("key")
-                    )
-                elif operation == "create_presigned_url":
-                    return self.create_presigned_url(
-                        kwargs.get("bucket"),
-                        kwargs.get("key"),
-                        kwargs.get("expiration", 3600)
-                    )
+    def create_s3_endpoint_handler(self, endpoint_url=None, access_key=None, secret_key=None, max_concurrent=None, circuit_breaker_threshold=None, retries=None):
+        """
+        Create an endpoint handler for S3 operations.
+        
+        Each endpoint handler gets its own configuration including:
+        - Endpoint URL
+        - Access and secret keys
+        - Queue and backoff settings
+        - Circuit breaker configuration
+        
+        This allows for multiple endpoint handlers with different configs.
+        """
+        # Create a separate configuration for this endpoint handler
+        endpoint_config = {
+            "endpoint": endpoint_url or self.s3cfg["endpoint"],
+            "accessKey": access_key or self.s3cfg["accessKey"],
+            "secretKey": secret_key or self.s3cfg["secretKey"],
+            "max_concurrent_requests": max_concurrent or self.max_concurrent_requests,
+            "circuit_breaker_threshold": circuit_breaker_threshold or self.failure_threshold,
+            "max_retries": retries or self.max_retries,
+            "active_requests": 0,
+            "failure_count": 0,
+            "circuit_state": "CLOSED",
+            "last_failure_time": 0
+        }
+        
+        # Create an S3 client for this specific endpoint
+        def get_endpoint_s3_client():
+            return boto3.client(
+                's3',
+                aws_access_key_id=endpoint_config["accessKey"],
+                aws_secret_access_key=endpoint_config["secretKey"],
+                endpoint_url=endpoint_config["endpoint"]
+            )
+        
+        # Create thread synchronization locks specific to this endpoint
+        endpoint_lock = threading.RLock()
+        circuit_lock = threading.RLock()
+        
+        # Check circuit breaker state for this endpoint
+        def check_endpoint_circuit():
+            with circuit_lock:
+                now = time.time()
+                
+                if endpoint_config["circuit_state"] == "OPEN":
+                    # Check if enough time has passed to try again
+                    if now - endpoint_config["last_failure_time"] > self.reset_timeout:
+                        logger.info(f"Endpoint {endpoint_config['endpoint']}: Circuit breaker transitioning from OPEN to HALF-OPEN")
+                        endpoint_config["circuit_state"] = "HALF-OPEN"
+                        return True
+                    else:
+                        # Circuit is open, fail fast
+                        return False
+                        
+                elif endpoint_config["circuit_state"] == "HALF-OPEN":
+                    # In half-open state, we allow a single request to test the service
+                    return True
+                    
+                else:  # CLOSED
+                    # Normal operation, allow requests
+                    return True
+        
+        # Track request results for this endpoint
+        def track_endpoint_result(success, error_type=None, operation=None, latency=None):
+            with circuit_lock:
+                if success:
+                    # Successful request
+                    if endpoint_config["circuit_state"] == "HALF-OPEN":
+                        # Service is working again, close the circuit
+                        logger.info(f"Endpoint {endpoint_config['endpoint']}: Circuit breaker transitioning from HALF-OPEN to CLOSED")
+                        endpoint_config["circuit_state"] = "CLOSED"
+                        endpoint_config["failure_count"] = 0
+                    elif endpoint_config["circuit_state"] == "CLOSED":
+                        # Reset failure count on success
+                        endpoint_config["failure_count"] = 0
                 else:
-                    return {"error": f"Unsupported operation: {operation}"}
+                    # Failed request
+                    endpoint_config["failure_count"] += 1
+                    endpoint_config["last_failure_time"] = time.time()
+                    
+                    if endpoint_config["circuit_state"] == "CLOSED" and endpoint_config["failure_count"] >= endpoint_config["circuit_breaker_threshold"]:
+                        # Too many failures, open the circuit
+                        logger.warning(f"Endpoint {endpoint_config['endpoint']}: Circuit breaker transitioning from CLOSED to OPEN after {endpoint_config['failure_count']} failures")
+                        endpoint_config["circuit_state"] = "OPEN"
+                        
+                    elif endpoint_config["circuit_state"] == "HALF-OPEN":
+                        # Failed during test request, back to open
+                        logger.warning(f"Endpoint {endpoint_config['endpoint']}: Circuit breaker transitioning from HALF-OPEN to OPEN after test request failure")
+                        endpoint_config["circuit_state"] = "OPEN"
+            
+            # Also update global metrics
+            if self.collect_metrics:
+                self.update_metrics(
+                    operation=operation,
+                    success=success,
+                    latency=latency,
+                    error_type=error_type
+                )
+                
+        # Create both sync and async handlers
+        def sync_endpoint_handler(operation, **kwargs):
+            """Handle synchronous requests to S3 endpoint"""
+            # Check if we can make a request based on circuit breaker
+            if not check_endpoint_circuit():
+                error_msg = f"Circuit breaker is open for endpoint {endpoint_config['endpoint']} - service unavailable"
+                logger.warning(error_msg)
+                return {"error": error_msg, "circuit_breaker": "OPEN"}
+                
+            # Check if we're at capacity for this endpoint
+            with endpoint_lock:
+                if endpoint_config["active_requests"] >= endpoint_config["max_concurrent_requests"]:
+                    error_msg = f"Too many concurrent requests for endpoint {endpoint_config['endpoint']}"
+                    logger.warning(error_msg)
+                    return {"error": error_msg, "retry_after": 1}
+                    
+                # Increment active requests counter
+                endpoint_config["active_requests"] += 1
+                
+            # Execute operation with retry logic
+            start_time = time.time()
+            retry_count = 0
+            last_error = None
+            
+            try:
+                while retry_count <= endpoint_config["max_retries"]:
+                    try:
+                        s3_client = get_endpoint_s3_client()
+                        
+                        # Execute the appropriate operation
+                        result = None
+                        if operation == "upload_file":
+                            result = s3_client.upload_file(
+                                kwargs.get("file_path"),
+                                kwargs.get("bucket"),
+                                kwargs.get("key")
+                            )
+                        elif operation == "download_file":
+                            result = s3_client.download_file(
+                                kwargs.get("bucket"),
+                                kwargs.get("key"),
+                                kwargs.get("file_path")
+                            )
+                        elif operation == "list_objects":
+                            bucket = kwargs.get("bucket")
+                            prefix = kwargs.get("prefix")
+                            list_args = {"Bucket": bucket}
+                            if prefix:
+                                list_args["Prefix"] = prefix
+                            result = s3_client.list_objects_v2(**list_args)
+                        elif operation == "delete_object":
+                            result = s3_client.delete_object(
+                                Bucket=kwargs.get("bucket"),
+                                Key=kwargs.get("key")
+                            )
+                        elif operation == "head_object":
+                            result = s3_client.head_object(
+                                Bucket=kwargs.get("bucket"),
+                                Key=kwargs.get("key")
+                            )
+                        elif operation == "create_presigned_url":
+                            result = s3_client.generate_presigned_url(
+                                'get_object',
+                                Params={
+                                    'Bucket': kwargs.get("bucket"),
+                                    'Key': kwargs.get("key")
+                                },
+                                ExpiresIn=kwargs.get("expiration", 3600)
+                            )
+                        else:
+                            error_msg = f"Unsupported operation: {operation}"
+                            logger.error(error_msg)
+                            return {"error": error_msg}
+                            
+                        # Calculate latency
+                        latency = time.time() - start_time
+                        
+                        # Track successful request
+                        track_endpoint_result(
+                            success=True,
+                            operation=operation,
+                            latency=latency
+                        )
+                        
+                        return result
+                        
+                    except Exception as e:
+                        last_error = e
+                        # Calculate latency for error
+                        latency = time.time() - start_time
+                        
+                        # Track failed request
+                        track_endpoint_result(
+                            success=False,
+                            error_type=type(e).__name__,
+                            operation=operation,
+                            latency=latency
+                        )
+                        
+                        # Check if we should retry
+                        if retry_count < endpoint_config["max_retries"]:
+                            # Calculate backoff delay
+                            delay = min(
+                                self.initial_retry_delay * (self.backoff_factor ** retry_count),
+                                self.max_retry_delay
+                            )
+                            
+                            logger.info(f"Retrying {operation} for endpoint {endpoint_config['endpoint']} after {delay}s delay (retry {retry_count + 1}/{endpoint_config['max_retries']})")
+                            
+                            # Wait for backoff delay
+                            time.sleep(delay)
+                            retry_count += 1
+                        else:
+                            # Max retries exceeded
+                            logger.error(f"Max retries exceeded for {operation} on endpoint {endpoint_config['endpoint']}")
+                            return {"error": str(e), "max_retries_exceeded": True}
+                
+                # Should not reach here, but just in case
+                return {"error": str(last_error) if last_error else "Unknown error"}
+                
+            finally:
+                # Decrement active requests counter
+                with endpoint_lock:
+                    endpoint_config["active_requests"] = max(0, endpoint_config["active_requests"] - 1)
+            
+        async def async_endpoint_handler(operation, **kwargs):
+            """Handle asynchronous requests to S3 endpoint"""
+            try:
+                return sync_endpoint_handler(operation, **kwargs)
             except Exception as e:
-                print(f"Error handling S3 operation: {e}")
+                logger.error(f"Error in async S3 operation {operation} for endpoint {endpoint_config['endpoint']}: {e}")
                 return {"error": str(e)}
+        
+        # Create a callable endpoint handler function
+        def endpoint_handler(*args, **kwargs):
+            if kwargs.get("async_mode", False):
+                return async_endpoint_handler(*args, **kwargs)
+            else:
+                return sync_endpoint_handler(*args, **kwargs)
+                
+        # Add metadata to the handler
+        endpoint_handler.metadata = {
+            "endpoint_url": endpoint_config["endpoint"],
+            "implementation_type": "REAL",
+            "queue_processing": True,
+            "backoff_enabled": True,
+            "circuit_breaker_enabled": True,
+            "max_concurrent": endpoint_config["max_concurrent_requests"],
+            "max_retries": endpoint_config["max_retries"]
+        }
         
         return endpoint_handler
     
-    def test_s3_endpoint(self, endpoint_url=None):
-        """Test the S3 endpoint"""
-        if endpoint_url:
-            self.s3cfg["endpoint"] = endpoint_url
+    def test_s3_endpoint(self, endpoint_url=None, access_key=None, secret_key=None):
+        """
+        Test a specific S3 endpoint configuration.
+        
+        This can be used to test different endpoint configurations without modifying
+        the main S3 Kit instance's configuration.
+        
+        Args:
+            endpoint_url: The S3 endpoint URL to test
+            access_key: The access key to use for authentication
+            secret_key: The secret key to use for authentication
+            
+        Returns:
+            dict: Result of the test with success status and bucket information if successful
+        """
+        # Use provided values or defaults from config
+        endpoint = endpoint_url or self.s3cfg["endpoint"]
+        access = access_key or self.s3cfg["accessKey"]
+        secret = secret_key or self.s3cfg["secretKey"]
             
         try:
-            # Create a simple test - just list buckets
-            s3_client = self._get_s3_client()
+            # Create a specific client for this test
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=access,
+                aws_secret_access_key=secret,
+                endpoint_url=endpoint
+            )
+            
+            # Try to list buckets as a basic connectivity test
             response = s3_client.list_buckets()
-            return True
+            
+            # Return success with bucket information
+            return {
+                "success": True,
+                "endpoint": endpoint,
+                "bucket_count": len(response.get("Buckets", [])),
+                "buckets": [b["Name"] for b in response.get("Buckets", [])]
+            }
         except Exception as e:
-            print(f"Error testing S3 endpoint: {e}")
-            return False
+            error_msg = f"Error testing S3 endpoint {endpoint}: {e}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "endpoint": endpoint,
+                "error": str(e)
+            }
+    
+    def get_metrics(self):
+        """Get current metrics for monitoring and reporting"""
+        if not self.collect_metrics:
+            return {"metrics_collection": "disabled"}
+            
+        with self.stats_lock:
+            # Return a deep copy to avoid thread safety issues
+            import copy
+            return copy.deepcopy(self.request_stats)
+    
+    def reset_metrics(self):
+        """Reset all metrics counters"""
+        if not self.collect_metrics:
+            return
+            
+        with self.stats_lock:
+            self.request_stats = {
+                "total_requests": 0,
+                "successful_requests": 0,
+                "failed_requests": 0,
+                "retried_requests": 0,
+                "circuit_breaker_trips": 0,
+                "average_latency": 0,
+                "errors_by_type": {},
+                "operations": {}
+            }
+            
+    def get_status(self):
+        """Get current status of the S3 Kit API backend"""
+        return {
+            "endpoint": self.s3cfg["endpoint"],
+            "queue_enabled": self.queue_enabled,
+            "queue_size": len(self.request_queue),
+            "active_requests": self.active_requests,
+            "max_concurrent_requests": self.max_concurrent_requests,
+            "circuit_state": self.circuit_state,
+            "failure_count": self.failure_count,
+            "metrics_collection": self.collect_metrics,
+            "implementation_type": "REAL"
+        }
+    def update_metrics(self, operation=None, success=True, latency=None, error_type=None, retried=False):
+        """Update metrics for monitoring and reporting"""
+        if not self.collect_metrics:
+            return
+            
+        with self.stats_lock:
+            # Update basic counters
+            self.request_stats["total_requests"] += 1
+            
+            if success:
+                self.request_stats["successful_requests"] += 1
+            else:
+                self.request_stats["failed_requests"] += 1
+                
+            if retried:
+                self.request_stats["retried_requests"] += 1
+                
+            # Track operation-specific metrics
+            if operation:
+                if operation not in self.request_stats["operations"]:
+                    self.request_stats["operations"][operation] = {
+                        "count": 0,
+                        "failures": 0,
+                        "latency_sum": 0,
+                        "average_latency": 0
+                    }
+                    
+                self.request_stats["operations"][operation]["count"] += 1
+                
+                if not success:
+                    self.request_stats["operations"][operation]["failures"] += 1
+                    
+                if latency:
+                    self.request_stats["operations"][operation]["latency_sum"] += latency
+                    self.request_stats["operations"][operation]["average_latency"] = (
+                        self.request_stats["operations"][operation]["latency_sum"] / 
+                        self.request_stats["operations"][operation]["count"]
+                    )
+            
+            # Track errors by type
+            if error_type and not success:
+                if error_type not in self.request_stats["errors_by_type"]:
+                    self.request_stats["errors_by_type"][error_type] = 0
+                self.request_stats["errors_by_type"][error_type] += 1
+                
+            # Update average latency
+            if latency:
+                current_total = self.request_stats["average_latency"] * (self.request_stats["total_requests"] - 1)
+                self.request_stats["average_latency"] = (current_total + latency) / self.request_stats["total_requests"]
+
     def check_circuit_breaker(self):
-        # Check if circuit breaker allows requests to proceed
+        """Check if circuit breaker allows requests to proceed"""
         with self.circuit_lock:
             now = time.time()
             
@@ -415,8 +808,18 @@ class s3_kit:
                 # Normal operation, allow requests
                 return True
 
-    def track_request_result(self, success, error_type=None):
-        # Track the result of a request for circuit breaker logic tracking
+    def track_request_result(self, success, error_type=None, operation=None, latency=None):
+        """Track the result of a request for circuit breaker logic and metrics"""
+        # Update metrics first
+        if self.collect_metrics:
+            self.update_metrics(
+                operation=operation,
+                success=success,
+                latency=latency,
+                error_type=error_type
+            )
+        
+        # Handle circuit breaker state
         with self.circuit_lock:
             if success:
                 # Successful request
@@ -433,23 +836,14 @@ class s3_kit:
                 self.failure_count += 1
                 self.last_failure_time = time.time()
                 
-                # Update error statistics
-                if error_type and hasattr(self, "collect_metrics") and self.collect_metrics:
-                    with self.stats_lock:
-                        if error_type not in self.request_stats["errors_by_type"]:
-                            self.request_stats["errors_by_type"][error_type] = 0
-                        self.request_stats["errors_by_type"][error_type] += 1
-                
                 if self.circuit_state == "CLOSED" and self.failure_count >= self.failure_threshold:
                     # Too many failures, open the circuit
                     logger.warning(f"Circuit breaker transitioning from CLOSED to OPEN after {self.failure_count} failures")
                     self.circuit_state = "OPEN"
                     
                     # Update circuit breaker statistics
-                    if hasattr(self, "stats_lock") and hasattr(self, "request_stats"):
+                    if self.collect_metrics:
                         with self.stats_lock:
-                            if "circuit_breaker_trips" not in self.request_stats:
-                                self.request_stats["circuit_breaker_trips"] = 0
                             self.request_stats["circuit_breaker_trips"] += 1
                     
                 elif self.circuit_state == "HALF_OPEN":

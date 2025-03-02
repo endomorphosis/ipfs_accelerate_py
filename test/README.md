@@ -35,6 +35,7 @@ The repository has been organized for better readability and maintainability:
 - [QUEUE_BACKOFF_GUIDE.md](QUEUE_BACKOFF_GUIDE.md) - Queue and backoff implementation guide
 - [MONITORING_AND_REPORTING_GUIDE.md](MONITORING_AND_REPORTING_GUIDE.md) - Monitoring features guide
 - [ADVANCED_API_FEATURES_GUIDE.md](ADVANCED_API_FEATURES_GUIDE.md) - Advanced API features documentation
+- [S3_KIT_MULTIPLEXING_GUIDE.md](S3_KIT_MULTIPLEXING_GUIDE.md) - S3 Kit connection multiplexing guide
 - [API_QUICKSTART.md](API_QUICKSTART.md) - Quick start guide for API usage
 - [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
 
@@ -140,7 +141,7 @@ All 11 API backends are now fully implemented with complete functionality:
 | LLVM | ✅ COMPLETE | Optimized local inference |
 | OVMS | ✅ COMPLETE | OpenVINO Model Server integration |
 | OPEA | ✅ COMPLETE | Open Platform for Enterprise AI |
-| S3 Kit | ✅ COMPLETE | Model storage and retrieval |
+| S3 Kit | ✅ COMPLETE | Model storage and retrieval, connection multiplexing |
 
 ## Advanced API Features
 
@@ -157,6 +158,8 @@ We have implemented several major enhancements:
 5. **Monitoring and Reporting** - Comprehensive request statistics tracking with error classification, performance metrics by model and endpoint, and detailed reporting capabilities.
 
 6. **Request Batching** - Automatic request combining for compatible models with configurable batch sizes and timeouts.
+
+7. **S3 Connection Multiplexing** - Support for working with multiple S3-compatible storage endpoints simultaneously, with various routing strategies (round-robin, least-loaded) and per-endpoint configuration.
 
 ## Testing API Implementations
 
