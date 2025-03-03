@@ -121,7 +121,7 @@ python run_queue_backoff_tests.py
 python test_ollama_backoff_comprehensive.py
 ```
 
-### Hardware Tests
+### Hardware and Integration Tests
 
 ```bash
 # Test hardware backends
@@ -142,6 +142,19 @@ python test_comprehensive_hardware.py --test integration
 # Test hardware and model integration
 python test_comprehensive_hardware.py --test comparison
 
+# Run integrated test of ResourcePool with hardware and model family components
+python run_integrated_hardware_model_test.py
+
+# Run integrated test with detailed logging
+python run_integrated_hardware_model_test.py --debug
+
+# Check if required files exist for integration
+python run_integrated_hardware_model_test.py --check-only
+```
+
+### Resource Pool Tests
+
+```bash
 # Test resource pool with enhanced functionality
 python test_resource_pool.py --test all
 
@@ -153,6 +166,22 @@ python test_resource_pool.py --test memory
 
 # Test hardware-aware model selection
 python test_resource_pool.py --test hardware
+
+# Test model family integration with resource pool
+python test_resource_pool.py --test family
+```
+
+### Web Platform Tests
+
+```bash
+# Test a model on WebNN
+./web_platform_testing.py --test-model bert --platform webnn
+
+# Test a model on WebGPU
+./web_platform_testing.py --test-model vit --platform webgpu
+
+# Compare WebNN and WebGPU performance
+./web_platform_testing.py --compare --test-modality text
 ```
 
 ### Skillset Generation
@@ -237,7 +266,18 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 
 ### March 2025 Enhancements
 
-1. **Hardware-Aware Resource Management Integration** - Comprehensive integration of resource management with hardware systems:
+1. **Resilient Error Handling** - Comprehensive error handling with graceful degradation:
+   - File existence checks before attempting to import optional modules
+   - Progressive fallback mechanisms for missing components
+   - Resilient component integration with proper error reporting
+   - Detailed reporting of component availability
+   - Component-aware operation with automatic adaptation
+   - Enhanced reliability in varied deployment environments
+   - Robust system architecture that works with partial component availability
+   - Comprehensive integration testing with run_integrated_hardware_model_test.py
+   - Enhanced documentation with detailed error handling strategies
+
+2. **Hardware-Aware Resource Management Integration** - Comprehensive integration of resource management with hardware systems:
    - Complete integration of ResourcePool with hardware detection and model classification
    - Automatic hardware capability detection and optimal device selection
    - Model family-based hardware compatibility matrix for intelligent decisions
@@ -248,7 +288,7 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
    - Low-memory mode with automatic detection and memory-efficient operation
    - Cross-device resource management with proper cleanup
 
-2. **Enhanced Model Family Classification** - Significantly improved model classification system:
+3. **Enhanced Model Family Classification** - Significantly improved model classification system:
    - Sophisticated pattern matching with weighted scoring
    - Partial keyword matching for better subfamily detection
    - Enhanced task analysis with normalized scoring
@@ -258,7 +298,9 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
    - Improved subfamily detection with specialized patterns
    - Confidence calculation with better normalization
 
-3. **Resource Pool Enhancements** - Major improvements to the resource management system:
+4. **Resource Pool Enhancements** - Major improvements to the resource management system:
+   - File existence checks for optional dependencies like hardware_detection and model_family_classifier
+   - Basic device detection fallback when hardware_detection is unavailable
    - Device-specific model caching for CPU, CUDA, and MPS
    - Enhanced memory tracking capabilities with detailed device stats
    - Model family classification integration for intelligent device selection
@@ -269,7 +311,7 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
    - Enhanced API with device-specific functionality
    - Thread-safe resource sharing with robust locking
 
-4. **Hardware Detection System** - Comprehensive hardware detection capabilities:
+5. **Hardware Detection System** - Comprehensive hardware detection capabilities:
    - Robust detection across multiple platforms (Linux, macOS, Windows)
    - Detailed hardware capability analysis with comprehensive checks
    - Fine-grained CUDA capability detection (device count, memory, compute capability)
@@ -287,7 +329,10 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
      - WebNN: Browser-based acceleration with feature detection
      - WebGPU: Enhanced graphics processing in browser environments
 
-5. **Testing Infrastructure Improvements** - Enhanced testing capabilities:
+6. **Testing Infrastructure Improvements** - Enhanced testing capabilities:
+   - Integrated testing of ResourcePool, hardware_detection, and model_family_classifier components
+   - Component availability verification with detailed reporting
+   - Testing of various component combinations for maximum compatibility
    - Device-specific test verification
    - Hardware-aware test generation
    - Model family-based test optimization
@@ -297,9 +342,10 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
    - Cross-device verification
    - Enhanced error reporting
 
-5. **Documentation Enhancements** - Comprehensive documentation updates:
+7. **Documentation Enhancements** - Comprehensive documentation updates:
+   - Expanded RESOURCE_POOL_GUIDE.md with robust error handling section
+   - Updated WEB_PLATFORM_TESTING_GUIDE.md with resilient error handling strategies
    - Detailed MODEL_FAMILY_CLASSIFIER_GUIDE.md with examples
-   - Enhanced RESOURCE_POOL_GUIDE.md with device-specific features
    - New hardware integration documentation
    - Updated progress tracking in CLAUDE.md
    - Comprehensive SUMMARY_OF_IMPROVEMENTS.md
