@@ -628,6 +628,103 @@ The ResourcePool system is designed with robust error handling to function grace
 15. **Multi-Level Fallbacks**: Progressive fallback mechanisms with detailed logging at each step
 16. **Isolated Component Failures**: Failures in one component do not prevent other components from functioning
 
+### Enhanced Hardware-Model Integration System
+
+The new hardware-model integration system provides a unified interface between the hardware detection and model family classification components:
+
+#### Key Features
+
+1. **Comprehensive Integration**: Seamlessly combines hardware detection and model classification for optimal device selection
+2. **Multi-Level Fallbacks**: Gracefully handles missing components with intelligent fallback mechanisms
+3. **Adaptive Component Detection**: Dynamically detects and adapts to available components at runtime
+4. **Model Size Analysis**: Automatically determines model size tier based on name patterns and family
+5. **Memory Requirement Estimation**: Estimates memory requirements based on model family and size
+6. **Hardware Compatibility Matrix**: Comprehensive compatibility checking between model families and hardware types
+7. **Constraint-Based Compatibility**: Supports complex compatibility rules based on model size and hardware capabilities
+8. **ResourcePool Integration**: Generates hardware preferences tailored for the ResourcePool system
+9. **Heuristic Classification**: Provides fallback classification when model_family_classifier is unavailable
+10. **Basic Hardware Detection**: Implements simplified hardware detection when hardware_detection.py is missing
+
+#### Example Usage
+
+```python
+# Import the integration module
+from hardware_model_integration import integrate_hardware_and_model
+
+# Get integrated hardware-model recommendations
+result = integrate_hardware_and_model(
+    model_name="bert-base-uncased",  # Model name is required
+    model_family=None,               # Optional: pre-detected model family
+    model_class=None,                # Optional: model class name for better classification
+    hardware_info=None               # Optional: pre-detected hardware information
+)
+
+# Extract ResourcePool hardware preferences
+hardware_preferences = result["hardware_preferences"]
+
+# Use with ResourcePool
+from resource_pool import get_global_resource_pool
+pool = get_global_resource_pool()
+
+# Get a model with optimal hardware selection
+model = pool.get_model(
+    model_type=result["effective_family"],
+    model_name="bert-base-uncased",
+    constructor=lambda: create_model(),
+    hardware_preferences=hardware_preferences
+)
+```
+
+#### Command Line Tool
+
+The hardware_model_integration.py module also functions as a command-line tool for testing and diagnostics:
+
+```bash
+# Test with a specific model
+python hardware_model_integration.py --model bert-base-uncased
+
+# Show hardware compatibility matrix
+python hardware_model_integration.py --matrix
+
+# Detect available hardware
+python hardware_model_integration.py --detect
+
+# Override model family
+python hardware_model_integration.py --model llama-7b --family text_generation
+
+# Enable debug logging
+python hardware_model_integration.py --debug
+```
+
+#### Integration Testing
+
+The `run_integrated_hardware_model_test.py` script provides comprehensive testing of the integration between ResourcePool, hardware_detection, and model_family_classifier components:
+
+```bash
+# Run basic file existence check
+python run_integrated_hardware_model_test.py --check-only
+
+# Run full integration test with all available components
+python run_integrated_hardware_model_test.py
+
+# Run with detailed debug logging
+python run_integrated_hardware_model_test.py --debug
+
+# Run a faster subset of tests
+python run_integrated_hardware_model_test.py --fast
+
+# Save test results to a specific file
+python run_integrated_hardware_model_test.py --output integration_results.json
+```
+
+The test script automatically adapts to the available components:
+- Works with only ResourcePool (core component)
+- Works with ResourcePool + hardware_detection
+- Works with ResourcePool + model_family_classifier
+- Works with all three components together
+
+Each test scenario verifies that the system gracefully handles missing components and provides appropriate fallback mechanisms.
+
 ### Resilient Device Detection
 
 The ResourcePool incorporates robust error handling for device detection, allowing it to adapt based on which components are available in the system:

@@ -1,592 +1,599 @@
 #!/usr/bin/env python
 """
-Hardware-aware model classification utility.
-This module integrates hardware detection with model family classification.
+Hardware-Model Integration Module for the IPFS Accelerate framework.
+This module provides integration between hardware detection and model classification
+systems with robust error handling for resilient operations.
 """
 
-import json
-import logging
 import os
+import sys
+import logging
+import json
 from typing import Dict, List, Any, Optional, Tuple
 
-# Import the required components
-from hardware_detection import detect_available_hardware, HardwareDetector
-from model_family_classifier import classify_model, ModelFamilyClassifier
-
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class HardwareAwareModelClassifier:
-    """
-    Integrates hardware detection with model family classification
-    to provide optimal hardware selection and template recommendations.
-    """
-    
-    def __init__(self, 
-                 hardware_cache_path: Optional[str] = None,
-                 model_db_path: Optional[str] = None,
-                 force_refresh: bool = False):
-        """
-        Initialize the hardware-aware model classifier.
-        
-        Args:
-            hardware_cache_path: Optional path to hardware detection cache
-            model_db_path: Optional path to model database
-            force_refresh: Force refresh of hardware detection cache
-        """
-        self.hardware_detector = HardwareDetector(
-            cache_file=hardware_cache_path,
-            force_refresh=force_refresh
-        )
-        self.model_classifier = ModelFamilyClassifier(model_db_path=model_db_path)
-        self.hardware_info = self.hardware_detector.get_available_hardware()
-        self.hardware_details = self.hardware_detector.get_hardware_details()
-        
-        # Log available hardware
-        available_hw = [hw for hw, available in self.hardware_info.items() if available]
-        logger.info(f"Hardware-aware model classifier initialized. Available hardware: {', '.join(available_hw)}")
-        logger.info(f"Best available hardware: {self.hardware_detector.get_best_available_hardware()}")
-    
-    def classify_model(self, 
-                       model_name: str, 
-                       model_class: Optional[str] = None,
-                       tasks: Optional[List[str]] = None,
-                       methods: Optional[List[str]] = None,
-                       hw_compat_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Classify a model with hardware awareness.
-        
-        Args:
-            model_name: Name of the model to classify
-            model_class: Optional model class name
-            tasks: Optional list of model tasks
-            methods: Optional list of model methods
-            hw_compat_override: Optional hardware compatibility overrides
-            
-        Returns:
-            Dictionary with classification results and hardware recommendations
-        """
-        # Generate hardware compatibility profile if not provided
-        hw_compatibility = hw_compat_override or self._create_hw_compatibility_profile(model_name)
-        
-        # Classify the model using both model info and hardware info
-        classification = self.model_classifier.classify_model(
-            model_name=model_name,
-            model_class=model_class,
-            tasks=tasks, 
-            methods=methods,
-            hw_compatibility=hw_compatibility
-        )
-        
-        # Add hardware-specific information
-        classification["hardware_profile"] = hw_compatibility
-        classification["recommended_hardware"] = self._determine_optimal_hardware(
-            classification["family"], 
-            classification.get("subfamily")
-        )
-        
-        # Add template recommendation
-        classification["recommended_template"] = self.model_classifier.get_template_for_family(
-            classification["family"],
-            classification.get("subfamily")
-        )
-        
-        # Add resource requirements based on model family and hardware
-        classification["resource_requirements"] = self._determine_resource_requirements(
-            classification["family"],
-            classification.get("subfamily"),
-            classification["recommended_hardware"]
-        )
-        
-        return classification
-    
-    def _create_hw_compatibility_profile(self, model_name: str) -> Dict[str, Any]:
-        """
-        Create a hardware compatibility profile for a model.
-        
-        In a production system, this would use a database or test results.
-        For this implementation, we use a simple heuristic based on model name.
-        
-        Args:
-            model_name: Name of the model
-            
-        Returns:
-            Dictionary with hardware compatibility information
-        """
-        normalized_name = model_name.lower()
-        
-        # Default profile - generally compatible with everything
-        profile = {
-            "cuda": {"compatible": True, "memory_usage": {"peak": 500}},
-            "mps": {"compatible": True},
-            "rocm": {"compatible": True},
-            "openvino": {"compatible": True},
-            "webnn": {"compatible": True},
-            "webgpu": {"compatible": True}
-        }
-        
-        # Adjust for known model types
-        
-        # Large language models (e.g., llama, gpt-*, falcon, etc.)
-        if any(name in normalized_name for name in ["llama", "gpt", "falcon", "mixtral", "phi", "gemma"]):
-            profile["cuda"]["memory_usage"]["peak"] = 5000  # Increased memory requirement
-            profile["mps"]["compatible"] = False  # Often too large for MPS
-            profile["openvino"]["compatible"] = False  # Often not optimized for OpenVINO
-            profile["webnn"]["compatible"] = False  # Too large for WebNN
-            profile["webgpu"]["compatible"] = False  # Too large for WebGPU
-        
-        # Vision-language models
-        elif any(name in normalized_name for name in ["llava", "blip", "pali"]):
-            profile["cuda"]["memory_usage"]["peak"] = 7000
-            profile["mps"]["compatible"] = False
-            profile["openvino"]["compatible"] = False
-            profile["webnn"]["compatible"] = False
-            profile["webgpu"]["compatible"] = False
-        
-        # Audio models
-        elif any(name in normalized_name for name in ["whisper", "wav2vec", "hubert", "clap"]):
-            profile["cuda"]["memory_usage"]["peak"] = 2000
-            profile["webnn"]["compatible"] = False
-            profile["audio_incompatible"] = True
-        
-        # Vision models
-        elif any(name in normalized_name for name in ["vit", "resnet", "swin", "deit", "clip"]):
-            profile["cuda"]["memory_usage"]["peak"] = 1500
-            profile["openvino"]["compatible"] = True  # Good for OpenVINO
-        
-        # Add system availability
-        for hw_type, available in self.hardware_info.items():
-            if hw_type in profile:
-                profile[hw_type]["system_available"] = available
-                
-                # If system doesn't have this hardware, model can't effectively use it
-                if not available:
-                    profile[hw_type]["effective_compatibility"] = False
-                else:
-                    profile[hw_type]["effective_compatibility"] = profile[hw_type].get("compatible", False)
-        
-        return profile
-    
-    def _determine_optimal_hardware(self, family: str, subfamily: Optional[str] = None) -> str:
-        """
-        Determine the optimal hardware for a model family and subfamily.
-        
-        Args:
-            family: Model family
-            subfamily: Optional model subfamily
-            
-        Returns:
-            String with recommended hardware type
-        """
-        # Get best available hardware
-        best_hw = self.hardware_detector.get_best_available_hardware()
-        
-        # Model family specific recommendations
-        if family == "text_generation":
-            # Text generation models benefit from CUDA if available
-            if self.hardware_info.get("cuda", False):
-                return "cuda"
-            elif self.hardware_info.get("rocm", False):
-                return "rocm"
-            elif self.hardware_info.get("mps", False) and subfamily != "causal_lm":
-                # MPS for smaller text generation models
-                return "mps"
-            else:
-                return "cpu"
-        
-        elif family == "vision":
-            # Vision models work well with OpenVINO
-            if self.hardware_info.get("openvino", False):
-                return "openvino"
-            # Fallback to GPU
-            elif self.hardware_info.get("cuda", False):
-                return "cuda"
-            elif self.hardware_info.get("mps", False):
-                return "mps"
-            else:
-                return "cpu"
-        
-        elif family == "audio":
-            # Audio models often need CUDA
-            if self.hardware_info.get("cuda", False):
-                return "cuda"
-            elif self.hardware_info.get("mps", False):
-                return "mps"
-            else:
-                return "cpu"
-        
-        elif family == "multimodal":
-            # Multimodal models almost always need CUDA
-            if self.hardware_info.get("cuda", False):
-                return "cuda"
-            else:
-                return "cpu"  # Often slow on CPU
-        
-        # Default to best available
-        return best_hw
-    
-    def _determine_resource_requirements(self, family: str, subfamily: Optional[str] = None, hardware: str = "cpu") -> Dict[str, Any]:
-        """
-        Determine resource requirements for a model family on specific hardware.
-        
-        Args:
-            family: Model family
-            subfamily: Optional model subfamily
-            hardware: Hardware type
-            
-        Returns:
-            Dictionary with resource requirements
-        """
-        # Default requirements
-        requirements = {
-            "min_memory_mb": 2000,
-            "recommended_memory_mb": 4000,
-            "cpu_cores": 2,
-            "disk_space_mb": 500,
-            "batch_size": 1
-        }
-        
-        # Adjust based on model family
-        if family == "text_generation":
-            if subfamily == "causal_lm":
-                # Large language models need more resources
-                requirements["min_memory_mb"] = 8000
-                requirements["recommended_memory_mb"] = 16000
-                requirements["cpu_cores"] = 4
-                requirements["disk_space_mb"] = 5000
-            else:
-                requirements["min_memory_mb"] = 4000
-                requirements["recommended_memory_mb"] = 8000
-        
-        elif family == "vision":
-            requirements["min_memory_mb"] = 4000
-            requirements["recommended_memory_mb"] = 8000
-            requirements["batch_size"] = 4 if hardware in ["cuda", "rocm"] else 1
-        
-        elif family == "audio":
-            requirements["min_memory_mb"] = 4000
-            requirements["recommended_memory_mb"] = 8000
-            # Audio often needs more disk for temp files
-            requirements["disk_space_mb"] = 1000
-        
-        elif family == "multimodal":
-            requirements["min_memory_mb"] = 12000
-            requirements["recommended_memory_mb"] = 24000
-            requirements["cpu_cores"] = 8
-            requirements["disk_space_mb"] = 10000
-        
-        # Adjust based on hardware
-        if hardware == "cuda" or hardware == "rocm":
-            # GPU can use smaller batches more efficiently
-            requirements["batch_size"] = max(4, requirements["batch_size"])
-        elif hardware == "cpu":
-            # CPU might need more memory
-            requirements["min_memory_mb"] *= 1.5
-            requirements["recommended_memory_mb"] *= 1.5
-            # But can't handle as large batches
-            requirements["batch_size"] = 1
-        
-        return requirements
-    
-    def get_compatible_models_for_hardware(self, models: List[str], hardware_type: str) -> List[str]:
-        """
-        Find models compatible with specific hardware.
-        
-        Args:
-            models: List of model names
-            hardware_type: Hardware type to check compatibility for
-            
-        Returns:
-            List of compatible model names
-        """
-        compatible_models = []
-        
-        for model_name in models:
-            # Create hardware compatibility profile
-            hw_compat = self._create_hw_compatibility_profile(model_name)
-            
-            # Check if model is compatible with specified hardware
-            if (hardware_type in hw_compat and 
-                hw_compat[hardware_type].get("compatible", False) and
-                hw_compat[hardware_type].get("system_available", False)):
-                compatible_models.append(model_name)
-        
-        return compatible_models
-    
-    def recommend_model_for_task(self, task: str, hardware_constraints: List[str] = None) -> Dict[str, Any]:
-        """
-        Recommend a model for a specific task with hardware constraints.
-        
-        Args:
-            task: Task name (e.g., "text-generation", "image-classification")
-            hardware_constraints: Optional list of required hardware types
-            
-        Returns:
-            Dictionary with model recommendation
-        """
-        # Map task to model family
-        task_to_family = {
-            "text-generation": "text_generation",
-            "summarization": "text_generation",
-            "translation": "text_generation",
-            "fill-mask": "embedding",
-            "sentence-similarity": "embedding",
-            "token-classification": "embedding",
-            "image-classification": "vision",
-            "object-detection": "vision",
-            "image-segmentation": "vision",
-            "depth-estimation": "vision",
-            "automatic-speech-recognition": "audio",
-            "audio-classification": "audio",
-            "text-to-audio": "audio",
-            "image-to-text": "multimodal",
-            "visual-question-answering": "multimodal",
-            "text-to-image": "multimodal"
-        }
-        
-        family = task_to_family.get(task)
-        if not family:
-            return {
-                "error": f"Unknown task: {task}",
-                "recommendations": []
-            }
-        
-        # Sample models for each family (in a real system, this would be from a database)
-        family_to_models = {
-            "embedding": ["bert-base-uncased", "roberta-base", "distilbert-base-uncased"],
-            "text_generation": ["gpt2", "t5-small", "facebook/opt-125m"],
-            "vision": ["google/vit-base-patch16-224", "microsoft/resnet-50", "facebook/deit-base-patch16-224"],
-            "audio": ["facebook/wav2vec2-base", "openai/whisper-small", "facebook/hubert-base-ls960"],
-            "multimodal": ["llava-hf/llava-1.5-7b-hf", "Salesforce/blip-image-captioning-base", "openai/clip-vit-base-patch32"]
-        }
-        
-        candidate_models = family_to_models.get(family, [])
-        
-        # Filter by hardware constraints
-        if hardware_constraints:
-            compatible_models = []
-            for model in candidate_models:
-                is_compatible = True
-                hw_compat = self._create_hw_compatibility_profile(model)
-                
-                for hw_type in hardware_constraints:
-                    if (hw_type not in hw_compat or 
-                        not hw_compat[hw_type].get("compatible", False) or
-                        not hw_compat[hw_type].get("system_available", False)):
-                        is_compatible = False
-                        break
-                
-                if is_compatible:
-                    compatible_models.append(model)
-            
-            candidate_models = compatible_models
-        
-        # Recommend best model by getting detail for each
-        recommendations = []
-        for model in candidate_models:
-            classification = self.classify_model(model)
-            recommendations.append({
-                "model_name": model,
-                "family": classification["family"],
-                "subfamily": classification.get("subfamily"),
-                "recommended_hardware": classification["recommended_hardware"],
-                "resource_requirements": classification["resource_requirements"],
-                "confidence": classification.get("confidence", 0)
-            })
-        
-        # Sort by confidence
-        recommendations.sort(key=lambda x: x.get("confidence", 0), reverse=True)
-        
-        return {
-            "task": task,
-            "family": family,
-            "hardware_constraints": hardware_constraints,
-            "recommendations": recommendations
-        }
-    
-    def get_optimal_resource_pool_config(self, models: List[str]) -> Dict[str, Any]:
-        """
-        Generate optimal resource pool configuration for a set of models.
-        
-        Args:
-            models: List of model names
-            
-        Returns:
-            Dictionary with resource pool configuration
-        """
-        # Classify all models
-        model_classifications = [self.classify_model(model) for model in models]
-        
-        # Determine maximum resource requirements
-        max_memory_mb = 0
-        max_disk_space_mb = 0
-        max_cpu_cores = 2
-        recommended_timeout_mins = 10  # Default timeout
-        
-        for classification in model_classifications:
-            requirements = classification.get("resource_requirements", {})
-            max_memory_mb = max(max_memory_mb, requirements.get("recommended_memory_mb", 0))
-            max_disk_space_mb = max(max_disk_space_mb, requirements.get("disk_space_mb", 0))
-            max_cpu_cores = max(max_cpu_cores, requirements.get("cpu_cores", 0))
-            
-            # Large models need longer timeouts
-            if classification.get("family") in ["text_generation", "multimodal"]:
-                recommended_timeout_mins = max(recommended_timeout_mins, 30)
-        
-        # Check if we need low memory mode
-        system_memory_mb = 0
-        try:
-            import psutil
-            system_memory_mb = psutil.virtual_memory().total / (1024 * 1024)
-        except ImportError:
-            # Fallback - assume 8GB
-            system_memory_mb = 8192
-        
-        low_memory_mode = system_memory_mb < (max_memory_mb * 1.5)
-        
-        return {
-            "models": models,
-            "resource_requirements": {
-                "max_memory_mb": max_memory_mb,
-                "max_disk_space_mb": max_disk_space_mb,
-                "max_cpu_cores": max_cpu_cores
-            },
-            "resource_pool_config": {
-                "low_memory_mode": low_memory_mode,
-                "recommended_timeout_mins": recommended_timeout_mins,
-                "aggressive_cleanup": low_memory_mode,
-                "batch_processing": not low_memory_mode and system_memory_mb > (max_memory_mb * 2)
-            },
-            "hardware_recommendations": {
-                "preferred_hardware": self.hardware_detector.get_best_available_hardware(),
-                "torch_device": self.hardware_detector.get_torch_device(),
-                "available_hardware": [hw for hw, available in self.hardware_info.items() if available]
-            }
-        }
+# Model family hardware preference mapping
+MODEL_FAMILY_DEVICE_PREFERENCES = {
+    "embedding": ["cuda", "mps", "openvino", "rocm", "cpu"],  # Embedding models work well on all hardware
+    "text_generation": ["cuda", "rocm", "cpu", "mps"],        # LLMs prefer CUDA, ROCm for performance
+    "vision": ["cuda", "openvino", "mps", "rocm", "cpu"],     # Vision models do well with OpenVINO
+    "audio": ["cuda", "cpu", "rocm", "mps"],                  # Audio models often need CUDA
+    "multimodal": ["cuda", "cpu"]                             # Multimodal models typically need CUDA
+}
 
-def get_hardware_aware_model_classification(model_name: str, 
-                                           model_class: Optional[str] = None,
-                                           tasks: Optional[List[str]] = None,
-                                           hw_cache_path: Optional[str] = None,
-                                           model_db_path: Optional[str] = None) -> Dict[str, Any]:
+# Memory requirements by model family (in MB)
+MODEL_FAMILY_MEMORY_REQUIREMENTS = {
+    "embedding": {
+        "small": 250,
+        "medium": 500,
+        "large": 1000
+    },
+    "text_generation": {
+        "small": 500,
+        "medium": 2000,
+        "large": 8000
+    },
+    "vision": {
+        "small": 300,
+        "medium": 800,
+        "large": 2000
+    },
+    "audio": {
+        "small": 400,
+        "medium": 1000,
+        "large": 3000
+    },
+    "multimodal": {
+        "small": 1000,
+        "medium": 4000,
+        "large": 10000
+    }
+}
+
+# Hardware compatibility by model family
+MODEL_FAMILY_HARDWARE_COMPATIBILITY = {
+    "embedding": {
+        "cuda": True,
+        "rocm": True,
+        "mps": True,
+        "openvino": True,
+        "webnn": True,
+        "webgpu": True,
+        "cpu": True
+    },
+    "text_generation": {
+        "cuda": True,
+        "rocm": True,
+        "mps": {"constraint": "size", "max_size": "medium"},
+        "openvino": {"constraint": "size", "max_size": "small"},
+        "webnn": False,
+        "webgpu": {"constraint": "size", "max_size": "small"},
+        "cpu": True
+    },
+    "vision": {
+        "cuda": True,
+        "rocm": True,
+        "mps": True,
+        "openvino": True,
+        "webnn": {"constraint": "size", "max_size": "medium"},
+        "webgpu": {"constraint": "size", "max_size": "medium"},
+        "cpu": True
+    },
+    "audio": {
+        "cuda": True,
+        "rocm": True,
+        "mps": {"constraint": "size", "max_size": "medium"},
+        "openvino": {"constraint": "size", "max_size": "medium"},
+        "webnn": False,
+        "webgpu": False,
+        "cpu": True
+    },
+    "multimodal": {
+        "cuda": True,
+        "rocm": {"constraint": "size", "max_size": "small"},
+        "mps": {"constraint": "size", "max_size": "small"},
+        "openvino": False,
+        "webnn": False,
+        "webgpu": False,
+        "cpu": True
+    }
+}
+
+def get_model_size_tier(model_name: str, family: Optional[str] = None) -> str:
     """
-    Convenience function to get hardware-aware model classification.
-    
+    Determine model size tier (small, medium, large) based on model name and family
+
     Args:
-        model_name: Name of the model to classify
-        model_class: Optional model class name
-        tasks: Optional list of model tasks
-        hw_cache_path: Optional path to hardware detection cache
-        model_db_path: Optional path to model database
-        
+        model_name: The name of the model
+        family: Optional model family to provide additional context
+
     Returns:
-        Dictionary with classification results and hardware recommendations
+        String indicating model size tier: "small", "medium", or "large"
     """
-    classifier = HardwareAwareModelClassifier(
-        hardware_cache_path=hw_cache_path,
-        model_db_path=model_db_path
+    # Default to medium if unknown
+    size_tier = "medium"
+    
+    # Check for size indicators in model name
+    model_name_lower = model_name.lower()
+    
+    # Size keywords in model name
+    if any(kw in model_name_lower for kw in ["tiny", "mini", "small", "efficient"]):
+        size_tier = "small"
+    elif any(kw in model_name_lower for kw in ["base", "medium"]):
+        size_tier = "medium"
+    elif any(kw in model_name_lower for kw in ["large", "xl", "xxl", "huge"]):
+        size_tier = "large"
+        
+    # Check for numeric size indicators
+    # Common patterns like bert-large, t5-3b, llama-7b, etc.
+    size_indicators = {
+        "small": ["128m", "235m", "350m", "small", "tiny"],
+        "medium": ["1b", "1.5b", "2b", "3b", "base"],
+        "large": ["7b", "13b", "30b", "65b", "70b", "large"]
+    }
+    
+    for size, indicators in size_indicators.items():
+        if any(ind in model_name_lower for ind in indicators):
+            size_tier = size
+            break
+    
+    # Use family-specific size detection if available
+    if family == "text_generation":
+        # LLMs often include parameter count
+        if "7b" in model_name_lower or "13b" in model_name_lower:
+            size_tier = "large"
+        elif "1.5b" in model_name_lower or "3b" in model_name_lower:
+            size_tier = "medium"
+    
+    return size_tier
+
+def check_hardware_compatibility(model_family: str, 
+                                model_size: str, 
+                                hardware_type: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if a specific hardware type is compatible with the model family and size
+
+    Args:
+        model_family: The model family (embedding, text_generation, etc.)
+        model_size: Size tier of the model (small, medium, large)
+        hardware_type: Hardware type to check (cuda, mps, etc.)
+
+    Returns:
+        Tuple of (is_compatible, reason)
+    """
+    # Default to compatible if family not recognized
+    if model_family not in MODEL_FAMILY_HARDWARE_COMPATIBILITY:
+        return True, None
+    
+    # Get compatibility info for this family
+    compatibility = MODEL_FAMILY_HARDWARE_COMPATIBILITY[model_family].get(hardware_type)
+    
+    # If direct boolean
+    if isinstance(compatibility, bool):
+        if compatibility:
+            return True, None
+        else:
+            return False, f"{hardware_type} is not compatible with {model_family} models"
+    
+    # If dictionary with constraints
+    elif isinstance(compatibility, dict):
+        constraint_type = compatibility.get("constraint")
+        
+        if constraint_type == "size":
+            max_size = compatibility.get("max_size", "large")
+            size_order = {"small": 0, "medium": 1, "large": 2}
+            
+            if size_order.get(model_size, 1) <= size_order.get(max_size, 2):
+                return True, None
+            else:
+                return False, f"{hardware_type} only supports {model_family} models up to {max_size} size"
+    
+    # Default to compatible
+    return True, None
+
+def estimate_memory_requirements(model_family: str, model_size: str) -> int:
+    """
+    Estimate memory requirements for a model based on family and size
+
+    Args:
+        model_family: The model family (embedding, text_generation, etc.)
+        model_size: Size tier of the model (small, medium, large)
+
+    Returns:
+        Estimated memory requirement in MB
+    """
+    # Get family requirements if available
+    family_reqs = MODEL_FAMILY_MEMORY_REQUIREMENTS.get(model_family, {})
+    memory_mb = family_reqs.get(model_size, 500)  # Default to 500MB if unknown
+    
+    return memory_mb
+
+def detect_hardware_availability(hardware_info: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
+    """
+    Detect available hardware platforms with robust error handling
+
+    Args:
+        hardware_info: Optional pre-detected hardware information
+
+    Returns:
+        Dictionary of available hardware platforms
+    """
+    # Start with all platforms unavailable
+    available_hardware = {
+        "cpu": True,  # CPU is always available
+        "cuda": False,
+        "rocm": False,
+        "mps": False,
+        "openvino": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # If hardware info is provided, use it
+    if hardware_info:
+        for hw_type in available_hardware.keys():
+            if hw_type in hardware_info:
+                available_hardware[hw_type] = hardware_info[hw_type]
+        return available_hardware
+    
+    # Try to detect hardware using hardware_detection if available
+    try:
+        # Check if hardware_detection module exists
+        module_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
+        if os.path.exists(module_path):
+            # Try to import the module
+            try:
+                from hardware_detection import detect_hardware_with_comprehensive_checks
+                detected_hw = detect_hardware_with_comprehensive_checks()
+                
+                # Update hardware availability
+                for hw_type in available_hardware.keys():
+                    if hw_type in detected_hw:
+                        available_hardware[hw_type] = detected_hw[hw_type]
+                
+                logger.info(f"Hardware detection successful")
+            except ImportError as e:
+                logger.warning(f"Could not import hardware_detection module: {e}")
+            except Exception as e:
+                logger.warning(f"Error during hardware detection: {e}")
+        else:
+            logger.warning("hardware_detection.py not found, using basic detection")
+    except Exception as e:
+        logger.warning(f"Error checking for hardware_detection module: {e}")
+    
+    # If hardware detection failed or wasn't available, try basic detection
+    if not any(available_hardware.values()):
+        try:
+            # Try to detect CUDA using PyTorch
+            try:
+                import torch
+                available_hardware["cuda"] = torch.cuda.is_available()
+                
+                # Check for MPS (Apple Silicon)
+                if hasattr(torch.backends, "mps"):
+                    available_hardware["mps"] = torch.backends.mps.is_available()
+            except ImportError:
+                logger.debug("PyTorch not available for basic hardware detection")
+            
+            # Try to detect OpenVINO
+            try:
+                import openvino
+                available_hardware["openvino"] = True
+            except ImportError:
+                pass
+        except Exception as e:
+            logger.warning(f"Error during basic hardware detection: {e}")
+    
+    return available_hardware
+
+def classify_model_family(model_name: str, model_class: Optional[str] = None) -> Tuple[str, float]:
+    """
+    Classify a model into a family with robust error handling
+
+    Args:
+        model_name: The name of the model
+        model_class: Optional model class name for better classification
+
+    Returns:
+        Tuple of (family, confidence)
+    """
+    # Default classification
+    default_family = "embedding" if "bert" in model_name.lower() else "text_generation"
+    default_confidence = 0.5
+    
+    # Try to use model_family_classifier if available
+    try:
+        # Check if module exists
+        module_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
+        if os.path.exists(module_path):
+            # Try to import the module
+            try:
+                from model_family_classifier import classify_model
+                
+                # Classify the model
+                result = classify_model(model_name=model_name, model_class=model_class)
+                
+                # Extract family and confidence
+                family = result.get("family")
+                confidence = result.get("confidence", 0.0)
+                
+                if family:
+                    logger.info(f"Model {model_name} classified as {family} (confidence: {confidence:.2f})")
+                    return family, confidence
+                
+                logger.warning(f"Model classification returned no family, using default")
+            except ImportError as e:
+                logger.warning(f"Could not import model_family_classifier module: {e}")
+            except Exception as e:
+                logger.warning(f"Error during model classification: {e}")
+    except Exception as e:
+        logger.warning(f"Error checking for model_family_classifier module: {e}")
+    
+    # Use simple heuristic classification as fallback
+    model_name_lower = model_name.lower()
+    
+    # Simple keyword matching fallback
+    for family, info in MODEL_FAMILY_DEVICE_PREFERENCES.items():
+        # Check for family-specific keywords
+        keywords = []
+        if family == "embedding":
+            keywords = ["bert", "roberta", "albert", "xlm", "distilbert", "sentence", "embedding"]
+        elif family == "text_generation":
+            keywords = ["gpt", "llama", "t5", "bart", "bloom", "opt", "falcon", "mistral", "phi"]
+        elif family == "vision":
+            keywords = ["vit", "swin", "resnet", "convnext", "deit", "clip", "image", "vision"]
+        elif family == "audio":
+            keywords = ["whisper", "wav2vec", "hubert", "audio", "speech", "clap"]
+        elif family == "multimodal":
+            keywords = ["llava", "blip", "flava", "multimodal", "vision-text", "mm"]
+        
+        # Check for matches
+        for keyword in keywords:
+            if keyword in model_name_lower:
+                logger.info(f"Model {model_name} classified as {family} using fallback heuristics")
+                return family, 0.7  # Heuristic match with moderate confidence
+    
+    # If all else fails, return default
+    logger.info(f"Using default classification for {model_name}: {default_family}")
+    return default_family, default_confidence
+
+def select_optimal_device(model_family: str, 
+                         model_size: str,
+                         available_hardware: Dict[str, bool],
+                         memory_requirements: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Select the optimal device for a model based on family, size, and available hardware
+
+    Args:
+        model_family: The model family (embedding, text_generation, etc.)
+        model_size: Size tier of the model (small, medium, large)
+        available_hardware: Dictionary of available hardware platforms
+        memory_requirements: Optional known memory requirements in MB
+
+    Returns:
+        Dictionary with device selection information
+    """
+    # Get device preferences for this model family
+    device_preferences = MODEL_FAMILY_DEVICE_PREFERENCES.get(model_family, ["cuda", "cpu"])
+    
+    # If memory requirements not provided, estimate them
+    if memory_requirements is None:
+        memory_requirements = estimate_memory_requirements(model_family, model_size)
+    
+    # Initialize result
+    result = {
+        "device": "cpu",  # Default to CPU
+        "reason": "Default device selection",
+        "memory_required_mb": memory_requirements,
+        "compatible_devices": [],
+        "preferred_devices": device_preferences
+    }
+    
+    # Check compatibility for each device type
+    compatible_devices = []
+    compatibility_reasons = {}
+    
+    for device_type in device_preferences:
+        # Skip if not available
+        if not available_hardware.get(device_type, False):
+            compatibility_reasons[device_type] = f"{device_type} not available on this system"
+            continue
+        
+        # Check compatibility
+        is_compatible, reason = check_hardware_compatibility(model_family, model_size, device_type)
+        
+        if is_compatible:
+            compatible_devices.append(device_type)
+        else:
+            compatibility_reasons[device_type] = reason
+    
+    # Update result with compatible devices
+    result["compatible_devices"] = compatible_devices
+    result["compatibility_reasons"] = compatibility_reasons
+    
+    # Select best available device from preferences
+    for device_type in device_preferences:
+        if device_type in compatible_devices:
+            result["device"] = device_type
+            result["reason"] = f"Selected {device_type} based on model family preferences"
+            break
+    
+    # Special handling for PyTorch device strings
+    if result["device"] == "cuda":
+        result["torch_device"] = "cuda"
+    elif result["device"] == "mps":
+        result["torch_device"] = "mps"
+    elif result["device"] == "cpu":
+        result["torch_device"] = "cpu"
+    else:
+        # Default to CPU for other device types
+        result["torch_device"] = "cpu"
+    
+    return result
+
+def integrate_hardware_and_model(model_name: str, 
+                                model_family: Optional[str] = None,
+                                model_class: Optional[str] = None,
+                                hardware_info: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Integrate hardware detection and model classification to determine optimal device
+
+    Args:
+        model_name: The name of the model
+        model_family: Optional pre-detected model family
+        model_class: Optional model class name for better classification
+        hardware_info: Optional pre-detected hardware information
+
+    Returns:
+        Dictionary with integrated hardware-model information
+    """
+    logger.info(f"Integrating hardware and model information for {model_name}")
+    
+    # Initialize result
+    result = {
+        "model_name": model_name,
+        "original_family": model_family,
+        "hardware_info_provided": hardware_info is not None
+    }
+    
+    # Step 1: Detect available hardware
+    available_hardware = detect_hardware_availability(hardware_info)
+    result["available_hardware"] = available_hardware
+    
+    # Get list of available hardware types
+    available_hw_types = [hw for hw, available in available_hardware.items() if available]
+    logger.info(f"Available hardware: {', '.join(available_hw_types)}")
+    
+    # Step 2: Classify model family if not provided
+    if model_family is None:
+        model_family, confidence = classify_model_family(model_name, model_class)
+        result["detected_family"] = model_family
+        result["family_confidence"] = confidence
+    
+    # Use provided family or detected family
+    effective_family = model_family or result.get("detected_family", "text_generation")
+    result["effective_family"] = effective_family
+    
+    # Step 3: Determine model size
+    model_size = get_model_size_tier(model_name, effective_family)
+    result["model_size"] = model_size
+    
+    # Step 4: Estimate memory requirements
+    memory_mb = estimate_memory_requirements(effective_family, model_size)
+    result["estimated_memory_mb"] = memory_mb
+    
+    # Step 5: Select optimal device
+    device_selection = select_optimal_device(
+        effective_family,
+        model_size,
+        available_hardware,
+        memory_mb
     )
     
-    return classifier.classify_model(
-        model_name=model_name,
-        model_class=model_class,
-        tasks=tasks
-    )
+    # Add device selection to result
+    result.update(device_selection)
+    
+    # Step 6: Add hardware preferences for ResourcePool
+    result["hardware_preferences"] = {
+        "device": device_selection["torch_device"],
+        "priority_list": device_selection["preferred_devices"],
+        "hw_compatibility": {
+            hw_type: {"compatible": hw_type in device_selection["compatible_devices"]}
+            for hw_type in ["cuda", "mps", "rocm", "openvino", "cpu"]
+        }
+    }
+    
+    logger.info(f"Selected device {result['device']} for {model_name} ({effective_family}, {model_size})")
+    
+    return result
+
+def get_hardware_model_compatibility_matrix() -> Dict[str, Any]:
+    """
+    Generate a comprehensive hardware-model compatibility matrix
+
+    Returns:
+        Dictionary with compatibility information
+    """
+    # Create compatibility matrix
+    matrix = {
+        "model_families": {},
+        "hardware_types": ["cuda", "rocm", "mps", "openvino", "webnn", "webgpu", "cpu"],
+        "model_sizes": ["small", "medium", "large"]
+    }
+    
+    # Add compatibility information for each family
+    for family, compatibility in MODEL_FAMILY_HARDWARE_COMPATIBILITY.items():
+        matrix["model_families"][family] = {
+            "hardware_compatibility": {},
+            "memory_requirements": MODEL_FAMILY_MEMORY_REQUIREMENTS.get(family, {}),
+            "device_preferences": MODEL_FAMILY_DEVICE_PREFERENCES.get(family, [])
+        }
+        
+        # Add compatibility for each hardware type
+        for hw_type, compat_info in compatibility.items():
+            if isinstance(compat_info, bool):
+                matrix["model_families"][family]["hardware_compatibility"][hw_type] = {
+                    "compatible": compat_info,
+                    "constraints": None
+                }
+            elif isinstance(compat_info, dict):
+                matrix["model_families"][family]["hardware_compatibility"][hw_type] = {
+                    "compatible": True,
+                    "constraints": compat_info
+                }
+    
+    return matrix
 
 if __name__ == "__main__":
     import argparse
     
-    # Set up logging
-    logging.basicConfig(level=logging.INFO,
-                      format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Hardware-aware model classification")
-    parser.add_argument("--model", type=str, help="Model name to classify")
-    parser.add_argument("--task", type=str, help="Task to recommend a model for")
-    parser.add_argument("--hw", type=str, nargs="+", help="Hardware constraints for task recommendation")
-    parser.add_argument("--hw-cache", type=str, help="Path to hardware detection cache")
-    parser.add_argument("--model-db", type=str, help="Path to model database")
-    parser.add_argument("--resource-config", type=str, nargs="+", help="Models to generate resource pool config for")
+    parser = argparse.ArgumentParser(description="Test hardware-model integration")
+    parser.add_argument("--model", type=str, default="bert-base-uncased", help="Model name to test")
+    parser.add_argument("--matrix", action="store_true", help="Print compatibility matrix")
+    parser.add_argument("--detect", action="store_true", help="Detect available hardware")
+    parser.add_argument("--family", type=str, help="Override model family")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     args = parser.parse_args()
     
-    # Create classifier
-    classifier = HardwareAwareModelClassifier(
-        hardware_cache_path=args.hw_cache,
-        model_db_path=args.model_db
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+    
+    # Handle compatibility matrix request
+    if args.matrix:
+        matrix = get_hardware_model_compatibility_matrix()
+        print(json.dumps(matrix, indent=2))
+        sys.exit(0)
+    
+    # Handle hardware detection
+    if args.detect:
+        available_hw = detect_hardware_availability()
+        print("Detected hardware:")
+        for hw_type, available in available_hw.items():
+            status = "✅ Available" if available else "❌ Not available"
+            print(f"  - {hw_type}: {status}")
+        sys.exit(0)
+    
+    # Test integration with the specified model
+    result = integrate_hardware_and_model(
+        model_name=args.model,
+        model_family=args.family
     )
     
-    # Handle model classification
-    if args.model:
-        classification = classifier.classify_model(args.model)
-        
-        print(f"\n=== Hardware-Aware Classification for {args.model} ===")
-        print(f"Family: {classification['family']}")
-        print(f"Subfamily: {classification.get('subfamily')}")
-        print(f"Recommended Hardware: {classification['recommended_hardware']}")
-        print(f"Recommended Template: {classification['recommended_template']}")
-        
-        print("\nResource Requirements:")
-        for key, value in classification["resource_requirements"].items():
-            print(f"  {key}: {value}")
-        
-        print("\nHardware Compatibility:")
-        hw_profile = classification.get("hardware_profile", {})
-        for hw_type, details in hw_profile.items():
-            if isinstance(details, dict) and "compatible" in details:
-                status = "✅" if details.get("compatible", False) else "❌"
-                system_status = "✅" if details.get("system_available", False) else "❌"
-                print(f"  {hw_type}: {status} (System: {system_status})")
+    # Print result
+    print(f"\nHardware-Model Integration Results for {args.model}:")
+    print(f"  Model Family: {result['effective_family']}")
+    print(f"  Model Size: {result['model_size']}")
+    print(f"  Estimated Memory: {result['estimated_memory_mb']} MB")
+    print(f"  Selected Device: {result['device']}")
+    print(f"  Compatible Devices: {', '.join(result['compatible_devices'])}")
+    print(f"  Reason: {result['reason']}")
     
-    # Handle task recommendation
-    elif args.task:
-        recommendation = classifier.recommend_model_for_task(args.task, args.hw)
-        
-        if "error" in recommendation:
-            print(f"Error: {recommendation['error']}")
-        else:
-            print(f"\n=== Model Recommendations for Task: {args.task} ===")
-            if args.hw:
-                print(f"Hardware Constraints: {', '.join(args.hw)}")
-            
-            if not recommendation["recommendations"]:
-                print("No compatible models found for the specified constraints.")
-            else:
-                for i, model in enumerate(recommendation["recommendations"], 1):
-                    print(f"\n{i}. {model['model_name']}")
-                    print(f"   Family: {model['family']}")
-                    print(f"   Optimal Hardware: {model['recommended_hardware']}")
-                    print(f"   Memory Required: {model['resource_requirements']['recommended_memory_mb']} MB")
-    
-    # Handle resource pool configuration
-    elif args.resource_config:
-        config = classifier.get_optimal_resource_pool_config(args.resource_config)
-        
-        print(f"\n=== Resource Pool Configuration for {len(args.resource_config)} Models ===")
-        print(f"Max Memory Required: {config['resource_requirements']['max_memory_mb']} MB")
-        print(f"Low Memory Mode: {'Enabled' if config['resource_pool_config']['low_memory_mode'] else 'Disabled'}")
-        print(f"Recommended Timeout: {config['resource_pool_config']['recommended_timeout_mins']} minutes")
-        print(f"Batch Processing: {'Enabled' if config['resource_pool_config']['batch_processing'] else 'Disabled'}")
-        
-        print("\nHardware Recommendations:")
-        print(f"  Preferred Hardware: {config['hardware_recommendations']['preferred_hardware']}")
-        print(f"  PyTorch Device: {config['hardware_recommendations']['torch_device']}")
-        print(f"  Available Hardware: {', '.join(config['hardware_recommendations']['available_hardware'])}")
-    
-    else:
-        # If no specific action, show hardware capabilities
-        print("\n=== Hardware Capabilities ===")
-        available_hw = [hw for hw, available in classifier.hardware_info.items() if available]
-        print(f"Available Hardware: {', '.join(available_hw)}")
-        print(f"Best Available Hardware: {classifier.hardware_detector.get_best_available_hardware()}")
-        print(f"PyTorch Device: {classifier.hardware_detector.get_torch_device()}")
-        
-        # Show CUDA devices if available
-        if classifier.hardware_info.get("cuda", False):
-            cuda_details = classifier.hardware_details.get("cuda", {})
-            print(f"\nCUDA Devices: {cuda_details.get('device_count', 0)}")
-            for device in cuda_details.get("devices", []):
-                print(f"  {device.get('name')}")
-        
-        print("\nUse --model MODEL_NAME to classify a specific model")
-        print("Use --task TASK_NAME to get model recommendations for a task")
-        print("Use --resource-config MODEL1 MODEL2 ... to generate resource pool configuration")
+    # Show hardware preferences for ResourcePool
+    print("\nResourcePool Hardware Preferences:")
+    print(json.dumps(result["hardware_preferences"], indent=2))

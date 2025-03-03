@@ -4,25 +4,28 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 ## Recent Documentation Updates
 
-The repository now includes new comprehensive guides on resource management, model classification, and hardware integration:
+The repository now includes new comprehensive guides on resource management, model classification, hardware integration, and web platform deployment:
 
 - **[Resource Pool Guide](RESOURCE_POOL_GUIDE.md)** - Enhanced guide to the resource management system with device-specific features and integrated architecture diagram
 - **[Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md)** - Comprehensive documentation for the model classification system
 - **[Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md)** - Guide to the hardware detection system with compatibility patterns and error handling
 - **[Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md)** - Documentation for hardware and model integration
+- **[Web Platform Testing Guide](WEB_PLATFORM_TESTING_GUIDE.md)** - Guide to testing on WebNN and WebGPU platforms
+- **[Web Deployment Guide](web_platform_results/web_deployment_guide.md)** - Comprehensive guide for deploying models to web browsers
+- **[Web Deployment Example](web_platform_results/web_deployment_example.md)** - Worked example of BERT model web deployment
 - **[Summary of Improvements](SUMMARY_OF_IMPROVEMENTS.md)** - Detailed overview of recent system enhancements
 - **[API Enhancement README](API_ENHANCEMENT_README.md)** - Guide to advanced API features
-- **[Web Platform Testing Guide](WEB_PLATFORM_TESTING_GUIDE.md)** - Guide to testing on WebNN and WebGPU platforms
 
 ## Overview
 
 The test framework includes:
 
-1. **Model Tests** - Validation for 127+ HuggingFace model types across different hardware platforms
+1. **Model Tests** - Validation for 300+ HuggingFace model types across different hardware platforms
 2. **API Tests** - Integration tests for various AI API providers
-3. **Hardware Tests** - Validation of CPU, CUDA, and OpenVINO acceleration
+3. **Hardware Tests** - Validation of CPU, CUDA, OpenVINO, MPS, AMD, WebNN, and WebGPU acceleration
 4. **Endpoint Tests** - Tests for local inference endpoints
 5. **Performance Tests** - Benchmarking across hardware configurations
+6. **Web Platform Tests** - Testing and deployment to WebNN and WebGPU browser platforms
 
 ## Directory Structure
 
@@ -32,6 +35,9 @@ The repository has been organized for better readability and maintainability:
 - **test_generators/**: Tools for generating test files
 - **model_test_runners/**: Model-specific test runner scripts
 - **implementation_files/**: Implementation scripts for various components
+- **integration_results/**: Results from integration test suite runs
+- **web_benchmark_results/**: Results from web platform benchmarking
+- **web_platform_results/**: Results from web platform testing
 - **archived_reports/**: Historical implementation reports
 - **archived_test_results/**: Historical test result files
 - **archived_md_files/**: Additional documentation
@@ -150,6 +156,21 @@ python run_integrated_hardware_model_test.py --debug
 
 # Check if required files exist for integration
 python run_integrated_hardware_model_test.py --check-only
+
+# Run comprehensive integration test suite
+python integration_test_suite.py
+
+# Run specific integration test categories
+python integration_test_suite.py --categories hardware_detection resource_pool model_loading
+
+# Run integration tests on specific hardware platforms
+python integration_test_suite.py --hardware cpu cuda
+
+# Skip slow integration tests
+python integration_test_suite.py --skip-slow
+
+# Save integration test results to a specific file
+python integration_test_suite.py --output my_integration_results.json
 ```
 
 ### Resource Pool Tests
@@ -182,6 +203,21 @@ python test_resource_pool.py --test family
 
 # Compare WebNN and WebGPU performance
 ./web_platform_testing.py --compare --test-modality text
+
+# Run web platform benchmarking for a specific model
+./web_platform_benchmark.py --model bert
+
+# Run comparative benchmark across modalities
+./web_platform_benchmark.py --comparative
+
+# List models with web platform support
+./web_platform_benchmark.py --list-models
+
+# Benchmark specific modality with custom batch sizes
+./web_platform_benchmark.py --modality text --batch-sizes 1 8 16 32
+
+# Generate charts for performance comparison
+./web_platform_benchmark.py --model bert --chart-dir benchmark_charts
 ```
 
 ### Skillset Generation
@@ -266,7 +302,29 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 
 ### March 2025 Enhancements
 
-1. **Resilient Error Handling** - Comprehensive error handling with graceful degradation:
+1. **Comprehensive Integration Test Suite** - New unified testing framework that verifies system-wide integration:
+   - Tests for 9 critical integration categories (hardware, resources, models, APIs, web, multimodal, endpoints, batching, queues)
+   - Automatic hardware detection and platform-specific testing
+   - Detailed test results with timing and performance metrics
+   - JSON report generation with system-wide integration status
+   - Parallel test execution capabilities for faster validation
+   - Configurable test categories and hardware platforms
+   - Integration of all components into a cohesive testing framework
+   - Detailed logging and error reporting system
+   - Support for both mock testing and real hardware testing
+
+2. **Web Platform Benchmarking** - Advanced benchmarking for web deployment scenarios:
+   - Detailed performance metrics for WebNN and WebGPU platforms
+   - First inference (cold start) and batch processing timing
+   - Throughput measurement for high-performance applications
+   - Memory usage tracking for browser environments
+   - Comparative analysis between web platforms
+   - Chart generation for visual performance analysis
+   - Modality-specific benchmarking for different model types
+   - Customizable batch sizes for scalability testing
+   - Browser compatibility information for deployment planning
+
+3. **Resilient Error Handling** - Comprehensive error handling with graceful degradation:
    - File existence checks before attempting to import optional modules
    - Progressive fallback mechanisms for missing components
    - Resilient component integration with proper error reporting
@@ -276,6 +334,10 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
    - Robust system architecture that works with partial component availability
    - Comprehensive integration testing with run_integrated_hardware_model_test.py
    - Enhanced documentation with detailed error handling strategies
+   - New hardware-model integration with multi-level fallbacks
+   - Intelligent device selection with model family-based rules
+   - Constraint-based compatibility checking between models and hardware
+   - Automatic adaptation to available components at runtime
 
 2. **Hardware-Aware Resource Management Integration** - Comprehensive integration of resource management with hardware systems:
    - Complete integration of ResourcePool with hardware detection and model classification
@@ -464,12 +526,13 @@ The following areas have been identified for future development:
    - Add performance comparison across hardware platforms
    - Develop performance prediction based on model characteristics
 
-7. **Web Backend Enhancements**
-   - Enhance WebNN and WebGPU support
-   - Improve browser-based model execution
-   - Create specialized templates for web deployment
-   - Add progressive enhancement for different browser capabilities
-   - Develop web-specific memory management strategies
+7. **Advanced Web Platform Optimization**
+   - Develop progressive loading strategies for large models in browsers
+   - Create specialized offline capabilities with Service Worker integration
+   - Implement cross-browser compatibility layer for consistent performance
+   - Enhance mobile browser support with device-specific optimizations
+   - Create automated web performance monitoring and analysis tools
+   - Improve memory management for resource-constrained browser environments
 
 ## Contributing
 

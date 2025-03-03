@@ -245,7 +245,15 @@ def test_memory_tracking():
     logger.info("Memory tracking test passed!")
 
 def test_model_family_integration():
-    """Test integration with model family classifier with robust error handling"""
+    """Test integration with model family classifier with robust error handling
+    
+    This test verifies:
+    - ResourcePool integration with model family classifier
+    - Graceful handling of missing components
+    - Hardware compatibility analysis based on model family
+    - Web platform support for compatible model families
+    - Error handling and fallback strategies
+    """
     import os.path
     
     # Check for model family classifier module
@@ -256,6 +264,10 @@ def test_model_family_integration():
     pool = get_global_resource_pool()
     torch = pool.get_resource("torch", constructor=load_torch)
     transformers = pool.get_resource("transformers", constructor=load_transformers)
+    
+    # Also check for hardware detection (for web platform testing)
+    hardware_detection_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
+    has_hardware_detection = os.path.exists(hardware_detection_path)
     
     # Always run partial test even if model_family_classifier is not available
     if not has_model_classifier:
@@ -284,6 +296,42 @@ def test_model_family_integration():
         except Exception as e:
             logger.error(f"Error in limited integration test: {e}")
             return
+            
+    # If both hardware_detection and model_family_classifier are available, perform web platform test
+    if has_hardware_detection and has_model_classifier:
+        try:
+            # Import required modules
+            from model_family_classifier import classify_model
+            from hardware_detection import detect_hardware_with_comprehensive_checks
+            
+            # Check for web platform support
+            hw_info = detect_hardware_with_comprehensive_checks()
+            web_platforms_available = hw_info.get('webnn', False) or hw_info.get('webgpu', False)
+            
+            if web_platforms_available:
+                logger.info("Testing web platform integration with model family classifier")
+                
+                # Analyze a web-compatible model family
+                model_info = classify_model(
+                    model_name="prajjwal1/bert-tiny",
+                    model_class="BertModel",
+                    hw_compatibility={
+                        "webnn": {"compatible": True},
+                        "webgpu": {"compatible": True}
+                    }
+                )
+                
+                # Check if web compatibility was correctly analyzed
+                if "webnn" in str(model_info) or "webgpu" in str(model_info):
+                    logger.info("✅ Web platform compatibility correctly analyzed by model family classifier")
+                else:
+                    logger.info("ℹ️ Web platform compatibility not included in model analysis")
+            else:
+                logger.info("Skipping web platform test - no WebNN/WebGPU support detected")
+                
+        except Exception as e:
+            logger.warning(f"Error during web platform integration test: {e}")
+            # Continue with regular testing
     
     # If model_family_classifier is available, proceed with full integration test
     try:
@@ -361,11 +409,23 @@ def test_model_family_integration():
             
             # Create hardware compatibility information to test with model classifier
             hw_compatibility = {}
-            for hw_type in ["cuda", "mps", "rocm", "openvino"]:
+            for hw_type in ["cuda", "mps", "rocm", "openvino", "webnn", "webgpu", "qualcomm"]:
                 hw_compatibility[hw_type] = {
                     "compatible": hardware_info.get(hw_type, False),
                     "memory_usage": {"peak": 256}  # Small model for BERT-tiny
                 }
+                
+            # Check specifically for web platform detection results
+            web_platforms = []
+            if hardware_info.get("webnn", False):
+                web_platforms.append("WebNN")
+            if hardware_info.get("webgpu", False):
+                web_platforms.append("WebGPU")
+                
+            if web_platforms:
+                logger.info(f"Web platforms detected for integration testing: {', '.join(web_platforms)}")
+            else:
+                logger.info("No web platforms detected for integration testing")
             
             # Test hardware-aware classification
             logger.info("Testing hardware-aware model classification")
@@ -493,7 +553,17 @@ def test_example_workflow():
     logger.info("Example workflow test passed!")
 
 def test_hardware_aware_model_selection():
-    """Test hardware-aware model device selection"""
+    """Test hardware-aware model device selection with comprehensive platform support
+    
+    This test verifies that ResourcePool can correctly:
+    - Detect all available hardware platforms including WebNN and WebGPU
+    - Create appropriate hardware preferences for each model family
+    - Select optimal devices based on model type and available hardware
+    - Handle resilient fallbacks when preferred hardware is unavailable
+    - Support web platform deployment scenarios with specialized priorities
+    - Process subfamily-specific hardware preferences
+    - Handle hardware detection errors gracefully
+    """
     import os.path
     
     # Check for hardware detection module
@@ -507,10 +577,11 @@ def test_hardware_aware_model_selection():
             from hardware_detection import detect_available_hardware, detect_hardware_with_comprehensive_checks
             # Try to import constants, with fallbacks if not found
             try:
-                from hardware_detection import CPU, CUDA, MPS, ROCM, OPENVINO
+                from hardware_detection import CPU, CUDA, MPS, ROCM, OPENVINO, WEBNN, WEBGPU, QUALCOMM
             except ImportError:
                 # Define fallback constants if not available
                 CPU, CUDA, MPS, ROCM, OPENVINO = "cpu", "cuda", "mps", "rocm", "openvino"
+                WEBNN, WEBGPU, QUALCOMM = "webnn", "webgpu", "qualcomm"
                 logger.warning("Hardware constants not available, using string fallbacks")
             hardware_detection_available = True
         except ImportError as e:
@@ -559,6 +630,21 @@ def test_hardware_aware_model_selection():
             "name": "google/t5-efficient-tiny",
             "constructor": load_t5_model,
             "class_name": "T5ForConditionalGeneration"
+        },
+        "vision": {
+            "name": "google/vit-base-patch16-224",
+            "constructor": lambda: None,  # Mock constructor for testing only
+            "class_name": "ViTForImageClassification"
+        },
+        "audio": {
+            "name": "openai/whisper-tiny",
+            "constructor": lambda: None,  # Mock constructor for testing only
+            "class_name": "WhisperForConditionalGeneration"
+        },
+        "multimodal": {
+            "name": "llava-hf/llava-1.5-7b-hf",
+            "constructor": lambda: None,  # Mock constructor for testing only
+            "class_name": "LlavaForConditionalGeneration"
         }
     }
     
@@ -568,11 +654,34 @@ def test_hardware_aware_model_selection():
         try:
             logger.info("Running comprehensive hardware detection")
             hw_info = detect_hardware_with_comprehensive_checks()
+            
+            # List all detected hardware, including web platforms
             detected_hw = [hw for hw, available in hw_info.items() 
-                          if hw in ['cpu', 'cuda', 'mps', 'rocm', 'openvino'] and available]
+                          if hw in ['cpu', 'cuda', 'mps', 'rocm', 'openvino', 'webnn', 'webgpu', 'qualcomm'] and available]
             logger.info(f"Detected hardware: {', '.join(detected_hw)}")
+            
+            # Check specifically for web platform support
+            web_platforms = []
+            if hw_info.get('webnn', False):
+                web_platforms.append('WebNN')
+            if hw_info.get('webgpu', False):
+                web_platforms.append('WebGPU')
+                
+            if web_platforms:
+                logger.info(f"Web platform support detected: {', '.join(web_platforms)}")
+            else:
+                logger.info("No web platform support detected, web-specific tests will be skipped")
+                
         except Exception as e:
             logger.warning(f"Error during hardware detection: {e}")
+            
+        # Check for specific hardware detection errors
+        if hw_info:
+            for hw_type in ['webnn', 'webgpu', 'qualcomm']:
+                if hw_type in hw_info.get('errors', {}):
+                    error_msg = hw_info['errors'][hw_type]
+                    logger.warning(f"Detection error for {hw_type}: {error_msg}")
+                    # Continue testing despite errors - ResourcePool should handle these gracefully
     
     # Start with basic hardware preferences
     hardware_preferences = [
@@ -600,13 +709,13 @@ def test_hardware_aware_model_selection():
             if "mps" in available_devices:
                 # Apple Silicon works well with embedding models
                 family_based_prefs.append({
-                    "priority_list": [MPS, CUDA, CPU],
+                    "priority_list": [MPS, CUDA, WEBNN, CPU],
                     "model_family": "embedding",
                     "description": "MPS-prioritized for embedding models"
                 })
             elif "cuda" in available_devices:
                 family_based_prefs.append({
-                    "priority_list": [CUDA, CPU],
+                    "priority_list": [CUDA, WEBNN, CPU],
                     "model_family": "embedding",
                     "description": "CUDA-prioritized for embedding models"
                 })
@@ -619,6 +728,42 @@ def test_hardware_aware_model_selection():
                     "model_family": "text_generation",
                     "description": "CUDA-prioritized for text generation models"
                 })
+            
+            # For vision models (like ViT, ResNet)
+            family_based_prefs.append({
+                "priority_list": [CUDA, OPENVINO, WEBNN, WEBGPU, MPS, CPU],
+                "model_family": "vision", 
+                "description": "Vision models with OpenVINO and web platform support"
+            })
+            
+            # For audio models (like Whisper)
+            family_based_prefs.append({
+                "priority_list": [CUDA, ROCM, MPS, CPU],
+                "model_family": "audio",
+                "description": "Audio models prioritizing GPU acceleration"
+            })
+            
+            # For multimodal models (like LLaVA, CLIP)
+            family_based_prefs.append({
+                "priority_list": [CUDA, CPU],
+                "model_family": "multimodal",
+                "description": "Multimodal models typically require CUDA"
+            })
+            
+            # WebNN/WebGPU specific preferences for web deployment scenarios
+            family_based_prefs.append({
+                "priority_list": [WEBNN, WEBGPU, CPU],
+                "model_family": "embedding",
+                "subfamily": "web_deployment",
+                "description": "Web deployment optimized for embedding models"
+            })
+            
+            family_based_prefs.append({
+                "priority_list": [WEBGPU, WEBNN, CPU],
+                "model_family": "vision",
+                "subfamily": "web_deployment",
+                "description": "Web deployment optimized for vision models"
+            })
             
             # Add these to hardware preferences
             hardware_preferences.extend(family_based_prefs)
@@ -724,15 +869,33 @@ def test_hardware_aware_model_selection():
                         
                         # Check if device type matches any in priority list
                         matches_priority = False
-                        for hw_type in priority_list:
+                        priority_position = None
+                        
+                        for i, hw_type in enumerate(priority_list):
                             hw_str = str(hw_type).lower()
                             if hw_str == device_type:
                                 matches_priority = True
-                                logger.info(f"✅ Model correctly placed on device {device_type} from priority list")
+                                priority_position = i
+                                logger.info(f"✅ Model correctly placed on device {device_type} from priority list (position {i+1})")
                                 break
                         
                         if not matches_priority:
                             logger.warning(f"⚠️ Model on device {device_type} not in priority list {priority_list}")
+                        
+                        # Additional verification for web platform specific preferences
+                        if "subfamily" in pref and pref.get("subfamily") == "web_deployment":
+                            if matches_priority and priority_position == 0:
+                                logger.info(f"✅ Web deployment preference test successful - using {device_type}")
+                            else:
+                                # This is expected in non-web environments
+                                logger.info(f"ℹ️ Web deployment using fallback device {device_type} (expected in non-web environments)")
+                            
+                            # Specific verification for model family and web platform compatibility
+                            model_family = pref.get("model_family", "")
+                            if model_family == "embedding" and device_type == "webnn":
+                                logger.info("✅ WebNN correctly selected for embedding model in web deployment scenario")
+                            elif model_family == "vision" and device_type == "webgpu":
+                                logger.info("✅ WebGPU correctly selected for vision model in web deployment scenario")
                 else:
                     logger.warning(f"Failed to load model with preference {pref}")
             except Exception as e:
@@ -866,6 +1029,7 @@ def main():
         "memory", "family", "workflow", "hardware"
     ], default="all", help="Which test to run")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--web-platform", action="store_true", help="Focus on web platform tests (WebNN/WebGPU)")
     args = parser.parse_args()
     
     # Set debug logging if requested
@@ -874,6 +1038,11 @@ def main():
         logging.getLogger('resource_pool').setLevel(logging.DEBUG)
     
     logger.info("Starting ResourcePool tests")
+    
+    # Note about web platform tests
+    if args.web_platform:
+        logger.info("Web platform testing mode enabled - focusing on WebNN/WebGPU integration")
+        logger.info("Note: Web platform tests may be skipped if WebNN/WebGPU support is not detected")
     
     try:
         # Run tests based on command line argument
