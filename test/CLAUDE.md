@@ -13,7 +13,7 @@
 - ✅ Implement browser testing harness
 - ✅ Add web platform benchmarking tools
 
-### Phase 22: Integration Testing and Platform Support (IN PROGRESS)
+### Phase 22: Integration Testing and Platform Support (COMPLETED)
 - ✅ Create comprehensive integration test suite across all components
 - ✅ Enhance ResourcePool with WebNN and WebGPU platform testing
 - ✅ Implement resilient error handling for web platform detection
@@ -22,9 +22,12 @@
 - ✅ Implement hardware-model integration with robust error handling
 - ✅ Add resilient component detection with graceful degradation
 - ✅ Create comprehensive hardware-model compatibility matrix
-- ⏳ Add continuous integration for hardware tests
-- ⏳ Develop custom tests for all hardware platforms
-- ⏳ Implement error reporting system for hardware compatibility
+- ✅ Create comprehensive integration test script with extensive diagnostics
+- ✅ Implement robust file existence checks before imports across system
+- ✅ Add resilient error handling with multi-level fallback mechanisms
+- ✅ Add continuous integration for hardware tests
+- ✅ Develop custom tests for all hardware platforms
+- ✅ Implement error reporting system for hardware compatibility
 
 ### Phase 14: Development Pipeline for Test and Skillset Generators (COMPLETED)
 - ✅ Enhance the test generator first (priority task)
@@ -294,6 +297,54 @@ python test/integration_test_suite.py --timeout 600
 
 # Save results to a specific file
 python test/integration_test_suite.py --output ./my_integration_results.json
+
+# Focus on hardware compatibility testing
+python test/integration_test_suite.py --hardware-compatibility
+
+# Focus on web platform testing
+python test/integration_test_suite.py --web-platforms
+
+# Run cross-platform validation tests
+python test/integration_test_suite.py --cross-platform
+
+# Run in CI mode with smaller models and faster tests
+python test/integration_test_suite.py --ci-mode
+
+# Use the CI test runner script
+./test/run_integration_ci_tests.sh
+
+# Run CI tests with focus on hardware compatibility
+./test/run_integration_ci_tests.sh --hardware-only
+
+# Run CI tests with focus on web platforms
+./test/run_integration_ci_tests.sh --web-only
+
+# Run all CI tests
+./test/run_integration_ci_tests.sh --all
+```
+
+### Hardware Compatibility Reporting
+```bash
+# Collect and report compatibility issues from all components
+python test/hardware_compatibility_reporter.py --collect-all
+
+# Generate hardware compatibility matrix
+python test/hardware_compatibility_reporter.py --matrix
+
+# Test full hardware stack
+python test/hardware_compatibility_reporter.py --test-hardware
+
+# Check compatibility for a specific model
+python test/hardware_compatibility_reporter.py --check-model bert-base-uncased
+
+# Generate JSON format report
+python test/hardware_compatibility_reporter.py --collect-all --format json
+
+# Enable debug logging
+python test/hardware_compatibility_reporter.py --collect-all --debug
+
+# Specify custom output directory
+python test/hardware_compatibility_reporter.py --collect-all --output-dir ./custom_reports
 ```
 
 ## Current Performance Benchmarks

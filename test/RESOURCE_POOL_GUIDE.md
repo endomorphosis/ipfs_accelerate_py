@@ -4,6 +4,17 @@
 
 The ResourcePool is a centralized resource management system for efficiently sharing computational resources, models, and tokenizers across test execution and implementation validation. It helps avoid duplicate model loading, optimizes memory usage, and provides a clean interface for resource management.
 
+## Latest Updates (March 2025)
+
+The ResourcePool now includes enhanced support for web platform deployment:
+
+1. **WebNN Integration**: Full support for Web Neural Network API with hardware-aware resource allocation
+2. **WebGPU Support**: Integration with WebGPU and transformers.js for browser-based acceleration
+3. **Web Deployment Subfamilies**: Special subfamily handling for web deployment scenarios
+4. **Extended Hardware Compatibility Matrix**: Improved compatibility information for web platforms
+5. **Resilient Error Handling**: Robust error recovery for web platform detection
+6. **Comprehensive Testing**: Extended test suite for WebNN and WebGPU platforms
+
 ## Features
 
 - **Centralized Resource Management**: Share resources across tests and implementations
@@ -154,22 +165,50 @@ When calling `get_model()`, you can pass a hardware_preferences dictionary with 
 ```python
 hardware_preferences = {
     # Basic device selection
-    "device": "auto",  # or "cuda", "cpu", "mps", "cuda:1", etc.
+    "device": "auto",  # or "cuda", "cpu", "mps", "cuda:1", "webnn", "webgpu", etc.
     
     # Advanced hardware selection
-    "priority_list": ["cuda", "mps", "cpu"],  # Hardware types in order of preference
+    "priority_list": ["cuda", "mps", "webnn", "webgpu", "cpu"],  # Hardware types in order of preference
     "preferred_index": 0,  # For multi-GPU systems, which GPU to prefer
     
     # Hardware compatibility information
     "hw_compatibility": {
         "cuda": {"compatible": True, "memory_usage": {"peak": 1200}},
         "mps": {"compatible": True},
-        "openvino": {"compatible": True}
+        "openvino": {"compatible": True},
+        "webnn": {"compatible": True},
+        "webgpu": {"compatible": True}
     },
     
     # Memory management
     "force_low_memory": False,  # Force low-memory optimizations
-    "precision": "fp16"  # Request mixed precision if available
+    "precision": "fp16",  # Request mixed precision if available
+    
+    # Web deployment specific options
+    "model_family": "embedding",  # Used for web platform optimization
+    "subfamily": "web_deployment",  # Special handling for web deployment
+    "fallback_to_simulation": True,  # Allow fallback to simulation mode for web platforms
+    "browser_optimized": True  # Enable browser-specific optimizations
+}
+```
+
+### Web Platform Specific Preferences
+
+```python
+# Embedding model optimized for WebNN
+webnn_preferences = {
+    "priority_list": ["webnn", "webgpu", "cpu"],
+    "model_family": "embedding",
+    "subfamily": "web_deployment",
+    "description": "Web deployment optimized for embedding models"
+}
+
+# Vision model optimized for WebGPU
+webgpu_preferences = {
+    "priority_list": ["webgpu", "webnn", "cpu"],
+    "model_family": "vision",
+    "subfamily": "web_deployment",
+    "description": "Web deployment optimized for vision models"
 }
 ```
 
@@ -591,7 +630,16 @@ The comprehensive stats include:
 16. **Use Modern Unittest Framework**: Leverage Python unittest for test organization and proper cleanup
 17. **Centralize Resource Pool Access**: Always use get_global_resource_pool() to ensure synchronized resource access
 18. **Platform-Specific Optimizations**: Consider platform-specific needs in hardware_preferences
-19. **Web Platform Support**: Use WebNN/WebGPU compatibility options for web deployment scenarios
+19. **Web Platform Support**: Use WebNN/WebGPU compatibility options for web deployment scenarios:
+   ```python
+   # Example of web platform preferences for browser deployment
+   web_preferences = {
+       "priority_list": ["webnn", "webgpu", "cpu"],
+       "model_family": "embedding",
+       "subfamily": "web_deployment",
+       "fallback_to_simulation": True
+   }
+   ```
 20. **Memory Pressure Monitoring**: Check for system memory pressure and trigger cleanup when needed
 
 ## Limitations
@@ -627,10 +675,13 @@ The ResourcePool system is designed with robust error handling to function grace
 14. **Component-Aware Operation**: ResourcePool adapts its behavior based on available components at runtime
 15. **Multi-Level Fallbacks**: Progressive fallback mechanisms with detailed logging at each step
 16. **Isolated Component Failures**: Failures in one component do not prevent other components from functioning
+17. **Web Platform Error Management**: Robust detection and handling of WebNN and WebGPU errors
+18. **Simulation Mode Fallbacks**: Automatic fallback to simulation mode when real web platform implementations are unavailable
+19. **Subfamily-Based Error Handling**: Specialized error handling strategies for web deployment subfamilies
 
 ### Enhanced Hardware-Model Integration System
 
-The new hardware-model integration system provides a unified interface between the hardware detection and model family classification components:
+The hardware-model integration system provides a unified interface between the hardware detection and model family classification components:
 
 #### Key Features
 
@@ -644,6 +695,11 @@ The new hardware-model integration system provides a unified interface between t
 8. **ResourcePool Integration**: Generates hardware preferences tailored for the ResourcePool system
 9. **Heuristic Classification**: Provides fallback classification when model_family_classifier is unavailable
 10. **Basic Hardware Detection**: Implements simplified hardware detection when hardware_detection.py is missing
+11. **Resilient Error Handling**: Implements graceful degradation with detailed error diagnostics
+12. **Cross-Platform Compatibility**: Ensures consistent behavior across different deployment environments
+13. **WebNN/WebGPU Integration**: Special handling for web platform deployment scenarios
+14. **Isolated Component Testing**: Includes comprehensive testing of each component separately
+15. **Self-Testing Capability**: Built-in validation to ensure integrity of the integration system
 
 #### Example Usage
 
@@ -656,7 +712,8 @@ result = integrate_hardware_and_model(
     model_name="bert-base-uncased",  # Model name is required
     model_family=None,               # Optional: pre-detected model family
     model_class=None,                # Optional: model class name for better classification
-    hardware_info=None               # Optional: pre-detected hardware information
+    hardware_info=None,              # Optional: pre-detected hardware information
+    web_deployment=True              # Optional: enable web deployment optimizations
 )
 
 # Extract ResourcePool hardware preferences
@@ -724,6 +781,31 @@ The test script automatically adapts to the available components:
 - Works with all three components together
 
 Each test scenario verifies that the system gracefully handles missing components and provides appropriate fallback mechanisms.
+
+### Testing with WebNN and WebGPU
+
+The ResourcePool testing framework now includes comprehensive support for WebNN and WebGPU platforms:
+
+```python
+# Run test with web platform focus
+python test_resource_pool.py --test hardware --web-platform --debug
+
+# Example output:
+# WebNN support detected via Python ONNX export capabilities
+# Web platform testing mode enabled - focusing on WebNN/WebGPU integration
+# Testing with preference: Web deployment optimized for embedding models
+# ℹ️ Web deployment using fallback device cpu (expected in non-web environments)
+```
+
+The test framework includes:
+
+1. **Automatic Detection**: Detects WebNN and WebGPU capabilities in the current environment
+2. **Subfamily-Based Testing**: Tests web deployment scenarios with subfamily preferences
+3. **Platform Priority Verification**: Verifies correct usage of platform priority lists
+4. **Error Handling Testing**: Validates error handling and fallback mechanisms
+5. **Integration Testing**: Checks integration between ResourcePool, hardware detection, and model classification
+6. **Model Family Analysis**: Tests model family-specific optimizations for web platforms
+7. **Detailed Logging**: Provides comprehensive logging of web platform capabilities
 
 ### Resilient Device Detection
 
