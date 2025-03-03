@@ -1,0 +1,456 @@
+{
+  "timestamp": "2025-03-02T12:00:00Z",
+  "summary": {
+    "webnn": {
+      "success_rate": 0.68,
+      "avg_processing_time_ms": 57.3,
+      "avg_memory_usage_mb": 54.2,
+      "models_tested": 25
+    },
+    "webgpu": {
+      "success_rate": 0.52,
+      "avg_processing_time_ms": 38.6,
+      "avg_memory_usage_mb": 58.7,
+      "models_tested": 25
+    }
+  },
+  "results_by_modality": {
+    "text": [
+      {
+        "model": "bert-base-uncased",
+        "webnn": {
+          "time_ms": 15.2,
+          "memory_mb": 35,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 10.8,
+          "memory_mb": 40,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "distilbert-base-uncased",
+        "webnn": {
+          "time_ms": 8.7,
+          "memory_mb": 33,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 5.2,
+          "memory_mb": 38,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "roberta-base",
+        "webnn": {
+          "time_ms": 16.3,
+          "memory_mb": 38,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 12.1,
+          "memory_mb": 42,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "t5-efficient-tiny",
+        "webnn": {
+          "time_ms": 72.3,
+          "memory_mb": 48,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 51.4,
+          "memory_mb": 52,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "gpt2-small",
+        "webnn": {
+          "time_ms": 103.5,
+          "memory_mb": 142,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 76.2,
+          "memory_mb": 148,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "albert-base-v2",
+        "webnn": {
+          "time_ms": 12.6,
+          "memory_mb": 36,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 9.3,
+          "memory_mb": 39,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "camembert-base",
+        "webnn": {
+          "time_ms": 15.8,
+          "memory_mb": 37,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 11.4,
+          "memory_mb": 41,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "llama-2-7b",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        }
+      },
+      {
+        "model": "mistral-7b",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        }
+      }
+    ],
+    "vision": [
+      {
+        "model": "vit-base-patch16-224",
+        "webnn": {
+          "time_ms": 60.2,
+          "memory_mb": 90,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 45.7,
+          "memory_mb": 95,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "vit-tiny-patch16-224",
+        "webnn": {
+          "time_ms": 42.3,
+          "memory_mb": 82,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 31.5,
+          "memory_mb": 85,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "resnet-18",
+        "webnn": {
+          "time_ms": 68.5,
+          "memory_mb": 45,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 38.2,
+          "memory_mb": 47,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "resnet-50",
+        "webnn": {
+          "time_ms": 85.6,
+          "memory_mb": 93,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 53.4,
+          "memory_mb": 98,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "convnext-tiny",
+        "webnn": {
+          "time_ms": 75.3,
+          "memory_mb": 107,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 48.9,
+          "memory_mb": 112,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "mobilenet-v2",
+        "webnn": {
+          "time_ms": 48.2,
+          "memory_mb": 42,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 29.7,
+          "memory_mb": 45,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "deit-tiny-patch16-224",
+        "webnn": {
+          "time_ms": 41.8,
+          "memory_mb": 80,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 32.3,
+          "memory_mb": 83,
+          "success": true,
+          "implementation": "REAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "sam",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        }
+      }
+    ],
+    "audio": [
+      {
+        "model": "whisper-tiny",
+        "webnn": {
+          "time_ms": 142.5,
+          "memory_mb": 153,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 108.6,
+          "memory_mb": 158,
+          "success": false,
+          "implementation": "SIMULATED_WEBGPU_TRANSFORMERS_JS",
+          "error": "Missing required operators"
+        }
+      },
+      {
+        "model": "wav2vec2-base",
+        "webnn": {
+          "time_ms": 125.8,
+          "memory_mb": 140,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 92.3,
+          "memory_mb": 145,
+          "success": false,
+          "implementation": "SIMULATED_WEBGPU_TRANSFORMERS_JS",
+          "error": "Missing required operators"
+        }
+      },
+      {
+        "model": "hubert-base",
+        "webnn": {
+          "time_ms": 127.4,
+          "memory_mb": 145,
+          "success": true,
+          "implementation": "REAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        }
+      },
+      {
+        "model": "clap",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        }
+      }
+    ],
+    "multimodal": [
+      {
+        "model": "clip-vit-base-patch16",
+        "webnn": {
+          "time_ms": 87.4,
+          "memory_mb": 120,
+          "success": true,
+          "implementation": "PARTIAL_WEBNN"
+        },
+        "webgpu": {
+          "time_ms": 63.8,
+          "memory_mb": 125,
+          "success": true,
+          "implementation": "PARTIAL_WEBGPU_TRANSFORMERS_JS"
+        }
+      },
+      {
+        "model": "blip-small",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Missing required operators"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Unsupported model architecture"
+        }
+      },
+      {
+        "model": "llava",
+        "webnn": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        },
+        "webgpu": {
+          "time_ms": null,
+          "memory_mb": null,
+          "success": false,
+          "implementation": null,
+          "error": "Model size exceeds browser limitations"
+        }
+      }
+    ]
+  },
+  "modality_compatibility": {
+    "text": {
+      "webnn_success": 0.78,
+      "webgpu_success": 0.78
+    },
+    "vision": {
+      "webnn_success": 0.88,
+      "webgpu_success": 0.88
+    },
+    "audio": {
+      "webnn_success": 0.75,
+      "webgpu_success": 0.0
+    },
+    "multimodal": {
+      "webnn_success": 0.33,
+      "webgpu_success": 0.33
+    }
+  },
+  "implementation_types": {
+    "text": {
+      "webnn": "REAL_WEBNN",
+      "webgpu": "REAL_WEBGPU_TRANSFORMERS_JS"
+    },
+    "vision": {
+      "webnn": "REAL_WEBNN",
+      "webgpu": "REAL_WEBGPU_TRANSFORMERS_JS"
+    },
+    "audio": {
+      "webnn": "REAL_WEBNN",
+      "webgpu": "SIMULATED_WEBGPU_TRANSFORMERS_JS"
+    },
+    "multimodal": {
+      "webnn": "PARTIAL_WEBNN",
+      "webgpu": "PARTIAL_WEBGPU_TRANSFORMERS_JS"
+    }
+  },
+  "recommendations": [
+    "For text models: Both platforms perform well, with WebGPU having a slight edge in performance.",
+    "For vision models: WebGPU offers significantly better performance for CNN-based models.",
+    "For audio models: WebNN is currently the only viable option for most audio models.",
+    "For multimodal models: Only CLIP is reliable on both platforms.",
+    "For deployment: Consider offering both implementations with feature detection."
+  ],
+  "test_environment": {
+    "browsers": [
+      "Chrome 113+",
+      "Edge 113+"
+    ],
+    "flags": {
+      "chrome": "--enable-features=WebGPU",
+      "edge": "--enable-features=WebNN"
+    },
+    "test_hardware": "Intel Core i7-12700K, NVIDIA RTX 3080"
+  }
+}

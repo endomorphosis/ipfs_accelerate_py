@@ -4,8 +4,10 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 ## Recent Documentation Updates
 
-The repository now includes new comprehensive guides on resource management, model classification, hardware integration, and web platform deployment:
+The repository now includes new comprehensive guides on integration testing, resource management, model classification, hardware integration, and web platform deployment:
 
+- **[Integration Testing Framework](INTEGRATION_TESTING.md)** - NEW! Comprehensive integration testing framework documentation
+- **[Hardware Integration Summary](HARDWARE_INTEGRATION_SUMMARY.md)** - NEW! Summary of hardware integration testing improvements
 - **[Resource Pool Guide](RESOURCE_POOL_GUIDE.md)** - Enhanced guide to the resource management system with device-specific features and integrated architecture diagram
 - **[Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md)** - Comprehensive documentation for the model classification system
 - **[Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md)** - Guide to the hardware detection system with compatibility patterns and error handling
@@ -171,6 +173,33 @@ python integration_test_suite.py --skip-slow
 
 # Save integration test results to a specific file
 python integration_test_suite.py --output my_integration_results.json
+
+# Test hardware compatibility matrix
+python integration_test_suite.py --hardware-compatibility
+
+# Focus on web platform testing
+python integration_test_suite.py --web-platforms
+
+# Run cross-platform validation tests
+python integration_test_suite.py --cross-platform
+
+# Run tests in CI mode
+python integration_test_suite.py --ci-mode
+
+# Use the CI test runner script
+./run_integration_ci_tests.sh
+
+# Run CI tests with hardware-only focus
+./run_integration_ci_tests.sh --hardware-only
+
+# Run CI tests with web platform focus
+./run_integration_ci_tests.sh --web-only
+
+# Run all tests in CI
+./run_integration_ci_tests.sh --all
+
+# Run CI tests with custom output and timeout
+./run_integration_ci_tests.sh --output integration_results.json --timeout 300
 ```
 
 ### Resource Pool Tests
@@ -303,7 +332,10 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 ### March 2025 Enhancements
 
 1. **Comprehensive Integration Test Suite** - New unified testing framework that verifies system-wide integration:
-   - Tests for 9 critical integration categories (hardware, resources, models, APIs, web, multimodal, endpoints, batching, queues)
+   - Tests for 11 critical integration categories (hardware, resources, models, APIs, web, multimodal, endpoints, batching, queues, hardware compatibility, cross-platform)
+   - Automated hardware compatibility matrix validation
+   - CI integration with GitHub Actions for automated testing
+   - Cross-platform validation with macOS, Linux, and web platforms
    - Automatic hardware detection and platform-specific testing
    - Detailed test results with timing and performance metrics
    - JSON report generation with system-wide integration status

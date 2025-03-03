@@ -6,7 +6,7 @@ The ResourcePool is a centralized resource management system for efficiently sha
 
 ## Latest Updates (March 2025)
 
-The ResourcePool now includes enhanced support for web platform deployment:
+The ResourcePool now includes enhanced support for web platform deployment and comprehensive error handling:
 
 1. **WebNN Integration**: Full support for Web Neural Network API with hardware-aware resource allocation
 2. **WebGPU Support**: Integration with WebGPU and transformers.js for browser-based acceleration
@@ -14,6 +14,14 @@ The ResourcePool now includes enhanced support for web platform deployment:
 4. **Extended Hardware Compatibility Matrix**: Improved compatibility information for web platforms
 5. **Resilient Error Handling**: Robust error recovery for web platform detection
 6. **Comprehensive Testing**: Extended test suite for WebNN and WebGPU platforms
+7. **Simulation Mode**: Testing capability for web platforms in non-browser environments
+8. **Enhanced Hardware Preferences**: Specialized configurations for web deployment scenarios
+9. **Family-Based Optimizations**: Model family-specific settings for web platform deployment
+10. **Browser-Specific Settings**: Optimizations specifically for browser environments
+11. **Hardware Compatibility Error Reporting**: Intelligent error analysis with context-specific recommendations
+12. **Error Recommendation System**: Automatic suggestion of alternative hardware when compatibility issues occur
+13. **Persistent Error Reports**: Optional saving of structured error reports for offline analysis
+14. **Model Family Error Integration**: Error reporting integrated with model family classification
 
 ## Features
 
@@ -153,6 +161,8 @@ The main class for resource management.
 - `check_memory_pressure()`: Check if the system is under memory pressure
 - `enable_low_memory_mode()`: Enable optimizations for resource-constrained environments
 - `get_recommended_device(model_type, model_family=None)`: Get recommended device for a specific model type
+- `generate_error_report(model_name, hardware_type, error_message, stack_trace=None)`: Generate a detailed error report with hardware compatibility analysis and recommendations
+- `save_error_report(report, output_dir="./hardware_reports")`: Save error report to file for offline analysis
 
 ### `get_global_resource_pool()`
 
@@ -366,9 +376,9 @@ The ResourcePool's device selection logic considers model family characteristics
 
 | Model Family | CUDA | ROCm (AMD) | MPS (Apple) | OpenVINO | WebNN | WebGPU | Special Handling |
 |--------------|------|------------|-------------|----------|-------|--------|------------------|
-| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Low | ❌ | ✅ Low | Memory requirements checked against GPU VRAM |
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ Medium | ✅ High | ✅ Medium | Efficient on all hardware |
-| Vision (ViT, CLIP, etc.) | ✅ High | ✅ Medium | ✅ High | ✅ High | ✅ Medium | ✅ Medium | OpenVINO prioritized when available |
+| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Low | ✅ Low* | ✅ Low* | Memory requirements checked against GPU VRAM. *Only tiny models in browsers |
+| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ Medium | ✅ High | ✅ Medium | Efficient on all hardware. Best on WebNN for browsers |
+| Vision (ViT, CLIP, etc.) | ✅ High | ✅ Medium | ✅ High | ✅ High | ✅ Medium | ✅ High | OpenVINO for servers, WebGPU for browsers |
 | Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ❌ | ❌ | CUDA preferred for performance |
 | Multimodal (LLaVA, etc.) | ✅ High | ❌ Low | ❌ Low | ❌ Low | ❌ | ❌ | Typically only fully supported on CUDA |
 
@@ -678,6 +688,14 @@ The ResourcePool system is designed with robust error handling to function grace
 17. **Web Platform Error Management**: Robust detection and handling of WebNN and WebGPU errors
 18. **Simulation Mode Fallbacks**: Automatic fallback to simulation mode when real web platform implementations are unavailable
 19. **Subfamily-Based Error Handling**: Specialized error handling strategies for web deployment subfamilies
+20. **Hardware Compatibility Reporting**: Comprehensive error reporting system for hardware compatibility issues
+21. **Error Analysis and Recommendations**: Intelligent analysis of errors with context-specific recommendations
+22. **Alternative Hardware Suggestions**: Automatic suggestion of alternative hardware when compatibility issues occur
+23. **Persistent Error Reports**: Optional saving of structured error reports for offline analysis
+24. **Memory-Specific Recommendations**: Special error handling for out-of-memory conditions with tailored suggestions
+25. **Operation Compatibility Analysis**: Identification of unsupported operations with platform-specific alternatives
+26. **Driver Version Management**: Suggestions for driver updates and version compatibility checks
+27. **Model Family-Aware Error Handling**: Integration of model family information into error analysis and recommendations
 
 ### Enhanced Hardware-Model Integration System
 
@@ -786,8 +804,14 @@ Each test scenario verifies that the system gracefully handles missing component
 
 The ResourcePool testing framework now includes comprehensive support for WebNN and WebGPU platforms:
 
-```python
-# Run test with web platform focus
+```bash
+# Run dedicated web platform tests
+python test_resource_pool.py --test web --debug
+
+# Run with simulation mode for testing in non-browser environments
+python test_resource_pool.py --test web --simulation --debug
+
+# Combine with hardware testing for comprehensive verification
 python test_resource_pool.py --test hardware --web-platform --debug
 
 # Example output:
@@ -806,6 +830,10 @@ The test framework includes:
 5. **Integration Testing**: Checks integration between ResourcePool, hardware detection, and model classification
 6. **Model Family Analysis**: Tests model family-specific optimizations for web platforms
 7. **Detailed Logging**: Provides comprehensive logging of web platform capabilities
+8. **Simulation Mode**: Tests web platform functionality even without an actual browser
+9. **Fallback Testing**: Validates graceful fallbacks when web platforms are unavailable
+10. **Browser-Specific Settings**: Tests browser optimization flags and settings
+11. **Size Limitation Testing**: Verifies size constraints for web-compatible models
 
 ### Resilient Device Detection
 
@@ -911,6 +939,153 @@ python run_integrated_hardware_model_test.py
 # Enable debug logging for more detailed information
 python run_integrated_hardware_model_test.py --debug
 ```
+
+### Hardware Compatibility Error Reporting
+
+The ResourcePool now includes a comprehensive error reporting system that provides detailed analysis and recommendations for hardware compatibility issues:
+
+```python
+from resource_pool import get_global_resource_pool
+import traceback
+
+# Get the resource pool
+pool = get_global_resource_pool()
+
+# Try to load a model with specific hardware
+try:
+    # This might fail due to hardware compatibility issues
+    model = load_model_on_specific_hardware()
+except Exception as e:
+    # Generate a detailed error report
+    error_report = pool.generate_error_report(
+        model_name="llava-7b",
+        hardware_type="mps",
+        error_message=str(e),
+        stack_trace=traceback.format_exc()
+    )
+    
+    # Display recommendations to the user
+    print(f"Error loading model: {e}")
+    print("\nRecommendations:")
+    for recommendation in error_report["recommendations"]:
+        print(f"- {recommendation}")
+    
+    # Show alternative hardware options if available
+    if "alternatives" in error_report:
+        print("\nAlternative hardware platforms:")
+        for alt in error_report["alternatives"]:
+            print(f"- {alt}")
+    
+    # Save the report for further analysis
+    report_path = pool.save_error_report(error_report)
+    print(f"\nDetailed error report saved to: {report_path}")
+```
+
+The error reporting system provides several key benefits:
+
+1. **Contextual Analysis**: Error reports are tailored to the specific model and hardware combination
+2. **Intelligent Recommendations**: Recommendations are based on the specific error type and hardware context
+3. **Model Family Awareness**: The system uses model family information to provide more accurate recommendations
+4. **Hardware Alternatives**: The report suggests alternative hardware platforms that might work better
+5. **Structured Reports**: Reports are structured for easy parsing and analysis
+6. **Persistence**: Reports can be saved to disk for offline troubleshooting
+7. **Integration with Hardware Detection**: Uses hardware detection for more accurate error analysis
+
+#### Error Report Structure
+
+The error report generated by `generate_error_report()` contains the following fields:
+
+```python
+{
+    "timestamp": "2025-03-02T14:30:45.123456",  # ISO format timestamp
+    "model_name": "llava-7b",                  # The model that encountered an error
+    "hardware_type": "mps",                    # The hardware platform that failed
+    "error_message": "Out of memory",          # The original error message
+    "stack_trace": "...",                      # Optional stack trace for debugging
+    "model_family": "multimodal",              # If model_family_classifier is available
+    "subfamily": "vision_language",            # Optional subfamily if available
+    "recommendations": [                       # List of recommendations
+        "The model llava-7b requires more memory than available on mps.",
+        "Consider using a smaller model variant if available.",
+        "Try running on CPU with 'device=cpu'.",
+        "Try running on CUDA with 'device=cuda'."
+    ],
+    "alternatives": ["cuda", "cpu"]            # Alternative hardware platforms to try
+}
+```
+
+#### Types of Recommendations
+
+The error reporting system generates different types of recommendations based on the error context:
+
+1. **Memory-related recommendations** for out-of-memory errors:
+   - Suggestions to use smaller models
+   - Batch size reduction recommendations
+   - Alternative hardware platforms with more memory
+
+2. **Operation-related recommendations** for unsupported operations:
+   - Identification of incompatible operations
+   - Platform-specific suggestions
+   - Alternative hardware with better compatibility
+
+3. **Driver-related recommendations** for driver issues:
+   - Driver update suggestions
+   - Version compatibility information
+   - Configuration recommendations
+
+4. **Model family-specific recommendations**:
+   - Custom recommendations based on model family (text, vision, multimodal)
+   - Family-specific hardware alternatives
+   - Specialized configurations for specific model types
+
+#### Integration with Model Family Classification
+
+When the model family classifier is available, the error reporting system enriches error reports with model-specific information:
+
+```python
+# Enhanced error reporting with model family integration
+from resource_pool import get_global_resource_pool
+from model_family_classifier import classify_model
+
+# First classify the model to understand its requirements
+model_info = classify_model(model_name="clip-vit-base-patch32")
+
+# Get the resource pool
+pool = get_global_resource_pool()
+
+# Generate an error report with model family context
+error_report = pool.generate_error_report(
+    model_name="clip-vit-base-patch32",
+    hardware_type="webnn",
+    error_message="Model contains operations not supported on WebNN"
+)
+
+# The report will include family-specific recommendations
+print(f"Model family: {error_report['model_family']}")
+print(f"Recommended alternatives: {error_report['alternatives']}")
+```
+
+#### Persistent Error Reports
+
+The `save_error_report()` method allows saving error reports to disk for later analysis:
+
+```python
+# Save error report to a specific directory
+report_path = pool.save_error_report(
+    error_report,
+    output_dir="./hardware_reports"
+)
+
+# Reports are saved as JSON files with timestamps and model names in the filename
+# Example: ./hardware_reports/hardware_error_llava-7b_mps_20250302_143045.json
+```
+
+The saved reports can be used for:
+- Offline debugging
+- Documentation of hardware compatibility issues
+- Pattern analysis across different models
+- Generating compatibility matrices
+- Automating model compatibility testing
 
 This script dynamically adapts to the available components:
 
@@ -1162,7 +1337,8 @@ The ResourcePool uses comprehensive hardware detection to make smart decisions a
 # - MPS availability (Apple Silicon)
 # - ROCm availability (AMD GPUs)
 # - OpenVINO availability
-# - WebNN/WebGPU availability
+# - WebNN availability for browser neural network acceleration
+# - WebGPU availability for browser GPU acceleration
 # - System memory availability
 
 # Then it analyzes the model type and makes intelligent decisions:
@@ -1537,6 +1713,16 @@ from resource_pool import get_global_resource_pool
 
 ## Version History
 
+### v2.3 (March 2025)
+- Added WebNN and WebGPU simulation mode for testing without browsers
+- Created specialized web subfamily configurations for various model families
+- Implemented browser-specific optimizations for web deployment
+- Added model size limitation controls for browser deployment
+- Created comprehensive WEB_PLATFORM_INTEGRATION_GUIDE.md
+- Enhanced web platform integration test suite with new commands
+- Added browser compatibility information to hardware matrices
+- Implemented fallback mechanisms for web platform unavailability
+
 ### v2.2 (March 2025)
 - Added comprehensive WebNN/WebGPU support for web platform deployment
 - Enhanced resilient error handling with multi-level fallback mechanisms
@@ -1548,6 +1734,9 @@ from resource_pool import get_global_resource_pool
 - Implemented automatic mixed precision selection based on hardware capabilities
 - Improved hardware detection with Qualcomm AI and TPU support
 - Fixed CPU-only mode issues for environments without GPU
+- Added comprehensive hardware compatibility error reporting system
+- Implemented intelligent error analysis with context-specific recommendations
+- Added persistent error report saving for offline troubleshooting
 
 ### v2.1 (February 2025)
 - Added integration with enhanced hardware detection system for automatic device selection

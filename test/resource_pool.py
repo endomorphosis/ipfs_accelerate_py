@@ -634,6 +634,235 @@ class ResourcePool:
                 pass
             
             self.logger.info(f"ResourcePool cleared - removed {count} cached objects")
+            
+    def generate_error_report(self, model_name: str, hardware_type: str, 
+                             error_message: str, stack_trace: str = None) -> dict:
+        """
+        Generate a structured error report for hardware compatibility issues
+        
+        Args:
+            model_name: Name of the model
+            hardware_type: Hardware platform (cuda, rocm, etc.)
+            error_message: Error message
+            stack_trace: Optional stack trace
+            
+        Returns:
+            Dictionary containing structured error report
+        """
+        from datetime import datetime
+        import os.path
+        
+        # Initialize report with basic information
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "model_name": model_name,
+            "hardware_type": hardware_type,
+            "error_message": error_message,
+            "stack_trace": stack_trace,
+            "recommendations": []
+        }
+        
+        # Try to get model family information if available
+        model_classifier_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
+        if os.path.exists(model_classifier_path):
+            try:
+                from model_family_classifier import classify_model
+                model_info = classify_model(model_name=model_name)
+                
+                # Add model family information to report
+                report["model_family"] = model_info.get("family")
+                if model_info.get("subfamily"):
+                    report["subfamily"] = model_info.get("subfamily")
+                
+                # Get hardware priority list from model family
+                if "hardware_priorities" in model_info:
+                    # Add alternatives for this hardware type
+                    priorities = model_info.get("hardware_priorities", [])
+                    if hardware_type in priorities:
+                        idx = priorities.index(hardware_type)
+                        report["alternatives"] = priorities[idx+1:] if idx+1 < len(priorities) else []
+                    else:
+                        report["alternatives"] = priorities
+                
+                self.logger.debug(f"Added model family information to error report: {report['model_family']}")
+            except (ImportError, Exception) as e:
+                self.logger.debug(f"Error getting model family information: {str(e)}")
+                # Continue without model family information
+        
+        # Generate specific recommendations based on error type and hardware
+        report["recommendations"] = self._generate_recommendations(model_name, hardware_type, error_message)
+        
+        return report
+    
+    def _generate_recommendations(self, model_name: str, hardware_type: str, error_message: str) -> list:
+        """
+        Generate recommendations based on error type and hardware platform
+        
+        Args:
+            model_name: Name of the model
+            hardware_type: Hardware platform
+            error_message: Error message
+            
+        Returns:
+            List of recommendation strings
+        """
+        recommendations = []
+        error_lower = error_message.lower()
+        
+        # Handle out of memory errors
+        if "out of memory" in error_lower or "oom" in error_lower:
+            recommendations.append(f"The model {model_name} requires more memory than available on {hardware_type}.")
+            recommendations.append("Consider using a smaller model variant if available.")
+            recommendations.append("Reduce batch size or sequence length to decrease memory requirements.")
+            
+            if hardware_type in ["cuda", "rocm", "mps"]:
+                recommendations.append("Try running on CPU with 'device=cpu'.")
+                
+            if hardware_type == "cuda" and "openvino" in self._get_available_hardware():
+                recommendations.append("Try OpenVINO with 'device=openvino'.")
+        
+        # Handle unsupported operation errors
+        elif "not implemented" in error_lower or "not supported" in error_lower or "unsupported" in error_lower or "operation" in error_lower:
+            recommendations.append(f"The model {model_name} contains operations not supported on {hardware_type} platform.")
+            recommendations.append("This is typically due to hardware-specific limitations or missing driver functionality.")
+            
+            alternatives = self._suggest_alternative_hardware(hardware_type, model_name)
+            if alternatives:
+                recommendations.append(f"Try running on {alternatives[0]} with 'device={alternatives[0]}'.")
+            else:
+                recommendations.append("Consider using a different model that's compatible with your hardware.")
+        
+        # Handle driver version mismatches
+        elif "driver version" in error_lower or "cuda version" in error_lower:
+            if hardware_type == "cuda":
+                recommendations.append("Update your NVIDIA drivers to the latest version compatible with your CUDA toolkit.")
+            elif hardware_type == "rocm":
+                recommendations.append("Update your AMD drivers to the latest version compatible with your ROCm toolkit.")
+            else:
+                recommendations.append(f"Update your {hardware_type} drivers to the latest version.")
+        
+        # General recommendations
+        else:
+            recommendations.append("Check the model's compatibility with the hardware platform.")
+            recommendations.append("Try running on a different hardware platform if available.")
+            
+            alternatives = self._suggest_alternative_hardware(hardware_type, model_name)
+            if alternatives:
+                recommendations.append(f"Recommended alternative hardware: {', '.join(alternatives)}")
+        
+        return recommendations
+    
+    def _suggest_alternative_hardware(self, current_hardware: str, model_name: str) -> list:
+        """
+        Suggest alternative hardware based on model type and available hardware
+        
+        Args:
+            current_hardware: Current hardware platform
+            model_name: Name of the model
+            
+        Returns:
+            List of suggested hardware alternatives
+        """
+        import os.path
+        
+        # Default fallback priority
+        default_priority = ["cuda", "mps", "rocm", "openvino", "cpu"]
+        
+        # Get available hardware
+        available_hardware = self._get_available_hardware()
+        
+        # Try to classify model for better suggestions
+        model_classifier_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
+        if os.path.exists(model_classifier_path):
+            try:
+                from model_family_classifier import classify_model
+                model_info = classify_model(model_name=model_name)
+                
+                if "hardware_priorities" in model_info:
+                    # Use model family specific priorities
+                    priorities = model_info.get("hardware_priorities")
+                    self.logger.debug(f"Using model family specific hardware priorities: {priorities}")
+                    
+                    # Filter out current hardware and unavailable platforms
+                    alternatives = [hw for hw in priorities if hw != current_hardware and hw in available_hardware]
+                    
+                    if alternatives:
+                        return alternatives
+            except (ImportError, Exception) as e:
+                self.logger.debug(f"Error getting model family specific hardware suggestions: {str(e)}")
+        
+        # Fallback to default priorities if model classification fails
+        alternatives = [hw for hw in default_priority if hw != current_hardware and hw in available_hardware]
+        return alternatives
+    
+    def _get_available_hardware(self) -> list:
+        """
+        Get list of available hardware platforms
+        
+        Returns:
+            List of available hardware platform strings
+        """
+        available = ["cpu"]  # CPU is always available
+        
+        # Try to detect other hardware
+        try:
+            import torch
+            if torch.cuda.is_available():
+                available.append("cuda")
+                
+            if hasattr(torch, 'mps') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                available.append("mps")
+        except ImportError:
+            pass
+            
+        # Check for OpenVINO
+        try:
+            import importlib.util
+            if importlib.util.find_spec("openvino") is not None:
+                available.append("openvino")
+        except ImportError:
+            pass
+            
+        # Check for ROCm (HIP) - this is a simplified check
+        try:
+            import torch
+            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                available.append("rocm")
+        except ImportError:
+            pass
+            
+        return available
+    
+    def save_error_report(self, report: dict, output_dir: str = "./hardware_reports") -> str:
+        """
+        Save error report to file
+        
+        Args:
+            report: Error report dictionary
+            output_dir: Directory to save report
+            
+        Returns:
+            Path to saved report file
+        """
+        import os
+        import json
+        from datetime import datetime
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = report["model_name"].replace("/", "_")
+        filename = f"{output_dir}/hardware_error_{model_name}_{report['hardware_type']}_{timestamp}.json"
+        
+        # Save report
+        with open(filename, "w") as f:
+            json.dump(report, f, indent=2)
+            
+        self.logger.info(f"Error report saved to {filename}")
+        
+        return filename
 
 # Create a global instance for shared use
 global_resource_pool = ResourcePool()
