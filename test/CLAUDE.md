@@ -13,9 +13,15 @@
 - ✅ Implement browser testing harness
 - ✅ Add web platform benchmarking tools
 
-### Phase 22: Integration Testing and Platform Support (NEW)
-- ⏳ Create comprehensive integration test suite across all components
-- ⏳ Implement automated hardware compatibility testing
+### Phase 22: Integration Testing and Platform Support (IN PROGRESS)
+- ✅ Create comprehensive integration test suite across all components
+- ✅ Enhance ResourcePool with WebNN and WebGPU platform testing
+- ✅ Implement resilient error handling for web platform detection
+- ✅ Add web-specific hardware preferences with subfamily support
+- ✅ Improve ResourcePool tests with WebNN/WebGPU compatibility
+- ✅ Implement hardware-model integration with robust error handling
+- ✅ Add resilient component detection with graceful degradation
+- ✅ Create comprehensive hardware-model compatibility matrix
 - ⏳ Add continuous integration for hardware tests
 - ⏳ Develop custom tests for all hardware platforms
 - ⏳ Implement error reporting system for hardware compatibility
@@ -232,6 +238,15 @@ python test/test_hardware_backend.py --backend all --model [model_name]
 # Test resource pool with hardware awareness
 python test/test_resource_pool.py --test hardware
 
+# Test resource pool with web platform focus
+python test/test_resource_pool.py --test hardware --web-platform
+
+# Test model family integration with web platform support
+python test/test_resource_pool.py --test family --debug
+
+# Test all ResourcePool functionality including WebNN and WebGPU support
+python test/test_resource_pool.py --test all --web-platform --debug
+
 # Test performance metrics
 python test/run_performance_tests.py --batch_size 8 --models all
 ```
@@ -258,6 +273,27 @@ python test/web_platform_benchmark.py --list-models
 
 # Benchmark specific modality with custom batch sizes
 python test/web_platform_benchmark.py --modality text --batch-sizes 1 8 16 32
+```
+
+### Integration Testing
+```bash
+# Run all integration tests
+python test/integration_test_suite.py
+
+# Run tests for specific categories
+python test/integration_test_suite.py --categories hardware_detection resource_pool
+
+# Run tests on specific hardware platforms
+python test/integration_test_suite.py --hardware cpu cuda
+
+# Skip slow tests for faster results
+python test/integration_test_suite.py --skip-slow
+
+# Specify custom timeout for tests
+python test/integration_test_suite.py --timeout 600
+
+# Save results to a specific file
+python test/integration_test_suite.py --output ./my_integration_results.json
 ```
 
 ## Current Performance Benchmarks
