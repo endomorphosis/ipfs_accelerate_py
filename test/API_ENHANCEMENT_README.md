@@ -85,7 +85,7 @@ python run_queue_backoff_tests.py --apis claude openai groq
 
 Or skip certain APIs with the `--skip-apis` flag:
 ```bash
-python run_queue_backoff_tests.py --skip-apis llvm opea
+python run_queue_backoff_tests.py --skip-apis vllm opea
 ```
 
 ## Enhanced API Features
@@ -188,6 +188,20 @@ If you encounter issues with the implementation:
 
 For detailed error logs and implementation reports, check the generated JSON and MD files in the test directory.
 
+## Advanced Documentation
+
+For more comprehensive information on specific areas of the API enhancements, please refer to these specialized guides:
+
+1. **[API Error Documentation](API_ERROR_DOCUMENTATION.md)** - Comprehensive guide to error handling across all API backends, including error categories, handling strategies, and advanced error management techniques.
+
+2. **[Performance Optimization Plan](PERFORMANCE_OPTIMIZATION_PLAN.md)** - Detailed plan for optimizing all API backends, with a special focus on VLLM implementation, connection pooling, memory management, and advanced processing features.
+
+3. **[Queue Backoff Guide](QUEUE_BACKOFF_GUIDE.md)** - In-depth documentation of the queue and backoff system, including circuit breaker pattern, request tracking, and advanced configuration options.
+
+4. **[Monitoring and Reporting Guide](MONITORING_AND_REPORTING_GUIDE.md)** - Comprehensive guide to the monitoring and reporting capabilities, including metrics collection, error tracking, and performance monitoring.
+
+These documents provide detailed information on implementing, configuring, and extending the advanced features of the API backends.
+
 ## Conclusion
 
-The enhanced API implementation significantly improves the robustness and reliability of the IPFS Accelerate Python framework by standardizing queue systems, adding comprehensive error handling, and implementing advanced features like circuit breakers and detailed monitoring.
+The enhanced API implementation significantly improves the robustness and reliability of the IPFS Accelerate Python framework by standardizing queue systems, adding comprehensive error handling, and implementing advanced features like circuit breakers and detailed monitoring. The new error handling framework and performance optimization plan further enhance the framework's capabilities, providing a solid foundation for efficient and reliable API interactions.

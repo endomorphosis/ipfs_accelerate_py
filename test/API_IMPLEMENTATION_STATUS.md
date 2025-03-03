@@ -9,7 +9,7 @@
 | Groq | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Hf_tei | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Hf_tgi | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
-| Llvm | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
+| Vllm | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Ollama | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Openai | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
 | Opea | ✓ | ✓ | ✓ | ✓ | ✓ | ✅ COMPLETE |
@@ -28,7 +28,7 @@ All API backends have been successfully fixed and implemented with robust queue 
 - **HF TEI**: Fixed attribute errors and implemented queue processing correctly
 - **HF TGI**: Fixed attribute errors and implemented queue processing correctly
 - **Ollama**: Complete implementation with working request queue and backoff
-- **LLVM**: Implemented missing test file and fixed queue implementation
+- **VLLM**: Implemented missing test file and fixed queue implementation
 - **OPEA**: Fixed test failures and completed implementation
 - **OVMS**: Complete implementation with per-endpoint API key support
 - **S3 Kit**: Implemented missing test file and fixed queue implementation

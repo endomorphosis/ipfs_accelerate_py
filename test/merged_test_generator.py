@@ -462,13 +462,14 @@ def get_pipeline_category(pipeline_tasks: List[str]) -> str:
     # Default to text if we can't determine
     return "text"
 
-def generate_modality_specific_template(model_type: str, modality: str) -> str:
+def generate_modality_specific_template(model_type: str, modality: str, enable_web_platforms: bool = True) -> str:
     """
     Generate a template specific to the model's modality
     
     Args:
         model_type (str): The model type/family name
         modality (str): The modality ("text", "vision", "audio", "multimodal", or "specialized")
+        enable_web_platforms (bool): Whether to include WebNN and WebGPU support
         
     Returns:
         str: Template code specific to the modality
@@ -1738,8 +1739,12 @@ def test_pipeline_api():
         )
         
         # Test inference
+        start_time = time.time()
         result = pipeline("MODEL_INPUT_PLACEHOLDER")
+        elapsed_time = time.time() - start_time
+        
         print(f"Pipeline result: {result}")
+        print(f"Pipeline inference time: {elapsed_time:.4f} seconds")
         
         print("Pipeline API test successful")
         return True
@@ -1757,11 +1762,23 @@ def test_from_pretrained():
         model = transformers.AutoModel.from_pretrained("MODEL_PLACEHOLDER")
         
         # Test inference
+        start_time = time.time()
         inputs = processor("MODEL_INPUT_PLACEHOLDER", return_tensors="pt")
         with torch.no_grad():
             outputs = model(**inputs)
+        elapsed_time = time.time() - start_time
         
-        print(f"Model output shape: {outputs.last_hidden_state.shape}")
+        # Get memory usage
+        mem_info = {}
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            mem_info['cuda_allocated_mb'] = torch.cuda.memory_allocated() / (1024 * 1024)
+            mem_info['cuda_reserved_mb'] = torch.cuda.memory_reserved() / (1024 * 1024)
+        
+        # Print results
+        print(f"Model output shape: {outputs.last_hidden_state.shape if hasattr(outputs, 'last_hidden_state') else 'N/A'}")
+        print(f"Inference time: {elapsed_time:.4f} seconds")
+        if mem_info:
+            print(f"Memory usage: {mem_info}")
         print("from_pretrained API test successful")
         return True
     except Exception as e:
@@ -1797,15 +1814,42 @@ def test_platform(platform="cpu"):
         else:
             raise ValueError(f"Unknown platform: {platform}")
         
+        # Get modality-appropriate test input based on platform
+        test_input = "MODEL_INPUT_PLACEHOLDER"
+        if platform == "webnn" and hasattr(test_model, 'test_webnn_text'):
+            test_input = test_model.test_webnn_text
+        elif platform == "webnn" and hasattr(test_model, 'test_webnn_image'):
+            test_input = test_model.test_webnn_image
+        elif platform == "webnn" and hasattr(test_model, 'test_webnn_audio'):
+            test_input = test_model.test_webnn_audio
+        elif platform == "webgpu" and hasattr(test_model, 'test_webgpu_text'):
+            test_input = test_model.test_webgpu_text
+        elif platform == "webgpu" and hasattr(test_model, 'test_webgpu_image'):
+            test_input = test_model.test_webgpu_image
+        elif platform == "webgpu" and hasattr(test_model, 'test_webgpu_audio'):
+            test_input = test_model.test_webgpu_audio
+        
         # Test inference
-        if platform == "cpu":
-            # Use appropriate test input based on modality
-            result = handler("MODEL_INPUT_PLACEHOLDER")
-        else:
-            # For other platforms, use the same input
-            result = handler("MODEL_INPUT_PLACEHOLDER")
+        start_time = time.time()
+        result = handler(test_input)
+        elapsed_time = time.time() - start_time
             
-        print(f"Handler result on {platform}: {result['implementation_type']}")
+        print(f"Handler result on {platform}: {result.get('implementation_type', 'UNKNOWN')}")
+        print(f"Inference time: {elapsed_time:.4f} seconds")
+        
+        # Test batch inference if available
+        if hasattr(test_model, 'test_batch') and platform not in ["webnn", "webgpu"]:
+            batch_start = time.time()
+            batch_input = test_model.test_batch if hasattr(test_model, 'test_batch') else [test_input, test_input]
+            batch_result = handler(batch_input)
+            batch_time = time.time() - batch_start
+            
+            # Calculate throughput
+            throughput = len(batch_input) / batch_time if batch_time > 0 else 0
+            
+            print(f"Batch inference time: {batch_time:.4f} seconds")
+            print(f"Batch throughput: {throughput:.2f} items/second")
+            print(f"Batch implementation: {batch_result.get('implementation_type', 'UNKNOWN')}")
         
         print(f"{platform.upper()} platform test successful")
         return True

@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser(description="Test a single API backend implementation")
     parser.add_argument("api", choices=[
         "openai", "claude", "gemini", "groq", "hf_tgi", "hf_tei", 
-        "llvm", "ovms", "ollama", "s3_kit", "opea"
+        "vllm", "ovms", "ollama", "s3_kit", "opea"
     ], help="The API to test")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show verbose output")
     parser.add_argument("--output", "-o", help="Output file for results (JSON format)")

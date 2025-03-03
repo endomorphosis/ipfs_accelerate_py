@@ -15,7 +15,7 @@ module_class_map = {
     "ollama": "ollama",
     "opea": "opea",
     "s3_kit": "s3_kit",
-    "llvm": "llvm"
+    "vllm": "vllm"
 }
 
 # Import each module, handling import errors

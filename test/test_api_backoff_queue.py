@@ -37,7 +37,7 @@ try:
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ollama import ollama
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.hf_tgi import hf_tgi
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.hf_tei import hf_tei
-    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.llvm import llvm
+    from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.vllm import vllm
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.opea import opea
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.ovms import ovms
     from ipfs_accelerate_py.ipfs_accelerate_py.ipfs_accelerate_py.api_backends.s3_kit import s3_kit
@@ -53,7 +53,7 @@ API_CLIENTS = {
     "ollama": ollama,
     "hf_tgi": hf_tgi,
     "hf_tei": hf_tei,
-    "llvm": llvm,
+    "vllm": vllm,
     "opea": opea,
     "ovms": ovms,
     "s3_kit": s3_kit
@@ -77,7 +77,7 @@ DEFAULT_MODELS = {
     "ollama": "llama3",
     "hf_tgi": "mistralai/Mistral-7B-Instruct-v0.2", 
     "hf_tei": "sentence-transformers/all-MiniLM-L6-v2",
-    "llvm": "llama3",
+    "vllm": "meta-llama/Llama-3-8b-instruct",
     "opea": "default",
     "ovms": "default",
     "s3_kit": "default"

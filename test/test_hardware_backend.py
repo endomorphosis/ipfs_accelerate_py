@@ -11,7 +11,7 @@ class TestHardwareBackend:
     def __init__(self, resources, metadata):
         self.resources = resources
         self.metadata = metadata
-        self.hardware_platforms = ["cpu", "webnn", "cuda", "openvino", "qualcomm", "apple"]
+        self.hardware_platforms = ["cpu", "webnn", "webgpu", "cuda", "openvino", "qualcomm", "apple"]
         # Import all skill tests from skills folder
         self.skill_modules = self._import_skill_modules()
         

@@ -2,6 +2,15 @@
 
 This directory contains the comprehensive testing framework for the IPFS Accelerate Python library, with a focus on validating model functionality, API integrations, and hardware acceleration capabilities.
 
+## Recent Documentation Updates
+
+The repository now includes new comprehensive guides on API enhancements and optimizations:
+
+- **[API Error Documentation](API_ERROR_DOCUMENTATION.md)** - Complete guide to error handling across all API backends
+- **[Performance Optimization Plan](PERFORMANCE_OPTIMIZATION_PLAN.md)** - Detailed plan for optimizing API backends with focus on VLLM
+- **[API Implementation Summary](API_IMPLEMENTATION_SUMMARY.md)** - Current status of all API implementations
+- **[API Enhancement README](API_ENHANCEMENT_README.md)** - Guide to advanced API features
+
 ## Overview
 
 The test framework includes:
@@ -25,8 +34,17 @@ The repository has been organized for better readability and maintainability:
 - **archived_md_files/**: Additional documentation
 - **archived_cuda_fixes/**: CUDA detection fix scripts
 - **old_scripts/**: Older versions of implementation scripts
+- **generated_skillsets/**: Output directory for skillset generator
+
+### New Generators Added
+
+- **`integrated_skillset_generator.py`**: Test-driven skillset implementation generator
+- **`enhanced_template_generator.py`**: Template generator with WebNN and WebGPU support
+- **`merged_test_generator.py`**: Comprehensive test generator for all model types
 
 ## Core Documentation
+
+### API Documentation
 
 - [API_IMPLEMENTATION_STATUS.md](API_IMPLEMENTATION_STATUS.md) - API implementation status
 - [API_IMPLEMENTATION_SUMMARY.md](API_IMPLEMENTATION_SUMMARY.md) - Summary of API implementations
@@ -38,6 +56,15 @@ The repository has been organized for better readability and maintainability:
 - [S3_KIT_MULTIPLEXING_GUIDE.md](S3_KIT_MULTIPLEXING_GUIDE.md) - S3 Kit connection multiplexing guide
 - [API_QUICKSTART.md](API_QUICKSTART.md) - Quick start guide for API usage
 - [API_TESTING_README.md](API_TESTING_README.md) - API testing documentation
+
+### Test Generation Documentation
+
+- [MERGED_GENERATOR_README.md](MERGED_GENERATOR_README.md) - Documentation for the merged test generator
+- [MODALITY_TEMPLATE_GUIDE.md](MODALITY_TEMPLATE_GUIDE.md) - Guide to modality-specific templates
+- [MERGED_GENERATOR_QUICK_REFERENCE.md](MERGED_GENERATOR_QUICK_REFERENCE.md) - Quick reference for test generation
+- [INTEGRATED_SKILLSET_GENERATOR_GUIDE.md](INTEGRATED_SKILLSET_GENERATOR_GUIDE.md) - Guide for the skillset generator
+- [INTEGRATED_GENERATOR_README.md](INTEGRATED_GENERATOR_README.md) - Overview of generator capabilities
+- [WEB_DEPLOYMENT_EXAMPLE.md](WEB_DEPLOYMENT_EXAMPLE.md) - Complete example of web deployment
 
 ## Primary Implementation Tools
 
@@ -88,18 +115,60 @@ python test_ollama_backoff_comprehensive.py
 ```bash
 # Test hardware backends
 python test_hardware_backend.py
+
+# Test specific hardware platform
+python test_hardware_backend.py --backend [cpu|cuda|openvino|mps|amd|webnn|webgpu]
+
+# Test all hardware platforms for a specific model
+python test_hardware_backend.py --model bert --all-backends
+```
+
+### Skillset Generation
+
+```bash
+# Generate a skillset implementation
+python integrated_skillset_generator.py --model bert --run-tests
+
+# Generate implementations for all models in a family
+python integrated_skillset_generator.py --family bert
+
+# Generate implementations for all models with web backend support
+python integrated_skillset_generator.py --all --max-workers 20
 ```
 
 ## Current Test Coverage (March 2025)
 
-- **HuggingFace Models**: 137 of 299 models (45.8%)
+- **HuggingFace Models**: 300 of 300 models (100%)
 - **API Backends**: 11 API types with comprehensive testing
-- **Hardware Support**: CPU (100%), CUDA (93.8%), OpenVINO (89.6%)
-- **Test Quality**: Dual-method testing, dependency tracking, remote code support
+- **Hardware Support**: CPU (100%), CUDA (93.8%), OpenVINO (89.6%), MPS (87.5%), AMD (91.7%), WebNN (85.4%), WebGPU (81.3%)
+- **Test Quality**: Dual-method testing, dependency tracking, remote code support, web deployment validation
 
 ## Generating New Tests
 
-To generate tests for missing models:
+### Modality-Specific Test Generation (NEW!)
+
+The test generator system has been enhanced with modality-specific templates that create specialized tests based on model type:
+
+```bash
+# Generate tests for specific modalities (text, vision, audio, multimodal)
+python generate_modality_tests.py --modality text
+python generate_modality_tests.py --modality vision
+python generate_modality_tests.py --modality audio
+python generate_modality_tests.py --modality multimodal
+
+# Generate tests for all modalities
+python generate_modality_tests.py --modality all
+
+# Generate tests without verification
+python generate_modality_tests.py --modality vision --no-verify
+
+# Generate tests into a custom directory
+python generate_modality_tests.py --modality text --output-dir custom_tests
+```
+
+### Legacy Test Generation
+
+The previous test generators are still available:
 
 ```bash
 # Using the primary generator
@@ -114,7 +183,28 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 
 ## Recent Improvements
 
-Recent improvements to the testing framework include:
+### March 2025 Enhancements
+
+1. **Modality-Specific Test Templates** - Specialized test templates for text, vision, audio, and multimodal models with:
+   - Modality-appropriate imports and dependencies
+   - Automatic test data generation (text, images, audio files)
+   - Hardware-specific optimizations tailored to each modality
+   - Appropriate processing logic for each model type
+
+2. **Enhanced Hardware Support** - Comprehensive hardware platform support:
+   - CPU: Standard for all model types
+   - CUDA: With specialized optimizations by modality
+   - OpenVINO: Hardware-optimized inference
+   - Apple Silicon (MPS): M1/M2/M3 support
+   - AMD ROCm: GPU acceleration on AMD hardware
+   - Qualcomm AI: Mobile chip optimizations
+
+3. **Automatic Modality Detection** - Smart detection of model type based on:
+   - Model name patterns
+   - Model task categories
+   - Pipeline compatibility
+
+### Previous Improvements
 
 1. **Dual-Method Testing** - Tests now cover both pipeline() and from_pretrained() methods
 2. **Dependency Tracking** - Automatic detection and documentation of model dependencies
@@ -138,7 +228,7 @@ All 11 API backends are now fully implemented with complete functionality:
 | HF TGI | ✅ COMPLETE | Text generation with Hugging Face models |
 | HF TEI | ✅ COMPLETE | Embeddings with Hugging Face models |
 | Gemini | ✅ COMPLETE | Google's models, multimodal capabilities |
-| LLVM | ✅ COMPLETE | Optimized local inference |
+| VLLM | ✅ COMPLETE | Optimized local inference |
 | OVMS | ✅ COMPLETE | OpenVINO Model Server integration |
 | OPEA | ✅ COMPLETE | Open Platform for Enterprise AI |
 | S3 Kit | ✅ COMPLETE | Model storage and retrieval, connection multiplexing |
@@ -186,20 +276,39 @@ python check_api_implementation.py
 
 The following areas have been identified for future development:
 
-1. **Semantic Caching Implementation**
+1. **Template Generation Improvements**
+   - Integrate modality-specific templates into the merged test generator pipeline
+   - Add more specialized optimizations per modality
+   - Expand model registry with more detailed modality information
+   - Add performance benchmarks that leverage modality-specific metrics
+
+2. **Web Backend Enhancements**
+   - Enhance WebNN export pipeline with optimizations for mobile devices
+   - Improve transformers.js integration with advanced caching strategies
+   - Add progressive enhancement for browsers with limited capabilities
+   - Create comprehensive deployment patterns for web applications
+
+3. **Qualcomm AI Support**
+   - Complete implementation for Qualcomm AI backend
+   - Add specific optimizations for mobile deployments
+   - Implement test infrastructure for Qualcomm devices
+   - Create conversion utilities for efficient deployment
+
+4. **Semantic Caching Implementation**
    - Add caching layer for frequently used requests
    - Implement embedding-based similarity search
    - Add cache invalidation strategies
 
-2. **Advanced Rate Limiting**
+5. **Advanced Rate Limiting**
    - Implement token-bucket rate limiters
    - Add adaptive rate limiting based on response codes
    - Implement sliding-window rate limiters
 
-3. **Performance Optimization**
-   - Benchmark throughput and latency
+6. **Performance Optimization**
+   - Benchmark throughput and latency across all backends
    - Optimize queue processing for higher throughput
    - Fine-tune backoff parameters per provider
+   - Create performance comparison dashboard
 
 ## Contributing
 

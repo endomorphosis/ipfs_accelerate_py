@@ -1,678 +1,886 @@
+#!/usr/bin/env python
+"""
+Unified test runner for LLVM API backend.
+
+This module provides comprehensive testing for the LLVM API backend,
+including standard API tests, performance benchmarks, and real connection tests.
+
+Usage:
+    python test_llvm_unified.py [--standard] [--performance] [--real] [--all]
+        [--model MODEL] [--api-url API_URL] [--timeout TIMEOUT]
+"""
+
 import os
 import sys
 import json
 import time
-import argparse
-import datetime
 import unittest
-from unittest.mock import MagicMock, patch
+import argparse
+import threading
+import concurrent.futures
+from unittest import mock
 
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'ipfs_accelerate_py'))
+# Add parent directory to path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+sys.path.insert(0, parent_dir)
+grand_parent_dir = os.path.dirname(parent_dir)
+sys.path.insert(0, grand_parent_dir)
 
-# Import the test class
-from apis.test_vllm import test_vllm
+# Set up logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Import for performance testing
-import numpy as np
-import requests
+# Import LLVM client
+try:
+    from ipfs_accelerate_py.ipfs_accelerate_py.api_backends.llvm import LlvmClient, llvm
+except ImportError:
+    try:
+        from ipfs_accelerate_py.api_backends.llvm import LlvmClient, llvm
+    except ImportError:
+        logger.error("Unable to import LLVM client. Tests will run with mock implementation.")
+        # Will use mock implementation from test_llvm.py
 
-class TestVLLM(unittest.TestCase):
-    """Unified test suite for VLLM API"""
+class LlvmApiTest:
+    """Unified LLVM API test class."""
     
-    def setUp(self):
-        """Set up test environment"""
-        self.metadata = {
-            "vllm_api_url": os.environ.get("VLLM_API_URL", "http://localhost:8000"),
-            "vllm_model": os.environ.get("VLLM_MODEL", "meta-llama/Llama-2-7b-chat-hf"),
-            "timeout": int(os.environ.get("VLLM_TIMEOUT", "30"))
+    def __init__(self):
+        """Initialize test configuration."""
+        # Parse command line arguments
+        self.args = self._parse_arguments()
+        
+        # Configure from arguments and environment variables
+        self.model = self.args.model or os.environ.get("LLVM_MODEL", "resnet50")
+        self.api_url = self.args.api_url or os.environ.get("LLVM_API_URL", "http://localhost:8090")
+        self.timeout = self.args.timeout or int(os.environ.get("LLVM_TIMEOUT", "30"))
+        
+        # Set up test results directory
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.collected_dir = os.path.join(base_dir, 'collected_results')
+        self.expected_dir = os.path.join(base_dir, 'expected_results')
+        
+        # Create directories if they don't exist
+        for directory in [self.collected_dir, self.expected_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory, mode=0o755, exist_ok=True)
+        
+        # Initialize client for tests
+        self.client = self._init_client()
+        
+        # Set up test data
+        self.test_data = self._init_test_data()
+    
+    def _parse_arguments(self):
+        """Parse command line arguments."""
+        parser = argparse.ArgumentParser(description="Run tests for LLVM API backend")
+        parser.add_argument("--standard", action="store_true", help="Run standard API tests")
+        parser.add_argument("--performance", action="store_true", help="Run performance tests")
+        parser.add_argument("--real", action="store_true", help="Run real connection tests")
+        parser.add_argument("--all", action="store_true", help="Run all tests")
+        parser.add_argument("--model", help="Model to use for testing")
+        parser.add_argument("--api-url", help="URL for LLVM API")
+        parser.add_argument("--timeout", type=int, help="Timeout in seconds for API requests")
+        
+        args = parser.parse_args()
+        
+        # If no test type specified, default to standard
+        if not (args.standard or args.performance or args.real or args.all):
+            args.standard = True
+        
+        # If all specified, run all test types
+        if args.all:
+            args.standard = True
+            args.performance = True
+            args.real = True
+        
+        return args
+    
+    def _init_client(self):
+        """Initialize LLVM client for tests."""
+        try:
+            client = LlvmClient(
+                base_url=self.api_url,
+                timeout=self.timeout
+            )
+            logger.info(f"Initialized LLVM client with URL: {self.api_url}")
+            return client
+        except Exception as e:
+            logger.error(f"Error initializing LLVM client: {e}")
+            logger.warning("Using mock client implementation")
+            
+            # Create mock client
+            mock_client = mock.MagicMock()
+            mock_client.get_model_info.return_value = {
+                "model_id": self.model,
+                "status": "loaded"
+            }
+            mock_client.run_inference.return_value = {
+                "outputs": "Mock inference output",
+                "model_id": self.model
+            }
+            mock_client.list_models.return_value = {
+                "models": ["resnet50", "bert-base", "mobilenet"]
+            }
+            return mock_client
+            
+    def _init_test_data(self):
+        """Initialize test data for different model types."""
+        # Basic test data for different model types
+        return {
+            "vision": {
+                "inputs": [0.1] * 224 * 224 * 3,  # Simulated image data
+                "batch_inputs": [[0.1] * 224 * 224 * 3 for _ in range(4)],
+                "parameters": {"precision": "fp32"}
+            },
+            "nlp": {
+                "inputs": "This is a test input for NLP models.",
+                "batch_inputs": ["Test input 1", "Test input 2", "Test input 3", "Test input 4"],
+                "parameters": {"precision": "fp32", "truncation": True}
+            },
+            "audio": {
+                "inputs": [0.01] * 16000,  # 1 second of audio at 16kHz
+                "batch_inputs": [[0.01] * 16000 for _ in range(4)],
+                "parameters": {"precision": "fp32", "sampling_rate": 16000}
+            },
+            "generative": {
+                "inputs": "Generate an image of a mountain landscape",
+                "batch_inputs": ["Mountain landscape", "Ocean sunset", "Forest path", "Desert scene"],
+                "parameters": {"precision": "fp16", "steps": 30}
+            }
         }
-        self.resources = {}
-        
-        # Standard test inputs for consistency
-        self.test_inputs = [
-            "This is a simple text input",
-            ["Input 1", "Input 2", "Input 3"],  # Batch of text inputs
-            {"prompt": "Test input with parameters", "parameters": {"temperature": 0.7}},
-            {"input": "Standard format input", "parameters": {"max_tokens": 100}}
-        ]
     
-    def test_standard_api(self):
-        """Test the standard VLLM API functionality"""
-        tester = test_vllm(self.resources, self.metadata)
-        results = tester.test()
+    def _get_model_type(self, model_id):
+        """Get the type of model from model list."""
+        try:
+            # Load model list
+            model_list_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                'model_list',
+                'llvm.json'
+            )
+            
+            with open(model_list_path, 'r') as f:
+                models = json.load(f)
+            
+            # Find model in list
+            for model in models:
+                if model["name"] == model_id:
+                    return model["type"]
+            
+            # Default to nlp if not found
+            return "nlp"
+        except Exception as e:
+            logger.error(f"Error getting model type: {e}")
+            return "nlp"  # Default type
+    
+    def _get_test_inputs(self, model_id):
+        """Get appropriate test inputs for model type."""
+        model_type = self._get_model_type(model_id)
         
-        # Verify critical tests passed
-        self.assertIn("endpoint_handler", results)
-        self.assertIn("test_endpoint", results)
-        self.assertIn("post_request", results)
+        if model_type in self.test_data:
+            return self.test_data[model_type]
+        else:
+            # Default to NLP test data
+            return self.test_data["nlp"]
+    
+    def run_standard_tests(self):
+        """Run standard API implementation tests."""
+        logger.info("Running standard API tests...")
+        
+        results = {}
+        
+        # Test client initialization
+        try:
+            client = LlvmClient(
+                base_url=self.api_url,
+                timeout=self.timeout
+            )
+            results["initialization"] = "Success"
+        except Exception as e:
+            results["initialization"] = f"Error: {str(e)}"
+        
+        # Test list_models
+        try:
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"models": ["resnet50", "bert-base", "mobilenet"]}):
+                response = self.client.list_models()
+                results["list_models"] = "Success" if "models" in response else "Failed"
+        except Exception as e:
+            results["list_models"] = f"Error: {str(e)}"
+        
+        # Test get_model_info
+        try:
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"model_id": self.model, "status": "loaded"}):
+                response = self.client.get_model_info(self.model)
+                results["get_model_info"] = "Success" if "model_id" in response else "Failed"
+        except Exception as e:
+            results["get_model_info"] = f"Error: {str(e)}"
+        
+        # Test run_inference
+        try:
+            test_inputs = self._get_test_inputs(self.model)
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"outputs": "Test output", "model_id": self.model}):
+                response = self.client.run_inference(
+                    self.model, 
+                    test_inputs["inputs"],
+                    test_inputs["parameters"]
+                )
+                results["run_inference"] = "Success" if "outputs" in response else "Failed"
+        except Exception as e:
+            results["run_inference"] = f"Error: {str(e)}"
+        
+        # Test queue system
+        try:
+            if hasattr(self.client, 'queue_enabled'):
+                # Verify queue attributes
+                results["queue_enabled"] = "Success" if hasattr(self.client, 'queue_enabled') else "Missing"
+                results["queue_lock"] = "Success" if hasattr(self.client, 'queue_lock') else "Missing"
+                results["request_queue"] = "Success" if hasattr(self.client, 'request_queue') else "Missing"
+                
+                # Test queue functionality
+                test_inputs = self._get_test_inputs(self.model)
+                with mock.patch.object(self.client, '_make_request', 
+                                    return_value={"outputs": "Queued output", "model_id": self.model}):
+                    # Reset queue state
+                    self.client.queue_enabled = True
+                    self.client.request_queue = []
+                    
+                    # Create mock queue processor
+                    original_process_queue = getattr(self.client, '_process_queue', None)
+                    calls = [0]
+                    def mock_process_queue():
+                        calls[0] += 1
+                        if original_process_queue:
+                            original_process_queue()
+                    
+                    # Create queue processing function if it doesn't exist
+                    if not hasattr(self.client, '_process_queue'):
+                        self.client._process_queue = mock_process_queue
+                    else:
+                        self.client._process_queue = mock_process_queue
+                    
+                    # Make a request (should use queue)
+                    test_inputs = self._get_test_inputs(self.model)
+                    response = self.client.run_inference(
+                        self.model, 
+                        test_inputs["inputs"],
+                        test_inputs["parameters"]
+                    )
+                    
+                    # Check if queue was used
+                    results["queue_processing"] = "Success" if calls[0] > 0 else "Failed"
+            else:
+                results["queue_system"] = "Not implemented"
+        except Exception as e:
+            results["queue_system"] = f"Error: {str(e)}"
+        
+        # Test circuit breaker
+        try:
+            if hasattr(self.client, 'circuit_state'):
+                # Verify circuit breaker attributes
+                results["circuit_state"] = "Success" if hasattr(self.client, 'circuit_state') else "Missing"
+                results["circuit_lock"] = "Success" if hasattr(self.client, 'circuit_lock') else "Missing"
+                results["failure_count"] = "Success" if hasattr(self.client, 'failure_count') else "Missing"
+                
+                # Test circuit breaker functionality
+                original_circuit_state = self.client.circuit_state
+                original_failure_count = self.client.failure_count
+                
+                # Test _check_circuit
+                can_proceed = self.client._check_circuit()
+                results["check_circuit"] = "Success" if isinstance(can_proceed, bool) else "Failed"
+                
+                # Test _on_success
+                self.client.circuit_state = "HALF-OPEN"
+                self.client._on_success()
+                results["on_success"] = "Success" if self.client.circuit_state == "CLOSED" else "Failed"
+                
+                # Test _on_failure
+                self.client.circuit_state = "CLOSED"
+                self.client.failure_count = self.client.failure_threshold - 1
+                self.client._on_failure()
+                results["on_failure"] = "Success" if self.client.circuit_state == "OPEN" else "Failed"
+                
+                # Restore original state
+                self.client.circuit_state = original_circuit_state
+                self.client.failure_count = original_failure_count
+            else:
+                results["circuit_breaker"] = "Not implemented"
+        except Exception as e:
+            results["circuit_breaker"] = f"Error: {str(e)}"
+        
+        # Test batch processing
+        try:
+            if hasattr(self.client, 'batch_enabled'):
+                # Verify batch processing attributes
+                results["batch_enabled"] = "Success" if hasattr(self.client, 'batch_enabled') else "Missing"
+                results["batch_lock"] = "Success" if hasattr(self.client, 'batch_lock') else "Missing"
+                results["max_batch_size"] = "Success" if hasattr(self.client, 'max_batch_size') else "Missing"
+                
+                # Test batch functionality
+                test_inputs = self._get_test_inputs(self.model)
+                with mock.patch.object(self.client, '_make_batch_request', 
+                                    return_value=["Batch output 1", "Batch output 2"]):
+                    # Create mock add_to_batch that always returns a batch
+                    def mock_add_to_batch(request_input, model_id, future, parameters=None):
+                        batch = {
+                            "requests": [
+                                {"input": request_input, "future": future, "parameters": parameters}
+                            ],
+                            "model_id": model_id
+                        }
+                        return batch
+                    
+                    # Create mock process_batch
+                    process_batch_called = [False]
+                    original_process_batch = getattr(self.client, '_process_batch', None)
+                    def mock_process_batch(batch):
+                        process_batch_called[0] = True
+                        if batch and "requests" in batch and batch["requests"]:
+                            for req in batch["requests"]:
+                                if "future" in req:
+                                    req["future"].set_result({"outputs": "Batched output"})
+                    
+                    # Patch methods
+                    with mock.patch.object(self.client, '_add_to_batch', side_effect=mock_add_to_batch):
+                        with mock.patch.object(self.client, '_process_batch', side_effect=mock_process_batch):
+                            # Enable batching
+                            self.client.batch_enabled = True
+                            
+                            # Make a request (should use batching)
+                            response = self.client.run_inference(
+                                self.model, 
+                                test_inputs["inputs"],
+                                test_inputs["parameters"]
+                            )
+                            
+                            # Check if batch processing was called
+                            results["batch_processing"] = "Success" if process_batch_called[0] else "Failed"
+            else:
+                results["batch_processing"] = "Not implemented"
+        except Exception as e:
+            results["batch_processing"] = f"Error: {str(e)}"
+        
+        # Test metrics
+        try:
+            if hasattr(self.client, 'metrics'):
+                # Verify metrics attributes
+                results["metrics"] = "Success" if hasattr(self.client, 'metrics') else "Missing"
+                results["metrics_lock"] = "Success" if hasattr(self.client, 'metrics_lock') else "Missing"
+                
+                # Test metrics functionality
+                original_metrics = self.client.metrics.copy()
+                
+                # Test update_metrics
+                self.client._update_metrics(
+                    success=True,
+                    latency=0.1,
+                    model=self.model
+                )
+                
+                # Test get_metrics
+                metrics = self.client.get_metrics()
+                results["get_metrics"] = "Success" if isinstance(metrics, dict) else "Failed"
+                
+                # Check if metrics were updated
+                results["update_metrics"] = "Success" if self.client.metrics["successes"] > original_metrics["successes"] else "Failed"
+            else:
+                results["metrics"] = "Not implemented"
+        except Exception as e:
+            results["metrics"] = f"Error: {str(e)}"
+        
+        # Test endpoint handler creation
+        try:
+            endpoint_url = f"{self.api_url}/models/{self.model}/infer"
+            handler = self.client.create_llvm_endpoint_handler(endpoint_url, self.model)
+            results["create_endpoint_handler"] = "Success" if callable(handler) else "Failed"
+            
+            # Test handler with paramaters
+            if "Success" in results["create_endpoint_handler"]:
+                with mock.patch.object(self.client, 'run_inference', 
+                                     return_value={"outputs": "Handler output"}):
+                    test_inputs = self._get_test_inputs(self.model)
+                    handler_response = handler(test_inputs["inputs"])
+                    results["endpoint_handler_call"] = "Success" if handler_response else "Failed"
+        except Exception as e:
+            results["create_endpoint_handler"] = f"Error: {str(e)}"
+        
+        # Test parameterized endpoint handler
+        try:
+            if hasattr(self.client, 'create_llvm_endpoint_handler_with_params'):
+                endpoint_url = f"{self.api_url}/models/{self.model}/infer"
+                parameters = {"precision": "fp16"}
+                handler = self.client.create_llvm_endpoint_handler_with_params(
+                    endpoint_url, self.model, parameters
+                )
+                results["create_parameterized_handler"] = "Success" if callable(handler) else "Failed"
+                
+                # Test parameterized handler
+                if "Success" in results["create_parameterized_handler"]:
+                    with mock.patch.object(self.client, 'run_inference', 
+                                        return_value={"outputs": "Parameterized handler output"}):
+                        test_inputs = self._get_test_inputs(self.model)
+                        handler_response = handler(test_inputs["inputs"])
+                        results["parameterized_handler_call"] = "Success" if handler_response else "Failed"
+            else:
+                results["parameterized_handler"] = "Not implemented"
+        except Exception as e:
+            results["parameterized_handler"] = f"Error: {str(e)}"
+        
+        # Test API key handling
+        try:
+            # Test setting API key
+            original_api_key = self.client.api_key
+            test_api_key = "test_api_key_12345"
+            self.client.set_api_key(test_api_key)
+            results["set_api_key"] = "Success" if self.client.api_key == test_api_key else "Failed"
+            
+            # Test API key in headers
+            with mock.patch.object(self.client, '_make_request') as mock_make_request:
+                with mock.patch.object(self.client, '_with_queue', side_effect=lambda x: x()):
+                    with mock.patch.object(self.client, '_with_backoff', side_effect=lambda x: x()):
+                        self.client.list_models()
+                        mock_make_request.assert_called()
+                        headers = mock_make_request.call_args[1].get('headers', {})
+                        auth_header = headers.get('Authorization', '')
+                        results["api_key_in_headers"] = "Success" if test_api_key in auth_header else "Failed"
+            
+            # Restore original API key
+            self.client.set_api_key(original_api_key)
+        except Exception as e:
+            results["api_key_handling"] = f"Error: {str(e)}"
+        
+        # Test multiplexing
+        try:
+            if hasattr(self.client, 'create_endpoint'):
+                # Create endpoint
+                endpoint_id = self.client.create_endpoint(
+                    api_key="test_key",
+                    max_concurrent_requests=10,
+                    max_retries=3
+                )
+                results["create_endpoint"] = "Success" if endpoint_id else "Failed"
+                
+                # Test make_request_with_endpoint
+                if hasattr(self.client, 'make_request_with_endpoint') and endpoint_id:
+                    with mock.patch.object(self.client, 'run_inference', 
+                                        return_value={"outputs": "Endpoint output"}):
+                        test_inputs = self._get_test_inputs(self.model)
+                        response = self.client.make_request_with_endpoint(
+                            endpoint_id,
+                            test_inputs["inputs"],
+                            self.model,
+                            parameters=test_inputs["parameters"]
+                        )
+                        results["make_request_with_endpoint"] = "Success" if response else "Failed"
+                
+                # Test get_stats
+                if hasattr(self.client, 'get_stats') and endpoint_id:
+                    stats = self.client.get_stats(endpoint_id)
+                    results["get_endpoint_stats"] = "Success" if isinstance(stats, dict) else "Failed"
+                    
+                    all_stats = self.client.get_stats()
+                    results["get_all_stats"] = "Success" if isinstance(all_stats, dict) else "Failed"
+            else:
+                results["multiplexing"] = "Not implemented"
+        except Exception as e:
+            results["multiplexing"] = f"Error: {str(e)}"
         
         # Save test results
-        self._save_test_results(results, "vllm_test_results.json")
-    
-    def test_performance(self):
-        """Test the performance of the VLLM API"""
-        # Skip if performance tests disabled
-        if os.environ.get("SKIP_PERFORMANCE_TESTS", "").lower() in ("true", "1", "yes"):
-            self.skipTest("Performance tests disabled by environment variable")
-        
-        performance_results = {}
-        
-        # Create mock data for inference
-        with patch.object(requests, 'post') as mock_post:
-            # For single inference
-            single_mock_response = MagicMock()
-            single_mock_response.status_code = 200
-            single_mock_response.json.return_value = {
-                "text": "This is a test result for performance testing",
-                "metadata": {
-                    "finish_reason": "length",
-                    "model": self.metadata.get("vllm_model"),
-                    "usage": {
-                        "prompt_tokens": 10,
-                        "completion_tokens": 50,
-                        "total_tokens": 60
-                    }
-                }
-            }
-            
-            # For batch inference
-            batch_mock_response = MagicMock()
-            batch_mock_response.status_code = 200
-            batch_mock_response.json.return_value = {
-                "texts": [
-                    "This is result 1 for performance testing",
-                    "This is result 2 for performance testing",
-                    "This is result 3 for performance testing"
-                ],
-                "metadata": {
-                    "finish_reasons": ["length", "length", "length"],
-                    "model": self.metadata.get("vllm_model"),
-                    "usage": {
-                        "prompt_tokens": 30,
-                        "completion_tokens": 150,
-                        "total_tokens": 180
-                    }
-                }
-            }
-            
-            # For streaming inference
-            stream_mock_response = MagicMock()
-            stream_mock_response.status_code = 200
-            stream_mock_response.iter_lines.return_value = [
-                b'{"text": "This", "metadata": {"finish_reason": null, "is_streaming": true}}',
-                b'{"text": "This is", "metadata": {"finish_reason": null, "is_streaming": true}}',
-                b'{"text": "This is a", "metadata": {"finish_reason": null, "is_streaming": true}}',
-                b'{"text": "This is a test", "metadata": {"finish_reason": "stop", "is_streaming": false}}'
-            ]
-            
-            # Initialize test object
-            tester = test_vllm(self.resources, self.metadata)
-            
-            # Set up endpoint URL
-            endpoint_url = self.metadata.get("vllm_api_url", "http://localhost:8000")
-            model_name = self.metadata.get("vllm_model", "meta-llama/Llama-2-7b-chat-hf")
-            
-            # Test single inference performance
-            mock_post.return_value = single_mock_response
-            
-            start_time = time.time()
-            for _ in range(10):  # Run 10 iterations for more stable measurement
-                data = {"prompt": "Test input for performance measurement"}
-                tester.vllm.make_post_request_vllm(endpoint_url, data)
-            single_inference_time = (time.time() - start_time) / 10  # Average time
-            performance_results["single_inference_time"] = f"{single_inference_time:.4f}s"
-            
-            # Test batch inference performance
-            mock_post.return_value = batch_mock_response
-            
-            # Test batch processing if implemented
-            if hasattr(tester.vllm, 'process_batch'):
-                start_time = time.time()
-                for _ in range(5):  # Run 5 iterations
-                    batch_data = ["Input 1", "Input 2", "Input 3"]
-                    tester.vllm.process_batch(endpoint_url, batch_data, model_name)
-                batch_time = (time.time() - start_time) / 5  # Average time
-                performance_results["batch_inference_time"] = f"{batch_time:.4f}s"
-                
-                # Calculate throughput
-                inputs_per_second = 3 / batch_time  # 3 inputs in batch
-                performance_results["inputs_per_second"] = f"{inputs_per_second:.2f}"
-                
-                # Speedup factor
-                speedup = (single_inference_time * 3) / batch_time
-                performance_results["batch_speedup_factor"] = f"{speedup:.2f}x"
-            
-            # Test streaming performance if implemented
-            if hasattr(tester.vllm, 'stream_generation'):
-                mock_post.return_value = stream_mock_response
-                
-                start_time = time.time()
-                for _ in range(5):  # Run 5 iterations
-                    stream_results = []
-                    for chunk in tester.vllm.stream_generation(
-                        endpoint_url=endpoint_url,
-                        prompt="Test streaming performance",
-                        model=model_name
-                    ):
-                        stream_results.append(chunk)
-                stream_time = (time.time() - start_time) / 5  # Average time
-                performance_results["streaming_time"] = f"{stream_time:.4f}s"
-                
-                # Compare with non-streaming
-                streaming_overhead = stream_time / single_inference_time
-                performance_results["streaming_overhead"] = f"{streaming_overhead:.2f}x"
-            
-            # Test different parameter settings
-            parameter_tests = {
-                "high_temperature": {"temperature": 0.9, "top_p": 0.95},
-                "low_temperature": {"temperature": 0.1, "top_p": 0.1},
-                "beam_search": {"use_beam_search": True, "n": 3},
-                "greedy": {"temperature": 0.0}
-            }
-            
-            param_times = {}
-            for param_name, params in parameter_tests.items():
-                start_time = time.time()
-                for _ in range(5):
-                    data = {"prompt": "Test input for parameter testing", **params}
-                    tester.vllm.make_post_request_vllm(endpoint_url, data)
-                param_time = (time.time() - start_time) / 5
-                param_times[param_name] = param_time
-            
-            # Find fastest and slowest parameter settings
-            fastest_param = min(param_times, key=param_times.get)
-            slowest_param = max(param_times, key=param_times.get)
-            
-            performance_results["parameter_times"] = {
-                k: f"{v:.4f}s" for k, v in param_times.items()
-            }
-            performance_results["fastest_parameter"] = fastest_param
-            performance_results["parameter_speedup"] = f"{param_times[slowest_param] / param_times[fastest_param]:.2f}x"
-        
-        # Save performance results
-        performance_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), 
-            'collected_results', 
-            f'vllm_performance_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        )
-        os.makedirs(os.path.dirname(performance_file), exist_ok=True)
-        with open(performance_file, 'w') as f:
-            json.dump(performance_results, f, indent=2)
-        
-        return performance_results
-    
-    def test_real_connection(self):
-        """Test actual connection to VLLM server if available"""
-        # Skip if real connection tests disabled
-        if os.environ.get("SKIP_REAL_TESTS", "").lower() in ("true", "1", "yes"):
-            self.skipTest("Real connection tests disabled by environment variable")
-        
-        connection_results = {}
-        
-        # Try to connect to the VLLM server
-        try:
-            # Check if VLLM server is running
-            endpoint_url = self.metadata.get("vllm_api_url", "http://localhost:8000")
-            model_name = self.metadata.get("vllm_model", "meta-llama/Llama-2-7b-chat-hf")
-            
-            # Check for server health
-            try:
-                response = requests.get(
-                    f"{endpoint_url}/health", 
-                    timeout=self.metadata.get("timeout", 30)
-                )
-                if response.status_code == 200:
-                    connection_results["server_health"] = "Success"
-                    try:
-                        health_info = response.json()
-                        connection_results["health_info"] = health_info
-                    except:
-                        connection_results["health_info"] = "Response not in JSON format"
-                    
-                    # Try to get model info
-                    try:
-                        model_response = requests.get(
-                            f"{endpoint_url}/model", 
-                            timeout=self.metadata.get("timeout", 30)
-                        )
-                        if model_response.status_code == 200:
-                            connection_results["model_available"] = "Success"
-                            try:
-                                model_info = model_response.json()
-                                connection_results["model_info"] = model_info
-                            except:
-                                connection_results["model_info"] = "Response not in JSON format"
-                            
-                            # Try a simple inference request
-                            try:
-                                infer_response = requests.post(
-                                    f"{endpoint_url}/generate", 
-                                    json={"prompt": "Test input for real connection test", "max_tokens": 20},
-                                    headers={"Content-Type": "application/json"},
-                                    timeout=self.metadata.get("timeout", 30)
-                                )
-                                
-                                if infer_response.status_code == 200:
-                                    connection_results["inference_test"] = "Success"
-                                    try:
-                                        infer_data = infer_response.json()
-                                        if "text" in infer_data:
-                                            connection_results["inference_response"] = infer_data["text"][:100] + "..." if len(infer_data["text"]) > 100 else infer_data["text"]
-                                        elif "texts" in infer_data:
-                                            connection_results["inference_response"] = infer_data["texts"][0][:100] + "..." if len(infer_data["texts"][0]) > 100 else infer_data["texts"][0]
-                                        else:
-                                            connection_results["inference_response"] = "Response format not recognized"
-                                    except Exception:
-                                        connection_results["inference_response"] = "Could not parse JSON response"
-                                else:
-                                    connection_results["inference_test"] = f"Failed with status {infer_response.status_code}"
-                            except Exception as e:
-                                connection_results["inference_test"] = f"Error: {str(e)}"
-                        else:
-                            connection_results["model_available"] = f"Failed with status {model_response.status_code}"
-                    except Exception as e:
-                        connection_results["model_check"] = f"Error: {str(e)}"
-                else:
-                    connection_results["server_health"] = f"Failed with status {response.status_code}"
-            except requests.ConnectionError:
-                connection_results["server_health"] = "Failed - Could not connect to VLLM server"
-            except Exception as e:
-                connection_results["server_health"] = f"Error: {str(e)}"
-            
-            # Try to test streaming if server is available
-            if connection_results.get("inference_test") == "Success":
-                try:
-                    stream_response = requests.post(
-                        f"{endpoint_url}/generate", 
-                        json={"prompt": "Test streaming for real connection test", "max_tokens": 20, "stream": True},
-                        headers={"Content-Type": "application/json"},
-                        timeout=self.metadata.get("timeout", 30),
-                        stream=True
-                    )
-                    
-                    if stream_response.status_code == 200:
-                        connection_results["streaming_test"] = "Success"
-                        
-                        # Collect up to 5 chunks to check streaming works
-                        stream_chunks = []
-                        try:
-                            for i, line in enumerate(stream_response.iter_lines()):
-                                if i >= 5:
-                                    break
-                                if line:
-                                    try:
-                                        chunk = json.loads(line)
-                                        if "text" in chunk:
-                                            stream_chunks.append(chunk["text"])
-                                    except:
-                                        pass
-                            
-                            connection_results["streaming_chunks"] = len(stream_chunks)
-                            if stream_chunks:
-                                connection_results["streaming_sample"] = stream_chunks[-1][:100]
-                        except Exception as e:
-                            connection_results["streaming_data"] = f"Error processing stream: {str(e)}"
-                    else:
-                        connection_results["streaming_test"] = f"Failed with status {stream_response.status_code}"
-                except Exception as e:
-                    connection_results["streaming_test"] = f"Error: {str(e)}"
-            
-            # Try to test batch processing if server is available
-            if connection_results.get("inference_test") == "Success":
-                try:
-                    batch_response = requests.post(
-                        f"{endpoint_url}/generate", 
-                        json={"prompts": ["Test batch 1", "Test batch 2"], "max_tokens": 20},
-                        headers={"Content-Type": "application/json"},
-                        timeout=self.metadata.get("timeout", 30)
-                    )
-                    
-                    if batch_response.status_code == 200:
-                        connection_results["batch_test"] = "Success"
-                        try:
-                            batch_data = batch_response.json()
-                            if "texts" in batch_data:
-                                connection_results["batch_count"] = len(batch_data["texts"])
-                                if batch_data["texts"]:
-                                    connection_results["batch_sample"] = batch_data["texts"][0][:100]
-                            else:
-                                connection_results["batch_data"] = "Response does not contain 'texts' field"
-                        except Exception as e:
-                            connection_results["batch_data"] = f"Error parsing batch response: {str(e)}"
-                    else:
-                        connection_results["batch_test"] = f"Failed with status {batch_response.status_code}"
-                except Exception as e:
-                    connection_results["batch_test"] = f"Error: {str(e)}"
-            
-            # Check for LoRA adapters if server is available
-            if connection_results.get("inference_test") == "Success":
-                try:
-                    lora_response = requests.get(
-                        f"{endpoint_url}/lora_adapters", 
-                        timeout=self.metadata.get("timeout", 30)
-                    )
-                    
-                    if lora_response.status_code == 200:
-                        connection_results["lora_check"] = "Success"
-                        try:
-                            lora_data = lora_response.json()
-                            if "lora_adapters" in lora_data:
-                                connection_results["lora_count"] = len(lora_data["lora_adapters"])
-                                if lora_data["lora_adapters"]:
-                                    connection_results["lora_sample"] = lora_data["lora_adapters"][0]
-                            else:
-                                connection_results["lora_data"] = "Response does not contain 'lora_adapters' field"
-                        except Exception:
-                            connection_results["lora_data"] = "Could not parse JSON response"
-                    else:
-                        # This endpoint might not exist in all VLLM servers
-                        connection_results["lora_check"] = f"Not available (status {lora_response.status_code})"
-                except Exception as e:
-                    # Don't treat this as an error since not all VLLM servers support LoRA
-                    connection_results["lora_check"] = "Not available"
-        
-        except Exception as e:
-            connection_results["test_error"] = f"Error: {str(e)}"
-        
-        # Save connection results
-        connection_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), 
-            'collected_results', 
-            f'vllm_connection_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        )
-        os.makedirs(os.path.dirname(connection_file), exist_ok=True)
-        with open(connection_file, 'w') as f:
-            json.dump(connection_results, f, indent=2)
-        
-        return connection_results
-    
-    def test_advanced_features(self):
-        """Test advanced VLLM features if available"""
-        # Skip if advanced tests disabled
-        if os.environ.get("SKIP_ADVANCED_TESTS", "").lower() in ("true", "1", "yes"):
-            self.skipTest("Advanced tests disabled by environment variable")
-        
-        advanced_results = {}
-        
-        # Initialize test object
-        tester = test_vllm(self.resources, self.metadata)
-        endpoint_url = self.metadata.get("vllm_api_url", "http://localhost:8000")
-        model_name = self.metadata.get("vllm_model", "meta-llama/Llama-2-7b-chat-hf")
-        
-        # Test LoRA adapter features
-        try:
-            if hasattr(tester.vllm, 'list_lora_adapters'):
-                with patch.object(requests, 'get') as mock_get:
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "lora_adapters": [
-                            {
-                                "id": "adapter1",
-                                "name": "Test Adapter 1",
-                                "base_model": model_name,
-                                "size_mb": 12.5,
-                                "active": True
-                            },
-                            {
-                                "id": "adapter2",
-                                "name": "Test Adapter 2",
-                                "base_model": model_name,
-                                "size_mb": 8.2,
-                                "active": False
-                            }
-                        ]
-                    }
-                    mock_response.status_code = 200
-                    mock_get.return_value = mock_response
-                    
-                    adapters = tester.vllm.list_lora_adapters(endpoint_url)
-                    advanced_results["list_lora_adapters"] = "Success" if isinstance(adapters, list) and len(adapters) == 2 else "Failed to list LoRA adapters"
-                
-                # Test inference with LoRA adapter if available
-                if hasattr(tester.vllm, 'generate_with_lora'):
-                    with patch.object(requests, 'post') as mock_post:
-                        mock_response = MagicMock()
-                        mock_response.json.return_value = {
-                            "text": "Test result with LoRA adapter",
-                            "metadata": {
-                                "finish_reason": "length",
-                                "model": model_name,
-                                "lora_adapter": "adapter1",
-                                "usage": {
-                                    "prompt_tokens": 10,
-                                    "completion_tokens": 20,
-                                    "total_tokens": 30
-                                }
-                            }
-                        }
-                        mock_response.status_code = 200
-                        mock_post.return_value = mock_response
-                        
-                        lora_result = tester.vllm.generate_with_lora(
-                            endpoint_url=endpoint_url,
-                            prompt="Test with LoRA",
-                            model=model_name,
-                            adapter_id="adapter1"
-                        )
-                        
-                        advanced_results["generate_with_lora"] = "Success" if isinstance(lora_result, dict) and "text" in lora_result else "Failed to generate with LoRA adapter"
-            else:
-                advanced_results["lora_features"] = "Not implemented"
-        except Exception as e:
-            advanced_results["lora_features"] = f"Error: {str(e)}"
-        
-        # Test quantization features
-        try:
-            if hasattr(tester.vllm, 'set_quantization'):
-                with patch.object(requests, 'post') as mock_post:
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "success": True,
-                        "message": "Quantization configuration updated",
-                        "model": model_name,
-                        "quantization": {
-                            "enabled": True,
-                            "method": "awq",
-                            "bits": 4
-                        }
-                    }
-                    mock_response.status_code = 200
-                    mock_post.return_value = mock_response
-                    
-                    # Test all supported quantization methods
-                    for method in ["awq", "gptq", "squeezellm"]:
-                        for bits in [8, 4, 3]:
-                            quant_config = {
-                                "enabled": True,
-                                "method": method,
-                                "bits": bits
-                            }
-                            
-                            quant_result = tester.vllm.set_quantization(endpoint_url, model_name, quant_config)
-                            advanced_results[f"quantization_{method}_{bits}bit"] = "Success" if isinstance(quant_result, dict) and quant_result.get("success") else f"Failed to set {method} {bits}-bit quantization"
-            else:
-                advanced_results["quantization_features"] = "Not implemented"
-        except Exception as e:
-            advanced_results["quantization_features"] = f"Error: {str(e)}"
-        
-        # Test tensor parallelism if implemented
-        try:
-            if hasattr(tester.vllm, 'set_tensor_parallelism'):
-                with patch.object(requests, 'post') as mock_post:
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "success": True,
-                        "message": "Tensor parallelism configuration updated",
-                        "model": model_name,
-                        "tensor_parallel_size": 2
-                    }
-                    mock_response.status_code = 200
-                    mock_post.return_value = mock_response
-                    
-                    tp_result = tester.vllm.set_tensor_parallelism(endpoint_url, model_name, tp_size=2)
-                    advanced_results["tensor_parallelism"] = "Success" if isinstance(tp_result, dict) and tp_result.get("success") else "Failed to set tensor parallelism"
-            else:
-                advanced_results["tensor_parallelism"] = "Not implemented"
-        except Exception as e:
-            advanced_results["tensor_parallelism"] = f"Error: {str(e)}"
-        
-        # Test KV cache features if implemented
-        try:
-            if hasattr(tester.vllm, 'set_kv_cache_config'):
-                with patch.object(requests, 'post') as mock_post:
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "success": True,
-                        "message": "KV cache configuration updated",
-                        "model": model_name,
-                        "kv_cache_config": {
-                            "block_size": 16,
-                            "cache_mode": "auto",
-                            "max_blocks_per_seq": 512
-                        }
-                    }
-                    mock_response.status_code = 200
-                    mock_post.return_value = mock_response
-                    
-                    cache_config = {
-                        "block_size": 16,
-                        "cache_mode": "auto",
-                        "max_blocks_per_seq": 512
-                    }
-                    
-                    kv_result = tester.vllm.set_kv_cache_config(endpoint_url, model_name, cache_config)
-                    advanced_results["kv_cache_config"] = "Success" if isinstance(kv_result, dict) and kv_result.get("success") else "Failed to set KV cache configuration"
-            else:
-                advanced_results["kv_cache_features"] = "Not implemented"
-        except Exception as e:
-            advanced_results["kv_cache_features"] = f"Error: {str(e)}"
-        
-        # Test prompt caching if implemented
-        try:
-            if hasattr(tester.vllm, 'use_prompt_cache'):
-                with patch.object(requests, 'post') as mock_post:
-                    mock_response = MagicMock()
-                    mock_response.json.return_value = {
-                        "text": "Test result with prompt caching",
-                        "metadata": {
-                            "finish_reason": "length",
-                            "model": model_name,
-                            "cached_prompt": True,
-                            "prompt_processing_time": 0.0015,  # Much faster with caching
-                            "usage": {
-                                "prompt_tokens": 10,
-                                "completion_tokens": 20,
-                                "total_tokens": 30
-                            }
-                        }
-                    }
-                    mock_response.status_code = 200
-                    mock_post.return_value = mock_response
-                    
-                    cache_result = tester.vllm.use_prompt_cache(
-                        endpoint_url=endpoint_url,
-                        prompt="Test with prompt cache",
-                        model=model_name,
-                        cache_id="test_cache_123"
-                    )
-                    
-                    advanced_results["prompt_caching"] = "Success" if isinstance(cache_result, dict) and cache_result.get("metadata", {}).get("cached_prompt") is True else "Failed to use prompt caching"
-            else:
-                advanced_results["prompt_caching"] = "Not implemented"
-        except Exception as e:
-            advanced_results["prompt_caching"] = f"Error: {str(e)}"
-        
-        # Save advanced features results
-        advanced_file = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), 
-            'collected_results', 
-            f'vllm_advanced_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        )
-        os.makedirs(os.path.dirname(advanced_file), exist_ok=True)
-        with open(advanced_file, 'w') as f:
-            json.dump(advanced_results, f, indent=2)
-        
-        return advanced_results
-    
-    def _save_test_results(self, results, filename):
-        """Save test results to file"""
-        # Create directories if they don't exist
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        collected_dir = os.path.join(base_dir, 'collected_results')
-        os.makedirs(collected_dir, exist_ok=True)
-        
-        # Save results
-        results_file = os.path.join(collected_dir, filename)
+        results_file = os.path.join(self.collected_dir, 'llvm_test_results.json')
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2)
-
-def run_tests():
-    """Run all tests or selected tests based on command line arguments"""
-    parser = argparse.ArgumentParser(description='Test VLLM API')
-    parser.add_argument('--standard', action='store_true', help='Run standard API tests only')
-    parser.add_argument('--performance', action='store_true', help='Run performance tests')
-    parser.add_argument('--real', action='store_true', help='Run real connection tests')
-    parser.add_argument('--advanced', action='store_true', help='Run advanced feature tests')
-    parser.add_argument('--all', action='store_true', help='Run all tests (standard, performance, real, advanced)')
-    parser.add_argument('--model', type=str, default='meta-llama/Llama-2-7b-chat-hf', help='Model to use for testing')
-    parser.add_argument('--api-url', type=str, help='URL for VLLM API')
-    parser.add_argument('--timeout', type=int, default=30, help='Timeout in seconds for API requests')
+        
+        logger.info(f"Standard API tests completed. Results saved to {results_file}")
+        return results
     
-    args = parser.parse_args()
+    def run_performance_tests(self):
+        """Run performance benchmark tests."""
+        logger.info("Running performance tests...")
+        
+        results = {
+            "single_inference": {},
+            "batch_inference": {},
+            "precision_comparison": {},
+            "concurrency_scaling": {}
+        }
+        
+        # Get test inputs for model
+        test_inputs = self._get_test_inputs(self.model)
+        
+        # Test single inference performance
+        try:
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"outputs": "Test output", "model_id": self.model}):
+                # Warm-up
+                for _ in range(3):
+                    self.client.run_inference(
+                        self.model, 
+                        test_inputs["inputs"],
+                        test_inputs["parameters"]
+                    )
+                
+                # Timed test
+                runs = 10
+                start_time = time.time()
+                for _ in range(runs):
+                    self.client.run_inference(
+                        self.model, 
+                        test_inputs["inputs"],
+                        test_inputs["parameters"]
+                    )
+                end_time = time.time()
+                
+                # Calculate metrics
+                total_time = end_time - start_time
+                avg_time = total_time / runs
+                throughput = runs / total_time
+                
+                results["single_inference"] = {
+                    "total_time": total_time,
+                    "average_time": avg_time,
+                    "throughput": throughput,
+                    "runs": runs
+                }
+        except Exception as e:
+            results["single_inference"] = {"error": str(e)}
+        
+        # Test batch inference performance
+        try:
+            if hasattr(self.client, 'process_batch'):
+                with mock.patch.object(self.client, '_make_request', 
+                                    return_value={"results": ["Output"] * 4, "model_id": self.model}):
+                    # Prepare batch inputs
+                    batch_inputs = test_inputs["batch_inputs"]
+                    
+                    # Warm-up
+                    self.client.process_batch(
+                        f"{self.api_url}/models/{self.model}/batch_infer",
+                        batch_inputs,
+                        self.model,
+                        test_inputs["parameters"]
+                    )
+                    
+                    # Timed test
+                    runs = 5
+                    start_time = time.time()
+                    for _ in range(runs):
+                        self.client.process_batch(
+                            f"{self.api_url}/models/{self.model}/batch_infer",
+                            batch_inputs,
+                            self.model,
+                            test_inputs["parameters"]
+                        )
+                    end_time = time.time()
+                    
+                    # Calculate metrics
+                    total_time = end_time - start_time
+                    avg_time = total_time / runs
+                    items_per_batch = len(batch_inputs)
+                    total_items = runs * items_per_batch
+                    throughput = total_items / total_time
+                    speedup_vs_single = results["single_inference"]["average_time"] * items_per_batch / avg_time
+                    
+                    results["batch_inference"] = {
+                        "total_time": total_time,
+                        "average_time_per_batch": avg_time,
+                        "items_per_batch": items_per_batch,
+                        "total_items": total_items,
+                        "throughput": throughput,
+                        "speedup_vs_single": speedup_vs_single,
+                        "runs": runs
+                    }
+            else:
+                results["batch_inference"] = {"status": "Not implemented"}
+        except Exception as e:
+            results["batch_inference"] = {"error": str(e)}
+        
+        # Test precision mode performance comparison
+        try:
+            precision_modes = ["fp32", "fp16", "int8"]
+            precision_results = {}
+            
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"outputs": "Test output", "model_id": self.model}):
+                for precision in precision_modes:
+                    try:
+                        # Set precision in parameters
+                        parameters = test_inputs["parameters"].copy()
+                        parameters["precision"] = precision
+                        
+                        # Warm-up
+                        self.client.run_inference(
+                            self.model, 
+                            test_inputs["inputs"],
+                            parameters
+                        )
+                        
+                        # Timed test
+                        runs = 10
+                        start_time = time.time()
+                        for _ in range(runs):
+                            self.client.run_inference(
+                                self.model, 
+                                test_inputs["inputs"],
+                                parameters
+                            )
+                        end_time = time.time()
+                        
+                        # Calculate metrics
+                        total_time = end_time - start_time
+                        avg_time = total_time / runs
+                        throughput = runs / total_time
+                        
+                        precision_results[precision] = {
+                            "total_time": total_time,
+                            "average_time": avg_time,
+                            "throughput": throughput,
+                            "runs": runs
+                        }
+                    except Exception as e:
+                        precision_results[precision] = {"error": str(e)}
+            
+            results["precision_comparison"] = precision_results
+        except Exception as e:
+            results["precision_comparison"] = {"error": str(e)}
+        
+        # Test scaling with concurrency
+        try:
+            concurrency_levels = [1, 2, 4, 8]
+            concurrency_results = {}
+            
+            with mock.patch.object(self.client, '_make_request', 
+                                 return_value={"outputs": "Test output", "model_id": self.model}):
+                for concurrency in concurrency_levels:
+                    try:
+                        # Prepare for concurrent execution
+                        runs_per_thread = 5
+                        total_runs = concurrency * runs_per_thread
+                        
+                        def run_inference():
+                            for _ in range(runs_per_thread):
+                                self.client.run_inference(
+                                    self.model, 
+                                    test_inputs["inputs"],
+                                    test_inputs["parameters"]
+                                )
+                        
+                        # Timed test with concurrency
+                        start_time = time.time()
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+                            futures = [executor.submit(run_inference) for _ in range(concurrency)]
+                            for future in concurrent.futures.as_completed(futures):
+                                # Handle any exceptions
+                                future.result()
+                        end_time = time.time()
+                        
+                        # Calculate metrics
+                        total_time = end_time - start_time
+                        avg_time_per_request = total_time / total_runs
+                        throughput = total_runs / total_time
+                        
+                        concurrency_results[str(concurrency)] = {
+                            "total_time": total_time,
+                            "average_time_per_request": avg_time_per_request,
+                            "total_requests": total_runs,
+                            "throughput": throughput
+                        }
+                    except Exception as e:
+                        concurrency_results[str(concurrency)] = {"error": str(e)}
+            
+            # Calculate scaling efficiency
+            base_throughput = concurrency_results.get("1", {}).get("throughput")
+            if base_throughput:
+                for level, result in concurrency_results.items():
+                    if "throughput" in result:
+                        result["scaling_efficiency"] = result["throughput"] / (int(level) * base_throughput)
+            
+            results["concurrency_scaling"] = concurrency_results
+        except Exception as e:
+            results["concurrency_scaling"] = {"error": str(e)}
+        
+        # Save test results
+        results_file = os.path.join(self.collected_dir, f'llvm_performance_{self.model}.json')
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        logger.info(f"Performance tests completed. Results saved to {results_file}")
+        return results
     
-    # Set environment variables from arguments
-    if args.model:
-        os.environ["VLLM_MODEL"] = args.model
-    if args.api_url:
-        os.environ["VLLM_API_URL"] = args.api_url
-    if args.timeout:
-        os.environ["VLLM_TIMEOUT"] = str(args.timeout)
+    def run_real_connection_tests(self):
+        """Run tests with real LLVM server connection."""
+        logger.info(f"Running real connection tests to {self.api_url}...")
+        
+        results = {
+            "server_connection": {},
+            "model_availability": {},
+            "inference": {}
+        }
+        
+        # Test server connection
+        try:
+            # Try to connect to server status endpoint
+            response = requests.get(f"{self.api_url}/status", timeout=self.timeout)
+            
+            if response.status_code == 200:
+                results["server_connection"] = {
+                    "status": "Connected",
+                    "status_code": response.status_code
+                }
+                try:
+                    results["server_connection"]["server_info"] = response.json()
+                except Exception:
+                    results["server_connection"]["response"] = response.text[:1000]
+            else:
+                results["server_connection"] = {
+                    "status": "Failed",
+                    "status_code": response.status_code,
+                    "response": response.text[:1000]
+                }
+        except Exception as e:
+            results["server_connection"] = {
+                "status": "Error",
+                "error": str(e)
+            }
+        
+        # Test model availability
+        if results["server_connection"].get("status") == "Connected":
+            try:
+                # Check if model is available
+                response = requests.get(
+                    f"{self.api_url}/models/{self.model}",
+                    timeout=self.timeout
+                )
+                
+                if response.status_code == 200:
+                    results["model_availability"] = {
+                        "status": "Available",
+                        "status_code": response.status_code
+                    }
+                    try:
+                        results["model_availability"]["model_info"] = response.json()
+                    except Exception:
+                        results["model_availability"]["response"] = response.text[:1000]
+                else:
+                    results["model_availability"] = {
+                        "status": "Not Available",
+                        "status_code": response.status_code,
+                        "response": response.text[:1000]
+                    }
+            except Exception as e:
+                results["model_availability"] = {
+                    "status": "Error",
+                    "error": str(e)
+                }
+        
+        # Test inference
+        if results["model_availability"].get("status") == "Available":
+            try:
+                # Get test inputs for model
+                test_inputs = self._get_test_inputs(self.model)
+                
+                # Create payload
+                payload = {
+                    "input": test_inputs["inputs"]
+                }
+                
+                # Add parameters if provided
+                if test_inputs["parameters"]:
+                    payload["parameters"] = test_inputs["parameters"]
+                
+                # Make inference request
+                response = requests.post(
+                    f"{self.api_url}/models/{self.model}/infer",
+                    json=payload,
+                    timeout=self.timeout
+                )
+                
+                if response.status_code == 200:
+                    results["inference"] = {
+                        "status": "Success",
+                        "status_code": response.status_code
+                    }
+                    try:
+                        results["inference"]["result"] = response.json()
+                    except Exception:
+                        results["inference"]["response"] = response.text[:1000]
+                else:
+                    results["inference"] = {
+                        "status": "Failed",
+                        "status_code": response.status_code,
+                        "response": response.text[:1000]
+                    }
+            except Exception as e:
+                results["inference"] = {
+                    "status": "Error",
+                    "error": str(e)
+                }
+        
+        # Save test results
+        results_file = os.path.join(self.collected_dir, f'llvm_connection_{self.model}.json')
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        logger.info(f"Real connection tests completed. Results saved to {results_file}")
+        return results
     
-    # Create test suite
-    suite = unittest.TestSuite()
-    
-    # Add standard API tests
-    if args.standard or args.all or (not args.standard and not args.performance and not args.real and not args.advanced):
-        suite.addTest(TestVLLM('test_standard_api'))
-    
-    # Add performance tests
-    if args.performance or args.all:
-        suite.addTest(TestVLLM('test_performance'))
-    
-    # Add real connection tests
-    if args.real or args.all:
-        suite.addTest(TestVLLM('test_real_connection'))
-    
-    # Add advanced feature tests
-    if args.advanced or args.all:
-        suite.addTest(TestVLLM('test_advanced_features'))
-    
-    # Run tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    # Save summary report
-    summary = {
-        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "model": os.environ.get("VLLM_MODEL", "meta-llama/Llama-2-7b-chat-hf"),
-        "tests_run": len(result.failures) + len(result.errors) + result.testsRun - len(result.skipped),
-        "success": result.wasSuccessful(),
-        "failures": len(result.failures),
-        "errors": len(result.errors),
-        "skipped": len(result.skipped)
-    }
-    
-    # Create summary file with timestamp
-    summary_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'collected_results',
-        f'vllm_summary_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-    )
-    os.makedirs(os.path.dirname(summary_file), exist_ok=True)
-    with open(summary_file, 'w') as f:
-        json.dump(summary, f, indent=2)
-    
-    return 0 if result.wasSuccessful() else 1
+    def run_tests(self):
+        """Run all selected tests."""
+        results = {}
+        
+        # Run standard API tests
+        if self.args.standard:
+            results["standard"] = self.run_standard_tests()
+        
+        # Run performance tests
+        if self.args.performance:
+            results["performance"] = self.run_performance_tests()
+        
+        # Run real connection tests
+        if self.args.real:
+            results["real"] = self.run_real_connection_tests()
+        
+        # Save summary results
+        summary_file = os.path.join(self.collected_dir, f'llvm_summary_{self.model}.json')
+        with open(summary_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        logger.info(f"All tests completed. Summary saved to {summary_file}")
+        return results
 
 if __name__ == "__main__":
-    sys.exit(run_tests())
+    tester = LlvmApiTest()
+    results = tester.run_tests()
+    
+    # Print brief summary
+    print("\nLLVM API Test Summary:")
+    if "standard" in results:
+        success_count = sum(1 for r in results["standard"].values() if "Success" in r)
+        total_count = len(results["standard"])
+        print(f"Standard API Tests: {success_count}/{total_count} passed")
+    
+    if "performance" in results:
+        print("Performance Tests: Completed")
+        if "single_inference" in results["performance"]:
+            perf = results["performance"]["single_inference"]
+            if "average_time" in perf:
+                print(f"  Average inference time: {perf['average_time']:.4f} seconds")
+            if "throughput" in perf:
+                print(f"  Throughput: {perf['throughput']:.2f} requests/second")
+    
+    if "real" in results:
+        print("Real Connection Tests:")
+        conn_status = results["real"].get("server_connection", {}).get("status", "Not run")
+        print(f"  Server connection: {conn_status}")
+        model_status = results["real"].get("model_availability", {}).get("status", "Not run")
+        print(f"  Model availability: {model_status}")
+        infer_status = results["real"].get("inference", {}).get("status", "Not run")
+        print(f"  Inference test: {infer_status}")
+    
+    print("\nDetailed results saved to:")
+    for result_file in os.listdir(tester.collected_dir):
+        if result_file.startswith('llvm_'):
+            print(f"  {os.path.join(tester.collected_dir, result_file)}")

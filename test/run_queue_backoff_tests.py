@@ -24,7 +24,7 @@ def get_all_apis():
     return [
         "openai", "groq", "claude", "gemini", 
         "ollama", "hf_tgi", "hf_tei", 
-        "llvm", "opea", "ovms", "s3_kit"
+        "vllm", "opea", "ovms", "s3_kit"
     ]
 
 def run_test_script(script_path, args=None, description=None):

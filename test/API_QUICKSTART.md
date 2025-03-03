@@ -496,7 +496,7 @@ python run_queue_backoff_tests.py --apis claude openai groq
 python test_ollama_backoff_comprehensive.py
 
 # Run tests for all APIs except specific ones
-python run_queue_backoff_tests.py --skip-apis llvm s3_kit
+python run_queue_backoff_tests.py --skip-apis vllm s3_kit
 
 # Test all API backends
 python test_api_backend.py --api all
@@ -789,7 +789,7 @@ python run_queue_backoff_tests.py
 python run_queue_backoff_tests.py --apis openai groq claude
 
 # Skip specific APIs
-python run_queue_backoff_tests.py --skip-apis llvm opea ovms
+python run_queue_backoff_tests.py --skip-apis vllm opea ovms
 ```
 
 These advanced features provide significant performance improvements, cost savings, and system reliability for all API backends implemented in the IPFS Accelerate framework.

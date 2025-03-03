@@ -58,7 +58,7 @@ def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
         "year": datetime.datetime.now().year,
         "primary_task": "text-generation",  # Default task
         "tasks": ["text-generation"],  # Default tasks
-        "hardware_backends": ["cpu", "cuda", "openvino", "apple", "qualcomm", "amd"],
+        "hardware_backends": ["cpu", "cuda", "openvino", "apple", "qualcomm", "amd", "webnn", "webgpu"],
         
         # Default tensor types
         "input_tensor_type": "int64",  # Default for token IDs
@@ -96,6 +96,11 @@ def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
                 "description": "Manages device selection and memory",
                 "args": ["device_type", "memory_limit"],
                 "returns": "Device object or identifier"
+            },
+            "web_export": {
+                "description": "Exports model for web deployment",
+                "args": ["format", "quantize", "optimize"],
+                "returns": "Path to exported model files"
             }
         },
         
@@ -134,7 +139,9 @@ def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
                 "openvino": ["openvino>=2022.1.0"],
                 "apple": ["torch>=1.12.0"],
                 "qualcomm": ["qti-aisw>=1.8.0"],
-                "amd": ["rocm-smi>=5.0.0", "rccl>=2.0.0", "torch-rocm>=2.0.0"]
+                "amd": ["rocm-smi>=5.0.0", "rccl>=2.0.0", "torch-rocm>=2.0.0"],
+                "webnn": ["onnx>=1.14.0", "onnxruntime>=1.15.0", "webnn-polyfill>=1.0.0"],
+                "webgpu": ["transformers.js>=2.6.0", "webgpu>=0.1.24"]
             },
             "precision": {
                 "fp16": [],
@@ -144,6 +151,10 @@ def generate_test_file(model_type, output_dir=SKILLS_DIR, force=False):
                 "uint4": ["bitsandbytes>=0.41.0", "optimum>=1.12.0", "auto-gptq>=0.4.0"],
                 "fp8": ["transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"],
                 "fp4": ["transformers-neuronx>=0.8.0", "torch-neuronx>=2.0.0"]
+            },
+            "web": {
+                "webnn": ["onnx>=1.14.0", "onnxruntime-web>=1.16.0", "webnn-polyfill>=1.0.0"],
+                "webgpu": ["@xenova/transformers>=2.6.0", "webgpu>=0.1.24"]
             }
         }
     }
@@ -460,7 +471,9 @@ MODEL_REGISTRY = {{
             "openvino": True,
             "apple": True,
             "qualcomm": False,  # Usually false for complex models
-            "amd": True  # AMD ROCm support
+            "amd": True,  # AMD ROCm support
+            "webnn": True,  # WebNN support
+            "webgpu": True   # WebGPU/transformers.js support
         }},
         
         # Precision support by hardware
@@ -524,6 +537,26 @@ MODEL_REGISTRY = {{
                 "uint4": False,
                 "fp8": False,
                 "fp4": False
+            }},
+            "webnn": {{
+                "fp32": True,
+                "fp16": True,
+                "bf16": False,
+                "int8": True,
+                "int4": False,
+                "uint4": False,
+                "fp8": False,
+                "fp4": False
+            }},
+            "webgpu": {{
+                "fp32": True,
+                "fp16": True,
+                "bf16": False,
+                "int8": True,
+                "int4": False,
+                "uint4": False,
+                "fp8": False,
+                "fp4": False
             }}
         }},
         
@@ -570,7 +603,9 @@ MODEL_REGISTRY = {{
             "openvino": True,
             "apple": True,
             "qualcomm": True,
-            "amd": True
+            "amd": True,
+            "webnn": True,
+            "webgpu": True
         }},
         
         # Precision support by hardware - small models usually have broader precision support
@@ -634,6 +669,26 @@ MODEL_REGISTRY = {{
                 "uint4": False,
                 "fp8": False,
                 "fp4": False
+            }},
+            "webnn": {{
+                "fp32": True,
+                "fp16": True,
+                "bf16": False,
+                "int8": True,
+                "int4": False,
+                "uint4": False,
+                "fp8": False,
+                "fp4": False
+            }},
+            "webgpu": {{
+                "fp32": True,
+                "fp16": True,
+                "bf16": False,
+                "int8": True,
+                "int4": False,
+                "uint4": False,
+                "fp8": False,
+                "fp4": False
             }}
         }},
         
@@ -690,6 +745,8 @@ class {template_vars['class_name']}:
         self.create_apple_text_embedding_endpoint_handler = self.create_apple_text_embedding_endpoint_handler
         self.create_amd_text_embedding_endpoint_handler = self.create_amd_text_embedding_endpoint_handler
         self.create_qualcomm_text_embedding_endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler
+        self.create_webnn_text_embedding_endpoint_handler = self.create_webnn_text_embedding_endpoint_handler
+        self.create_webgpu_text_embedding_endpoint_handler = self.create_webgpu_text_embedding_endpoint_handler
         
         # Initialization methods
         self.init = self.init_cpu  # Default to CPU
@@ -699,6 +756,8 @@ class {template_vars['class_name']}:
         self.init_apple = self.init_apple
         self.init_amd = self.init_amd
         self.init_qualcomm = self.init_qualcomm
+        self.init_webnn = self.init_webnn
+        self.init_webgpu = self.init_webgpu
         
         # Test methods
         self.__test__ = self.__test__
@@ -752,7 +811,9 @@ class {template_vars['class_name']}:
             "qualcomm": False,
             "amd": False,
             "amd_version": None,
-            "amd_devices": 0
+            "amd_devices": 0,
+            "webnn": False,
+            "webgpu": False
         }
         
         # Check CUDA
@@ -825,6 +886,23 @@ class {template_vars['class_name']}:
         try:
             import qti.aisw.dlc_utils
             capabilities["qualcomm"] = True
+        except ImportError:
+            pass
+            
+        # Check for WebNN support
+        try:
+            import onnx
+            import onnxruntime
+            capabilities["webnn"] = True
+        except ImportError:
+            pass
+            
+        # Check for WebGPU/transformers.js support
+        try:
+            # In Node.js environment, we can check for transformers.js package
+            import importlib.util
+            if importlib.util.find_spec("transformers.js") or importlib.util.find_spec("@xenova/transformers"):
+                capabilities["webgpu"] = True
         except ImportError:
             pass
             
@@ -1291,6 +1369,140 @@ class {template_vars['class_name']}:
             import asyncio
             handler = lambda x: {{"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}}
             return None, None, handler, asyncio.Queue(32), 1
+            
+    def init_webnn(self, model_name, model_type, device="webnn", **kwargs):
+        \"\"\"Initialize model for WebNN inference.
+        
+        Args:
+            model_name (str): Model identifier
+            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
+            device (str): Device identifier ('webnn')
+            precision (str, optional): Precision to use (fp32, fp16, int8)
+            
+        Returns:
+            Tuple of (endpoint, processor, handler, queue, batch_size)
+        \"\"\"
+        try:
+            import asyncio
+            import numpy as np
+            
+            # Get precision from kwargs or default to fp32
+            precision = kwargs.get("precision", "fp32")
+            
+            # Create processor and endpoint
+            processor = self._create_mock_processor()
+            
+            # Create WebNN-style endpoint
+            class MockWebNNModel:
+                def __init__(self):
+                    self.input_names = ["input_ids", "attention_mask"]
+                    self.output_names = ["last_hidden_state"]
+                    
+                def run(self, inputs):
+                    batch_size = 1
+                    seq_len = 10
+                    if isinstance(inputs, dict) and 'input_ids' in inputs:
+                        if hasattr(inputs['input_ids'], 'shape'):
+                            batch_size = inputs['input_ids'].shape[0]
+                            if len(inputs['input_ids'].shape) > 1:
+                                seq_len = inputs['input_ids'].shape[1]
+                    
+                    # Return WebNN-style output
+                    return [np.random.rand(batch_size, seq_len, 768).astype(np.float32)]
+            
+            endpoint = MockWebNNModel()
+            
+            # Create handler
+            handler = self.create_webnn_text_embedding_endpoint_handler(
+                endpoint_model=model_name,
+                webnn_label=device,
+                endpoint=endpoint,
+                tokenizer=processor,
+                precision=precision
+            )
+            
+            # Create queue
+            queue = asyncio.Queue(32)
+            batch_size = 1
+            
+            return endpoint, processor, handler, queue, batch_size
+        except Exception as e:
+            print(f"Error initializing WebNN model: {{e}}")
+            traceback.print_exc()
+            
+            # Return mock components on error
+            import asyncio
+            handler = lambda x: {{"output": "Mock WebNN output", "input": x, "implementation_type": "MOCK"}}
+            return None, None, handler, asyncio.Queue(32), 1
+            
+    def init_webgpu(self, model_name, model_type, device="webgpu", **kwargs):
+        \"\"\"Initialize model for WebGPU (transformers.js) inference.
+        
+        Args:
+            model_name (str): Model identifier
+            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
+            device (str): Device identifier ('webgpu')
+            precision (str, optional): Precision to use (fp32, fp16, int8)
+            
+        Returns:
+            Tuple of (endpoint, processor, handler, queue, batch_size)
+        \"\"\"
+        try:
+            import asyncio
+            import numpy as np
+            
+            # Get precision from kwargs or default to fp32
+            precision = kwargs.get("precision", "fp32")
+            
+            # Create processor and endpoint
+            processor = self._create_mock_processor()
+            
+            # Create transformers.js-style endpoint
+            class MockTransformersJSModel:
+                def __init__(self):
+                    self.model_type = model_type
+                    
+                async def generate(self, inputs):
+                    # This simulates transformers.js API which is promise-based
+                    batch_size = 1
+                    if isinstance(inputs, dict) and 'input_ids' in inputs:
+                        if hasattr(inputs['input_ids'], 'shape'):
+                            batch_size = inputs['input_ids'].shape[0]
+                    
+                    return {{"generated_text": ["This is mock output from transformers.js"] * batch_size}}
+                    
+                async def encode(self, inputs):
+                    # This simulates transformers.js embedding API
+                    batch_size = 1
+                    if isinstance(inputs, list):
+                        batch_size = len(inputs)
+                    
+                    return np.random.rand(batch_size, 768).astype(np.float32)
+            
+            endpoint = MockTransformersJSModel()
+            
+            # Create handler
+            handler = self.create_webgpu_text_embedding_endpoint_handler(
+                endpoint_model=model_name,
+                webgpu_label=device,
+                endpoint=endpoint,
+                tokenizer=processor,
+                precision=precision
+            )
+            
+            # Create queue
+            queue = asyncio.Queue(32)
+            batch_size = 1
+            
+            return endpoint, processor, handler, queue, batch_size
+        except Exception as e:
+            print(f"Error initializing WebGPU/transformers.js model: {{e}}")
+            traceback.print_exc()
+            
+            # Return mock components on error
+            import asyncio
+            handler = lambda x: {{"output": "Mock WebGPU/transformers.js output", "input": x, "implementation_type": "MOCK"}}
+            return None, None, handler, asyncio.Queue(32), 1
 
     # Handler creation methods
     def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):
@@ -1520,6 +1732,96 @@ class {template_vars['class_name']}:
                 print(f"Error in Qualcomm handler: {{e}}")
                 # Return a simple dict on error
                 return {{"output": "Error in Qualcomm handler", "implementation_type": "MOCK"}}
+                
+        return handler
+        
+    def create_webnn_text_embedding_endpoint_handler(self, endpoint_model, webnn_label, endpoint=None, tokenizer=None, precision="fp32"):
+        \"\"\"Create a handler function for WebNN inference.
+        
+        Args:
+            endpoint_model: Model name
+            webnn_label: Label for the endpoint
+            endpoint: Model endpoint
+            tokenizer: Tokenizer for the model
+            precision: Precision type (fp32, fp16, int8)
+            
+        Returns:
+            A handler function that accepts text input and returns embeddings
+        \"\"\"
+        # Create a handler that works with the endpoint and tokenizer
+        def handler(text_input):
+            try:
+                # This should match how the actual handler would process data
+                import torch
+                import numpy as np
+                
+                # Create mock output with appropriate structure
+                batch_size = 1 if isinstance(text_input, str) else len(text_input)
+                
+                # For WebNN, we'd typically convert from numpy arrays to torch tensors
+                # after executing the ONNX model with WebNN
+                np_output = np.random.rand(batch_size, 768).astype(np.float32)
+                tensor_output = torch.from_numpy(np_output)
+                
+                # Return dictionary with tensor and metadata
+                return {{
+                    "tensor": tensor_output,
+                    "implementation_type": "MOCK",
+                    "device": "WebNN",
+                    "model": endpoint_model,
+                    "is_webnn": True,
+                    "precision": precision,
+                    "web_backend": "webnn"
+                }}
+            except Exception as e:
+                print(f"Error in WebNN handler: {{e}}")
+                # Return a simple dict on error
+                return {{"output": "Error in WebNN handler", "implementation_type": "MOCK"}}
+                
+        return handler
+        
+    def create_webgpu_text_embedding_endpoint_handler(self, endpoint_model, webgpu_label, endpoint=None, tokenizer=None, precision="fp32"):
+        \"\"\"Create a handler function for WebGPU (transformers.js) inference.
+        
+        Args:
+            endpoint_model: Model name
+            webgpu_label: Label for the endpoint
+            endpoint: Model endpoint
+            tokenizer: Tokenizer for the model
+            precision: Precision type (fp32, fp16, int8)
+            
+        Returns:
+            A handler function that accepts text input and returns embeddings
+        \"\"\"
+        # Create a handler that works with the endpoint and tokenizer
+        def handler(text_input):
+            try:
+                # This should match how the actual handler would process data
+                import torch
+                import numpy as np
+                
+                # Create mock output with appropriate structure
+                batch_size = 1 if isinstance(text_input, str) else len(text_input)
+                
+                # For transformers.js, we'd typically be working with JavaScript 
+                # tensors that get converted to numpy arrays and then to torch tensors
+                np_output = np.random.rand(batch_size, 768).astype(np.float32)
+                tensor_output = torch.from_numpy(np_output)
+                
+                # Return dictionary with tensor and metadata
+                return {{
+                    "tensor": tensor_output,
+                    "implementation_type": "MOCK",
+                    "device": "WebGPU",
+                    "model": endpoint_model,
+                    "is_webgpu": True,
+                    "precision": precision,
+                    "web_backend": "transformers.js"
+                }}
+            except Exception as e:
+                print(f"Error in WebGPU/transformers.js handler: {{e}}")
+                # Return a simple dict on error
+                return {{"output": "Error in WebGPU/transformers.js handler", "implementation_type": "MOCK"}}
                 
         return handler
 
@@ -1758,6 +2060,144 @@ class {template_vars['class_name']}:
                 results["amd_test"] = f"Error: {{str(e)}}"
         else:
             results["amd_test"] = "AMD ROCm not available"
+            
+        # Test on WebNN if available
+        if self.hardware_capabilities.get("webnn", False):
+            try:
+                print("Testing {model_type} on WebNN...")
+                endpoint, processor, handler, queue, batch_size = self.init_webnn(
+                    model_name="test-{model_type}-model",
+                    model_type="{template_vars['primary_task']}"
+                )
+                
+                # Test with simple input
+                input_text = "This is a test input for {model_type} on WebNN"
+                output = handler(input_text)
+                
+                # Get model info using enhanced API
+                model_info = self._get_model_info()
+                
+                # Record results
+                examples.append({{
+                    "platform": "WebNN",
+                    "input": input_text,
+                    "output_type": f"container: {{str(type(output))}}, tensor: {{str(type(output.get('tensor', output)))}}",
+                    "implementation_type": output.get("implementation_type", "UNKNOWN"),
+                    "web_backend": output.get("web_backend", "unknown"),
+                    "precision": output.get("precision", "fp32"),
+                    "model_info": {{
+                        "input_format": model_info["input"]["format"],
+                        "output_format": model_info["output"]["format"],
+                        "helper_functions": list(model_info["helper_functions"].keys()),
+                        "required_dependencies": model_info["dependencies"]["pip"][:3] if len(model_info["dependencies"]["pip"]) > 3 else model_info["dependencies"]["pip"],
+                        "webnn_specific": model_info["dependencies"]["optional"].get("webnn", [])
+                    }},
+                    "hardware": self.hardware_capabilities
+                }})
+                
+                # Test supported precision formats on WebNN
+                for precision in ["fp16", "int8"]:
+                    if "precision_compatibility" in model_info and model_info["precision_compatibility"]["webnn"][precision]:
+                        try:
+                            print(f"Testing {{model_type}} on WebNN with {{precision.upper()}} precision...")
+                            endpoint_precision, processor_precision, handler_precision, _, _ = self.init_webnn(
+                                model_name=f"test-{{model_type}}-model-{{precision}}",
+                                model_type="{template_vars['primary_task']}",
+                                device="webnn",
+                                precision=precision
+                            )
+                            
+                            output_precision = handler_precision(input_text)
+                            
+                            # Record precision-specific results
+                            examples.append({{
+                                "platform": f"WebNN ({{precision.upper()}})",
+                                "input": input_text,
+                                "output_type": f"container: {{str(type(output_precision))}}, tensor: {{str(type(output_precision.get('tensor', output_precision)))}}",
+                                "implementation_type": output_precision.get("implementation_type", "UNKNOWN"),
+                                "precision": precision,
+                                "web_backend": "webnn",
+                                "hardware": self.hardware_capabilities
+                            }})
+                        except Exception as e:
+                            print(f"Error testing WebNN with {{precision.upper()}}: {{e}}")
+                
+                results["webnn_test"] = "Success"
+            except Exception as e:
+                print(f"Error testing on WebNN: {{e}}")
+                traceback.print_exc()
+                results["webnn_test"] = f"Error: {{str(e)}}"
+        else:
+            results["webnn_test"] = "WebNN not available"
+        
+        # Test on WebGPU/transformers.js if available
+        if self.hardware_capabilities.get("webgpu", False):
+            try:
+                print("Testing {model_type} on WebGPU/transformers.js...")
+                endpoint, processor, handler, queue, batch_size = self.init_webgpu(
+                    model_name="test-{model_type}-model",
+                    model_type="{template_vars['primary_task']}"
+                )
+                
+                # Test with simple input
+                input_text = "This is a test input for {model_type} on WebGPU/transformers.js"
+                output = handler(input_text)
+                
+                # Get model info using enhanced API
+                model_info = self._get_model_info()
+                
+                # Record results
+                examples.append({{
+                    "platform": "WebGPU/transformers.js",
+                    "input": input_text,
+                    "output_type": f"container: {{str(type(output))}}, tensor: {{str(type(output.get('tensor', output)))}}",
+                    "implementation_type": output.get("implementation_type", "UNKNOWN"),
+                    "web_backend": output.get("web_backend", "unknown"),
+                    "precision": output.get("precision", "fp32"),
+                    "model_info": {{
+                        "input_format": model_info["input"]["format"],
+                        "output_format": model_info["output"]["format"],
+                        "helper_functions": list(model_info["helper_functions"].keys()),
+                        "required_dependencies": model_info["dependencies"]["pip"][:3] if len(model_info["dependencies"]["pip"]) > 3 else model_info["dependencies"]["pip"],
+                        "webgpu_specific": model_info["dependencies"]["optional"].get("webgpu", [])
+                    }},
+                    "hardware": self.hardware_capabilities
+                }})
+                
+                # Test supported precision formats on WebGPU
+                for precision in ["fp16", "int8"]:
+                    if "precision_compatibility" in model_info and model_info["precision_compatibility"]["webgpu"][precision]:
+                        try:
+                            print(f"Testing {{model_type}} on WebGPU with {{precision.upper()}} precision...")
+                            endpoint_precision, processor_precision, handler_precision, _, _ = self.init_webgpu(
+                                model_name=f"test-{{model_type}}-model-{{precision}}",
+                                model_type="{template_vars['primary_task']}",
+                                device="webgpu",
+                                precision=precision
+                            )
+                            
+                            output_precision = handler_precision(input_text)
+                            
+                            # Record precision-specific results
+                            examples.append({{
+                                "platform": f"WebGPU ({{precision.upper()}})",
+                                "input": input_text,
+                                "output_type": f"container: {{str(type(output_precision))}}, tensor: {{str(type(output_precision.get('tensor', output_precision)))}}",
+                                "implementation_type": output_precision.get("implementation_type", "UNKNOWN"),
+                                "precision": precision,
+                                "web_backend": "transformers.js",
+                                "hardware": self.hardware_capabilities
+                            }})
+                        except Exception as e:
+                            print(f"Error testing WebGPU with {{precision.upper()}}: {{e}}")
+                
+                results["webgpu_test"] = "Success"
+            except Exception as e:
+                print(f"Error testing on WebGPU/transformers.js: {{e}}")
+                traceback.print_exc()
+                results["webgpu_test"] = f"Error: {{str(e)}}"
+        else:
+            results["webgpu_test"] = "WebGPU/transformers.js not available"
         
         # Return test results
         return {{
@@ -1804,13 +2244,18 @@ def run_test():
             print(f"    Required Dependencies: {', '.join(example['model_info']['required_dependencies'])}")
             
             # Print hardware-specific dependencies
-            for hw_type in ['cuda_specific', 'amd_specific', 'apple_specific', 'qualcomm_specific']:
+            for hw_type in ['cuda_specific', 'amd_specific', 'apple_specific', 'qualcomm_specific',
+                         'webnn_specific', 'webgpu_specific']:
                 if hw_type in example['model_info'] and example['model_info'][hw_type]:
                     print(f"    {hw_type.replace('_specific', '').upper()}-Specific Dependencies: {', '.join(example['model_info'][hw_type])}")
         
         # Print precision information
         if 'precision' in example:
             print(f"  Precision: {example['precision'].upper()}")
+            
+        # Print web backend information
+        if 'web_backend' in example:
+            print(f"  Web Backend: {example['web_backend']}")
                 
         # Print hardware capabilities
         if 'hardware' in example:

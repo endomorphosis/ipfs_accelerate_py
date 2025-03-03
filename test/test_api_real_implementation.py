@@ -15,7 +15,7 @@ import ipfs_accelerate_py.api_backends
 # Import test modules directly with proper path resolution
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from apis import (
-    test_claude, test_groq, test_hf_tgi, test_hf_tei, test_llvm,
+    test_claude, test_groq, test_hf_tgi, test_hf_tei, test_vllm,
     test_openai_api, test_ovms, test_ollama, test_s3_kit,
     test_gemini, test_opea
 )
@@ -214,7 +214,7 @@ class APIImplementationTester:
             ("groq", test_groq.test_groq),
             ("hf_tgi", test_hf_tgi.test_hf_tgi),
             ("hf_tei", test_hf_tei.test_hf_tei),
-            ("llvm", test_llvm.test_llvm),
+            ("vllm", test_vllm.test_vllm),
             ("ovms", test_ovms.test_ovms),
             ("ollama", test_ollama.test_ollama),
             ("s3_kit", test_s3_kit.test_s3_kit),

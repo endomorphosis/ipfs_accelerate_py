@@ -87,7 +87,7 @@ python run_queue_backoff_tests.py
 python run_queue_backoff_tests.py --apis openai claude groq
 
 # Skip specific APIs in the test suite
-python run_queue_backoff_tests.py --skip-apis llvm s3_kit
+python run_queue_backoff_tests.py --skip-apis vllm s3_kit
 
 # Run comprehensive Ollama-specific tests
 python test_ollama_backoff_comprehensive.py

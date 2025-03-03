@@ -2,7 +2,7 @@
 """
 Generate missing test files for API backends.
 
-This script creates test files for LLVM and S3 Kit backends that are
+This script creates test files for VLLM and S3 Kit backends that are
 currently missing test implementations.
 """
 
@@ -20,13 +20,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 
-# Template for LLVM test file
-LLVM_TEST_TEMPLATE = """#!/usr/bin/env python
+# Template for VLLM test file
+VLLM_TEST_TEMPLATE = """#!/usr/bin/env python
 \"\"\"
-Test suite for LLVM API implementation.
+Test suite for VLLM API implementation.
 
-This module tests the LLVM API backend functionality, including:
-- Connection to LLVM server
+This module tests the VLLM API backend functionality, including:
+- Connection to VLLM server
 - Request handling
 - Response processing
 - Error handling
@@ -50,15 +50,15 @@ sys.path.insert(0, parent_dir)
 grand_parent_dir = os.path.dirname(parent_dir)
 sys.path.insert(0, grand_parent_dir)
 
-# Import LLVM client - adjust import path as needed
+# Import VLLM client - adjust import path as needed
 try:
-    from ipfs_accelerate_py.api_backends.llvm import LlvmClient
+    from ipfs_accelerate_py.api_backends.vllm import VllmClient
 except ImportError:
     try:
-        from api_backends.llvm import LlvmClient
+        from api_backends.vllm import VllmClient
     except ImportError:
         # Mock implementation for testing
-        class LlvmClient:
+        class VllmClient:
             def __init__(self, **kwargs):
                 self.api_key = kwargs.get("api_key", "test_key")
                 self.base_url = kwargs.get("base_url", "http://localhost:8000")
@@ -82,23 +82,23 @@ except ImportError:
                 return {"models": ["model1", "model2", "model3"]}
 
 
-class TestLlvmApiBackend(unittest.TestCase):
-    \"\"\"Test cases for LLVM API backend implementation.\"\"\"
+class TestVllmApiBackend(unittest.TestCase):
+    \"\"\"Test cases for VLLM API backend implementation.\"\"\"
     
     def setUp(self):
         \"\"\"Set up test environment.\"\"\"
         # Use mock server by default
-        self.client = LlvmClient(
+        self.client = VllmClient(
             api_key="test_key",
-            base_url="http://mock-llvm-server"
+            base_url="http://mock-vllm-server"
         )
         
         # Optional: Configure with real credentials from environment variables
-        api_key = os.environ.get("LLVM_API_KEY")
-        base_url = os.environ.get("LLVM_BASE_URL")
+        api_key = os.environ.get("VLLM_API_KEY")
+        base_url = os.environ.get("VLLM_BASE_URL")
         
         if api_key and base_url:
-            self.client = LlvmClient(
+            self.client = VllmClient(
                 api_key=api_key,
                 base_url=base_url
             )
@@ -640,7 +640,7 @@ def check_missing_test_files(apis_dir: str) -> Dict[str, bool]:
         Dict mapping API names to whether their test file is missing
     """
     test_files = {
-        "llvm": "test_llvm.py",
+        "vllm": "test_vllm.py",
         "s3_kit": "test_s3_kit.py"
     }
     
@@ -662,7 +662,7 @@ def generate_test_file(api_name: str, apis_dir: str) -> str:
     Generate a test file for the specified API.
     
     Args:
-        api_name: Name of the API (llvm or s3_kit)
+        api_name: Name of the API (vllm or s3_kit)
         apis_dir: Path to the apis directory
         
     Returns:
@@ -681,8 +681,8 @@ def generate_test_file(api_name: str, apis_dir: str) -> str:
             f.write(existing_content)
     
     # Select template based on API name
-    if api_name == "llvm":
-        template = LLVM_TEST_TEMPLATE
+    if api_name == "vllm":
+        template = VLLM_TEST_TEMPLATE
     elif api_name == "s3_kit":
         template = S3_KIT_TEST_TEMPLATE
     else:

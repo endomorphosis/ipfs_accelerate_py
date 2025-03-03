@@ -204,7 +204,7 @@ python run_queue_backoff_tests.py
 python run_queue_backoff_tests.py --apis openai groq claude
 
 # Skip specific APIs
-python run_queue_backoff_tests.py --skip-apis llvm opea ovms
+python run_queue_backoff_tests.py --skip-apis vllm opea ovms
 ```
 
 ## Implementation Details

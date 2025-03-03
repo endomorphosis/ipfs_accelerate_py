@@ -312,6 +312,59 @@ def get_task_category(tasks: List[str]) -> str:
     # Default to language models if no match
     return "language"
 
+def is_web_compatible(model_type: str, tasks: List[str]) -> Dict[str, bool]:
+    """
+    Determine if a model is compatible with web platforms
+    
+    Args:
+        model_type: The model type/family
+        tasks: List of tasks the model supports
+        
+    Returns:
+        Dict with compatibility flags for WebNN and WebGPU
+    """
+    category = get_task_category(tasks)
+    
+    # Models unlikely to work in browsers due to size/complexity
+    incompatible_models = [
+        "llava", "blip", "stablelm", "llama", "mistral", "mixtral", 
+        "stable-diffusion", "musicgen", "audioldm", "whisper-large"
+    ]
+    
+    # Check if model name contains any incompatible patterns
+    is_incompatible = any(incompatible in model_type.lower() for incompatible in incompatible_models)
+    
+    # Default compatibility
+    compatibility = {
+        "webnn": True,
+        "webgpu": True
+    }
+    
+    # Apply category-specific rules
+    if category == "language":
+        # Most small text models work in browsers
+        if any(x in model_type.lower() for x in ["large", "xl", "xxl", "huge"]):
+            compatibility["webnn"] = False
+    elif category == "vision":
+        # Most simple vision models work in browsers
+        if any(x in model_type.lower() for x in ["segment", "detect"]):
+            compatibility["webnn"] = model_type.lower().startswith("tiny")
+    elif category == "audio":
+        # Audio models are more challenging for browsers
+        compatibility["webnn"] = any(x in model_type.lower() for x in ["tiny", "small", "mini", "base"])
+        compatibility["webgpu"] = any(x in model_type.lower() for x in ["tiny", "small", "mini"])
+    elif category == "multimodal":
+        # Multimodal models are often too large for browsers
+        compatibility["webnn"] = False
+        compatibility["webgpu"] = False
+    
+    # Override with model-specific incompatibilities
+    if is_incompatible:
+        compatibility["webnn"] = False
+        compatibility["webgpu"] = False
+    
+    return compatibility
+
 def get_primary_task(model: str, tasks: List[str]) -> str:
     """
     Determine the primary task for a model
@@ -543,6 +596,9 @@ class ModelTestGenerator:
         category = model_info["category"]
         example_model = model_info["example_model"]
         
+        # Determine web platform compatibility
+        web_compatibility = is_web_compatible(model, pipeline_tasks)
+        
         # Get test inputs
         test_inputs = self.get_test_inputs(model_info)
         test_inputs_str = "\n        ".join(test_inputs)
@@ -713,6 +769,24 @@ class test_hf_{normalized_name}:
         
         # Define test inputs appropriate for this model type
         {test_inputs_str}
+        
+        # Web platform compatibility information
+        self.web_compatibility = {{
+            "webnn": {str(web_compatibility["webnn"]).lower()},
+            "webgpu": {str(web_compatibility["webgpu"]).lower()}
+        }}
+        
+        # Define platform-specific configurations
+        self.platform_configs = {{
+            "cpu": {{"enabled": True}},
+            "cuda": {{"enabled": PACKAGE_STATUS.get("torch", False) and hasattr(torch, "cuda") and torch.cuda.is_available()}},
+            "openvino": {{"enabled": "openvino" in sys.modules}},
+            "mps": {{"enabled": PACKAGE_STATUS.get("torch", False) and hasattr(torch.backends, "mps") and torch.backends.mps.is_available()}},
+            "rocm": {{"enabled": False}},  # Default to disabled, runtime detection will update
+            "qualcomm": {{"enabled": "qai_hub" in sys.modules}},
+            "webnn": {{"enabled": self.web_compatibility["webnn"] and "onnx" in sys.modules}},
+            "webgpu": {{"enabled": self.web_compatibility["webgpu"] and "onnx" in sys.modules}}
+        }}
         
         # Initialize collection arrays for examples and status
         self.examples = []
@@ -1167,7 +1241,7 @@ class ApiTestGenerator:
         """
         all_apis = [
             "claude", "gemini", "groq", "hf_tei", "hf_tgi", 
-            "llvm", "ollama", "opea", "openai_api", "ovms", "s3_kit", "vllm"
+            "vllm", "ollama", "opea", "openai_api", "ovms", "s3_kit"
         ]
         
         missing = []
