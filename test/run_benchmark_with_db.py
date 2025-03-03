@@ -30,8 +30,8 @@ logger = logging.getLogger("benchmark_runner")
 def parse_args():
     parser = argparse.ArgumentParser(description="Run benchmarks and store results in database")
     
-    parser.add_argument("--db", type=str, default="./benchmark_db.duckdb", 
-                        help="Path to DuckDB database")
+    parser.add_argument("--db", type=str, default=None, 
+                        help="Path to DuckDB database. If not provided, uses BENCHMARK_DB_PATH environment variable or ./benchmark_db.duckdb")
     parser.add_argument("--model", type=str, required=True,
                         help="Model to benchmark")
     parser.add_argument("--hardware", type=str, choices=['cpu', 'cuda', 'rocm', 'mps', 'openvino', 'webnn', 'webgpu'],
@@ -65,9 +65,14 @@ def connect_to_db(db_path):
         # Create parent directories if they don't exist
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
         
-        conn = duckdb.connect(db_path)
+        # Try to connect with appropriate parameters - handle different DuckDB versions
+        try:
+            conn = duckdb.connect(db_path)
+        except TypeError:
+            # Fallback if parameters are different
+            conn = duckdb.connect(database=db_path)
         
-        # Check if required tables exist, if not print a helpful message
+        # Check if required tables exist, if not try to create them
         tables = conn.execute("SHOW TABLES").fetchall()
         table_names = [t[0].lower() for t in tables]
         
@@ -75,9 +80,39 @@ def connect_to_db(db_path):
         missing_tables = [t for t in required_tables if t.lower() not in table_names]
         
         if missing_tables:
-            logger.error(f"Required tables missing from database: {', '.join(missing_tables)}")
-            logger.error("Please run scripts/create_benchmark_schema.py to initialize the database schema")
-            sys.exit(1)
+            logger.warning(f"Required tables missing from database: {', '.join(missing_tables)}")
+            
+            # Check multiple possible locations for the schema script
+            schema_script = None
+            possible_paths = [
+                "scripts/create_benchmark_schema.py",
+                "test/scripts/create_benchmark_schema.py",
+                str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py"),
+                str(Path(__file__).parent / "scripts" / "benchmark_db" / "create_benchmark_schema.py"),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "create_benchmark_schema.py")
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    schema_script = path
+                    logger.info(f"Found schema script at: {path}")
+                    break
+            
+            if schema_script:
+                logger.info(f"Creating schema using script: {schema_script}")
+                try:
+                    conn.close()  # Close connection before running script
+                    import subprocess
+                    subprocess.run([sys.executable, schema_script, "--output", db_path])
+                    conn = duckdb.connect(db_path, read_only=False, access_mode='automatic')
+                except Exception as e:
+                    logger.error(f"Error running schema script: {e}")
+                    logger.error("Please run scripts/create_benchmark_schema.py to initialize the database schema")
+                    sys.exit(1)
+            else:
+                logger.error(f"Schema script not found. Checked paths: {possible_paths}")
+                logger.error("Please run scripts/create_benchmark_schema.py to initialize the database schema")
+                sys.exit(1)
         
         return conn
     except Exception as e:
@@ -260,13 +295,18 @@ def create_test_run(conn, model_name, hardware_type, args):
         'warmup': args.warmup
     }
     
+    # Get max run_id
+    result = conn.execute("SELECT MAX(run_id) FROM test_runs").fetchone()
+    max_id = result[0] if result[0] is not None else 0
+    run_id = max_id + 1
+    
     # Insert the test run
     conn.execute("""
-    INSERT INTO test_runs (test_name, test_type, started_at, completed_at, 
+    INSERT INTO test_runs (run_id, test_name, test_type, started_at, completed_at, 
                          execution_time_seconds, success, git_commit, git_branch, 
                          command_line, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, [test_name, 'performance', now, now, 0, True, 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [run_id, test_name, 'performance', now, now, 0, True, 
          args.commit, args.branch, command_line, json.dumps(metadata)])
     
     # Get the inserted ID
@@ -378,20 +418,22 @@ def run_benchmark(model_name, hardware_type, test_case, batch_size, precision, i
 
 def add_performance_result(conn, run_id, model_id, hardware_id, result):
     """Add a performance result to the database"""
+    # Get max result_id
+    result_data = conn.execute("SELECT MAX(result_id) FROM performance_results").fetchone()
+    max_id = result_data[0] if result_data[0] is not None else 0
+    result_id = max_id + 1
+    
     # Insert the performance result
     conn.execute("""
-    INSERT INTO performance_results (run_id, model_id, hardware_id, test_case, batch_size,
+    INSERT INTO performance_results (result_id, run_id, model_id, hardware_id, test_case, batch_size,
                                    precision, total_time_seconds, average_latency_ms,
                                    throughput_items_per_second, memory_peak_mb,
                                    iterations, warmup_iterations, metrics)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, [run_id, model_id, hardware_id, result['test_case'], result['batch_size'],
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [result_id, run_id, model_id, hardware_id, result['test_case'], result['batch_size'],
          result['precision'], result['total_time_seconds'], result['average_latency_ms'],
          result['throughput_items_per_second'], result['memory_peak_mb'],
          result['iterations'], result['warmup_iterations'], json.dumps({})])
-    
-    # Get the inserted ID
-    result_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     
     logger.info(f"Added performance result (ID: {result_id})")
     logger.info(f"  - Test case: {result['test_case']}, Batch size: {result['batch_size']}")
@@ -402,26 +444,36 @@ def add_performance_result(conn, run_id, model_id, hardware_id, result):
 
 def main():
     args = parse_args()
+    conn = None
     
     # Set logging level
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
-    # Connect to the database
-    conn = connect_to_db(args.db)
-    
-    # Parse batch sizes and test cases
-    batch_sizes = [int(b) for b in args.batch_sizes.split(',')]
-    test_cases = [t.strip() for t in args.test_cases.split(',')]
-    
-    # Find or create model and hardware entries
-    model_id, model_family = find_or_create_model(conn, args.model)
-    hardware_id = find_or_create_hardware(conn, args.hardware, args.device_name)
-    
-    # Create test run
-    run_id, start_time = create_test_run(conn, args.model, args.hardware, args)
+        
+    # Get database path from environment variable if not provided
+    db_path = args.db
+    if db_path is None:
+        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        logger.info(f"Using database path from environment: {db_path}")
     
     try:
+        # Connect to the database
+        conn = connect_to_db(db_path)
+        
+        # Start a transaction for all database operations
+        conn.execute("BEGIN TRANSACTION")
+        
+        # Parse batch sizes and test cases
+        batch_sizes = [int(b) for b in args.batch_sizes.split(',')]
+        test_cases = [t.strip() for t in args.test_cases.split(',')]
+        
+        # Find or create model and hardware entries
+        model_id, model_family = find_or_create_model(conn, args.model)
+        hardware_id = find_or_create_hardware(conn, args.hardware, args.device_name)
+        
+        # Create test run
+        run_id, start_time = create_test_run(conn, args.model, args.hardware, args)
+        
         # Run benchmarks for each test case and batch size
         for test_case in test_cases:
             for batch_size in batch_sizes:
@@ -440,17 +492,27 @@ def main():
         # Update test run with completion information
         update_test_run_completion(conn, run_id, start_time)
         
-        # Commit changes
-        conn.commit()
+        # Commit transaction when all operations succeed
+        conn.execute("COMMIT")
         logger.info("All benchmark results saved to database")
         
     except Exception as e:
         logger.error(f"Error running benchmarks: {e}")
-        # Don't commit on error
-        logger.info("No changes committed to database due to error")
-    
-    # Close the database connection
-    conn.close()
+        # Rollback transaction on error
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+                logger.info("Transaction rolled back due to error")
+            except Exception as rollback_error:
+                logger.error(f"Error rolling back transaction: {rollback_error}")
+    finally:
+        # Ensure connection is closed properly
+        if conn:
+            try:
+                conn.close()
+                logger.debug("Database connection closed")
+            except Exception as close_error:
+                logger.error(f"Error closing database connection: {close_error}")
 
 if __name__ == "__main__":
     main()

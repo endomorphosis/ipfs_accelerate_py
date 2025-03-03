@@ -59,111 +59,105 @@ The migration is organized into the following phases:
 
 ```bash
 # Create a new database with schema
-python test/scripts/create_benchmark_schema.py --output ./benchmark_db.duckdb
+python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 
-# Create a database with sample data for testing
-python test/scripts/create_benchmark_schema.py --output ./benchmark_db.duckdb --sample-data
+# Create a database with sample data
+python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 
 # Or convert existing data
-python test/benchmark_db_converter.py --consolidate --directories performance_results archived_test_results --output-db ./benchmark_db.duckdb
+python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 ```
 
 ### 2. Migrating Historical Data
 
-Use the comprehensive migration tool for a complete migration with validation:
+To migrate historical data, use the converter tool which has been enhanced to properly handle various data formats:
 
 ```bash
-# Migrate all known result directories with validation
-python test/scripts/benchmark_db_migration.py --migrate-all --db ./benchmark_db.duckdb --validate
+# Import data from specific directories
+python test/benchmark_db_converter.py --input-dir ./performance_results --output-db ./benchmark_db.duckdb
 
-# Migrate specific categories of data
-python test/scripts/benchmark_db_migration.py --categories performance,hardware --db ./benchmark_db.duckdb
+# Consolidate data from multiple directories
+python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 
-# Migrate CI artifacts from GitHub Actions
-python test/scripts/benchmark_db_migration.py --migrate-ci --artifacts-dir ./artifacts --db ./benchmark_db.duckdb
+# Export to Parquet format for external analysis
+python test/benchmark_db_converter.py --input-dir ./performance_results --output-parquet-dir ./benchmark_parquet
 
-# Archive processed files after migration
-python test/scripts/benchmark_db_migration.py --migrate-all --action archive --archive-dir ./archived_json --db ./benchmark_db.duckdb
+# Fix database issues when needed
+python test/scripts/benchmark_db_fix.py --fix-all --db ./benchmark_db.duckdb
 
-# For legacy migration approach:
-python test/scripts/benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
-python test/scripts/benchmark_db_converter.py --input-dir ./performance_results --output-parquet-dir ./benchmark_parquet
+# Fix specific issues like timestamp errors
+python test/scripts/benchmark_db_fix.py --fix-timestamps --db ./benchmark_db.duckdb
 ```
 
 ### 3. Querying the Database
 
-The enhanced query tools provide comprehensive capabilities for data analysis and visualization:
+The updated query tools provide capabilities for data analysis and visualization, and now work with both old and new schema formats:
 
 ```bash
 # Execute SQL queries on the database
-python test/scripts/benchmark_db_query.py --sql "SELECT model_name, hardware_type, AVG(throughput_items_per_second) FROM performance_results JOIN models USING(model_id) JOIN hardware_platforms USING(hardware_id) GROUP BY model_name, hardware_type"
+python test/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv --db ./benchmark_db.duckdb
 
-# Generate comprehensive HTML reports
-python test/scripts/benchmark_db_query.py --report performance --format html --output performance_report.html
-python test/scripts/benchmark_db_query.py --report hardware --format html --output hardware_report.html
-python test/scripts/benchmark_db_query.py --report compatibility --format html --output compatibility_matrix.html
+# Generate HTML reports
+python test/benchmark_db_query.py --report performance --format html --output benchmark_report.html --db ./benchmark_db.duckdb
 
 # Compare hardware platforms for a specific model
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output bert_hardware_comparison.png
+python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output hardware_comparison.png --db ./benchmark_db.duckdb
 
 # Compare models on a specific hardware platform
-python test/scripts/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --output cuda_model_comparison.png
+python test/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --db ./benchmark_db.duckdb
 
-# Plot performance trends over time
-python test/scripts/benchmark_db_query.py --trend performance --model bert-base-uncased --hardware cuda --metric throughput --format chart
-
-# Check for performance regressions
-python test/scripts/benchmark_db_query.py --regression-check --threshold 10 --last-days 30
-
-# Export data to various formats
-python test/scripts/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv
+# Show tabular data directly in the terminal
+python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --db ./benchmark_db.duckdb
 ```
 
 ### 4. Running Benchmarks with Database Integration
 
-For direct database storage during benchmark runs:
+The database-integrated benchmark runner has been updated to handle various DuckDB versions:
 
 ```bash
 # Run benchmarks with direct database storage
-python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16
+python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4 --db ./benchmark_db.duckdb
 
-# Run benchmarks with advanced options
-python test/run_benchmark_with_db.py --model t5-small --hardware cpu --precision fp32,fp16 --iterations 100 --warmup 10
+# Run simulated benchmarks for testing
+python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cpu --batch-sizes 1 --db ./benchmark_db.duckdb --simulate
+
+# Run multiple hardware tests
+python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --hardware cpu --batch-sizes 1 --db ./benchmark_db.duckdb
 ```
 
-### 4. Integrating with CI/CD
+### 5. Database Maintenance
 
-The database system now has a fully automated GitHub Actions workflow for CI/CD integration, implemented in `.github/workflows/benchmark_db_ci.yml`. To use this workflow:
+The database maintenance utilities have been improved to handle various issues:
 
 ```bash
-# Run the CI/CD workflow manually via GitHub CLI
-gh workflow run benchmark_db_ci.yml --ref main -f test_model=bert-base-uncased -f hardware=cpu -f batch_size=1,2,4,8
+# Validate database structure and integrity
+python test/benchmark_db_maintenance.py --validate --db ./benchmark_db.duckdb
 
-# Check the results of the latest workflow run
-gh run list --workflow benchmark_db_ci.yml --limit 1
+# Optimize database performance
+python test/benchmark_db_maintenance.py --optimize --db ./benchmark_db.duckdb
 
-# Download workflow artifacts
-gh run download <run-id> --name benchmark-reports
+# Create a backup of the database
+python test/benchmark_db_maintenance.py --backup --backup-dir ./benchmark_backups --db ./benchmark_db.duckdb
+
+# Generate a maintenance report
+python test/benchmark_db_maintenance.py --report --report-file maintenance_report.json --db ./benchmark_db.duckdb
 ```
 
-For local testing of the CI pipeline, you can use:
+For serious issues that require fixing database structure:
 
 ```bash
-# Run local benchmarks with CI integration (simulates CI workflow locally)
-./test/run_local_benchmark_with_ci.sh --model bert-base-uncased --hardware cpu --simulate
+# Create a completely new database with proper schema
+python test/scripts/create_new_database.py --db ./benchmark_db_fixed.duckdb --force
 
-# Or use the individual commands for more control:
-# Run benchmarks directly with database storage
-python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cpu --batch-sizes 1,2,4,8
+# Apply fixes to an existing database
+python test/scripts/benchmark_db_fix.py --fix-all --db ./benchmark_db.duckdb
 
-# Generate performance report
-python test/scripts/benchmark_db_query.py --report performance --format html --output benchmark_report.html
-
-# Compare with previous run results
-python test/scripts/benchmark_db_query.py --model bert-base-uncased --metric throughput --plot-trend --output trend.png
+# Fix only specific issues
+python test/scripts/benchmark_db_fix.py --fix-timestamps --db ./benchmark_db.duckdb
+python test/scripts/benchmark_db_fix.py --fix-web-platform --db ./benchmark_db.duckdb
 ```
 
-For full documentation on the CI/CD integration, see [BENCHMARK_CI_INTEGRATION.md](BENCHMARK_CI_INTEGRATION.md).
+For full documentation on database maintenance, see [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md).
 
 ## Database Schema
 
@@ -299,12 +293,14 @@ python test/benchmark_db_query.py --export performance --format json --output ./
 
 ## Timeline and Milestones
 
-The complete migration has been successfully completed in March 2025, ahead of the originally planned schedule:
+The migration is on schedule with major milestones completed in March 2025:
 
-- ✅ **February 28, 2025**: Complete migration of historical data
-- ✅ **March 1, 2025**: Complete integration with test runners
-- ✅ **March 2, 2025**: Complete CI/CD integration
-- ⏱️ **March 15, 2025**: Complete cleanup of JSON files (currently in progress)
+- ✅ **March 2, 2025**: Fix database access and integration issues
+- ✅ **March 3, 2025**: Create robust database schema and fix timestamp handling
+- ✅ **March 3, 2025**: Update converter for proper data handling
+- ✅ **March 3, 2025**: Fix benchmark runner compatibility
+- ✅ **March 3, 2025**: Update query tools to handle both old and new formats
+- ⏱️ **March 15, 2025**: Complete cleanup of JSON files (in progress)
 
 ## Resources
 

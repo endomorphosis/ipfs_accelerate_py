@@ -19,8 +19,9 @@ import time
 import argparse
 import logging
 import datetime
+import asyncio
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Callable, Union
 
 # Configure logging
 logging.basicConfig(
@@ -143,20 +144,44 @@ def test_web_platform(platform: str, model_modality: str = "text", verbose: bool
     try:
         # Try to import fixed_web_platform from the current directory
         sys.path.append('.')
+        # Import traditional platform handler
         from fixed_web_platform.web_platform_handler import (
             process_for_web, init_webnn, init_webgpu, create_mock_processors
         )
+        
+        # Try to import new unified framework components
+        try:
+            from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+            from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+            has_unified_framework = True
+        except ImportError:
+            has_unified_framework = False
+            
         if verbose:
             logger.info("Successfully imported web platform handler from fixed_web_platform")
+            if has_unified_framework:
+                logger.info("Successfully imported unified framework components")
     except ImportError:
         # Try to import from the test directory
         try:
             sys.path.append('test')
+            # Import traditional platform handler
             from fixed_web_platform.web_platform_handler import (
                 process_for_web, init_webnn, init_webgpu, create_mock_processors
             )
+            
+            # Try to import new unified framework components
+            try:
+                from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+                from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+                has_unified_framework = True
+            except ImportError:
+                has_unified_framework = False
+                
             if verbose:
                 logger.info("Successfully imported web platform handler from test/fixed_web_platform")
+                if has_unified_framework:
+                    logger.info("Successfully imported unified framework components")
         except ImportError:
             logger.error("Failed to import web platform handler from fixed_web_platform")
             return {
@@ -449,6 +474,330 @@ def run_tests(platforms: List[str], modalities: List[str], verbose: bool = False
     
     return results
 
+def test_unified_framework(platform: str, model_modality: str, verbose: bool = False) -> Dict[str, Any]:
+    """
+    Test the unified web framework implementation.
+    
+    Args:
+        platform: Which platform to test ('webnn' or 'webgpu')
+        model_modality: Which model modality to test ('text', 'vision', 'audio', 'multimodal')
+        verbose: Whether to print verbose output
+        
+    Returns:
+        Dictionary with test results
+    """
+    # Import unified framework components
+    try:
+        sys.path.append('.')
+        from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+        
+        if verbose:
+            logger.info("Successfully imported unified framework from fixed_web_platform")
+            
+    except ImportError:
+        try:
+            sys.path.append('test')
+            from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+            
+            if verbose:
+                logger.info("Successfully imported unified framework from test/fixed_web_platform")
+                
+        except ImportError:
+            logger.error("Failed to import unified framework from fixed_web_platform")
+            return {
+                "success": False,
+                "error": "Failed to import unified framework",
+                "platform": platform,
+                "model_modality": model_modality
+            }
+            
+    # Get model name for the modality
+    model_name = TEST_MODELS.get(model_modality, TEST_MODELS["text"])
+    
+    # Set environment for platform
+    if platform.lower() == "webgpu":
+        os.environ["WEBGPU_ENABLED"] = "1"
+        os.environ["WEBGPU_SIMULATION"] = "1"
+        os.environ["WEBGPU_AVAILABLE"] = "1"
+    elif platform.lower() == "webnn":
+        os.environ["WEBNN_ENABLED"] = "1"
+        os.environ["WEBNN_SIMULATION"] = "1"
+        os.environ["WEBNN_AVAILABLE"] = "1"
+    
+    try:
+        # Create accelerator with auto-detection
+        accelerator = WebPlatformAccelerator(
+            model_path=model_name,
+            model_type=model_modality,
+            auto_detect=True
+        )
+        
+        # Get configuration
+        config = accelerator.get_config()
+        
+        # Create endpoint
+        endpoint = accelerator.create_endpoint()
+        
+        # Create test input based on modality
+        if model_modality == "text":
+            test_input = "This is a test input for text models"
+        elif model_modality == "vision":
+            test_input = {"image": "test.jpg"}
+        elif model_modality == "audio":
+            test_input = {"audio": "test.mp3"}
+        elif model_modality == "multimodal":
+            test_input = {"image": "test.jpg", "text": "What is in this image?"}
+        else:
+            test_input = "Generic test input"
+        
+        # Run inference with performance measurement
+        start_time = time.time()
+        inference_result = endpoint(test_input)
+        inference_time = (time.time() - start_time) * 1000  # ms
+        
+        # Get performance metrics
+        metrics = accelerator.get_performance_metrics()
+        
+        # Get feature usage
+        feature_usage = accelerator.get_feature_usage()
+        
+        # Check if appropriate feature is in use
+        expected_feature = "4bit_quantization" if config.get("quantization", 16) <= 4 else None
+        
+        return {
+            "success": True,
+            "platform": platform,
+            "model_name": model_name,
+            "model_modality": model_modality,
+            "config": config,
+            "feature_usage": feature_usage,
+            "has_expected_feature": expected_feature in feature_usage if expected_feature else True,
+            "metrics": metrics,
+            "inference_time_ms": inference_time
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error with unified framework: {str(e)}",
+            "platform": platform,
+            "model_modality": model_modality
+        }
+
+def test_streaming_inference(verbose: bool = False) -> Dict[str, Any]:
+    """
+    Test streaming inference implementation.
+    
+    Args:
+        verbose: Whether to print verbose output
+        
+    Returns:
+        Dictionary with test results
+    """
+    # Import streaming inference component
+    try:
+        sys.path.append('.')
+        from fixed_web_platform.webgpu_streaming_inference import (
+            WebGPUStreamingInference, 
+            optimize_for_streaming
+        )
+        
+        if verbose:
+            logger.info("Successfully imported streaming inference from fixed_web_platform")
+            
+    except ImportError:
+        try:
+            sys.path.append('test')
+            from fixed_web_platform.webgpu_streaming_inference import (
+                WebGPUStreamingInference, 
+                optimize_for_streaming
+            )
+            
+            if verbose:
+                logger.info("Successfully imported streaming inference from test/fixed_web_platform")
+                
+        except ImportError:
+            logger.error("Failed to import streaming inference from fixed_web_platform")
+            return {
+                "success": False,
+                "error": "Failed to import streaming inference"
+            }
+    
+    # Enable WebGPU simulation
+    os.environ["WEBGPU_ENABLED"] = "1"
+    os.environ["WEBGPU_SIMULATION"] = "1"
+    os.environ["WEBGPU_AVAILABLE"] = "1"
+    
+    try:
+        # Configure for streaming
+        config = optimize_for_streaming({
+            "quantization": "int4",
+            "latency_optimized": True,
+            "adaptive_batch_size": True
+        })
+        
+        # Create streaming handler
+        streaming_handler = WebGPUStreamingInference(
+            model_path=TEST_MODELS["text"],
+            config=config
+        )
+        
+        # Test with callback
+        tokens_received = []
+        
+        def token_callback(token, is_last=False):
+            tokens_received.append(token)
+        
+        # Run streaming generation
+        prompt = "This is a test prompt for streaming inference"
+        
+        # Measure generation time
+        start_time = time.time()
+        result = streaming_handler.generate(
+            prompt,
+            max_tokens=20,
+            temperature=0.7,
+            callback=token_callback
+        )
+        generation_time = time.time() - start_time
+        
+        # Get performance stats
+        stats = streaming_handler.get_performance_stats()
+        
+        # Verify results
+        has_batch_size_history = "batch_size_history" in stats and len(stats["batch_size_history"]) > 0
+        
+        return {
+            "success": True,
+            "tokens_generated": stats.get("tokens_generated", 0),
+            "tokens_per_second": stats.get("tokens_per_second", 0),
+            "tokens_received": len(tokens_received),
+            "generation_time_sec": generation_time,
+            "batch_size_history": stats.get("batch_size_history", []),
+            "has_batch_size_adaptation": has_batch_size_history,
+            "adaptive_batch_size_enabled": config.get("adaptive_batch_size", False),
+            "result_length": len(result) if result else 0
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error with streaming inference: {str(e)}"
+        }
+
+async def test_async_streaming_inference(verbose: bool = False) -> Dict[str, Any]:
+    """
+    Test async streaming inference implementation.
+    
+    Args:
+        verbose: Whether to print verbose output
+        
+    Returns:
+        Dictionary with test results
+    """
+    # Import streaming inference component
+    try:
+        sys.path.append('.')
+        from fixed_web_platform.webgpu_streaming_inference import (
+            WebGPUStreamingInference, 
+            optimize_for_streaming
+        )
+        
+        if verbose:
+            logger.info("Successfully imported streaming inference from fixed_web_platform")
+            
+    except ImportError:
+        try:
+            sys.path.append('test')
+            from fixed_web_platform.webgpu_streaming_inference import (
+                WebGPUStreamingInference, 
+                optimize_for_streaming
+            )
+            
+            if verbose:
+                logger.info("Successfully imported streaming inference from test/fixed_web_platform")
+                
+        except ImportError:
+            logger.error("Failed to import streaming inference from fixed_web_platform")
+            return {
+                "success": False,
+                "error": "Failed to import streaming inference"
+            }
+    
+    # Enable WebGPU simulation
+    os.environ["WEBGPU_ENABLED"] = "1"
+    os.environ["WEBGPU_SIMULATION"] = "1"
+    os.environ["WEBGPU_AVAILABLE"] = "1"
+    
+    try:
+        # Configure for streaming with enhanced latency options
+        config = optimize_for_streaming({
+            "quantization": "int4",
+            "latency_optimized": True,
+            "adaptive_batch_size": True,
+            "ultra_low_latency": True,   # New option for extreme low latency
+            "stream_buffer_size": 1      # Smallest buffer for lowest latency
+        })
+        
+        # Create streaming handler
+        streaming_handler = WebGPUStreamingInference(
+            model_path=TEST_MODELS["text"],
+            config=config
+        )
+        
+        # Run async streaming generation
+        prompt = "This is a test prompt for async streaming inference with enhanced latency optimization"
+        
+        # Measure generation time
+        start_time = time.time()
+        result = await streaming_handler.generate_async(
+            prompt,
+            max_tokens=20,
+            temperature=0.7
+        )
+        generation_time = time.time() - start_time
+        
+        # Get performance stats
+        stats = streaming_handler.get_performance_stats()
+        
+        # Calculate per-token latency metrics
+        tokens_generated = stats.get("tokens_generated", 0)
+        avg_token_latency = generation_time * 1000 / tokens_generated if tokens_generated > 0 else 0
+        
+        # Test if adaptive batch sizing worked
+        batch_size_history = stats.get("batch_size_history", [])
+        batch_adaptation_occurred = len(batch_size_history) > 1 and len(set(batch_size_history)) > 1
+        
+        return {
+            "success": True,
+            "tokens_generated": tokens_generated,
+            "tokens_per_second": stats.get("tokens_per_second", 0),
+            "generation_time_sec": generation_time,
+            "avg_token_latency_ms": avg_token_latency,
+            "batch_size_history": batch_size_history,
+            "batch_adaptation_occurred": batch_adaptation_occurred,
+            "result_length": len(result) if result else 0,
+            "latency_optimized": config.get("latency_optimized", False),
+            "ultra_low_latency": config.get("ultra_low_latency", False),
+            "is_async": True
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error with async streaming inference: {str(e)}"
+        }
+
+def run_async_test(verbose: bool = False) -> Dict[str, Any]:
+    """
+    Run async test using asyncio.
+    
+    Args:
+        verbose: Whether to print verbose output
+        
+    Returns:
+        Dictionary with test results
+    """
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(test_async_streaming_inference(verbose))
+
 def main():
     """Parse arguments and run the tests."""
     parser = argparse.ArgumentParser(description="Test web platform integration")
@@ -481,6 +830,17 @@ def main():
                                help="Generate detailed platform comparison")
     comparison_group.add_argument("--compare-sizes", action="store_true",
                                help="Compare different model sizes") 
+    
+    # Add feature tests
+    feature_group = parser.add_argument_group("Feature Tests")
+    feature_group.add_argument("--test-unified-framework", action="store_true",
+                            help="Test unified web framework")
+    feature_group.add_argument("--test-streaming", action="store_true",
+                            help="Test streaming inference")
+    feature_group.add_argument("--test-async-streaming", action="store_true",
+                            help="Test async streaming inference")
+    feature_group.add_argument("--test-all-features", action="store_true",
+                            help="Test all new features")
     
     # Add output options
     output_group = parser.add_argument_group("Output")
@@ -522,6 +882,101 @@ def main():
     # Run the tests
     all_results = {}
     
+    # Run feature tests if requested
+    feature_results = {}
+    
+    if args.test_unified_framework or args.test_all_features:
+        # Test unified framework for each platform and modality
+        unified_results = {}
+        for platform in platforms:
+            platform_results = {}
+            for modality in modalities:
+                if args.verbose:
+                    logger.info(f"Testing unified framework with {platform} platform and {modality} modality")
+                result = test_unified_framework(platform, modality, args.verbose)
+                platform_results[modality] = result
+            unified_results[platform] = platform_results
+        feature_results["unified_framework"] = unified_results
+        
+        # Print unified framework results
+        print("\nUnified Framework Test Results:")
+        print("===============================")
+        for platform, platform_results in unified_results.items():
+            print(f"\n{platform.upper()} Platform:")
+            for modality, result in platform_results.items():
+                if result.get("success", False):
+                    print(f"  {modality.capitalize()}: ✅ PASS")
+                    if args.verbose:
+                        # Print feature usage
+                        feature_usage = result.get("feature_usage", {})
+                        print("  Feature Usage:")
+                        for feature, used in feature_usage.items():
+                            print(f"    - {feature}: {'✅' if used else '❌'}")
+                        
+                        # Print performance metrics
+                        metrics = result.get("metrics", {})
+                        print("  Performance Metrics:")
+                        print(f"    - Initialization: {metrics.get('initialization_time_ms', 0):.2f} ms")
+                        print(f"    - First Inference: {metrics.get('first_inference_time_ms', 0):.2f} ms")
+                        print(f"    - Inference: {result.get('inference_time_ms', 0):.2f} ms")
+                else:
+                    error = result.get("error", "Unknown error")
+                    print(f"  {modality.capitalize()}: ❌ FAIL - {error}")
+    
+    if args.test_streaming or args.test_all_features:
+        # Test streaming inference
+        if args.verbose:
+            logger.info("Testing streaming inference")
+        streaming_result = test_streaming_inference(args.verbose)
+        feature_results["streaming_inference"] = streaming_result
+        
+        # Print streaming inference results
+        print("\nStreaming Inference Test Results:")
+        print("================================")
+        if streaming_result.get("success", False):
+            print("  Streaming Inference: ✅ PASS")
+            print(f"  Tokens Generated: {streaming_result.get('tokens_generated', 0)}")
+            print(f"  Tokens/Second: {streaming_result.get('tokens_per_second', 0):.2f}")
+            print(f"  Generation Time: {streaming_result.get('generation_time_sec', 0):.2f} seconds")
+            if args.verbose:
+                print(f"  Batch Size History: {streaming_result.get('batch_size_history', [])}")
+                print(f"  Adaptive Batch Size: {'✅' if streaming_result.get('has_batch_size_adaptation', False) else '❌'}")
+                print(f"  Result Length: {streaming_result.get('result_length', 0)} characters")
+        else:
+            error = streaming_result.get("error", "Unknown error")
+            print(f"  Streaming Inference: ❌ FAIL - {error}")
+    
+    if args.test_async_streaming or args.test_all_features:
+        # Test async streaming inference
+        if args.verbose:
+            logger.info("Testing async streaming inference")
+        try:
+            async_result = run_async_test(args.verbose)
+            feature_results["async_streaming"] = async_result
+            
+            # Print async streaming results
+            print("\nAsync Streaming Inference Test Results:")
+            print("=======================================")
+            if async_result.get("success", False):
+                print("  Async Streaming: ✅ PASS")
+                print(f"  Tokens Generated: {async_result.get('tokens_generated', 0)}")
+                print(f"  Tokens/Second: {async_result.get('tokens_per_second', 0):.2f}")
+                print(f"  Generation Time: {async_result.get('generation_time_sec', 0):.2f} seconds")
+                if args.verbose:
+                    print(f"  Batch Size History: {async_result.get('batch_size_history', [])}")
+                    print(f"  Result Length: {async_result.get('result_length', 0)} characters")
+            else:
+                error = async_result.get("error", "Unknown error")
+                print(f"  Async Streaming: ❌ FAIL - {error}")
+        except Exception as e:
+            print(f"\nAsync Streaming Inference Test: ❌ FAIL - {e}")
+            feature_results["async_streaming"] = {"success": False, "error": str(e)}
+    
+    # Add feature results to overall results
+    if feature_results:
+        all_results["feature_tests"] = feature_results
+    
+    # Run standard tests for each size
     for size in sizes:
         # Create a result entry for this size
         size_key = f"size_{size}"

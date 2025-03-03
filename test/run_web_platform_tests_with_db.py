@@ -97,7 +97,7 @@ class WebPlatformTestsDBIntegration:
     """
     
     def __init__(self,
-                 db_path: str = "./benchmark_db.duckdb",
+                 db_path: str = None,
                  results_dir: str = "./web_platform_results",
                  models: Optional[List[str]] = None,
                  use_small_models: bool = True,
@@ -111,7 +111,8 @@ class WebPlatformTestsDBIntegration:
         Initialize the web platform tests database integration.
         
         Args:
-            db_path: Path to the DuckDB database
+            db_path: Path to the DuckDB database. If None, uses BENCHMARK_DB_PATH env var
+                    or falls back to "./benchmark_db.duckdb"
             results_dir: Directory for test results
             models: List of models to test (default: ['bert', 'vit', 't5'])
             use_small_models: Use smaller model variants when available
@@ -122,6 +123,10 @@ class WebPlatformTestsDBIntegration:
             parallel_loading: Enable parallel loading for multimodal models (March 2025 feature)
             shader_precompile: Enable shader precompilation (March 2025 feature)
         """
+        # Get database path from environment variable if not provided
+        if db_path is None:
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            
         self.db_path = db_path
         self.results_dir = Path(results_dir)
         self.use_small_models = use_small_models
@@ -207,13 +212,17 @@ class WebPlatformTestsDBIntegration:
         If not, create it.
         """
         db_file = Path(self.db_path)
+        conn = None
         
         # Create parent directories if they don't exist
         db_file.parent.mkdir(parents=True, exist_ok=True)
         
         try:
-            # Connect to database (creates it if it doesn't exist)
-            conn = duckdb.connect(self.db_path)
+            # Connect to database (creates it if it doesn't exist) with appropriate parameters
+            conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            
+            # Start a transaction for consistency
+            conn.execute("BEGIN TRANSACTION")
             
             # Check if tables exist
             tables = conn.execute("SHOW TABLES").fetchall()
@@ -230,18 +239,27 @@ class WebPlatformTestsDBIntegration:
             missing_tables = [t for t in required_tables if t.lower() not in table_names]
             
             if missing_tables:
+                # Commit current transaction before running schema creation
+                conn.execute("COMMIT")
+                conn.close()
+                conn = None
+                
                 logger.warning(f"Missing tables in database: {', '.join(missing_tables)}")
                 
-                # Check if we should create schema script
+                # Check multiple possible locations for the schema script
                 schema_script = None
                 possible_paths = [
                     "scripts/create_benchmark_schema.py",
-                    "test/scripts/create_benchmark_schema.py"
+                    "test/scripts/create_benchmark_schema.py",
+                    str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py"),
+                    str(Path(__file__).parent / "scripts" / "benchmark_db" / "create_benchmark_schema.py"),
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "create_benchmark_schema.py")
                 ]
                 
                 for path in possible_paths:
                     if os.path.exists(path):
                         schema_script = path
+                        logger.info(f"Found schema script at: {path}")
                         break
                 
                 if schema_script:
@@ -251,20 +269,54 @@ class WebPlatformTestsDBIntegration:
                         subprocess.run([sys.executable, schema_script, "--output", self.db_path])
                     except Exception as e:
                         logger.error(f"Error running schema script: {e}")
+                        # Re-connect to create the minimal schema
+                        conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
                         self._create_minimal_schema(conn)
                 else:
-                    logger.warning("Schema script not found, creating minimal schema")
+                    logger.warning(f"Schema script not found. Checked paths: {possible_paths}. Creating minimal schema.")
+                    # Re-connect to create the minimal schema
+                    conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
                     self._create_minimal_schema(conn)
+                
+                # Re-connect to check tables after schema creation
+                if conn:
+                    try:
+                        conn.close()
+                    except:
+                        pass
+                conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+                conn.execute("BEGIN TRANSACTION")
+                tables = conn.execute("SHOW TABLES").fetchall()
+                table_names = [t[0].lower() for t in tables]
             
             # Check if web platform results table exists
             if 'web_platform_results' not in table_names:
-                self._create_web_platform_table(conn)
+                logger.info("Creating web platform results table (missing from schema)")
+                try:
+                    self._create_web_platform_tables(conn)
+                except Exception as e:
+                    logger.error(f"Error creating web platform tables: {e}")
+                    logger.warning("This may affect March 2025 features functionality")
             
-            conn.close()
+            # Commit the transaction
+            conn.execute("COMMIT")
             
         except Exception as e:
             logger.error(f"Error ensuring database exists: {e}")
+            # Rollback transaction if error occurs
+            if conn:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception as rollback_error:
+                    logger.error(f"Error rolling back transaction: {rollback_error}")
             raise
+        finally:
+            # Ensure connection is closed
+            if conn:
+                try:
+                    conn.close()
+                except Exception as close_error:
+                    logger.error(f"Error closing database connection: {close_error}")
     
     def _create_minimal_schema(self, conn) -> None:
         """
@@ -275,139 +327,260 @@ class WebPlatformTestsDBIntegration:
         """
         logger.info("Creating minimal database schema")
         
-        # Models table
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS models (
-            model_id INTEGER PRIMARY KEY,
-            model_name VARCHAR NOT NULL,
-            model_family VARCHAR,
-            modality VARCHAR,
-            source VARCHAR,
-            version VARCHAR,
-            parameters_million FLOAT,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Hardware platforms table
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS hardware_platforms (
-            hardware_id INTEGER PRIMARY KEY,
-            hardware_type VARCHAR NOT NULL,
-            device_name VARCHAR,
-            platform VARCHAR,
-            platform_version VARCHAR,
-            driver_version VARCHAR,
-            memory_gb FLOAT,
-            compute_units INTEGER,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Test runs table
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS test_runs (
-            run_id INTEGER PRIMARY KEY,
-            test_name VARCHAR NOT NULL,
-            test_type VARCHAR NOT NULL,
-            started_at TIMESTAMP,
-            completed_at TIMESTAMP,
-            execution_time_seconds FLOAT,
-            success BOOLEAN,
-            git_commit VARCHAR,
-            git_branch VARCHAR,
-            command_line VARCHAR,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Hardware compatibility table
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS hardware_compatibility (
-            compatibility_id INTEGER PRIMARY KEY,
-            run_id INTEGER,
-            model_id INTEGER NOT NULL,
-            hardware_id INTEGER NOT NULL,
-            is_compatible BOOLEAN NOT NULL,
-            detection_success BOOLEAN NOT NULL,
-            initialization_success BOOLEAN NOT NULL,
-            error_message VARCHAR,
-            error_type VARCHAR,
-            suggested_fix VARCHAR,
-            workaround_available BOOLEAN,
-            compatibility_score FLOAT,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-            FOREIGN KEY (model_id) REFERENCES models(model_id),
-            FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
-        )
-        """)
-        
-        logger.info("Minimal schema created successfully")
-    
-    def _create_web_platform_table(self, conn) -> None:
+        try:
+            # Begin a transaction for atomicity
+            conn.execute("BEGIN TRANSACTION")
+            
+            # Models table
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY,
+                model_name VARCHAR NOT NULL,
+                model_family VARCHAR,
+                modality VARCHAR,
+                source VARCHAR,
+                version VARCHAR,
+                parameters_million FLOAT,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Hardware platforms table
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_platforms (
+                hardware_id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR NOT NULL,
+                device_name VARCHAR,
+                platform VARCHAR,
+                platform_version VARCHAR,
+                driver_version VARCHAR,
+                memory_gb FLOAT,
+                compute_units INTEGER,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Test runs table
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS test_runs (
+                run_id INTEGER PRIMARY KEY,
+                test_name VARCHAR NOT NULL,
+                test_type VARCHAR NOT NULL,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                execution_time_seconds FLOAT,
+                success BOOLEAN,
+                git_commit VARCHAR,
+                git_branch VARCHAR,
+                command_line VARCHAR,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Hardware compatibility table - use simplified version without foreign keys
+            # to avoid potential circular reference issues
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_compatibility (
+                compatibility_id INTEGER PRIMARY KEY,
+                run_id INTEGER,
+                model_id INTEGER NOT NULL,
+                hardware_id INTEGER NOT NULL,
+                is_compatible BOOLEAN NOT NULL,
+                detection_success BOOLEAN NOT NULL,
+                initialization_success BOOLEAN NOT NULL,
+                error_message VARCHAR,
+                error_type VARCHAR,
+                suggested_fix VARCHAR,
+                workaround_available BOOLEAN,
+                compatibility_score FLOAT,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Add web platform result tables
+            try:
+                self._create_web_platform_tables(conn)
+            except Exception as e:
+                logger.error(f"Error creating web platform tables: {e}")
+            
+            # Commit the transaction
+            conn.execute("COMMIT")
+            
+            logger.info("Minimal schema created successfully")
+            
+        except Exception as e:
+            # Rollback on error
+            try:
+                conn.execute("ROLLBACK")
+                logger.warning("Schema creation failed, rolled back transaction")
+            except Exception as rollback_error:
+                logger.error(f"Error rolling back transaction: {rollback_error}")
+                
+            logger.error(f"Error creating minimal schema: {e}")
+            
+            # Create an even more minimal schema as fallback
+            try:
+                self._create_fallback_schema(conn)
+            except Exception as fallback_error:
+                logger.error(f"Error creating fallback schema: {fallback_error}")
+            
+    def _create_fallback_schema(self, conn) -> None:
         """
-        Create the web platform results table if it doesn't exist.
+        Create the most minimal schema possible as a last resort.
+        No foreign keys, minimal columns, just enough to store basic data.
         
         Args:
             conn: DuckDB connection
         """
-        logger.info("Creating web platform results table")
+        logger.warning("Attempting to create fallback minimal schema")
         
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS web_platform_results (
-            result_id INTEGER PRIMARY KEY,
-            run_id INTEGER,
-            model_id INTEGER NOT NULL,
-            hardware_id INTEGER NOT NULL,
-            platform VARCHAR NOT NULL,
-            browser VARCHAR,
-            browser_version VARCHAR,
-            test_file VARCHAR,
-            success BOOLEAN,
-            load_time_ms FLOAT,
-            initialization_time_ms FLOAT,
-            inference_time_ms FLOAT,
-            total_time_ms FLOAT,
-            shader_compilation_time_ms FLOAT,
-            memory_usage_mb FLOAT,
-            error_message VARCHAR,
-            metrics JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-            FOREIGN KEY (model_id) REFERENCES models(model_id),
-            FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
-        )
-        """)
+        try:
+            # Try individual tables without transaction
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY,
+                model_name VARCHAR NOT NULL
+            )
+            """)
+            
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_platforms (
+                hardware_id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR NOT NULL
+            )
+            """)
+            
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS test_runs (
+                run_id INTEGER PRIMARY KEY,
+                test_name VARCHAR NOT NULL
+            )
+            """)
+            
+            logger.info("Fallback schema created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to create even fallback schema: {e}")
+            # At this point, there's not much more we can do
+    
+    def _create_web_platform_tables(self, conn) -> None:
+        """
+        Create the web platform results tables if they don't exist.
         
-        # Create the WebGPU advanced features table if it doesn't exist
-        conn.execute("""
-        CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
-            feature_id INTEGER PRIMARY KEY,
-            result_id INTEGER NOT NULL,
-            compute_shader_support BOOLEAN,
-            parallel_compilation BOOLEAN,
-            shader_cache_hit BOOLEAN,
-            workgroup_size INTEGER,
-            compute_pipeline_time_ms FLOAT,
-            pre_compiled_pipeline BOOLEAN,
-            memory_optimization_level VARCHAR,
-            audio_acceleration BOOLEAN,
-            video_acceleration BOOLEAN,
-            parallel_loading BOOLEAN,
-            parallel_loading_speedup FLOAT,
-            components_loaded INTEGER,
-            component_loading_time_ms FLOAT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (result_id) REFERENCES web_platform_results(result_id)
-        )
-        """)
+        Args:
+            conn: DuckDB connection
+        """
+        logger.info("Creating web platform results tables")
         
-        logger.info("Web platform tables created successfully")
+        try:
+            # Start a transaction for table creation
+            conn.execute("BEGIN TRANSACTION")
+            
+            # Create main results table - using simplified foreign key structure
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS web_platform_results (
+                result_id INTEGER PRIMARY KEY,
+                run_id INTEGER,
+                model_id INTEGER NOT NULL,
+                hardware_id INTEGER NOT NULL,
+                platform VARCHAR NOT NULL,
+                browser VARCHAR,
+                browser_version VARCHAR,
+                test_file VARCHAR,
+                success BOOLEAN,
+                load_time_ms FLOAT,
+                initialization_time_ms FLOAT,
+                inference_time_ms FLOAT,
+                total_time_ms FLOAT,
+                shader_compilation_time_ms FLOAT,
+                memory_usage_mb FLOAT,
+                error_message VARCHAR,
+                metrics JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Create the WebGPU advanced features table - using simplified foreign key structure
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
+                feature_id INTEGER PRIMARY KEY,
+                result_id INTEGER NOT NULL,
+                compute_shader_support BOOLEAN,
+                parallel_compilation BOOLEAN,
+                shader_cache_hit BOOLEAN,
+                workgroup_size INTEGER,
+                compute_pipeline_time_ms FLOAT,
+                pre_compiled_pipeline BOOLEAN,
+                memory_optimization_level VARCHAR,
+                audio_acceleration BOOLEAN,
+                video_acceleration BOOLEAN,
+                parallel_loading BOOLEAN,
+                parallel_loading_speedup FLOAT,
+                components_loaded INTEGER,
+                component_loading_time_ms FLOAT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Commit the transaction
+            conn.execute("COMMIT")
+            
+            logger.info("Web platform tables created successfully")
+            
+        except Exception as e:
+            # Rollback on error
+            try:
+                conn.execute("ROLLBACK")
+                logger.warning("Web platform table creation failed, rolled back transaction")
+            except Exception as rollback_error:
+                logger.error(f"Error rolling back transaction: {rollback_error}")
+            
+            logger.error(f"Error creating web platform tables: {e}")
+    
+    # Alias for backward compatibility
+    def _create_web_platform_table(self, conn) -> None:
+        """
+        Alias for _create_web_platform_tables for backward compatibility.
+        
+        Args:
+            conn: DuckDB connection
+        """
+        self._create_web_platform_tables(conn)
+        
+        Args:
+            conn: DuckDB connection
+        """
+        logger.warning("Attempting to create fallback web platform tables")
+        
+        try:
+            # Very minimal tables with just essential columns
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS web_platform_results (
+                result_id INTEGER PRIMARY KEY,
+                model_id INTEGER NOT NULL,
+                hardware_id INTEGER NOT NULL,
+                platform VARCHAR NOT NULL,
+                success BOOLEAN,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
+                feature_id INTEGER PRIMARY KEY,
+                result_id INTEGER NOT NULL
+            )
+            """)
+            
+            logger.info("Fallback web platform tables created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to create even fallback web platform tables: {e}")
+            # At this point we'll have to capture errors when trying to store results
     
     def _create_test_run(self) -> int:
         """
@@ -765,8 +938,14 @@ class WebPlatformTestsDBIntegration:
             logger.warning("No results to store in database")
             return
         
-        conn = duckdb.connect(self.db_path)
+        conn = None
         try:
+            # Connect to database with automatic mode to handle potential lock conflicts
+            conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            
+            # Start a transaction
+            conn.execute("BEGIN TRANSACTION")
+            
             for model_key, platform_results in results.items():
                 # Get model ID
                 model_id = self._ensure_model_exists(model_key)
@@ -793,8 +972,8 @@ class WebPlatformTestsDBIntegration:
                         try:
                             with open(test_file, 'r') as f:
                                 test_html = f.read()
-                        except:
-                            logger.warning(f"Failed to read test file: {test_file}")
+                        except Exception as e:
+                            logger.warning(f"Failed to read test file: {test_file} - {e}")
                     
                     # Get next result_id
                     result_id_result = conn.execute(
@@ -892,16 +1071,27 @@ class WebPlatformTestsDBIntegration:
                         error_message, compatibility_score
                     ])
             
-            # Commit changes
-            conn.commit()
+            # Commit transaction when everything is successful
+            conn.execute("COMMIT")
             
             logger.info(f"Stored results for {len(results)} models in database")
         except Exception as e:
             logger.error(f"Error storing results in database: {e}")
-            conn.rollback()
-            raise
+            
+            # Rollback transaction on error
+            if conn:
+                try:
+                    conn.execute("ROLLBACK")
+                    logger.info("Transaction rolled back due to error")
+                except Exception as rollback_error:
+                    logger.error(f"Error rolling back transaction: {rollback_error}")
         finally:
-            conn.close()
+            # Ensure connection is closed
+            if conn:
+                try:
+                    conn.close()
+                except Exception as close_error:
+                    logger.error(f"Error closing database connection: {close_error}")
     
     def _update_test_run_completion(self, start_time: float) -> None:
         """

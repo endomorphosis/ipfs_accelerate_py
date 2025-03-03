@@ -57,16 +57,46 @@ class BenchmarkDBMigration:
     into the structured DuckDB/Parquet database system.
     """
     
-    def __init__(self, output_db: str = "./benchmark_db.duckdb", debug: bool = False):
+    def __init__(self, output_db: str = None, debug: bool = False):
         """
         Initialize the benchmark database migration tool.
         
         Args:
-            output_db: Path to the output DuckDB database
+            output_db: Path to the output DuckDB database. If None, uses the benchmark_config.json setting
+                       or BENCHMARK_DB_PATH environment variable or defaults to "./benchmark_db.duckdb"
             debug: Enable debug logging
         """
+        # Load config if available
+        config = {}
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "benchmark_config.json")
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+        except Exception as e:
+            logger.warning(f"Error loading benchmark_config.json: {e}. Using defaults.")
+        
+        # Get database path
+        if output_db is None:
+            # Try from config
+            if config and 'database' in config and 'path' in config['database']:
+                output_db = config['database']['path']
+            else:
+                # Try environment variable
+                output_db = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        
+        # Ensure output_db is an absolute path if it starts with ./
+        if output_db.startswith('./'):
+            output_db = os.path.join(os.path.dirname(__file__), output_db[2:])
+        
         self.output_db = output_db
-        self.migration_log_dir = os.path.join(os.path.dirname(output_db), "migration_logs")
+        
+        # Get migration log directory
+        if config and 'database' in config and 'migration_log_dir' in config['database']:
+            self.migration_log_dir = config['database']['migration_log_dir']
+        else:
+            self.migration_log_dir = os.path.join(os.path.dirname(output_db), "migration_logs")
+        
         self.processed_files = set()
         self.migrated_files_log = os.path.join(self.migration_log_dir, "migrated_files.json")
         
@@ -91,6 +121,9 @@ class BenchmarkDBMigration:
         self.hardware_lookup = {}
         self.run_id_counter = 0
         
+        # Database connection
+        self.conn = None
+        
         # Connect to the database
         self._init_db_connection()
     
@@ -100,13 +133,29 @@ class BenchmarkDBMigration:
             # Check if the database exists
             db_exists = os.path.exists(self.output_db)
             
-            # Connect to the database
-            self.conn = duckdb.connect(self.output_db)
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(os.path.abspath(self.output_db)), exist_ok=True)
             
-            # Initialize database with schema if it doesn't exist
+            # Try to use benchmark_db_api if available for improved schema handling
             if not db_exists:
-                logger.info(f"Database doesn't exist. Creating schema at {self.output_db}")
-                self._create_schema()
+                try:
+                    # Import and use BenchmarkDBAPI if available
+                    from benchmark_db_api import BenchmarkDBAPI
+                    api = BenchmarkDBAPI(db_path=self.output_db)
+                    logger.info(f"Used BenchmarkDBAPI to initialize database")
+                    self.conn = duckdb.connect(self.output_db)
+                except (ImportError, Exception) as api_error:
+                    logger.warning(f"Could not use BenchmarkDBAPI: {api_error}. Creating schema directly.")
+                    
+                    # Connect to the database
+                    self.conn = duckdb.connect(self.output_db)
+                    
+                    # Initialize database with schema
+                    logger.info(f"Database doesn't exist. Creating schema at {self.output_db}")
+                    self._create_schema()
+            else:
+                # Connect to existing database
+                self.conn = duckdb.connect(self.output_db)
             
             # Load existing model and hardware mappings
             self._load_mappings()
@@ -116,7 +165,19 @@ class BenchmarkDBMigration:
             
         except Exception as e:
             logger.error(f"Error connecting to database: {e}")
-            sys.exit(1)
+            # Don't exit immediately, try to recover
+            try:
+                logger.warning("Attempting database recovery...")
+                # Re-create connection with minimal settings
+                self.conn = duckdb.connect(self.output_db)
+                # Create minimal schema
+                self._create_minimal_schema()
+                # Try to load mappings again
+                self._load_mappings()
+                logger.info("Database recovery successful")
+            except Exception as recovery_e:
+                logger.error(f"Database recovery failed: {recovery_e}")
+                sys.exit(1)
     
     def _create_schema(self):
         """Create the database schema if it doesn't exist"""
@@ -126,21 +187,33 @@ class BenchmarkDBMigration:
             schema_script = os.path.join(scripts_dir, "create_benchmark_schema.py")
             
             if os.path.exists(schema_script):
-                # Import and use the schema creation function
-                sys.path.append(scripts_dir)
-                from create_benchmark_schema import create_common_tables, create_performance_tables
-                from create_benchmark_schema import create_hardware_compatibility_tables
-                from create_benchmark_schema import create_integration_test_tables
-                from create_benchmark_schema import create_views
-                
-                # Create the schema
-                create_common_tables(self.conn)
-                create_performance_tables(self.conn)
-                create_hardware_compatibility_tables(self.conn)
-                create_integration_test_tables(self.conn)
-                create_views(self.conn)
-                
-                logger.info("Created database schema using create_benchmark_schema.py")
+                try:
+                    # Import and use the schema creation function
+                    sys.path.append(scripts_dir)
+                    from create_benchmark_schema import create_common_tables, create_performance_tables
+                    from create_benchmark_schema import create_hardware_compatibility_tables
+                    from create_benchmark_schema import create_integration_test_tables
+                    from create_benchmark_schema import create_views
+                    
+                    # Create the schema within a transaction
+                    self.conn.execute("BEGIN TRANSACTION")
+                    try:
+                        create_common_tables(self.conn)
+                        create_performance_tables(self.conn)
+                        create_hardware_compatibility_tables(self.conn)
+                        create_integration_test_tables(self.conn)
+                        create_views(self.conn)
+                        self.conn.execute("COMMIT")
+                        logger.info("Created database schema using create_benchmark_schema.py")
+                    except Exception as schema_error:
+                        self.conn.execute("ROLLBACK")
+                        logger.error(f"Error creating schema tables: {schema_error}")
+                        # Fallback to basic schema
+                        self._create_basic_schema()
+                except ImportError as import_error:
+                    logger.error(f"Error importing schema modules: {import_error}")
+                    # Fallback to basic schema
+                    self._create_basic_schema()
             else:
                 # Fallback to creating tables directly
                 logger.warning("create_benchmark_schema.py not found, creating basic schema manually")
@@ -153,122 +226,202 @@ class BenchmarkDBMigration:
     
     def _create_basic_schema(self):
         """Create a basic database schema if the schema script is not available"""
-        # Create common dimension tables
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS hardware_platforms (
-            hardware_id INTEGER PRIMARY KEY,
-            hardware_type VARCHAR NOT NULL,
-            device_name VARCHAR,
-            platform VARCHAR,
-            driver_version VARCHAR,
-            memory_gb FLOAT,
-            compute_units INTEGER,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS models (
-            model_id INTEGER PRIMARY KEY,
-            model_name VARCHAR NOT NULL,
-            model_family VARCHAR,
-            modality VARCHAR,
-            source VARCHAR,
-            version VARCHAR,
-            parameters_million FLOAT,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS test_runs (
-            run_id INTEGER PRIMARY KEY,
-            test_name VARCHAR NOT NULL,
-            test_type VARCHAR NOT NULL,
-            started_at TIMESTAMP,
-            completed_at TIMESTAMP,
-            execution_time_seconds FLOAT,
-            success BOOLEAN,
-            git_commit VARCHAR,
-            git_branch VARCHAR,
-            command_line VARCHAR,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-        
-        # Create performance results table
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS performance_results (
-            result_id INTEGER PRIMARY KEY,
-            run_id INTEGER NOT NULL,
-            model_id INTEGER NOT NULL,
-            hardware_id INTEGER NOT NULL,
-            test_case VARCHAR NOT NULL,
-            batch_size INTEGER DEFAULT 1,
-            precision VARCHAR,
-            total_time_seconds FLOAT,
-            average_latency_ms FLOAT,
-            throughput_items_per_second FLOAT,
-            memory_peak_mb FLOAT,
-            iterations INTEGER,
-            warmup_iterations INTEGER,
-            metrics JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-            FOREIGN KEY (model_id) REFERENCES models(model_id),
-            FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
-        )
-        """)
-        
-        # Create hardware compatibility table
-        self.conn.execute("""
-        CREATE TABLE IF NOT EXISTS hardware_compatibility (
-            compatibility_id INTEGER PRIMARY KEY,
-            run_id INTEGER NOT NULL,
-            model_id INTEGER NOT NULL,
-            hardware_id INTEGER NOT NULL,
-            is_compatible BOOLEAN NOT NULL,
-            detection_success BOOLEAN NOT NULL,
-            initialization_success BOOLEAN NOT NULL,
-            error_message VARCHAR,
-            error_type VARCHAR,
-            suggested_fix VARCHAR,
-            workaround_available BOOLEAN,
-            compatibility_score FLOAT,
-            metadata JSON,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-            FOREIGN KEY (model_id) REFERENCES models(model_id),
-            FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
-        )
-        """)
-        
-        logger.info("Created basic database schema")
+        try:
+            # Create schema within a transaction for consistency
+            self.conn.execute("BEGIN TRANSACTION")
+            
+            # Create common dimension tables
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_platforms (
+                hardware_id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR NOT NULL,
+                device_name VARCHAR,
+                platform VARCHAR,
+                driver_version VARCHAR,
+                memory_gb FLOAT,
+                compute_units INTEGER,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY,
+                model_name VARCHAR NOT NULL,
+                model_family VARCHAR,
+                modality VARCHAR,
+                source VARCHAR,
+                version VARCHAR,
+                parameters_million FLOAT,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS test_runs (
+                run_id INTEGER PRIMARY KEY,
+                test_name VARCHAR NOT NULL,
+                test_type VARCHAR NOT NULL,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                execution_time_seconds FLOAT,
+                success BOOLEAN,
+                git_commit VARCHAR,
+                git_branch VARCHAR,
+                command_line VARCHAR,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Create performance results table
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS performance_results (
+                result_id INTEGER PRIMARY KEY,
+                run_id INTEGER NOT NULL,
+                model_id INTEGER NOT NULL,
+                hardware_id INTEGER NOT NULL,
+                test_case VARCHAR NOT NULL,
+                batch_size INTEGER DEFAULT 1,
+                precision VARCHAR,
+                total_time_seconds FLOAT,
+                average_latency_ms FLOAT,
+                throughput_items_per_second FLOAT,
+                memory_peak_mb FLOAT,
+                iterations INTEGER,
+                warmup_iterations INTEGER,
+                metrics JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+                FOREIGN KEY (model_id) REFERENCES models(model_id),
+                FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+            )
+            """)
+            
+            # Create hardware compatibility table
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_compatibility (
+                compatibility_id INTEGER PRIMARY KEY,
+                run_id INTEGER NOT NULL,
+                model_id INTEGER NOT NULL,
+                hardware_id INTEGER NOT NULL,
+                is_compatible BOOLEAN NOT NULL,
+                detection_success BOOLEAN NOT NULL,
+                initialization_success BOOLEAN NOT NULL,
+                error_message VARCHAR,
+                error_type VARCHAR,
+                suggested_fix VARCHAR,
+                workaround_available BOOLEAN,
+                compatibility_score FLOAT,
+                metadata JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+                FOREIGN KEY (model_id) REFERENCES models(model_id),
+                FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+            )
+            """)
+            
+            # Commit the transaction
+            self.conn.execute("COMMIT")
+            
+            logger.info("Created basic database schema")
+            
+        except Exception as e:
+            # Rollback in case of error
+            try:
+                self.conn.execute("ROLLBACK")
+                logger.warning("Schema creation failed, rolled back transaction")
+            except:
+                pass
+            logger.error(f"Error creating basic schema: {e}")
+            # Attempt minimal schema without foreign keys as a last resort
+            self._create_minimal_schema()
     
+    def _create_minimal_schema(self):
+        """Create a minimal schema without foreign keys as a last resort"""
+        try:
+            # Create tables without foreign keys
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_platforms (
+                hardware_id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR NOT NULL,
+                device_name VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY,
+                model_name VARCHAR NOT NULL,
+                model_family VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS test_runs (
+                run_id INTEGER PRIMARY KEY,
+                test_name VARCHAR NOT NULL,
+                test_type VARCHAR NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            logger.info("Created minimal database schema as fallback")
+        except Exception as e:
+            logger.error(f"Error creating minimal schema: {e}")
+            # At this point, we've tried our best
+
     def _load_mappings(self):
         """Load existing model and hardware mappings from the database"""
         try:
-            # Load models
-            models_df = self.conn.execute("SELECT model_id, model_name FROM models").fetchdf()
-            for _, row in models_df.iterrows():
-                self.model_lookup[row['model_name']] = row['model_id']
+            # First check if the tables exist
+            tables_exist = True
+            try:
+                self.conn.execute("SELECT 1 FROM models LIMIT 1")
+                self.conn.execute("SELECT 1 FROM hardware_platforms LIMIT 1")
+                self.conn.execute("SELECT 1 FROM test_runs LIMIT 1")
+            except Exception:
+                tables_exist = False
+                logger.warning("Required tables do not exist in the database. Creating schema.")
+                self._create_schema()
             
-            # Load hardware platforms
-            hardware_df = self.conn.execute(
-                "SELECT hardware_id, hardware_type, device_name FROM hardware_platforms").fetchdf()
-            for _, row in hardware_df.iterrows():
-                key = f"{row['hardware_type']}|{row['device_name']}"
-                self.hardware_lookup[key] = row['hardware_id']
-            
-            # Get the max run_id to continue from there
-            max_run_id = self.conn.execute("SELECT MAX(run_id) FROM test_runs").fetchone()[0]
-            self.run_id_counter = max_run_id if max_run_id is not None else 0
-            
+            if tables_exist:
+                # Load models
+                try:
+                    models_df = self.conn.execute("SELECT model_id, model_name FROM models").fetchdf()
+                    for _, row in models_df.iterrows():
+                        self.model_lookup[row['model_name']] = row['model_id']
+                except Exception as model_e:
+                    logger.error(f"Error loading models: {model_e}")
+                    self.model_lookup = {}
+                
+                # Load hardware platforms
+                try:
+                    hardware_df = self.conn.execute(
+                        "SELECT hardware_id, hardware_type, device_name FROM hardware_platforms").fetchdf()
+                    for _, row in hardware_df.iterrows():
+                        key = f"{row['hardware_type']}|{row['device_name']}"
+                        self.hardware_lookup[key] = row['hardware_id']
+                except Exception as hw_e:
+                    logger.error(f"Error loading hardware platforms: {hw_e}")
+                    self.hardware_lookup = {}
+                
+                # Get the max run_id to continue from there
+                try:
+                    max_run_id = self.conn.execute("SELECT MAX(run_id) FROM test_runs").fetchone()[0]
+                    self.run_id_counter = max_run_id if max_run_id is not None else 0
+                except Exception as run_e:
+                    logger.error(f"Error getting max run_id: {run_e}")
+                    self.run_id_counter = 0
         except Exception as e:
             logger.error(f"Error loading mappings: {e}")
+            self.model_lookup = {}
+            self.hardware_lookup = {}
+            self.run_id_counter = 0
     
     def add_model(self, model_data: Dict[str, Any]) -> int:
         """
@@ -289,33 +442,79 @@ class BenchmarkDBMigration:
         if model_name in self.model_lookup:
             return self.model_lookup[model_name]
         
-        # Get the next model_id
+        # Use a transaction for consistency
         try:
-            max_id = self.conn.execute("SELECT MAX(model_id) FROM models").fetchone()[0]
-            model_id = max_id + 1 if max_id is not None else 1
-        except Exception:
-            # Table might be empty
-            model_id = 1
-        
-        # Prepare the model data
-        model_family = model_data.get('model_family', self._infer_model_family(model_name))
-        modality = model_data.get('modality', self._infer_modality(model_name, model_family))
-        source = model_data.get('source', 'huggingface' if 'huggingface' in model_name or 'hf' in model_name else 'unknown')
-        version = model_data.get('version', '1.0')
-        parameters = model_data.get('parameters_million', 0.0)
-        metadata = model_data.get('metadata', {})
-        
-        # Insert the model
-        self.conn.execute("""
-        INSERT INTO models (model_id, model_name, model_family, modality, source, version, parameters_million, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, [model_id, model_name, model_family, modality, source, version, parameters, json.dumps(metadata)])
-        
-        # Add to lookup
-        self.model_lookup[model_name] = model_id
-        
-        logger.debug(f"Added model: {model_name} (ID: {model_id})")
-        return model_id
+            self.conn.execute("BEGIN TRANSACTION")
+            
+            # Get the next model_id
+            try:
+                max_id = self.conn.execute("SELECT MAX(model_id) FROM models").fetchone()[0]
+                model_id = max_id + 1 if max_id is not None else 1
+            except Exception:
+                # Table might be empty
+                model_id = 1
+            
+            # Prepare the model data
+            model_family = model_data.get('model_family', self._infer_model_family(model_name))
+            modality = model_data.get('modality', self._infer_modality(model_name, model_family))
+            source = model_data.get('source', 'huggingface' if 'huggingface' in model_name or 'hf' in model_name else 'unknown')
+            version = model_data.get('version', '1.0')
+            parameters = model_data.get('parameters_million', 0.0)
+            metadata = model_data.get('metadata', {})
+            
+            # Check if model was added by another process in the meantime
+            check_result = self.conn.execute(
+                "SELECT model_id FROM models WHERE model_name = ?", 
+                [model_name]
+            ).fetchone()
+            
+            if check_result:
+                # Model already exists, use that ID
+                model_id = check_result[0]
+                self.conn.execute("ROLLBACK")
+            else:
+                # Insert the model
+                self.conn.execute("""
+                INSERT INTO models (model_id, model_name, model_family, modality, source, version, parameters_million, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, [model_id, model_name, model_family, modality, source, version, parameters, json.dumps(metadata)])
+                
+                # Commit transaction
+                self.conn.execute("COMMIT")
+            
+            # Add to lookup
+            self.model_lookup[model_name] = model_id
+            
+            logger.debug(f"Added model: {model_name} (ID: {model_id})")
+            return model_id
+            
+        except Exception as e:
+            # Roll back in case of error
+            try:
+                self.conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            
+            logger.error(f"Error adding model {model_name}: {e}")
+            
+            # Try to retrieve the model again in case it was added by another process
+            try:
+                check_result = self.conn.execute(
+                    "SELECT model_id FROM models WHERE model_name = ?", 
+                    [model_name]
+                ).fetchone()
+                
+                if check_result:
+                    model_id = check_result[0]
+                    self.model_lookup[model_name] = model_id
+                    return model_id
+            except Exception:
+                pass
+            
+            # Last resort - assign a temporary ID
+            model_id = len(self.model_lookup) + 1
+            self.model_lookup[model_name] = model_id
+            return model_id
     
     def get_or_add_model(self, model_name: str, model_family: str = None) -> int:
         """
@@ -365,34 +564,80 @@ class BenchmarkDBMigration:
         if key in self.hardware_lookup:
             return self.hardware_lookup[key]
         
-        # Get the next hardware_id
+        # Use a transaction for consistency
         try:
-            max_id = self.conn.execute("SELECT MAX(hardware_id) FROM hardware_platforms").fetchone()[0]
-            hardware_id = max_id + 1 if max_id is not None else 1
-        except Exception:
-            # Table might be empty
-            hardware_id = 1
-        
-        # Prepare the hardware data
-        platform = hardware_data.get('platform', '')
-        driver_version = hardware_data.get('driver_version', '')
-        memory_gb = hardware_data.get('memory_gb', 0.0)
-        compute_units = hardware_data.get('compute_units', 0)
-        metadata = hardware_data.get('metadata', {})
-        
-        # Insert the hardware platform
-        self.conn.execute("""
-        INSERT INTO hardware_platforms 
-        (hardware_id, hardware_type, device_name, platform, driver_version, memory_gb, compute_units, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, [hardware_id, hardware_type, device_name, platform, driver_version, 
-             memory_gb, compute_units, json.dumps(metadata)])
-        
-        # Add to lookup
-        self.hardware_lookup[key] = hardware_id
-        
-        logger.debug(f"Added hardware platform: {hardware_type} - {device_name} (ID: {hardware_id})")
-        return hardware_id
+            self.conn.execute("BEGIN TRANSACTION")
+            
+            # Get the next hardware_id
+            try:
+                max_id = self.conn.execute("SELECT MAX(hardware_id) FROM hardware_platforms").fetchone()[0]
+                hardware_id = max_id + 1 if max_id is not None else 1
+            except Exception:
+                # Table might be empty
+                hardware_id = 1
+            
+            # Prepare the hardware data
+            platform = hardware_data.get('platform', '')
+            driver_version = hardware_data.get('driver_version', '')
+            memory_gb = hardware_data.get('memory_gb', 0.0)
+            compute_units = hardware_data.get('compute_units', 0)
+            metadata = hardware_data.get('metadata', {})
+            
+            # Check if hardware was added by another process in the meantime
+            check_result = self.conn.execute(
+                "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
+                [hardware_type, device_name]
+            ).fetchone()
+            
+            if check_result:
+                # Hardware already exists, use that ID
+                hardware_id = check_result[0]
+                self.conn.execute("ROLLBACK")
+            else:
+                # Insert the hardware platform
+                self.conn.execute("""
+                INSERT INTO hardware_platforms 
+                (hardware_id, hardware_type, device_name, platform, driver_version, memory_gb, compute_units, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, [hardware_id, hardware_type, device_name, platform, driver_version, 
+                     memory_gb, compute_units, json.dumps(metadata)])
+                
+                # Commit transaction
+                self.conn.execute("COMMIT")
+            
+            # Add to lookup
+            self.hardware_lookup[key] = hardware_id
+            
+            logger.debug(f"Added hardware platform: {hardware_type} - {device_name} (ID: {hardware_id})")
+            return hardware_id
+            
+        except Exception as e:
+            # Roll back in case of error
+            try:
+                self.conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            
+            logger.error(f"Error adding hardware platform {hardware_type} - {device_name}: {e}")
+            
+            # Try to retrieve the hardware again in case it was added by another process
+            try:
+                check_result = self.conn.execute(
+                    "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
+                    [hardware_type, device_name]
+                ).fetchone()
+                
+                if check_result:
+                    hardware_id = check_result[0]
+                    self.hardware_lookup[key] = hardware_id
+                    return hardware_id
+            except Exception:
+                pass
+            
+            # Last resort - assign a temporary ID
+            hardware_id = len(self.hardware_lookup) + 1
+            self.hardware_lookup[key] = hardware_id
+            return hardware_id
     
     def get_or_add_hardware(self, hardware_type: str, device_name: str = None) -> int:
         """
@@ -434,39 +679,65 @@ class BenchmarkDBMigration:
         Returns:
             The run_id
         """
-        # Increment the run_id counter
-        self.run_id_counter += 1
-        run_id = self.run_id_counter
-        
-        # Prepare the test run data
-        test_name = run_data.get('test_name', 'unknown_test')
-        test_type = run_data.get('test_type', 'unknown')
-        started_at = run_data.get('started_at')
-        completed_at = run_data.get('completed_at')
-        execution_time = run_data.get('execution_time_seconds', 0.0)
-        success = run_data.get('success', True)
-        git_commit = run_data.get('git_commit', '')
-        git_branch = run_data.get('git_branch', '')
-        command_line = run_data.get('command_line', '')
-        metadata = run_data.get('metadata', {})
-        
-        # Parse timestamps
-        if isinstance(started_at, str):
-            started_at = self._parse_timestamp(started_at)
-        if isinstance(completed_at, str):
-            completed_at = self._parse_timestamp(completed_at)
-        
-        # Insert the test run
-        self.conn.execute("""
-        INSERT INTO test_runs 
-        (run_id, test_name, test_type, started_at, completed_at, execution_time_seconds, 
-         success, git_commit, git_branch, command_line, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [run_id, test_name, test_type, started_at, completed_at, execution_time, 
-              success, git_commit, git_branch, command_line, json.dumps(metadata)])
-        
-        logger.debug(f"Added test run: {test_name} (ID: {run_id})")
-        return run_id
+        # Use a transaction for consistency
+        try:
+            self.conn.execute("BEGIN TRANSACTION")
+            
+            # Get the latest run_id and increment
+            try:
+                max_id = self.conn.execute("SELECT MAX(run_id) FROM test_runs").fetchone()[0]
+                run_id = max_id + 1 if max_id is not None else 1
+                self.run_id_counter = run_id
+            except Exception:
+                # Table might be empty or there was an error
+                self.run_id_counter += 1
+                run_id = self.run_id_counter
+            
+            # Prepare the test run data
+            test_name = run_data.get('test_name', 'unknown_test')
+            test_type = run_data.get('test_type', 'unknown')
+            started_at = run_data.get('started_at')
+            completed_at = run_data.get('completed_at')
+            execution_time = run_data.get('execution_time_seconds', 0.0)
+            success = run_data.get('success', True)
+            git_commit = run_data.get('git_commit', '')
+            git_branch = run_data.get('git_branch', '')
+            command_line = run_data.get('command_line', '')
+            metadata = run_data.get('metadata', {})
+            
+            # Parse timestamps
+            if isinstance(started_at, str):
+                started_at = self._parse_timestamp(started_at)
+            if isinstance(completed_at, str):
+                completed_at = self._parse_timestamp(completed_at)
+            
+            # Insert the test run
+            self.conn.execute("""
+            INSERT INTO test_runs 
+            (run_id, test_name, test_type, started_at, completed_at, execution_time_seconds, 
+             success, git_commit, git_branch, command_line, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [run_id, test_name, test_type, started_at, completed_at, execution_time, 
+                  success, git_commit, git_branch, command_line, json.dumps(metadata)])
+            
+            # Commit transaction
+            self.conn.execute("COMMIT")
+            
+            logger.debug(f"Added test run: {test_name} (ID: {run_id})")
+            return run_id
+            
+        except Exception as e:
+            # Roll back in case of error
+            try:
+                self.conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            
+            logger.error(f"Error adding test run {test_name}: {e}")
+            
+            # Increment counter and return it as a fallback
+            self.run_id_counter += 1
+            return self.run_id_counter
     
     def migrate_file(self, file_path: str, incremental: bool = False) -> Dict[str, int]:
         """

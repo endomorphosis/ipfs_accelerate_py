@@ -1,29 +1,14 @@
 {
   "total_files": 2,
-  "files_fixed": 2,
-  "total_issues_fixed": 12,
+  "files_fixed": 1,
+  "total_issues_fixed": 4,
   "files_details": [
     {
       "file": "test_hf_t5_small.py",
       "model_name": "t5_small",
       "issues_fixed": 4,
       "fixed_issues": [
-        "Added mps hardware platform support",
-        "Added rocm hardware platform support",
-        "Added webnn hardware platform support",
-        "Added webgpu hardware platform support"
-      ]
-    },
-    {
-      "file": "test_hf_t5.py",
-      "model_name": "t5",
-      "issues_fixed": 8,
-      "fixed_issues": [
-        "Added asyncio import",
         "Fixed method indentation",
-        "Added cpu hardware platform support",
-        "Added cuda hardware platform support",
-        "Added mps hardware platform support",
         "Added AMD precision handling for ROCm",
         "Integrated WebNN testing",
         "Integrated WebGPU testing"

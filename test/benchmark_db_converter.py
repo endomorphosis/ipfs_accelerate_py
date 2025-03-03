@@ -17,6 +17,7 @@ import glob
 import logging
 import argparse
 import datetime
+import time
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
@@ -619,15 +620,148 @@ class BenchmarkDBConverter:
                 
                 # Create table if not exists
                 table_name = f"benchmark_{category}"
-                create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM df LIMIT 0;"
-                con.execute(create_table_sql)
                 
-                # Insert data
-                con.execute(f"INSERT INTO {table_name} SELECT * FROM df", {"df": df})
+                # Method 1: Use schema to create table
+                try:
+                    # Get schema for this category
+                    schema = self.schemas.get(category)
+                    
+                    # Create table with correct schema
+                    if schema:
+                        # Convert DataFrame to list of tuples for insertion
+                        rows = df.to_dict('records')
+                        
+                        # Build columns string and types
+                        if category == 'performance':
+                            columns = ["model", "hardware", "device", "batch_size", "precision", 
+                                      "throughput", "latency_avg", "latency_p90", "latency_p95", 
+                                      "latency_p99", "memory_peak", "timestamp", "source_file", "notes"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                model VARCHAR,
+                                hardware VARCHAR,
+                                device VARCHAR,
+                                batch_size INTEGER,
+                                precision VARCHAR,
+                                throughput FLOAT,
+                                latency_avg FLOAT,
+                                latency_p90 FLOAT,
+                                latency_p95 FLOAT,
+                                latency_p99 FLOAT,
+                                memory_peak FLOAT,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR,
+                                notes VARCHAR
+                            )
+                            """)
+                        elif category == 'hardware':
+                            columns = ["hardware_type", "device_name", "is_available", "platform", 
+                                      "driver_version", "memory_total", "memory_free", 
+                                      "compute_capability", "error", "timestamp", "source_file"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                hardware_type VARCHAR,
+                                device_name VARCHAR,
+                                is_available BOOLEAN,
+                                platform VARCHAR,
+                                driver_version VARCHAR,
+                                memory_total FLOAT,
+                                memory_free FLOAT,
+                                compute_capability VARCHAR,
+                                error VARCHAR,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR
+                            )
+                            """)
+                        elif category == 'compatibility':
+                            columns = ["model", "hardware_type", "is_compatible", "compatibility_level", 
+                                      "error_message", "error_type", "memory_required", 
+                                      "memory_available", "timestamp", "source_file"]
+                            con.execute(f"""
+                            CREATE TABLE IF NOT EXISTS {table_name} (
+                                id INTEGER PRIMARY KEY,
+                                model VARCHAR,
+                                hardware_type VARCHAR,
+                                is_compatible BOOLEAN,
+                                compatibility_level VARCHAR,
+                                error_message VARCHAR,
+                                error_type VARCHAR,
+                                memory_required FLOAT,
+                                memory_available FLOAT,
+                                timestamp TIMESTAMP,
+                                source_file VARCHAR
+                            )
+                            """)
+                        
+                        # Insert data row by row for better error control
+                        for i, row in enumerate(rows):
+                            try:
+                                # Create a list of values in the correct order
+                                values = []
+                                for col in columns:
+                                    if col == "timestamp" and col in row:
+                                        # Ensure timestamp is in the right format
+                                        if isinstance(row[col], (int, float)):
+                                            values.append(pd.Timestamp(row[col], unit='ms'))
+                                        else:
+                                            values.append(row[col])
+                                    else:
+                                        values.append(row.get(col, None))
+                                
+                                # Insert with explicit column names
+                                insert_sql = f"INSERT INTO {table_name} (id, {', '.join(columns)}) VALUES ({i+1}, {', '.join(['?' for _ in columns])})"
+                                con.execute(insert_sql, values)
+                                
+                            except Exception as row_error:
+                                logger.warning(f"Error inserting row {i} into {table_name}: {row_error}")
+                                continue
+                        
+                        logger.info(f"Inserted data into {table_name} using schema-based approach")
+                    else:
+                        # Fallback to generic CSV method
+                        raise ValueError("No schema available, using CSV method")
+                        
+                except Exception as schema_error:
+                    logger.warning(f"Error using schema-based approach: {schema_error}")
+                    
+                    # Method 2: Use CSV as intermediary
+                    try:
+                        # Save DataFrame to temporary CSV
+                        temp_csv = f"temp_{category}_{int(time.time())}.csv"
+                        df.to_csv(temp_csv, index=False)
+                        
+                        # Create table from CSV
+                        con.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {table_name} AS 
+                        SELECT * FROM read_csv_auto('{temp_csv}')
+                        WHERE 1=0
+                        """)
+                        
+                        # Import data
+                        con.execute(f"""
+                        INSERT INTO {table_name} 
+                        SELECT * FROM read_csv_auto('{temp_csv}')
+                        """)
+                        
+                        # Remove temporary file
+                        if os.path.exists(temp_csv):
+                            os.remove(temp_csv)
+                            
+                        logger.info(f"Inserted data into {table_name} using CSV method")
+                    except Exception as csv_error:
+                        logger.error(f"Error using CSV method: {csv_error}")
+                        logger.error(f"Skipping {table_name}")
+                        continue
+                
                 logger.info(f"Inserted {len(df)} rows into table {table_name}")
             
             # Create views for common queries
-            self._create_views(con)
+            try:
+                self._create_views(con)
+            except Exception as view_error:
+                logger.warning(f"Error creating views: {view_error}")
             
             # Close connection
             con.close()

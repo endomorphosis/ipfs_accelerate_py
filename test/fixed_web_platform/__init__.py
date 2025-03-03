@@ -85,6 +85,38 @@ try:
 except ImportError:
     PROGRESSIVE_LOADING_AVAILABLE = False
 
+# Import WebGPU audio compute shaders (March 2025)
+try:
+    from .webgpu_audio_compute_shaders import (
+        optimize_for_firefox,
+        get_optimized_audio_shader,
+        create_audio_compute_pipeline
+    )
+    AUDIO_COMPUTE_SHADERS_AVAILABLE = True
+except ImportError:
+    AUDIO_COMPUTE_SHADERS_AVAILABLE = False
+
+# Import WebGPU shader precompilation (March 2025)
+try:
+    from .webgpu_shader_precompilation import (
+        ShaderPrecompiler,
+        setup_shader_precompilation,
+        precompile_model_shaders
+    )
+    SHADER_PRECOMPILATION_AVAILABLE = True
+except ImportError:
+    SHADER_PRECOMPILATION_AVAILABLE = False
+
+# Import WebGPU shader registry (March 2025)
+try:
+    from .webgpu_shader_registry import (
+        WebGPUShaderRegistry,
+        get_shader_registry
+    )
+    SHADER_REGISTRY_AVAILABLE = True
+except ImportError:
+    SHADER_REGISTRY_AVAILABLE = False
+
 # Import browser automation if available
 try:
     from .browser_automation import (
@@ -135,10 +167,36 @@ if PROGRESSIVE_LOADING_AVAILABLE:
         'load_model_progressively'
     ])
 
+# Add audio compute shaders if available (March 2025)
+if AUDIO_COMPUTE_SHADERS_AVAILABLE:
+    __all__.extend([
+        'optimize_for_firefox',
+        'get_optimized_audio_shader',
+        'create_audio_compute_pipeline'
+    ])
+
+# Add shader precompilation if available (March 2025)
+if SHADER_PRECOMPILATION_AVAILABLE:
+    __all__.extend([
+        'ShaderPrecompiler',
+        'setup_shader_precompilation',
+        'precompile_model_shaders'
+    ])
+
+# Add shader registry if available (March 2025)
+if SHADER_REGISTRY_AVAILABLE:
+    __all__.extend([
+        'WebGPUShaderRegistry',
+        'get_shader_registry'
+    ])
+
 # Add availability flags
 __all__.extend([
     'BROWSER_AUTOMATION_AVAILABLE',
     'SAFARI_WEBGPU_AVAILABLE',
     'ULTRA_LOW_PRECISION_AVAILABLE',
-    'PROGRESSIVE_LOADING_AVAILABLE'
+    'PROGRESSIVE_LOADING_AVAILABLE',
+    'AUDIO_COMPUTE_SHADERS_AVAILABLE',
+    'SHADER_PRECOMPILATION_AVAILABLE',
+    'SHADER_REGISTRY_AVAILABLE'
 ])

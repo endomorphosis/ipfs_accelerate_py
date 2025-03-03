@@ -101,14 +101,14 @@ class test_hf_vit_mae:
         return None
     
     
-def init_mps(self, model_name=None, model_type="text-generation", device_label="mps:0", **kwargs):
+    def init_mps(self, model_name=None, model_type="text-generation", device_label="mps:0", **kwargs):
             # MPS implementation placeholder
             return None, None, lambda x: {"output": "Mock MPS output for " + str(model_name), 
                                       "implementation_type": "MOCK"}, None, 1
             
         
 
-def init_rocm(self, model_name=None, model_type="text-generation", device_label="rocm:0", **kwargs):
+    def init_rocm(self, model_name=None, model_type="text-generation", device_label="rocm:0", **kwargs):
             # ROCm implementation placeholder
             return None, None, lambda x: {"output": "Mock ROCm output for " + str(model_name), 
                                       "implementation_type": "MOCK"}, None, 1
@@ -145,7 +145,7 @@ def init_rocm(self, model_name=None, model_type="text-generation", device_label=
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebNN
-                def webnn_handler(image_input, **kwargs):
+    def webnn_handler(image_input, **kwargs):
                     try:
                         # Process image input (path or PIL Image)
                         if isinstance(image_input, str):
@@ -233,7 +233,7 @@ def init_rocm(self, model_name=None, model_type="text-generation", device_label=
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebGPU/transformers.js
-                def webgpu_handler(image_input, **kwargs):
+    def webgpu_handler(image_input, **kwargs):
                     try:
                         # Process image input (path or PIL Image)
                         if isinstance(image_input, str):
@@ -296,7 +296,7 @@ def init_rocm(self, model_name=None, model_type="text-generation", device_label=
             import asyncio
             queue = asyncio.Queue(16)
             return None, None, lambda x: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
-def test_cpu(self):
+    def test_cpu(self):
         """Test CPU implementation."""
         try:
             # Choose an appropriate model name based on model type

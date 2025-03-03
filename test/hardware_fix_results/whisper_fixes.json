@@ -1,16 +1,14 @@
 {
   "total_files": 1,
   "files_fixed": 1,
-  "total_issues_fixed": 6,
+  "total_issues_fixed": 4,
   "files_details": [
     {
       "file": "test_hf_whisper.py",
       "model_name": "whisper",
-      "issues_fixed": 6,
+      "issues_fixed": 4,
       "fixed_issues": [
-        "Added asyncio import",
         "Fixed method indentation",
-        "Added mps hardware platform support",
         "Added AMD precision handling for ROCm",
         "Integrated WebNN testing",
         "Integrated WebGPU testing"

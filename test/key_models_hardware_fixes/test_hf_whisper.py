@@ -34,59 +34,9 @@ except ImportError:
 
 
 class MockHandler:
-def init_mps(self):
-    """Initialize for MPS platform."""
-    import torch
-    self.platform = "MPS"
-    self.device = "mps"
-    self.device_name = "mps" if torch.backends.mps.is_available() else "cpu"
-    return True
-
-
-def init_rocm(self):
-    """Initialize for ROCM platform."""
-    import torch
-    self.platform = "ROCM"
-    self.device = "rocm"
-    self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
-    return True
-def create_cpu_handler(self):
-    """Create handler for CPU platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
-    return handler
-
     """Mock handler for platforms that don't have real implementations."""
     
-    
-def create_cuda_handler(self):
-    """Create handler for CUDA platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-def create_openvino_handler(self):
-    """Create handler for OPENVINO platform."""
-    model_path = self.get_model_path_or_name()
-        from openvino.runtime import Core
-        import numpy as np
-        ie = Core()
-        compiled_model = ie.compile_model(model_path, "CPU")
-        handler = lambda input_audio: compiled_model(np.array(input_audio))[0]
-    return handler
-
-def create_mps_handler(self):
-    """Create handler for MPS platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-def create_rocm_handler(self):
-    """Create handler for ROCM platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
-    return handler
-def __init__(self, model_path, platform="cpu"):
+    def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")

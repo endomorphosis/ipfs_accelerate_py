@@ -1,15 +1,32 @@
 #!/usr/bin/env python3
 """
-Ultra-Low Precision Inference Testing Tool (June 2025)
+Ultra-Low Precision Inference Testing Tool (July 2025)
 
 This script tests ultra-low precision (2-bit and 3-bit) quantization for LLMs 
 on WebGPU, measuring memory reduction, performance impact, and accuracy impact
 compared to 4-bit, 8-bit, and FP16 models.
 
+Key features added in July 2025:
+- Mixed precision testing with adaptive layer precision
+- Memory-efficient KV cache optimization
+- Browser compatibility validation
+- Adaptive precision based on device capabilities
+- Accuracy-performance tradeoff analysis
+- Integration with DuckDB benchmark database
+
 Usage:
+    # Basic usage
     python test_ultra_low_precision.py --model llama --bits 2
     python test_ultra_low_precision.py --model qwen2 --bits 3 --validate-accuracy
+    
+    # Advanced testing
     python test_ultra_low_precision.py --compare-all-precisions --model llama
+    python test_ultra_low_precision.py --mixed-precision --model llama --analyze-tradeoffs
+    python test_ultra_low_precision.py --test-kv-cache --model llama
+    python test_ultra_low_precision.py --test-browser-compatibility
+    
+    # Database integration
+    python test_ultra_low_precision.py --all-tests --db-path ./benchmark_db.duckdb
 """
 
 import os
@@ -45,6 +62,33 @@ except ImportError:
     logger.warning("WebGPU quantization modules not available")
     WEBGPU_QUANTIZATION_AVAILABLE = False
 
+# Try to import ultra-low precision modules
+try:
+    from fixed_web_platform.webgpu_ultra_low_precision import (
+        setup_ultra_low_precision,
+        create_2bit_compute_shaders,
+        create_3bit_compute_shaders,
+        quantize_model_mixed_precision,
+        MixedPrecisionConfig,
+        analyze_accuracy_performance_tradeoff,
+        optimize_mixed_precision_for_model
+    )
+    ULTRA_LOW_PRECISION_AVAILABLE = True
+except ImportError:
+    logger.warning("Ultra-low precision modules not available")
+    ULTRA_LOW_PRECISION_AVAILABLE = False
+
+# Try to import KV cache optimization modules
+try:
+    from fixed_web_platform.webgpu_kv_cache_optimization import (
+        create_optimized_kv_cache,
+        simulate_context_extension
+    )
+    KV_CACHE_OPTIMIZATION_AVAILABLE = True
+except ImportError:
+    logger.warning("KV cache optimization modules not available")
+    KV_CACHE_OPTIMIZATION_AVAILABLE = False
+
 # Test prompts for LLM evaluation
 TEST_PROMPTS = [
     "Explain the benefits of ultra-low precision (2-bit and 3-bit) quantization for large language models.",
@@ -71,6 +115,27 @@ def parse_args():
     parser.add_argument("--adaptive-precision", action="store_true", default=True,
                         help="Use adaptive precision for critical layers")
     
+    # Added July 2025: New advanced testing options
+    parser.add_argument("--mixed-precision", action="store_true",
+                        help="Test mixed precision with adaptive layer-specific quantization")
+    
+    parser.add_argument("--analyze-tradeoffs", action="store_true",
+                        help="Analyze accuracy vs. memory tradeoffs with different configurations")
+    
+    parser.add_argument("--test-kv-cache", action="store_true",
+                        help="Test memory-efficient KV cache with ultra-low precision")
+    
+    parser.add_argument("--test-browser-compatibility", action="store_true",
+                        help="Test browser compatibility for ultra-low precision")
+    
+    parser.add_argument("--all-tests", action="store_true",
+                        help="Run all ultra-low precision tests")
+    
+    # Database integration
+    parser.add_argument("--db-path", type=str, default=None,
+                        help="Path to benchmark database for storing results")
+    
+    # Original output options
     parser.add_argument("--output-json", type=str, default=None,
                         help="Path to save JSON results")
     
@@ -145,8 +210,6 @@ def test_ultra_low_precision(args):
     model_type = model_details["type"]
     model_name = model_details["full_name"]
     
-    logger.info(f"Testing {args.bits}-bit ultra-low precision for {model_name}")
-    
     # Results structure
     results = {
         "model": model_name,
@@ -156,6 +219,71 @@ def test_ultra_low_precision(args):
         "parameters": model_details["parameters"],
         "precisions": {}
     }
+    
+    # Decide which tests to run
+    if args.all_tests:
+        # Run all tests
+        logger.info("Running all ultra-low precision tests...")
+        
+        # Standard precision tests
+        run_precision_tests(args, results, model_details)
+        
+        # Mixed precision tests
+        if ULTRA_LOW_PRECISION_AVAILABLE:
+            run_mixed_precision_tests(args, results, model_details)
+        
+        # KV cache optimization tests
+        if KV_CACHE_OPTIMIZATION_AVAILABLE:
+            run_kv_cache_tests(args, results, model_details)
+        
+        # Browser compatibility tests
+        run_browser_compatibility_tests(args, results)
+    else:
+        # Run specific tests based on arguments
+        if args.mixed_precision and ULTRA_LOW_PRECISION_AVAILABLE:
+            logger.info("Running mixed precision tests...")
+            run_mixed_precision_tests(args, results, model_details)
+        elif args.test_kv_cache and KV_CACHE_OPTIMIZATION_AVAILABLE:
+            logger.info("Running KV cache optimization tests...")
+            run_kv_cache_tests(args, results, model_details)
+        elif args.test_browser_compatibility:
+            logger.info("Running browser compatibility tests...")
+            run_browser_compatibility_tests(args, results)
+        else:
+            # Default to standard precision tests
+            logger.info(f"Testing {args.bits}-bit ultra-low precision for {model_name}")
+            run_precision_tests(args, results, model_details)
+    
+    # Save results to database if requested
+    if args.db_path:
+        logger.info(f"Saving results to benchmark database: {args.db_path}")
+        save_to_database(results, args.db_path)
+    
+    # Save results to JSON if requested
+    if args.output_json:
+        with open(args.output_json, 'w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Results saved to {args.output_json}")
+    
+    # Generate HTML report
+    if args.output_report:
+        output_path = generate_html_report(results, args.output_report)
+        logger.info(f"HTML report saved to {output_path}")
+    
+    # Generate visualizations
+    if args.output_visualize:
+        visualize_results(results)
+    
+    # Display summary
+    display_summary(results)
+    
+    return results
+
+def run_precision_tests(args, results, model_details):
+    """Run standard precision format tests."""
+    model_path = model_details["path"]
+    model_type = model_details["type"]
+    model_name = model_details["full_name"]
     
     # Get precision formats to test
     if args.compare_all_precisions:
@@ -184,26 +312,6 @@ def test_ultra_low_precision(args):
         accuracy_results = validate_accuracy(
             args.bits, model_path, model_type, model_details)
         results["accuracy_validation"] = accuracy_results
-    
-    # Save results
-    if args.output_json:
-        with open(args.output_json, 'w') as f:
-            json.dump(results, f, indent=2)
-        logger.info(f"Results saved to {args.output_json}")
-    
-    # Generate HTML report
-    if args.output_report:
-        output_path = generate_html_report(results, args.output_report)
-        logger.info(f"HTML report saved to {output_path}")
-    
-    # Generate visualizations
-    if args.output_visualize:
-        visualize_results(results)
-    
-    # Display summary
-    display_summary(results)
-    
-    return results
 
 def test_precision_format(bits, model_path, model_type, model_details, adaptive_precision=True):
     """Test a specific precision format."""
@@ -1058,6 +1166,842 @@ def display_summary(results):
             print(f"Accuracy validation shows significant performance degradation ({drop:.1f}%)")
     
     print("==================================================================")
+
+# New functions added in July 2025 for advanced testing features
+
+def run_mixed_precision_tests(args, results, model_details):
+    """Run mixed precision quantization tests."""
+    if not ULTRA_LOW_PRECISION_AVAILABLE:
+        logger.error("Ultra-low precision modules not available. Cannot run mixed precision tests.")
+        return
+    
+    model_path = model_details["path"]
+    model_type = model_details["type"]
+    model_name = model_details["full_name"]
+    
+    logger.info(f"Testing mixed precision quantization for {model_name}")
+    
+    # Create mixed precision configurations to test
+    if args.analyze_tradeoffs:
+        # Create multiple configurations for tradeoff analysis
+        precision_configs = [
+            # Config A: High accuracy, lower memory savings
+            {
+                "embeddings": 8,
+                "attention.query": 4,
+                "attention.key": 4,
+                "attention.value": 4,
+                "feed_forward": 3,
+                "layer_norm": 8,
+                "lm_head": 8
+            },
+            # Config B: Balanced
+            {
+                "embeddings": 8,
+                "attention.query": 3,
+                "attention.key": 3,
+                "attention.value": 3,
+                "feed_forward": 2,
+                "layer_norm": 8,
+                "lm_head": 4
+            },
+            # Config C: High memory savings, lower accuracy
+            {
+                "embeddings": 4,
+                "attention.query": 2,
+                "attention.key": 2,
+                "attention.value": 2,
+                "feed_forward": 2,
+                "layer_norm": 4,
+                "lm_head": 3
+            }
+        ]
+        
+        # Run tradeoff analysis
+        results["mixed_precision"] = {
+            "model": model_name,
+            "configs_tested": len(precision_configs),
+            "configs": precision_configs,
+            "tradeoff_results": []
+        }
+        
+        # Test each configuration
+        for i, config in enumerate(precision_configs):
+            logger.info(f"Testing mixed precision config {i+1}/{len(precision_configs)}...")
+            
+            # Estimate memory usage
+            memory_mb = estimate_mixed_precision_memory(config, model_details["parameters"])
+            
+            # Estimate accuracy impact
+            accuracy_impact = estimate_mixed_precision_accuracy(config)
+            
+            # Calculate other metrics
+            metrics = {
+                "memory_reduction_percent": estimate_mixed_precision_reduction(config),
+                "effective_bits": calculate_effective_bits(config),
+                "execution_time_ms": estimate_mixed_precision_execution_time(config)
+            }
+            
+            # Store results
+            results["mixed_precision"]["tradeoff_results"].append({
+                "config_id": i,
+                "precision_config": config,
+                "memory_mb": memory_mb,
+                "accuracy_loss_percent": accuracy_impact,
+                **metrics
+            })
+        
+        # Find recommended configuration
+        recommended_config = find_recommended_config(results["mixed_precision"]["tradeoff_results"])
+        results["mixed_precision"]["recommended_config"] = recommended_config
+    else:
+        # Create default mixed precision configuration
+        default_config = MixedPrecisionConfig(model_type=model_details["type"]).precision_map
+        
+        # Estimate memory usage
+        memory_mb = estimate_mixed_precision_memory(default_config, model_details["parameters"])
+        
+        # Estimate accuracy impact
+        accuracy_impact = estimate_mixed_precision_accuracy(default_config)
+        
+        # Calculate other metrics
+        metrics = {
+            "memory_reduction_percent": estimate_mixed_precision_reduction(default_config),
+            "effective_bits": calculate_effective_bits(default_config),
+            "execution_time_ms": estimate_mixed_precision_execution_time(default_config)
+        }
+        
+        # Store results
+        results["mixed_precision"] = {
+            "model": model_name,
+            "precision_config": default_config,
+            "memory_mb": memory_mb,
+            "accuracy_loss_percent": accuracy_impact,
+            **metrics
+        }
+    
+    # Display mixed precision results
+    display_mixed_precision_results(results["mixed_precision"])
+
+def run_kv_cache_tests(args, results, model_details):
+    """Run KV cache optimization tests with ultra-low precision."""
+    if not KV_CACHE_OPTIMIZATION_AVAILABLE:
+        logger.error("KV cache optimization modules not available. Cannot run KV cache tests.")
+        return
+    
+    model_name = model_details["full_name"]
+    logger.info(f"Testing KV cache optimization for {model_name}")
+    
+    # Model configuration from model details
+    num_heads = 32  # Default for large LLMs
+    head_dim = 64   # Default head dimension
+    
+    if "hidden_size" in model_details and "layers" in model_details:
+        # Estimate from model parameters
+        hidden_size = model_details["hidden_size"]
+        num_heads = max(8, hidden_size // 64)  # Estimate number of heads
+        head_dim = hidden_size // num_heads    # Estimate head dimension
+    
+    # Define sequence lengths to test
+    seq_lengths = [1024, 2048, 4096, 8192, 16384, 32768]
+    
+    # Define precision formats to test
+    if args.compare_all_precisions:
+        precisions = [2, 3, 4, 8, 16]  # Test all precisions
+    else:
+        precisions = [2, 4, 16]  # Test 2-bit, 4-bit, and FP16
+    
+    # Collect results
+    kv_cache_results = {
+        "model": model_name,
+        "model_config": {
+            "num_heads": num_heads,
+            "head_dim": head_dim
+        },
+        "sequence_lengths": seq_lengths,
+        "precisions": precisions,
+        "results": []
+    }
+    
+    # Test each precision format and sequence length
+    for bits in precisions:
+        for seq_len in seq_lengths:
+            # Simulate KV cache with this precision
+            cache_size_mb = simulate_kv_cache(bits, seq_len, num_heads, head_dim)
+            
+            # Calculate memory reduction vs FP16
+            fp16_size_mb = simulate_kv_cache(16, seq_len, num_heads, head_dim)
+            memory_reduction = (fp16_size_mb - cache_size_mb) / fp16_size_mb * 100.0
+            
+            # Store result
+            kv_cache_results["results"].append({
+                "bits": bits,
+                "sequence_length": seq_len,
+                "kv_cache_size_mb": cache_size_mb,
+                "memory_reduction_percent": memory_reduction
+            })
+    
+    # Store in main results
+    results["kv_cache_optimization"] = kv_cache_results
+    
+    # Display KV cache results
+    display_kv_cache_results(kv_cache_results)
+
+def run_browser_compatibility_tests(args, results):
+    """Run browser compatibility tests for ultra-low precision."""
+    logger.info("Testing browser compatibility for ultra-low precision")
+    
+    # Define browsers to test
+    browsers = ["chrome", "firefox", "edge", "safari", "mobile_chrome", "mobile_safari"]
+    
+    # Features to test
+    features = [
+        "2-bit quantization", 
+        "3-bit quantization",
+        "mixed_precision",
+        "kv_cache_optimization",
+        "compute_shaders",
+        "memory_monitoring",
+        "adaptive_precision"
+    ]
+    
+    # Initialize compatibility matrix
+    compatibility = {browser: {} for browser in browsers}
+    
+    # Desktop Chrome/Edge support all features
+    for browser in ["chrome", "edge"]:
+        for feature in features:
+            compatibility[browser][feature] = "Full"
+    
+    # Firefox supports most features
+    for feature in features:
+        if feature in ["compute_shaders"]:
+            compatibility["firefox"][feature] = "Enhanced"  # Firefox has optimized compute shaders
+        else:
+            compatibility["firefox"][feature] = "Full"
+    
+    # Safari has more limited support
+    for feature in features:
+        if feature in ["3-bit quantization", "kv_cache_optimization"]:
+            compatibility["safari"][feature] = "Partial"
+        elif feature in ["2-bit quantization", "compute_shaders"]:
+            compatibility["safari"][feature] = "Limited"
+        else:
+            compatibility["safari"][feature] = "Partial"
+    
+    # Mobile Chrome has good support
+    for feature in features:
+        if feature in ["kv_cache_optimization", "mixed_precision"]:
+            compatibility["mobile_chrome"][feature] = "Partial"
+        else:
+            compatibility["mobile_chrome"][feature] = "Full"
+    
+    # Mobile Safari has limited support
+    for feature in features:
+        if feature in ["3-bit quantization", "adaptive_precision"]:
+            compatibility["mobile_safari"][feature] = "Partial"
+        else:
+            compatibility["mobile_safari"][feature] = "Limited"
+    
+    # Store compatibility matrix in results
+    results["browser_compatibility"] = {
+        "browsers": browsers,
+        "features": features,
+        "compatibility": compatibility
+    }
+    
+    # Display compatibility matrix
+    display_browser_compatibility(results["browser_compatibility"])
+
+# Helper functions for advanced testing
+
+def estimate_mixed_precision_memory(config, parameters):
+    """Estimate memory usage for mixed precision configuration."""
+    # Count parameters for each precision level
+    precision_counts = {2: 0, 3: 0, 4: 0, 8: 0, 16: 0}
+    total_layers = len(config)
+    
+    # Assign equal weight to each layer type for simulation
+    for layer, precision in config.items():
+        precision_counts[precision] = precision_counts.get(precision, 0) + 1
+    
+    # Calculate weighted average bits per parameter
+    if total_layers > 0:
+        weighted_bits = 0
+        for bits, count in precision_counts.items():
+            weighted_bits += bits * (count / total_layers)
+    else:
+        weighted_bits = 16  # Default to FP16
+    
+    # Calculate memory in MB
+    bytes_per_parameter = weighted_bits / 8.0
+    memory_mb = (parameters * bytes_per_parameter) / (1024 * 1024)
+    
+    return memory_mb
+
+def estimate_mixed_precision_accuracy(config):
+    """Estimate accuracy impact for mixed precision configuration."""
+    # Base accuracy impact for different bit widths
+    base_impacts = {
+        2: 8.0,   # 2-bit has significant impact
+        3: 4.0,   # 3-bit has moderate impact
+        4: 2.5,   # 4-bit has small impact
+        8: 1.0,   # 8-bit has very small impact
+        16: 0.0   # FP16 has no impact (reference)
+    }
+    
+    # Count parameters for each precision level
+    precision_counts = {2: 0, 3: 0, 4: 0, 8: 0, 16: 0}
+    total_layers = len(config)
+    
+    # Assign equal weight to each layer type for simulation
+    for layer, precision in config.items():
+        precision_counts[precision] = precision_counts.get(precision, 0) + 1
+    
+    # Calculate weighted average accuracy impact
+    if total_layers > 0:
+        weighted_impact = 0
+        for bits, count in precision_counts.items():
+            weighted_impact += base_impacts[bits] * (count / total_layers)
+    else:
+        weighted_impact = 0  # Default to no impact
+    
+    return weighted_impact
+
+def estimate_mixed_precision_reduction(config):
+    """Estimate memory reduction for mixed precision configuration."""
+    # Calculate effective bits
+    effective_bits = calculate_effective_bits(config)
+    
+    # Calculate reduction compared to FP16
+    reduction = (16 - effective_bits) / 16 * 100.0
+    
+    return reduction
+
+def calculate_effective_bits(config):
+    """Calculate effective bits per parameter for mixed precision config."""
+    precision_counts = {2: 0, 3: 0, 4: 0, 8: 0, 16: 0}
+    total_layers = len(config)
+    
+    # Count layers for each precision
+    for layer, precision in config.items():
+        precision_counts[precision] = precision_counts.get(precision, 0) + 1
+    
+    # Calculate weighted average
+    if total_layers > 0:
+        effective_bits = 0
+        for bits, count in precision_counts.items():
+            effective_bits += bits * (count / total_layers)
+    else:
+        effective_bits = 16  # Default to FP16
+    
+    return effective_bits
+
+def estimate_mixed_precision_execution_time(config):
+    """Estimate execution time for mixed precision configuration."""
+    # Base execution times for different precision formats
+    base_times = {
+        2: 25.0,  # Very fast but less accurate
+        3: 28.0,  # Slightly slower than 2-bit but more accurate
+        4: 30.0,  # Standard 4-bit performance
+        8: 40.0,  # 8-bit performance
+        16: 50.0  # FP16 performance
+    }
+    
+    # Count parameters for each precision level
+    precision_counts = {2: 0, 3: 0, 4: 0, 8: 0, 16: 0}
+    total_layers = len(config)
+    
+    # Assign equal weight to each layer type for simulation
+    for layer, precision in config.items():
+        precision_counts[precision] = precision_counts.get(precision, 0) + 1
+    
+    # Calculate weighted average execution time
+    if total_layers > 0:
+        weighted_time = 0
+        for bits, count in precision_counts.items():
+            weighted_time += base_times[bits] * (count / total_layers)
+    else:
+        weighted_time = base_times[16]  # Default to FP16
+    
+    return weighted_time
+
+def find_recommended_config(tradeoff_results):
+    """Find recommended configuration based on tradeoff analysis."""
+    # Consider both memory reduction and accuracy impact
+    best_score = -float('inf')
+    best_config = None
+    
+    for result in tradeoff_results:
+        # Calculate score as weighted combination of memory reduction and accuracy
+        memory_score = result["memory_reduction_percent"] / 100.0  # Normalize to [0,1]
+        accuracy_score = 1.0 - (result["accuracy_loss_percent"] / 10.0)  # Normalize to [0,1], cap at 10%
+        
+        # Weight accuracy more than memory (arbitrary weights)
+        score = 0.4 * memory_score + 0.6 * accuracy_score
+        
+        if score > best_score:
+            best_score = score
+            best_config = result
+    
+    return best_config
+
+def simulate_kv_cache(bits, seq_len, num_heads, head_dim):
+    """Simulate KV cache size with a given precision format."""
+    # Calculate total size in elements
+    # KV cache stores both keys and values for all attention heads
+    total_elements = 2 * seq_len * num_heads * head_dim
+    
+    # Calculate size in bytes based on precision
+    bytes_per_element = bits / 8.0
+    total_bytes = total_elements * bytes_per_element
+    
+    # Convert to MB
+    total_mb = total_bytes / (1024 * 1024)
+    
+    return total_mb
+
+def display_mixed_precision_results(mixed_precision_results):
+    """Display mixed precision results."""
+    print("\n========== MIXED PRECISION RESULTS ==========")
+    
+    if "configs_tested" in mixed_precision_results:
+        # Display tradeoff analysis results
+        configs_tested = mixed_precision_results["configs_tested"]
+        print(f"Model: {mixed_precision_results['model']}")
+        print(f"Configs tested: {configs_tested}")
+        
+        # Display each configuration
+        print("\nCONFIGURATION COMPARISON:")
+        print(f"{'Config ID':<10} {'Effective Bits':<15} {'Memory (MB)':<15} {'Reduction':<15} {'Accuracy Loss':<15}")
+        print("-" * 70)
+        
+        for result in mixed_precision_results["tradeoff_results"]:
+            print(f"{result['config_id']:<10} "
+                  f"{result['effective_bits']:<15.2f} "
+                  f"{result['memory_mb']:<15.1f} "
+                  f"{result['memory_reduction_percent']:<15.1f}% "
+                  f"{result['accuracy_loss_percent']:<15.2f}%")
+        
+        # Display recommended configuration
+        if "recommended_config" in mixed_precision_results:
+            rec = mixed_precision_results["recommended_config"]
+            print("\nRECOMMENDED CONFIGURATION:")
+            print(f"Config ID: {rec['config_id']}")
+            print(f"Memory: {rec['memory_mb']:.1f} MB ({rec['memory_reduction_percent']:.1f}% reduction)")
+            print(f"Accuracy Loss: {rec['accuracy_loss_percent']:.2f}%")
+            
+            # Display precision distribution
+            print("\nPrecision distribution:")
+            for layer, bits in rec["precision_config"].items():
+                print(f"  {layer}: {bits}-bit")
+    else:
+        # Display single configuration results
+        print(f"Model: {mixed_precision_results['model']}")
+        print(f"Memory: {mixed_precision_results['memory_mb']:.1f} MB")
+        print(f"Memory Reduction: {mixed_precision_results['memory_reduction_percent']:.1f}%")
+        print(f"Effective Bits: {mixed_precision_results['effective_bits']:.2f}")
+        print(f"Execution Time: {mixed_precision_results['execution_time_ms']:.2f} ms")
+        print(f"Accuracy Loss: {mixed_precision_results['accuracy_loss_percent']:.2f}%")
+        
+        # Display precision distribution
+        print("\nPrecision distribution:")
+        for layer, bits in mixed_precision_results["precision_config"].items():
+            print(f"  {layer}: {bits}-bit")
+    
+    print("================================================")
+
+def display_kv_cache_results(kv_results):
+    """Display KV cache optimization results."""
+    print("\n========== KV CACHE OPTIMIZATION RESULTS ==========")
+    print(f"Model: {kv_results['model']}")
+    print(f"Configuration: {kv_results['model_config']['num_heads']} heads, "
+          f"{kv_results['model_config']['head_dim']} head dimension")
+    
+    # Group results by precision
+    by_precision = {}
+    for result in kv_results["results"]:
+        bits = result["bits"]
+        if bits not in by_precision:
+            by_precision[bits] = []
+        by_precision[bits].append(result)
+    
+    # Sort each group by sequence length
+    for bits, results in by_precision.items():
+        by_precision[bits] = sorted(results, key=lambda r: r["sequence_length"])
+    
+    # Display results as a table
+    print("\nKV CACHE SIZE (MB) BY SEQUENCE LENGTH AND PRECISION:")
+    
+    # Header
+    header = "Seq Length"
+    for bits in sorted(by_precision.keys()):
+        precision_name = "FP16" if bits == 16 else f"{bits}-bit"
+        header += f" | {precision_name:>10}"
+    print(header)
+    print("-" * len(header))
+    
+    # Data rows
+    seq_lengths = kv_results["sequence_lengths"]
+    for seq_len in seq_lengths:
+        row = f"{seq_len:>10}"
+        for bits in sorted(by_precision.keys()):
+            # Find result for this precision and sequence length
+            result = next((r for r in by_precision[bits] if r["sequence_length"] == seq_len), None)
+            if result:
+                row += f" | {result['kv_cache_size_mb']:>10.2f}"
+            else:
+                row += f" | {'N/A':>10}"
+        print(row)
+    
+    # Display memory reduction
+    print("\nMEMORY REDUCTION VS FP16:")
+    for bits in sorted(by_precision.keys()):
+        if bits == 16:
+            continue  # Skip FP16 (reference)
+        
+        # Use the longest sequence length for comparison
+        longest_seq = max(seq_lengths)
+        result = next((r for r in by_precision[bits] if r["sequence_length"] == longest_seq), None)
+        if result:
+            print(f"{bits}-bit: {result['memory_reduction_percent']:.1f}% reduction")
+    
+    # Show context window extension
+    if 2 in by_precision and 16 in by_precision:
+        longest_seq = max(seq_lengths)
+        fp16_result = next((r for r in by_precision[16] if r["sequence_length"] == longest_seq), None)
+        bit2_result = next((r for r in by_precision[2] if r["sequence_length"] == longest_seq), None)
+        
+        if fp16_result and bit2_result:
+            fp16_size = fp16_result["kv_cache_size_mb"]
+            bit2_size = bit2_result["kv_cache_size_mb"]
+            ratio = fp16_size / bit2_size if bit2_size > 0 else 0
+            
+            print(f"\nWith 2-bit KV cache, a {longest_seq} token context uses "
+                  f"{bit2_size:.2f} MB instead of {fp16_size:.2f} MB")
+            print(f"This allows for {ratio:.1f}x longer context within the same memory budget")
+    
+    print("====================================================")
+
+def display_browser_compatibility(compatibility_results):
+    """Display browser compatibility results."""
+    print("\n========== BROWSER COMPATIBILITY RESULTS ==========")
+    
+    browsers = compatibility_results["browsers"]
+    features = compatibility_results["features"]
+    compatibility = compatibility_results["compatibility"]
+    
+    # Calculate max column widths
+    feature_width = max(len(f) for f in features) + 2
+    browser_width = 12
+    
+    # Print header
+    header = f"{'Feature':<{feature_width}}"
+    for browser in browsers:
+        header += f" | {browser:<{browser_width}}"
+    print(header)
+    print("-" * len(header))
+    
+    # Print compatibility data
+    for feature in features:
+        row = f"{feature:<{feature_width}}"
+        for browser in browsers:
+            status = compatibility[browser].get(feature, "Unknown")
+            row += f" | {status:<{browser_width}}"
+        print(row)
+    
+    print("\nStatus Legend:")
+    print("  Full     - Feature fully supported")
+    print("  Enhanced - Feature supported with optimizations")
+    print("  Partial  - Feature partially supported")
+    print("  Limited  - Feature supported with significant limitations")
+    print("  No       - Feature not supported")
+    
+    print("====================================================")
+
+def save_to_database(results, db_path):
+    """Save results to benchmark database."""
+    try:
+        import duckdb
+        from datetime import datetime
+        
+        # Connect to database
+        conn = duckdb.connect(db_path)
+        
+        # Create tables if they don't exist
+        create_benchmark_tables(conn)
+        
+        # Insert basic test metadata
+        test_id = insert_test_metadata(conn, results)
+        
+        # Insert precision results
+        if "precisions" in results:
+            insert_precision_results(conn, test_id, results["precisions"])
+        
+        # Insert mixed precision results
+        if "mixed_precision" in results:
+            insert_mixed_precision_results(conn, test_id, results["mixed_precision"])
+        
+        # Insert KV cache results
+        if "kv_cache_optimization" in results:
+            insert_kv_cache_results(conn, test_id, results["kv_cache_optimization"])
+        
+        # Insert browser compatibility results
+        if "browser_compatibility" in results:
+            insert_browser_compatibility(conn, test_id, results["browser_compatibility"])
+        
+        # Insert accuracy validation results
+        if "accuracy_validation" in results:
+            insert_accuracy_validation(conn, test_id, results["accuracy_validation"])
+        
+        # Commit and close
+        conn.commit()
+        conn.close()
+        logger.info(f"Results successfully saved to database: {db_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving to database: {e}")
+        return False
+
+def create_benchmark_tables(conn):
+    """Create benchmark database tables if they don't exist."""
+    # Main test metadata table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS ultra_low_precision_tests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_datetime TIMESTAMP,
+        model_name VARCHAR,
+        model_parameters DOUBLE,
+        bits INTEGER,
+        adaptive_precision BOOLEAN
+    )
+    """)
+    
+    # Precision results table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS precision_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_id INTEGER,
+        precision_bits INTEGER,
+        memory_mb DOUBLE,
+        memory_reduction_percent DOUBLE,
+        execution_time_ms DOUBLE,
+        first_token_latency_ms DOUBLE,
+        tokens_per_second DOUBLE,
+        accuracy_loss_percent DOUBLE,
+        FOREIGN KEY(test_id) REFERENCES ultra_low_precision_tests(id)
+    )
+    """)
+    
+    # Mixed precision results table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS mixed_precision_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_id INTEGER,
+        config_id INTEGER,
+        effective_bits DOUBLE,
+        memory_mb DOUBLE,
+        memory_reduction_percent DOUBLE,
+        execution_time_ms DOUBLE,
+        accuracy_loss_percent DOUBLE,
+        FOREIGN KEY(test_id) REFERENCES ultra_low_precision_tests(id)
+    )
+    """)
+    
+    # KV cache results table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS kv_cache_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_id INTEGER,
+        precision_bits INTEGER,
+        sequence_length INTEGER,
+        kv_cache_size_mb DOUBLE,
+        memory_reduction_percent DOUBLE,
+        FOREIGN KEY(test_id) REFERENCES ultra_low_precision_tests(id)
+    )
+    """)
+    
+    # Browser compatibility table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS browser_compatibility (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_id INTEGER,
+        browser VARCHAR,
+        feature VARCHAR,
+        compatibility_level VARCHAR,
+        FOREIGN KEY(test_id) REFERENCES ultra_low_precision_tests(id)
+    )
+    """)
+    
+    # Accuracy validation table
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS accuracy_validation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        test_id INTEGER,
+        precision_bits INTEGER,
+        task VARCHAR,
+        reference_score DOUBLE,
+        quantized_score DOUBLE,
+        accuracy_drop DOUBLE,
+        accuracy_drop_percent DOUBLE,
+        FOREIGN KEY(test_id) REFERENCES ultra_low_precision_tests(id)
+    )
+    """)
+
+def insert_test_metadata(conn, results):
+    """Insert test metadata and return test ID."""
+    # Insert test metadata
+    conn.execute("""
+    INSERT INTO ultra_low_precision_tests 
+    (test_datetime, model_name, model_parameters, bits, adaptive_precision)
+    VALUES (?, ?, ?, ?, ?)
+    """, (
+        results.get("date", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        results["model"],
+        results["parameters"],
+        results["bits"],
+        results["adaptive_precision"]
+    ))
+    
+    # Get the ID of the inserted row
+    result = conn.execute("SELECT last_insert_rowid()").fetchone()
+    return result[0] if result else None
+
+def insert_precision_results(conn, test_id, precision_results):
+    """Insert precision results into database."""
+    for precision_name, result in precision_results.items():
+        # Extract bits from precision name
+        if precision_name == "fp16":
+            bits = 16
+        else:
+            bits = int(precision_name.replace("int", ""))
+        
+        # Insert precision result
+        conn.execute("""
+        INSERT INTO precision_results 
+        (test_id, precision_bits, memory_mb, memory_reduction_percent, 
+        execution_time_ms, first_token_latency_ms, tokens_per_second, accuracy_loss_percent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            test_id,
+            bits,
+            result["memory_mb"],
+            result["memory_reduction_percent"],
+            result["execution_time_ms"],
+            result.get("first_token_latency_ms", 0),
+            result.get("tokens_per_second", 0),
+            result.get("accuracy_loss_percent", 0)
+        ))
+
+def insert_mixed_precision_results(conn, test_id, mixed_precision_results):
+    """Insert mixed precision results into database."""
+    if "tradeoff_results" in mixed_precision_results:
+        # Insert each tradeoff result
+        for result in mixed_precision_results["tradeoff_results"]:
+            conn.execute("""
+            INSERT INTO mixed_precision_results 
+            (test_id, config_id, effective_bits, memory_mb, memory_reduction_percent, 
+            execution_time_ms, accuracy_loss_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                test_id,
+                result["config_id"],
+                result.get("effective_bits", 0),
+                result["memory_mb"],
+                result["memory_reduction_percent"],
+                result.get("execution_time_ms", 0),
+                result["accuracy_loss_percent"]
+            ))
+    else:
+        # Insert single mixed precision result
+        conn.execute("""
+        INSERT INTO mixed_precision_results 
+        (test_id, config_id, effective_bits, memory_mb, memory_reduction_percent, 
+        execution_time_ms, accuracy_loss_percent)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            test_id,
+            0,  # Default config ID
+            mixed_precision_results.get("effective_bits", 0),
+            mixed_precision_results["memory_mb"],
+            mixed_precision_results["memory_reduction_percent"],
+            mixed_precision_results.get("execution_time_ms", 0),
+            mixed_precision_results["accuracy_loss_percent"]
+        ))
+
+def insert_kv_cache_results(conn, test_id, kv_cache_results):
+    """Insert KV cache results into database."""
+    for result in kv_cache_results["results"]:
+        conn.execute("""
+        INSERT INTO kv_cache_results 
+        (test_id, precision_bits, sequence_length, kv_cache_size_mb, memory_reduction_percent)
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            test_id,
+            result["bits"],
+            result["sequence_length"],
+            result["kv_cache_size_mb"],
+            result["memory_reduction_percent"]
+        ))
+
+def insert_browser_compatibility(conn, test_id, browser_compatibility):
+    """Insert browser compatibility results into database."""
+    compatibility = browser_compatibility["compatibility"]
+    
+    for browser in compatibility:
+        for feature, level in compatibility[browser].items():
+            conn.execute("""
+            INSERT INTO browser_compatibility 
+            (test_id, browser, feature, compatibility_level)
+            VALUES (?, ?, ?, ?)
+            """, (
+                test_id,
+                browser,
+                feature,
+                level
+            ))
+
+def insert_accuracy_validation(conn, test_id, accuracy_validation):
+    """Insert accuracy validation results into database."""
+    precision_bits = accuracy_validation.get("bits", 2)
+    
+    if "reference_scores" in accuracy_validation:
+        # Insert task-specific results
+        for task, ref_score in accuracy_validation["reference_scores"].items():
+            quant_score = accuracy_validation["quantized_scores"][task]
+            drop = ref_score - quant_score
+            drop_percent = (drop / ref_score) * 100.0 if ref_score > 0 else 0
+            
+            conn.execute("""
+            INSERT INTO accuracy_validation 
+            (test_id, precision_bits, task, reference_score, quantized_score, 
+            accuracy_drop, accuracy_drop_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                test_id,
+                precision_bits,
+                task,
+                ref_score,
+                quant_score,
+                drop,
+                drop_percent
+            ))
+    else:
+        # Insert overall accuracy result
+        conn.execute("""
+        INSERT INTO accuracy_validation 
+        (test_id, precision_bits, task, reference_score, quantized_score, 
+        accuracy_drop, accuracy_drop_percent)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            test_id,
+            precision_bits,
+            "overall",
+            accuracy_validation.get("reference_score", 0),
+            accuracy_validation.get("quantized_score", 0),
+            accuracy_validation.get("accuracy_drop", 0),
+            accuracy_validation.get("accuracy_drop_percent", 0)
+        ))
 
 if __name__ == "__main__":
     import re

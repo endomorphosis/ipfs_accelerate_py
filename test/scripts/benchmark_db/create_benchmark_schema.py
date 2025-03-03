@@ -1,41 +1,68 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Create Benchmark Database Schema for Phase 16
-
-This script creates the initial schema for the benchmark database used in the IPFS Accelerate
-Python Framework. It defines tables for performance, hardware compatibility, and integration tests.
-
-Usage:
-    python create_benchmark_schema.py [--output benchmark_db.duckdb] [--sample-data]
+Create the benchmark database schema for test results storage.
+This script defines the DuckDB schema for storing benchmark results and test outputs
+in a structured format, replacing the current JSON file approach.
 """
 
 import os
 import sys
-import json
-import logging
 import argparse
+import json
 import datetime
+import duckdb
+import pandas as pd
 from pathlib import Path
 
-try:
-    import duckdb
-    import pandas as pd
-except ImportError:
-    print("Error: Required packages not installed. Please install with:")
-    print("pip install duckdb pandas")
-    sys.exit(1)
+# Add parent directory to path for module imports
+sys.path.append(str(Path(__file__).parent.parent))
 
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Create benchmark database schema")
+    parser.add_argument("--output", type=str, default="./benchmark_db.duckdb", 
+                       help="Path to create/update the DuckDB database")
+    parser.add_argument("--sample-data", action="store_true", 
+                       help="Generate sample data to test the schema")
+    parser.add_argument("--force", action="store_true", 
+                       help="Force recreate tables even if they exist")
+    parser.add_argument("--verbose", action="store_true", 
+                       help="Print detailed logging information")
+    return parser.parse_args()
+
+def connect_to_db(db_path):
+    """Connect to DuckDB database"""
+    # Create parent directories if they don't exist
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+    
+    # Connect to the database
+    return duckdb.connect(db_path)
 
 def create_common_tables(conn, force=False):
     """Create the common dimension tables used across schemas"""
     
-    # Hardware platform dimension table
+    # Drop dependent tables first if force is True
     if force:
-        conn.execute("DROP TABLE IF EXISTS hardware_platforms")
+        # Drop tables in proper order (children before parents)
+        tables_to_drop = [
+            "integration_test_assertions",
+            "integration_test_results",
+            "performance_batch_results",
+            "webgpu_advanced_features",
+            "web_platform_results",
+            "hardware_compatibility",
+            "performance_results",
+            "test_runs",
+            "models",
+            "hardware_platforms"
+        ]
+        
+        # Try to drop all tables
+        for table in tables_to_drop:
+            try:
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+                print(f"Dropped table {table}")
+            except Exception as e:
+                print(f"Warning: could not drop table {table}: {e}")
     
     conn.execute("""
     CREATE TABLE IF NOT EXISTS hardware_platforms (
@@ -246,27 +273,16 @@ def create_views(conn):
         pr.average_latency_ms,
         pr.throughput_items_per_second,
         pr.memory_peak_mb,
-        pr.created_at
+        pr.created_at,
+        ROW_NUMBER() OVER(PARTITION BY m.model_id, hp.hardware_id 
+                        ORDER BY pr.created_at DESC) as rn
     FROM 
         performance_results pr
     JOIN 
         models m ON pr.model_id = m.model_id
     JOIN 
         hardware_platforms hp ON pr.hardware_id = hp.hardware_id
-    JOIN (
-        SELECT 
-            model_id, hardware_id, batch_size, precision,
-            MAX(created_at) as latest_timestamp
-        FROM 
-            performance_results
-        GROUP BY 
-            model_id, hardware_id, batch_size, precision
-    ) latest ON 
-        pr.model_id = latest.model_id AND 
-        pr.hardware_id = latest.hardware_id AND 
-        pr.batch_size = latest.batch_size AND 
-        pr.precision = latest.precision AND 
-        pr.created_at = latest.latest_timestamp
+    QUALIFY rn = 1
     """)
     
     # Integration test status by component
@@ -285,6 +301,105 @@ def create_views(conn):
     GROUP BY 
         test_module
     """)
+    
+    # Web platform performance view
+    try:
+        conn.execute("""
+        CREATE OR REPLACE VIEW web_platform_performance_metrics AS
+        SELECT 
+            m.model_name,
+            m.model_family,
+            wpr.platform,
+            wpr.browser,
+            wpr.browser_version,
+            AVG(wpr.load_time_ms) as avg_load_time_ms,
+            AVG(wpr.inference_time_ms) as avg_inference_time_ms,
+            AVG(wpr.total_time_ms) as avg_total_time_ms,
+            AVG(CASE WHEN wpr.shader_compilation_time_ms > 0 THEN wpr.shader_compilation_time_ms END) as avg_shader_compilation_ms,
+            AVG(wpr.memory_usage_mb) as avg_memory_usage_mb,
+            COUNT(*) as test_count,
+            COUNT(CASE WHEN wpr.success THEN 1 END) as success_count,
+            MAX(wpr.created_at) as last_tested
+        FROM 
+            web_platform_results wpr
+        JOIN 
+            models m ON wpr.model_id = m.model_id
+        GROUP BY 
+            m.model_name, m.model_family, wpr.platform, wpr.browser, wpr.browser_version
+        """)
+    except Exception as e:
+        print(f"Note: Could not create web_platform_performance_metrics view: {e}")
+    
+    # WebGPU advanced features analysis view
+    try:
+        conn.execute("""
+        CREATE OR REPLACE VIEW webgpu_feature_analysis AS
+        SELECT 
+            m.model_name,
+            m.model_family,
+            wpr.browser,
+            COUNT(*) as total_tests,
+            COUNT(CASE WHEN wgf.compute_shader_support THEN 1 END) as compute_shader_count,
+            COUNT(CASE WHEN wgf.parallel_compilation THEN 1 END) as parallel_compilation_count,
+            COUNT(CASE WHEN wgf.shader_cache_hit THEN 1 END) as shader_cache_hit_count,
+            COUNT(CASE WHEN wgf.pre_compiled_pipeline THEN 1 END) as pre_compiled_pipeline_count,
+            COUNT(CASE WHEN wgf.audio_acceleration THEN 1 END) as audio_acceleration_count,
+            COUNT(CASE WHEN wgf.video_acceleration THEN 1 END) as video_acceleration_count,
+            AVG(wgf.compute_pipeline_time_ms) as avg_compute_pipeline_time_ms,
+            AVG(wgf.workgroup_size) as avg_workgroup_size
+        FROM 
+            webgpu_advanced_features wgf
+        JOIN 
+            web_platform_results wpr ON wgf.result_id = wpr.result_id
+        JOIN 
+            models m ON wpr.model_id = m.model_id
+        WHERE 
+            wpr.platform = 'webgpu'
+        GROUP BY 
+            m.model_name, m.model_family, wpr.browser
+        """)
+    except Exception as e:
+        print(f"Note: Could not create webgpu_feature_analysis view: {e}")
+    
+    # Cross-platform performance comparison view
+    try:
+        conn.execute("""
+        CREATE OR REPLACE VIEW cross_platform_performance AS
+        WITH native_perf AS (
+            SELECT 
+                pr.model_id,
+                hp.hardware_type,
+                pr.average_latency_ms as avg_latency_ms,
+                pr.throughput_items_per_second
+            FROM 
+                performance_results pr
+            JOIN 
+                hardware_platforms hp ON pr.hardware_id = hp.hardware_id
+            WHERE 
+                (pr.model_id, hp.hardware_type, pr.created_at) IN (
+                    SELECT pr2.model_id, hp2.hardware_type, MAX(pr2.created_at)
+                    FROM performance_results pr2
+                    JOIN hardware_platforms hp2 ON pr2.hardware_id = hp2.hardware_id
+                    GROUP BY pr2.model_id, hp2.hardware_type
+                )
+        )
+        SELECT 
+            m.model_name,
+            m.model_family,
+            np.hardware_type,
+            np.avg_latency_ms,
+            np.throughput_items_per_second,
+            CASE
+                WHEN np.hardware_type IN ('webnn', 'webgpu') THEN TRUE
+                ELSE FALSE
+            END as is_web_platform
+        FROM 
+            native_perf np
+        JOIN 
+            models m ON np.model_id = m.model_id
+        """)
+    except Exception as e:
+        print(f"Note: Could not create cross_platform_performance view: {e}")
 
 def generate_sample_data(conn):
     """Generate sample data for testing the schema"""
@@ -292,58 +407,48 @@ def generate_sample_data(conn):
     # Sample hardware platforms
     hardware_data = [
         (1, 'cpu', 'Intel Core i9-12900K', 'x86_64', '5.15.0-76-generic', 'N/A', 64.0, 16, 
-         json.dumps({'cores': 16, 'threads': 24})),
+         json.dumps({'cores': 16, 'threads': 24}), datetime.datetime.now()),
         (2, 'cuda', 'NVIDIA RTX 4090', 'CUDA', '12.1', '535.54.03', 24.0, 128, 
-         json.dumps({'cuda_cores': 16384, 'tensor_cores': 512})),
+         json.dumps({'cuda_cores': 16384, 'tensor_cores': 512}), datetime.datetime.now()),
         (3, 'rocm', 'AMD Radeon RX 7900 XTX', 'ROCm', '5.5.0', '5.5.0', 24.0, 96, 
-         json.dumps({'compute_units': 96, 'stream_processors': 12288})),
+         json.dumps({'compute_units': 96, 'stream_processors': 12288}), datetime.datetime.now()),
         (4, 'mps', 'Apple M2 Ultra', 'macOS', '14.1', 'N/A', 32.0, 76, 
-         json.dumps({'neural_engine_cores': 16})),
+         json.dumps({'neural_engine_cores': 16}), datetime.datetime.now()),
         (5, 'openvino', 'Intel Neural Compute Stick 2', 'OpenVINO', '2023.0', '2023.0', 4.0, 16,
-         json.dumps({'vpu_cores': 16})),
+         json.dumps({'vpu_cores': 16}), datetime.datetime.now()),
         (6, 'webnn', 'Chrome Browser', 'WebNN', '121.0', 'N/A', 0, 0,
-         json.dumps({'user_agent': 'Mozilla/5.0 Chrome/121.0.0.0'})),
+         json.dumps({'user_agent': 'Mozilla/5.0 Chrome/121.0.0.0'}), datetime.datetime.now()),
         (7, 'webgpu', 'Firefox Browser', 'WebGPU', '122.0', 'N/A', 0, 0,
-         json.dumps({'user_agent': 'Mozilla/5.0 Firefox/122.0'}))
+         json.dumps({'user_agent': 'Mozilla/5.0 Firefox/122.0'}), datetime.datetime.now())
     ]
     
-    for data in hardware_data:
-        conn.execute(f"""
-            INSERT INTO hardware_platforms (
-                hardware_id, hardware_type, device_name, platform, platform_version,
-                driver_version, memory_gb, compute_units, metadata
-            ) VALUES (
-                {data[0]}, '{data[1]}', '{data[2]}', '{data[3]}', '{data[4]}',
-                '{data[5]}', {data[6]}, {data[7]}, '{data[8]}'
-            )
-        """)
+    hardware_df = pd.DataFrame(hardware_data, columns=[
+        'hardware_id', 'hardware_type', 'device_name', 'platform', 'platform_version',
+        'driver_version', 'memory_gb', 'compute_units', 'metadata', 'created_at'
+    ])
+    conn.execute("INSERT INTO hardware_platforms SELECT * FROM hardware_df")
     
     # Sample models
     model_data = [
         (1, 'bert-base-uncased', 'bert', 'text', 'huggingface', '1.0', 110.0,
-         json.dumps({'vocab_size': 30522, 'hidden_size': 768})),
+         json.dumps({'vocab_size': 30522, 'hidden_size': 768}), datetime.datetime.now()),
         (2, 't5-small', 't5', 'text', 'huggingface', '1.0', 60.0,
-         json.dumps({'vocab_size': 32128, 'hidden_size': 512})),
+         json.dumps({'vocab_size': 32128, 'hidden_size': 512}), datetime.datetime.now()),
         (3, 'whisper-tiny', 'whisper', 'audio', 'huggingface', '1.0', 39.0,
-         json.dumps({'mel_filters': 80, 'hidden_size': 384})),
+         json.dumps({'mel_filters': 80, 'hidden_size': 384}), datetime.datetime.now()),
         (4, 'opt-125m', 'llama', 'text', 'huggingface', '1.0', 125.0,
-         json.dumps({'vocab_size': 50272, 'hidden_size': 768})),
+         json.dumps({'vocab_size': 50272, 'hidden_size': 768}), datetime.datetime.now()),
         (5, 'vit-base', 'vit', 'image', 'huggingface', '1.0', 86.0,
-         json.dumps({'image_size': 224, 'patch_size': 16, 'hidden_size': 768})),
+         json.dumps({'image_size': 224, 'patch_size': 16, 'hidden_size': 768}), datetime.datetime.now()),
         (6, 'llava-onevision-base', 'llava', 'multimodal', 'huggingface', '1.0', 860.0,
-         json.dumps({'image_size': 336, 'hidden_size': 4096}))
+         json.dumps({'image_size': 336, 'hidden_size': 4096}), datetime.datetime.now())
     ]
     
-    for data in model_data:
-        conn.execute(f"""
-            INSERT INTO models (
-                model_id, model_name, model_family, modality, source, version,
-                parameters_million, metadata
-            ) VALUES (
-                {data[0]}, '{data[1]}', '{data[2]}', '{data[3]}', '{data[4]}', '{data[5]}',
-                {data[6]}, '{data[7]}'
-            )
-        """)
+    model_df = pd.DataFrame(model_data, columns=[
+        'model_id', 'model_name', 'model_family', 'modality', 'source', 'version',
+        'parameters_million', 'metadata', 'created_at'
+    ])
+    conn.execute("INSERT INTO models SELECT * FROM model_df")
     
     # Sample test runs
     current_time = datetime.datetime.now()
@@ -353,178 +458,211 @@ def generate_sample_data(conn):
          current_time - datetime.timedelta(hours=1),
          3600.0, True, 'a404c5a', 'main', 
          'python test/run_model_benchmarks.py --model bert-base-uncased',
-         json.dumps({'environment': 'CI', 'triggered_by': 'schedule'})),
+         json.dumps({'environment': 'CI', 'triggered_by': 'schedule'}),
+         current_time),
         (2, 'hardware_compatibility_test', 'hardware', 
          current_time - datetime.timedelta(days=1, hours=3),
          current_time - datetime.timedelta(days=1, hours=2),
          3600.0, True, '93af533', 'main', 
          'python test/test_hardware_backend.py --all',
-         json.dumps({'environment': 'local', 'triggered_by': 'manual'})),
+         json.dumps({'environment': 'local', 'triggered_by': 'manual'}),
+         current_time),
         (3, 'integration_test_suite', 'integration', 
          current_time - datetime.timedelta(hours=12),
          current_time - datetime.timedelta(hours=11, minutes=45),
          2700.0, True, 'f27af98', 'main', 
          './test/run_integration_ci_tests.sh --all',
-         json.dumps({'environment': 'CI', 'triggered_by': 'push'}))
+         json.dumps({'environment': 'CI', 'triggered_by': 'push'}),
+         current_time)
     ]
     
-    for data in test_runs_data:
-        conn.execute(f"""
-            INSERT INTO test_runs (
-                run_id, test_name, test_type, started_at, completed_at,
-                execution_time_seconds, success, git_commit, git_branch, 
-                command_line, metadata
-            ) VALUES (
-                {data[0]}, '{data[1]}', '{data[2]}', '{data[3].isoformat()}', '{data[4].isoformat()}',
-                {data[5]}, {data[6]}, '{data[7]}', '{data[8]}', 
-                '{data[9]}', '{data[10]}'
-            )
-        """)
+    test_runs_df = pd.DataFrame(test_runs_data, columns=[
+        'run_id', 'test_name', 'test_type', 'started_at', 'completed_at',
+        'execution_time_seconds', 'success', 'git_commit', 'git_branch', 
+        'command_line', 'metadata', 'created_at'
+    ])
+    conn.execute("INSERT INTO test_runs SELECT * FROM test_runs_df")
     
     # Sample performance results
     perf_data = [
         (1, 1, 1, 1, 'embedding', 1, 'fp32', 120.5, 25.3, 39.5, 1200.0, 100, 10,
-         json.dumps({'cpu_util': 78.5, 'memory_util': 45.2})),
+         json.dumps({'cpu_util': 78.5, 'memory_util': 45.2}), current_time),
         (2, 1, 1, 2, 'embedding', 1, 'fp32', 30.2, 6.1, 163.9, 2300.0, 100, 10,
-         json.dumps({'gpu_util': 85.3, 'memory_util': 55.8})),
+         json.dumps({'gpu_util': 85.3, 'memory_util': 55.8}), current_time),
         (3, 1, 2, 1, 'text_generation', 1, 'fp32', 245.7, 50.1, 20.0, 1450.0, 100, 10,
-         json.dumps({'cpu_util': 92.1, 'memory_util': 61.5})),
+         json.dumps({'cpu_util': 92.1, 'memory_util': 61.5}), current_time),
         (4, 1, 2, 2, 'text_generation', 1, 'fp32', 78.3, 15.9, 62.9, 3100.0, 100, 10,
-         json.dumps({'gpu_util': 91.7, 'memory_util': 72.3})),
+         json.dumps({'gpu_util': 91.7, 'memory_util': 72.3}), current_time),
         (5, 1, 3, 2, 'audio_transcription', 1, 'fp16', 105.6, 21.3, 46.9, 2800.0, 100, 10,
-         json.dumps({'gpu_util': 88.9, 'memory_util': 68.5}))
+         json.dumps({'gpu_util': 88.9, 'memory_util': 68.5}), current_time)
     ]
     
-    for data in perf_data:
-        conn.execute(f"""
-            INSERT INTO performance_results (
-                result_id, run_id, model_id, hardware_id, test_case, batch_size,
-                precision, total_time_seconds, average_latency_ms, throughput_items_per_second,
-                memory_peak_mb, iterations, warmup_iterations, metrics
-            ) VALUES (
-                {data[0]}, {data[1]}, {data[2]}, {data[3]}, '{data[4]}', {data[5]},
-                '{data[6]}', {data[7]}, {data[8]}, {data[9]},
-                {data[10]}, {data[11]}, {data[12]}, '{data[13]}'
-            )
-        """)
+    perf_df = pd.DataFrame(perf_data, columns=[
+        'result_id', 'run_id', 'model_id', 'hardware_id', 'test_case', 'batch_size',
+        'precision', 'total_time_seconds', 'average_latency_ms', 'throughput_items_per_second',
+        'memory_peak_mb', 'iterations', 'warmup_iterations', 'metrics', 'created_at'
+    ])
+    conn.execute("INSERT INTO performance_results SELECT * FROM perf_df")
     
     # Sample hardware compatibility
     compat_data = [
-        (1, 2, 1, 1, True, True, True, '', '', '', True, 1.0, 
-         json.dumps({'detected_features': ['avx2', 'fma']})),
-        (2, 2, 1, 2, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'cuda_version_compatible': True})),
-        (3, 2, 1, 3, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'rocm_compatible': True})),
-        (4, 2, 2, 1, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'detected_features': ['avx2', 'fma']})),
-        (5, 2, 3, 1, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'detected_features': ['avx2', 'fma']})),
-        (6, 2, 3, 2, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'cuda_version_compatible': True})),
-        (7, 2, 6, 1, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'detected_features': ['avx2', 'fma']})),
-        (8, 2, 6, 2, True, True, True, '', '', '', True, 1.0,
-         json.dumps({'cuda_version_compatible': True})),
+        (1, 2, 1, 1, True, True, True, None, None, None, True, 1.0, 
+         json.dumps({'detected_features': ['avx2', 'fma']}), current_time),
+        (2, 2, 1, 2, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'cuda_version_compatible': True}), current_time),
+        (3, 2, 1, 3, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'rocm_compatible': True}), current_time),
+        (4, 2, 2, 1, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'detected_features': ['avx2', 'fma']}), current_time),
+        (5, 2, 3, 1, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'detected_features': ['avx2', 'fma']}), current_time),
+        (6, 2, 3, 2, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'cuda_version_compatible': True}), current_time),
+        (7, 2, 6, 1, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'detected_features': ['avx2', 'fma']}), current_time),
+        (8, 2, 6, 2, True, True, True, None, None, None, True, 1.0,
+         json.dumps({'cuda_version_compatible': True}), current_time),
         (9, 2, 6, 3, False, True, False, 'ROCm support not implemented for LLaVA models',
          'UnsupportedHardwareError', 'Use CUDA instead', False, 0.0,
-         json.dumps({'error_code': 'ROCM_UNSUPPORTED'})),
+         json.dumps({'error_code': 'ROCM_UNSUPPORTED'}), current_time),
         (10, 2, 6, 4, False, True, False, 'MPS support not implemented for LLaVA models',
          'UnsupportedHardwareError', 'Use CUDA instead', False, 0.0,
-         json.dumps({'error_code': 'MPS_UNSUPPORTED'}))
+         json.dumps({'error_code': 'MPS_UNSUPPORTED'}), current_time)
     ]
     
-    for data in compat_data:
-        conn.execute(f"""
-            INSERT INTO hardware_compatibility (
-                compatibility_id, run_id, model_id, hardware_id, is_compatible,
-                detection_success, initialization_success, error_message, error_type,
-                suggested_fix, workaround_available, compatibility_score, metadata
-            ) VALUES (
-                {data[0]}, {data[1]}, {data[2]}, {data[3]}, {data[4]},
-                {data[5]}, {data[6]}, '{data[7]}', '{data[8]}',
-                '{data[9]}', {data[10]}, {data[11]}, '{data[12]}'
-            )
-        """)
+    compat_df = pd.DataFrame(compat_data, columns=[
+        'compatibility_id', 'run_id', 'model_id', 'hardware_id', 'is_compatible',
+        'detection_success', 'initialization_success', 'error_message', 'error_type',
+        'suggested_fix', 'workaround_available', 'compatibility_score', 'metadata', 'created_at'
+    ])
+    conn.execute("INSERT INTO hardware_compatibility SELECT * FROM compat_df")
     
     # Sample integration test results
     int_test_data = [
         (1, 3, 'test_hardware_backend', 'TestHardwareDetection', 'test_cpu_detection',
-         'pass', 2.3, 1, None, '', '', json.dumps({'os': 'Linux'})),
+         'pass', 2.3, 1, None, None, None, json.dumps({'os': 'Linux'}), current_time),
         (2, 3, 'test_hardware_backend', 'TestHardwareDetection', 'test_cuda_detection',
-         'pass', 3.5, 2, None, '', '', json.dumps({'cuda_version': '12.1'})),
+         'pass', 3.5, 2, None, None, None, json.dumps({'cuda_version': '12.1'}), current_time),
         (3, 3, 'test_resource_pool', 'TestResourcePoolHardwareAwareness', 'test_cpu_allocation',
-         'pass', 1.8, 1, None, '', '', json.dumps({'allocated_cores': 8})),
+         'pass', 1.8, 1, None, None, None, json.dumps({'allocated_cores': 8}), current_time),
         (4, 3, 'test_resource_pool', 'TestResourcePoolHardwareAwareness', 'test_gpu_allocation',
-         'pass', 2.1, 2, None, '', '', json.dumps({'allocated_memory': '8GB'})),
+         'pass', 2.1, 2, None, None, None, json.dumps({'allocated_memory': '8GB'}), current_time),
         (5, 3, 'test_comprehensive_hardware', 'TestHardwareCompatibility', 'test_t5_openvino',
-         'fail', 4.2, 5, 2, 'OpenVINO backend failed to initialize T5 model',
-         "File '/home/test/test_comprehensive_hardware.py', line 342\nAttributeError: Initialization error",
-         json.dumps({'openvino_version': '2023.0'}))
+         'fail', 4.2, 5, 1, 'OpenVINO backend failed to initialize T5 model',
+         'File "/home/test/test_comprehensive_hardware.py", line 342\nAttributeError: \'NoneType\' object has no attribute \'initialize\'',
+         json.dumps({'openvino_version': '2023.0'}), current_time)
     ]
     
-    for data in int_test_data:
-        model_id = 'NULL' if data[8] is None else data[8]
-        conn.execute(f"""
-            INSERT INTO integration_test_results (
-                test_result_id, run_id, test_module, test_class, test_name, status,
-                execution_time_seconds, hardware_id, model_id, error_message, error_traceback, metadata
-            ) VALUES (
-                {data[0]}, {data[1]}, '{data[2]}', '{data[3]}', '{data[4]}', '{data[5]}',
-                {data[6]}, {data[7]}, {model_id}, '{data[9]}', '{data[10]}', '{data[11]}'
-            )
-        """)
+    int_test_df = pd.DataFrame(int_test_data, columns=[
+        'test_result_id', 'run_id', 'test_module', 'test_class', 'test_name', 'status',
+        'execution_time_seconds', 'hardware_id', 'model_id', 'error_message', 'error_traceback', 'metadata', 'created_at'
+    ])
+    conn.execute("INSERT INTO integration_test_results SELECT * FROM int_test_df")
     
     # Sample test assertions
     assertion_data = [
-        (1, 1, 'assert_cpu_features_detected', True, 'True', 'True', 'CPU features correctly detected'),
-        (2, 2, 'assert_cuda_version_compatible', True, 'True', 'True', 'CUDA version is compatible'),
-        (3, 3, 'assert_resource_allocation_success', True, 'True', 'True', 'Resource allocation successful'),
-        (4, 4, 'assert_gpu_memory_allocated', True, '8GB', '8GB', 'GPU memory correctly allocated'),
-        (5, 5, 'assert_openvino_initialized', False, 'True', 'False', 'OpenVINO failed to initialize')
+        (1, 1, 'assert_cpu_features_detected', True, 'True', 'True', 'CPU features correctly detected', current_time),
+        (2, 2, 'assert_cuda_version_compatible', True, 'True', 'True', 'CUDA version is compatible', current_time),
+        (3, 3, 'assert_resource_allocation_success', True, 'True', 'True', 'Resource allocation successful', current_time),
+        (4, 4, 'assert_gpu_memory_allocated', True, '8GB', '8GB', 'GPU memory correctly allocated', current_time),
+        (5, 5, 'assert_openvino_initialized', False, 'True', 'False', 'OpenVINO failed to initialize', current_time)
     ]
     
-    for data in assertion_data:
-        conn.execute(f"""
-            INSERT INTO integration_test_assertions (
-                assertion_id, test_result_id, assertion_name, passed, expected_value,
-                actual_value, message
-            ) VALUES (
-                {data[0]}, {data[1]}, '{data[2]}', {data[3]}, '{data[4]}',
-                '{data[5]}', '{data[6]}'
-            )
-        """)
+    assertion_df = pd.DataFrame(assertion_data, columns=[
+        'assertion_id', 'test_result_id', 'assertion_name', 'passed', 'expected_value',
+        'actual_value', 'message', 'created_at'
+    ])
+    conn.execute("INSERT INTO integration_test_assertions SELECT * FROM assertion_df")
+
+def create_web_platform_tables(conn, force=False):
+    """Create tables for web platform test results"""
+    
+    if force:
+        conn.execute("DROP TABLE IF EXISTS web_platform_results")
+    
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS web_platform_results (
+        result_id INTEGER PRIMARY KEY,
+        run_id INTEGER NOT NULL,
+        model_id INTEGER NOT NULL,
+        hardware_id INTEGER NOT NULL,
+        platform VARCHAR NOT NULL, -- 'webnn', 'webgpu'
+        browser VARCHAR, -- 'chrome', 'firefox', 'safari', 'edge'
+        browser_version VARCHAR,
+        test_file VARCHAR,
+        success BOOLEAN,
+        load_time_ms FLOAT,
+        initialization_time_ms FLOAT,
+        inference_time_ms FLOAT,
+        total_time_ms FLOAT,
+        shader_compilation_time_ms FLOAT,
+        memory_usage_mb FLOAT,
+        error_message VARCHAR,
+        metrics JSON, -- Additional web-specific metrics
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+        FOREIGN KEY (model_id) REFERENCES models(model_id),
+        FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+    )
+    """)
+    
+    # Create specific table for advanced WebGPU features
+    if force:
+        conn.execute("DROP TABLE IF EXISTS webgpu_advanced_features")
+    
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
+        feature_id INTEGER PRIMARY KEY,
+        result_id INTEGER NOT NULL,
+        compute_shader_support BOOLEAN,
+        parallel_compilation BOOLEAN,
+        shader_cache_hit BOOLEAN,
+        workgroup_size INTEGER,
+        compute_pipeline_time_ms FLOAT,
+        pre_compiled_pipeline BOOLEAN,
+        memory_optimization_level VARCHAR, -- 'none', 'low', 'medium', 'high'
+        audio_acceleration BOOLEAN,
+        video_acceleration BOOLEAN,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (result_id) REFERENCES web_platform_results(result_id)
+    )
+    """)
 
 def main():
-    """Main entry point for creating the benchmark database schema."""
-    parser = argparse.ArgumentParser(description="Create Benchmark Database Schema")
-    parser.add_argument("--output", default="./benchmark_db.duckdb",
-                       help="Path to the output DuckDB database")
-    parser.add_argument("--force", action="store_true",
-                       help="Force recreate tables even if they exist")
-    parser.add_argument("--sample-data", action="store_true",
-                       help="Generate sample data")
-    args = parser.parse_args()
+    args = parse_args()
     
-    # Connect to database
-    conn = duckdb.connect(args.output)
+    print(f"Creating benchmark database schema at: {args.output}")
+    conn = connect_to_db(args.output)
     
-    # Create tables
-    logger.info("Creating benchmark database schema...")
+    # Create the schema
     create_common_tables(conn, args.force)
     create_performance_tables(conn, args.force)
     create_hardware_compatibility_tables(conn, args.force)
     create_integration_test_tables(conn, args.force)
+    create_web_platform_tables(conn, args.force)
     create_views(conn)
     
     # Generate sample data if requested
     if args.sample_data:
-        logger.info("Generating sample data...")
-        generate_sample_data(conn)
+        print("Generating sample data...")
+        try:
+            generate_sample_data(conn)
+            print("Sample data generated successfully")
+        except Exception as e:
+            print(f"Error generating sample data: {e}")
+            # If error is about duplicate data, inform the user
+            if "duplicate key" in str(e).lower() or "unique constraint" in str(e).lower():
+                print("It appears sample data already exists. Use --force to recreate tables.")
     
-    # Close connection
+    # Display schema counts for verification
+    tables = conn.execute("SHOW TABLES").fetchall()
+    print(f"\nCreated {len(tables)} tables and views:")
+    for table in tables:
+        count = conn.execute(f"SELECT COUNT(*) FROM {table[0]}").fetchone()[0]
+        print(f"  - {table[0]}: {count} rows")
+    
     conn.close()
-    logger.info(f"Schema created successfully in {args.output}")
+    print("\nDatabase schema creation completed successfully.")
 
 if __name__ == "__main__":
     main()

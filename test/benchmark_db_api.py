@@ -112,14 +112,19 @@ class BenchmarkDBAPI:
     API interface to the benchmark database for storing and querying results.
     """
     
-    def __init__(self, db_path: str = "./benchmark_db.duckdb", debug: bool = False):
+    def __init__(self, db_path: str = None, debug: bool = False):
         """
         Initialize the benchmark database API.
         
         Args:
-            db_path: Path to the DuckDB database
+            db_path: Path to the DuckDB database. If None, uses the BENCHMARK_DB_PATH 
+                     environment variable or falls back to "./benchmark_db.duckdb"
             debug: Enable debug logging
         """
+        # Get database path from environment variable if not provided
+        if db_path is None:
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        
         self.db_path = db_path
         
         # Set up logging
@@ -145,31 +150,77 @@ class BenchmarkDBAPI:
             # Create parent directories if they don't exist
             db_file.parent.mkdir(parents=True, exist_ok=True)
             
+            # Create in a safe way (directly with connection)
+            conn = None
             try:
-                # Import and run the create_benchmark_schema script
-                schema_script = str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py")
+                # Try to connect directly and create schema
+                conn = duckdb.connect(self.db_path)
                 
-                if Path(schema_script).exists():
+                # Import and run the create_benchmark_schema script
+                # Check multiple possible locations for the schema script
+                schema_paths = [
+                    str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py"),
+                    str(Path(__file__).parent / "scripts" / "benchmark_db" / "create_benchmark_schema.py"),
+                    "scripts/create_benchmark_schema.py",
+                    "test/scripts/create_benchmark_schema.py"
+                ]
+                
+                schema_script = None
+                for path in schema_paths:
+                    if Path(path).exists():
+                        schema_script = path
+                        break
+                
+                if schema_script:
                     logger.info(f"Creating schema using script: {schema_script}")
+                    # Close current connection before running script
+                    if conn:
+                        conn.close()
+                        conn = None
+                    
                     import subprocess
-                    subprocess.run([sys.executable, schema_script, "--output", self.db_path, "--sample-data"])
+                    result = subprocess.run([sys.executable, schema_script, "--output", self.db_path, "--sample-data"], 
+                                        capture_output=True, text=True)
+                    
+                    if result.returncode != 0:
+                        logger.error(f"Error running schema script: {result.stderr}")
+                        # Re-open connection for fallback
+                        conn = duckdb.connect(self.db_path)
+                        self._create_minimal_schema(conn)
                 else:
-                    logger.warning(f"Schema script not found at {schema_script}. Creating minimal schema.")
-                    self._create_minimal_schema()
+                    logger.warning(f"Schema script not found. Checked paths: {schema_paths}. Creating minimal schema.")
+                    self._create_minimal_schema(conn)
+            
             except Exception as e:
                 logger.error(f"Error creating database schema: {e}")
-                self._create_minimal_schema()
+                if conn:
+                    self._create_minimal_schema(conn)
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception as close_error:
+                        logger.error(f"Error closing database connection: {close_error}")
     
-    def _create_minimal_schema(self):
+    def _create_minimal_schema(self, conn=None):
         """
         Create a minimal schema if the full schema creation script is not available.
+        
+        Args:
+            conn: Optional database connection to use. If None, a new connection will be created.
         """
         logger.info("Creating minimal schema")
         
-        # Connect to database
-        conn = duckdb.connect(self.db_path)
+        # Connect to database if not provided
+        close_conn = False
+        if conn is None:
+            conn = duckdb.connect(self.db_path)
+            close_conn = True
         
         try:
+            # Start a transaction for consistency
+            conn.execute("BEGIN TRANSACTION")
+            
             # Create basic tables
             conn.execute("""
             CREATE TABLE IF NOT EXISTS hardware_platforms (
@@ -217,6 +268,7 @@ class BenchmarkDBAPI:
             )
             """)
             
+            # Create tables without foreign keys to avoid errors
             conn.execute("""
             CREATE TABLE IF NOT EXISTS performance_results (
                 result_id INTEGER PRIMARY KEY,
@@ -233,10 +285,7 @@ class BenchmarkDBAPI:
                 iterations INTEGER,
                 warmup_iterations INTEGER,
                 metrics JSON,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-                FOREIGN KEY (model_id) REFERENCES models(model_id),
-                FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
@@ -255,22 +304,81 @@ class BenchmarkDBAPI:
                 workaround_available BOOLEAN,
                 compatibility_score FLOAT,
                 metadata JSON,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
-                FOREIGN KEY (model_id) REFERENCES models(model_id),
-                FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
             
+            # Commit the transaction
+            conn.execute("COMMIT")
+            
             logger.info("Minimal schema created successfully")
         except Exception as e:
+            # Rollback in case of error
+            try:
+                conn.execute("ROLLBACK")
+                logger.warning("Schema creation failed, rolled back transaction")
+            except Exception as rollback_e:
+                logger.error(f"Error rolling back transaction: {rollback_e}")
+            
             logger.error(f"Error creating minimal schema: {e}")
+            
+            # Try minimal fallback schema as a last resort
+            try:
+                self._create_fallback_schema(conn)
+            except Exception as fallback_e:
+                logger.error(f"Error creating fallback schema: {fallback_e}")
         finally:
-            conn.close()
+            # Only close the connection if we created it
+            if close_conn and conn:
+                try:
+                    conn.close()
+                except Exception as close_e:
+                    logger.error(f"Error closing connection: {close_e}")
+    
+    def _create_fallback_schema(self, conn):
+        """
+        Create a very minimal schema as a last resort.
+        
+        Args:
+            conn: Database connection
+        """
+        logger.warning("Creating fallback minimal schema without transaction")
+        
+        try:
+            # Create tables individually with minimal fields
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_platforms (
+                hardware_id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR NOT NULL
+            )
+            """)
+            
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS models (
+                model_id INTEGER PRIMARY KEY,
+                model_name VARCHAR NOT NULL
+            )
+            """)
+            
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS test_runs (
+                run_id INTEGER PRIMARY KEY,
+                test_name VARCHAR NOT NULL
+            )
+            """)
+            
+            logger.info("Fallback schema created successfully")
+        except Exception as e:
+            logger.error(f"Error creating fallback schema: {e}")
     
     def _get_connection(self):
-        """Get a connection to the database."""
-        return duckdb.connect(self.db_path)
+        """Get a connection to the database with appropriate settings."""
+        try:
+            # Use parameters that avoid locking issues
+            return duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+        except Exception as e:
+            logger.error(f"Error connecting to database: {e}")
+            raise
     
     def _ensure_model_exists(self, conn, model_name: str) -> int:
         """
@@ -453,6 +561,8 @@ class BenchmarkDBAPI:
         
         conn = self._get_connection()
         try:
+            # Start a transaction for data consistency
+            conn.execute("BEGIN TRANSACTION")
             # Get or create model
             model_id = self._ensure_model_exists(conn, result.model_name)
             
@@ -508,7 +618,14 @@ class BenchmarkDBAPI:
             )
             
             logger.info(f"Stored performance result for {result.model_name} on {result.hardware_type} (ID: {result_id})")
+            # Commit the transaction
+            conn.execute("COMMIT")
             return str(result_id)
+            # Rollback on error
+            try:
+                conn.execute("ROLLBACK")
+            except Exception as rollback_error:
+                logger.error(f"Error rolling back transaction: {rollback_error}")
             
         except Exception as e:
             logger.error(f"Error storing performance result: {e}")
@@ -530,6 +647,8 @@ class BenchmarkDBAPI:
         if isinstance(result, dict):
             result = HardwareCompatibility(**result)
         
+            # Start a transaction for data consistency
+            conn.execute("BEGIN TRANSACTION")
         # Validate required fields
         if not result.model_name:
             raise ValueError("model_name is required")
@@ -580,6 +699,8 @@ class BenchmarkDBAPI:
             conn.execute(
                 """
                 INSERT INTO hardware_compatibility (
+            # Commit the transaction
+            conn.execute("COMMIT")
                     compatibility_id, run_id, model_id, hardware_id, is_compatible,
                     detection_success, initialization_success, error_message, error_type,
                     suggested_fix, workaround_available, compatibility_score, metadata
@@ -608,6 +729,8 @@ class BenchmarkDBAPI:
         Store an integration test result in the database.
         
         Args:
+            # Start a transaction for data consistency
+            conn.execute("BEGIN TRANSACTION")
             result: Integration test result data
             
         Returns:
@@ -705,6 +828,8 @@ class BenchmarkDBAPI:
             logger.info(f"Stored integration test result for {result.test_module}.{result.test_name} (ID: {test_result_id})")
             return str(test_result_id)
             
+            # Commit the transaction
+            conn.execute("COMMIT")
         except Exception as e:
             logger.error(f"Error storing integration test result: {e}")
             raise

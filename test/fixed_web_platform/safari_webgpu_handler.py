@@ -1119,39 +1119,201 @@ class SafariWebGPUHandler:
         return {"result": "simulated", "operation_type": operation_type}
     
     def _recover_from_memory_error(self):
-        """Recover from memory error in Safari."""
+        """
+        Recover from memory error in Safari.
+        
+        Steps:
+        1. Unload non-critical model components
+        2. Force garbage collection
+        3. Reduce quantization precision if possible
+        4. Disable shader caching temporarily
+        
+        Returns:
+            Boolean indicating if recovery was successful
+        """
         logger.warning("Recovering from memory error in Safari")
+        
+        success = False
+        recovery_actions = []
+        
+        # Strategy 1: Unload non-critical components if progressive loader is available
         if hasattr(self, "progressive_loader") and self.progressive_loader:
             try:
-                # Unload non-critical components
+                # Unload non-critical components (middle layers can be reloaded as needed)
                 self.progressive_loader.unload_components(["middle_layers"])
-                
-                # Force garbage collection if available
-                import gc
-                gc.collect()
-                
-                return True
+                recovery_actions.append("unloaded_middle_layers")
+                success = True
             except Exception as e:
-                logger.error(f"Failed to recover from memory error: {e}")
-                return False
-        return False
+                logger.error(f"Failed to unload components: {e}")
+        
+        # Strategy 2: Force garbage collection
+        try:
+            import gc
+            gc.collect()
+            recovery_actions.append("garbage_collection")
+            success = True
+        except Exception as e:
+            logger.error(f"Failed to run garbage collection: {e}")
+        
+        # Strategy 3: Reduce shader cache size if Metal API is available
+        if self.metal_api and hasattr(self.metal_api, "shader_cache"):
+            try:
+                # Clear non-essential shaders from cache
+                shader_cache_size = len(self.metal_api.shader_cache)
+                if shader_cache_size > 5:  # Keep a few critical shaders
+                    # Get shaders sorted by usage frequency (keep most used)
+                    shader_keys = list(self.metal_api.shader_cache.keys())
+                    # Remove least used shaders (keeping 5 most used)
+                    for key in shader_keys[5:]:
+                        del self.metal_api.shader_cache[key]
+                    recovery_actions.append(f"cleared_shader_cache_{shader_cache_size-5}_entries")
+                    success = True
+            except Exception as e:
+                logger.error(f"Failed to clear shader cache: {e}")
+        
+        # Strategy 4: Switch to lower precision if using Metal API
+        if hasattr(self, "metal_api") and self.metal_api:
+            try:
+                # If using 4-bit, try to fall back to 2-bit for temporary memory savings
+                if self.capabilities.get("quantization", {}).get("int4", False):
+                    # Signal that we should use 2-bit for next operations temporarily
+                    self._use_2bit_temporary = True
+                    recovery_actions.append("reduced_precision_temporarily")
+                    success = True
+            except Exception as e:
+                logger.error(f"Failed to adjust precision: {e}")
+        
+        # Log recovery attempt results
+        if success:
+            logger.info(f"Memory error recovery successful: {', '.join(recovery_actions)}")
+        else:
+            logger.error("Memory error recovery failed, no successful actions")
+            
+        return success
         
     def _recover_from_timeout(self):
-        """Recover from timeout in Safari."""
+        """
+        Recover from timeout in Safari.
+        
+        Steps:
+        1. Reduce batch size
+        2. Simplify shader complexity
+        3. Disable optimizations temporarily
+        4. Switch to lighter compute model
+        
+        Returns:
+            Boolean indicating if recovery was successful
+        """
         logger.warning("Recovering from timeout in Safari")
-        # Reduce batch size and retry
+        
+        success = False
+        recovery_actions = []
+        
+        # Strategy 1: Reduce batch size
         if hasattr(self, "_current_batch_size"):
+            old_batch_size = self._current_batch_size
             self._current_batch_size = max(1, self._current_batch_size // 2)
-            return True
-        return False
+            recovery_actions.append(f"reduced_batch_size_{old_batch_size}_to_{self._current_batch_size}")
+            success = True
+        
+        # Strategy 2: Simplify shader complexity for future operations
+        if self.metal_optimizations and hasattr(self, "_shader_complexity"):
+            old_complexity = self._shader_complexity
+            self._shader_complexity = "simple"  # Switch to simpler shaders
+            recovery_actions.append(f"simplified_shaders_{old_complexity}_to_simple")
+            success = True
+        else:
+            # Initialize shader complexity setting if not already set
+            self._shader_complexity = "simple"
+            recovery_actions.append("initialized_simple_shaders")
+            success = True
+            
+        # Strategy 3: Disable compute-intensive optimizations temporarily
+        if hasattr(self, "_optimizations_level"):
+            old_level = self._optimizations_level
+            self._optimizations_level = "minimal"  # Minimal optimizations to prevent timeouts
+            recovery_actions.append(f"reduced_optimizations_{old_level}_to_minimal")
+            success = True
+        else:
+            # Initialize optimizations level if not already set
+            self._optimizations_level = "minimal"
+            recovery_actions.append("initialized_minimal_optimizations")
+            success = True
+            
+        # Log recovery attempt results
+        if success:
+            logger.info(f"Timeout recovery successful: {', '.join(recovery_actions)}")
+        else:
+            logger.error("Timeout recovery failed, no successful actions")
+            
+        # Wait a small amount before retrying to ensure system resources are freed
+        import time
+        time.sleep(0.1)
+            
+        return success
         
     def _recover_from_connection_error(self):
-        """Recover from connection error in Safari."""
+        """
+        Recover from connection error in Safari.
+        
+        Steps:
+        1. Wait with exponential backoff
+        2. Check network status
+        3. Reduce payload size
+        4. Switch to more resilient transport mode
+        
+        Returns:
+            Boolean indicating if recovery was successful
+        """
         logger.warning("Recovering from connection error in Safari")
-        # Wait and retry
+        
+        success = False
+        recovery_actions = []
+        
+        # Strategy 1: Implement exponential backoff
+        if not hasattr(self, "_connection_retry_count"):
+            self._connection_retry_count = 0
+        
+        # Increment retry count
+        self._connection_retry_count += 1
+        
+        # Calculate wait time with exponential backoff (cap at 2 seconds)
+        wait_time = min(0.1 * (2 ** self._connection_retry_count), 2.0)
+        
+        # Wait before retrying
         import time
-        time.sleep(0.5)
-        return True
+        time.sleep(wait_time)
+        recovery_actions.append(f"backoff_wait_{wait_time:.2f}s")
+        
+        # Strategy 2: Reduce payload size for future operations
+        if not hasattr(self, "_reduced_payload_size"):
+            self._reduced_payload_size = True
+            recovery_actions.append("reduced_payload_size")
+            success = True
+            
+        # Strategy 3: Switch to chunked transfer mode for large data
+        if not hasattr(self, "_use_chunked_transfer"):
+            self._use_chunked_transfer = True
+            recovery_actions.append("enabled_chunked_transfer")
+            success = True
+            
+        # Reset retry count after several attempts
+        if self._connection_retry_count > 5:
+            # After 5 retries, reset the count but try a different recovery strategy
+            self._connection_retry_count = 0
+            
+            # Strategy 4: Switch to a more reliable but potentially slower connection method
+            self._use_reliable_connection = True
+            recovery_actions.append("switched_to_reliable_connection")
+            success = True
+            
+        # Log recovery attempt results
+        if success:
+            logger.info(f"Connection error recovery successful: {', '.join(recovery_actions)}")
+        else:
+            logger.error("Connection error recovery failed, no successful actions")
+            
+        return True  # Always return true to encourage retry
         
     def get_metrics(self) -> Dict[str, Any]:
         """

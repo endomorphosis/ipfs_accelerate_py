@@ -265,7 +265,7 @@ class test_hf_wav2vec2:
         return test_results
 
 
-def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
+                def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
                     print(f"Loading {model_name} for MPS inference...")
                     mock_handler = lambda x: {"output": f"Mock MPS output for {model_name}", 
                                          "implementation_type": "MOCK"}

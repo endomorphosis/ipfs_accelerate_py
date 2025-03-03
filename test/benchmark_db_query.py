@@ -207,6 +207,32 @@ class BenchmarkDBQuery:
             logger.error(f"Invalid metric: {metric}. Valid metrics are: {', '.join(valid_metrics)}")
             return pd.DataFrame()
         
+        # First try the new schema with performance_results
+        if "performance_results" in self.available_tables:
+            try:
+                # Try to query using the model_id from models table
+                sql = f"""
+                    SELECT 
+                        h.hardware_type as hardware,
+                        AVG(p.throughput_items_per_second) as avg_{metric},
+                        MIN(p.throughput_items_per_second) as min_{metric},
+                        MAX(p.throughput_items_per_second) as max_{metric},
+                        stddev(p.throughput_items_per_second) as stddev_{metric},
+                        COUNT(*) as run_count
+                    FROM performance_results p
+                    JOIN models m ON p.model_id = m.model_id
+                    JOIN hardware_platforms h ON p.hardware_id = h.hardware_id
+                    WHERE m.model_name = '{model}'
+                    GROUP BY h.hardware_type
+                    ORDER BY avg_{metric} {"DESC" if metric == "throughput" else "ASC"}
+                """
+                result = self.execute_sql(sql)
+                if not result.empty:
+                    return result
+            except Exception as e:
+                logger.warning(f"Error querying performance_results: {e}")
+        
+        # Fallback to the old schema
         sql = f"""
             SELECT
                 hardware,
@@ -403,12 +429,20 @@ class BenchmarkDBQuery:
         
         # Get top models by throughput
         sql = """
+            WITH ranked_models AS (
+                SELECT
+                    model,
+                    hardware,
+                    throughput,
+                    ROW_NUMBER() OVER (PARTITION BY model ORDER BY throughput DESC) as row_num
+                FROM benchmark_performance
+            )
             SELECT
                 model,
-                MAX(throughput) as max_throughput,
+                throughput as max_throughput,
                 hardware as best_hardware
-            FROM benchmark_performance
-            GROUP BY model
+            FROM ranked_models
+            WHERE row_num = 1
             ORDER BY max_throughput DESC
             LIMIT 10
         """

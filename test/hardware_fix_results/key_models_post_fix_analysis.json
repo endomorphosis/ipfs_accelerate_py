@@ -324,7 +324,7 @@
     {
       "file": "test_hf_vit_mae.py",
       "model_name": "vit_mae",
-      "issues": 18,
+      "issues": 13,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -459,7 +459,7 @@
     {
       "file": "test_hf_t5_small.py",
       "model_name": "t5_small",
-      "issues": 14,
+      "issues": 16,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -493,7 +493,7 @@
     {
       "file": "test_hf_llama.py",
       "model_name": "llama",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -654,7 +654,7 @@
     {
       "file": "test_hf_whisper.py",
       "model_name": "whisper",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -688,7 +688,7 @@
     {
       "file": "test_hf_clip_vision_model.py",
       "model_name": "clip_vision_model",
-      "issues": 17,
+      "issues": 13,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -852,7 +852,7 @@
     {
       "file": "test_hf_detr.py",
       "model_name": "detr",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -886,7 +886,7 @@
     {
       "file": "test_hf_wav2vec2.py",
       "model_name": "wav2vec2",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -951,7 +951,7 @@
     {
       "file": "test_hf_clipseg.py",
       "model_name": "clipseg",
-      "issues": 17,
+      "issues": 13,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -1080,11 +1080,11 @@
       "integration_issues": []
     }
   ],
-  "total_issues": 341,
+  "total_issues": 326,
   "issue_types": {
     "missing_hardware": 136,
     "integration_issues": 140,
-    "indentation_issues": 65,
+    "indentation_issues": 50,
     "asyncio_issues": 0
   }
 }

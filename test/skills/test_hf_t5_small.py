@@ -118,7 +118,7 @@ class hf_t5_small:
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebGPU/transformers.js
-                def webgpu_handler(text_input, **kwargs):
+    def webgpu_handler(text_input, **kwargs):
                     try:
                         # Process input with tokenizer
                         if isinstance(text_input, list):
@@ -202,7 +202,7 @@ class hf_t5_small:
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebNN
-                def webnn_handler(text_input, **kwargs):
+    def webnn_handler(text_input, **kwargs):
                     try:
                         # Process input with tokenizer
                         if isinstance(text_input, list):
@@ -250,7 +250,7 @@ class hf_t5_small:
             queue = asyncio.Queue(16)
             return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
 
-def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
+    def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
         """Initialize model for ROCm inference.
         
         Args:
@@ -298,7 +298,7 @@ def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
 
     
 
-def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
+    def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
         """Initialize model for MPS inference.
         
         Args:
@@ -396,7 +396,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
         
         return MockEndpoint()
 
-    def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
+            def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
         """Initialize model for CPU inference.
         
         Args:
@@ -437,7 +437,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
             handler = lambda x: {"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}
             return None, None, handler, asyncio.Queue(32), 1
 
-    def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
+            def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
         """Initialize model for CUDA inference.
         
         Args:
@@ -483,7 +483,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
             handler = lambda x: {"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}
             return None, None, handler, asyncio.Queue(32), 2
 
-    def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
+            def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
         """Initialize model for OpenVINO inference.
         
         Args:
@@ -640,7 +640,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
             return None, None, handler, asyncio.Queue(32), 1
 
     # Handler creation methods
-    def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):
+                def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):
         """Create a handler function for CPU inference.
         
         Args:
@@ -677,7 +677,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
                 
         return handler
 
-    def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, is_real_impl=False, batch_size=1):
+                def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, is_real_impl=False, batch_size=1):
         """Create a handler function for CUDA inference.
         
         Args:
@@ -717,7 +717,7 @@ def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
                 
         return handler
 
-    def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, tokenizer, openvino_label, endpoint=None):
+                def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, tokenizer, openvino_label, endpoint=None):
         """Create a handler function for OpenVINO inference.
         
         Args:

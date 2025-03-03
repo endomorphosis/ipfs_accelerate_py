@@ -1,0 +1,594 @@
+{
+  "timestamp": "20250303_041610",
+  "models": {
+    "bert": {
+      "name": "prajjwal1/bert-tiny",
+      "family": "embedding",
+      "size": "small",
+      "modality": "text"
+    },
+    "clap": {
+      "name": "laion/clap-htsat-unfused",
+      "family": "audio",
+      "size": "base",
+      "modality": "audio"
+    },
+    "clip": {
+      "name": "openai/clip-vit-base-patch32",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "detr": {
+      "name": "facebook/detr-resnet-50",
+      "family": "vision",
+      "size": "base",
+      "modality": "vision"
+    },
+    "llama": {
+      "name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "llava": {
+      "name": "llava-hf/llava-1.5-7b-hf",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "llava_next": {
+      "name": "llava-hf/llava-v1.6-mistral-7b",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "qwen2": {
+      "name": "Qwen/Qwen2-0.5B-Instruct",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "t5": {
+      "name": "google/t5-efficient-tiny",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "vit": {
+      "name": "facebook/deit-tiny-patch16-224",
+      "family": "vision",
+      "size": "small",
+      "modality": "vision"
+    },
+    "wav2vec2": {
+      "name": "facebook/wav2vec2-base",
+      "family": "audio",
+      "size": "base",
+      "modality": "audio"
+    },
+    "whisper": {
+      "name": "openai/whisper-tiny",
+      "family": "audio",
+      "size": "small",
+      "modality": "audio"
+    },
+    "xclip": {
+      "name": "microsoft/xclip-base-patch32",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    }
+  },
+  "functionality_verification": {
+    "cpu": {
+      "stats": {
+        "timestamp": "20250303_041614",
+        "total_tests": 13,
+        "successful_tests": 0,
+        "failed_tests": 13,
+        "models_tested": 13,
+        "hardware_platforms": [
+          "cpu"
+        ],
+        "success_rate": 0.0
+      },
+      "model_results": {
+        "detr": {
+          "cpu": false
+        },
+        "clip": {
+          "cpu": false
+        },
+        "bert": {
+          "cpu": false
+        },
+        "clap": {
+          "cpu": false
+        },
+        "llava": {
+          "cpu": false
+        },
+        "llama": {
+          "cpu": false
+        },
+        "qwen2": {
+          "cpu": false
+        },
+        "llava_next": {
+          "cpu": false
+        },
+        "t5": {
+          "cpu": false
+        },
+        "vit": {
+          "cpu": false
+        },
+        "wav2vec2": {
+          "cpu": false
+        },
+        "whisper": {
+          "cpu": false
+        },
+        "xclip": {
+          "cpu": false
+        }
+      },
+      "detailed_results": [
+        {
+          "model": "detr",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "clip",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 528\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 527\n"
+        },
+        {
+          "model": "bert",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 562\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 561\n"
+        },
+        {
+          "model": "clap",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py\", line 1012\n    def enhanced_cuda_handler(audio_input=None, text=None):\nSyntaxError: expected 'except' or 'finally' block\n"
+        },
+        {
+          "model": "llava",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py\", line 257\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "llama",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "qwen2",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 518\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 517\n"
+        },
+        {
+          "model": "llava_next",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py\", line 1002\n    def init_webgpu(self, model_name=None):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "t5",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 500\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 499\n"
+        },
+        {
+          "model": "vit",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 505\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 504\n"
+        },
+        {
+          "model": "wav2vec2",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "whisper",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 283\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "xclip",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 164\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+        }
+      ]
+    },
+    "cuda": {
+      "stats": {
+        "timestamp": "20250303_041618",
+        "total_tests": 13,
+        "successful_tests": 0,
+        "failed_tests": 13,
+        "models_tested": 13,
+        "hardware_platforms": [
+          "cuda"
+        ],
+        "success_rate": 0.0
+      },
+      "model_results": {
+        "detr": {
+          "cuda": false
+        },
+        "clap": {
+          "cuda": false
+        },
+        "clip": {
+          "cuda": false
+        },
+        "bert": {
+          "cuda": false
+        },
+        "llama": {
+          "cuda": false
+        },
+        "llava": {
+          "cuda": false
+        },
+        "llava_next": {
+          "cuda": false
+        },
+        "qwen2": {
+          "cuda": false
+        },
+        "t5": {
+          "cuda": false
+        },
+        "vit": {
+          "cuda": false
+        },
+        "wav2vec2": {
+          "cuda": false
+        },
+        "whisper": {
+          "cuda": false
+        },
+        "xclip": {
+          "cuda": false
+        }
+      },
+      "detailed_results": [
+        {
+          "model": "detr",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "clap",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py\", line 1012\n    def enhanced_cuda_handler(audio_input=None, text=None):\nSyntaxError: expected 'except' or 'finally' block\n"
+        },
+        {
+          "model": "clip",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 528\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 527\n"
+        },
+        {
+          "model": "bert",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 562\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 561\n"
+        },
+        {
+          "model": "llama",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "llava",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py\", line 257\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "llava_next",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py\", line 1002\n    def init_webgpu(self, model_name=None):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "qwen2",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 518\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 517\n"
+        },
+        {
+          "model": "t5",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 500\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 499\n"
+        },
+        {
+          "model": "vit",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 505\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 504\n"
+        },
+        {
+          "model": "wav2vec2",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "whisper",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 283\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "xclip",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 164\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+        }
+      ]
+    },
+    "openvino": {
+      "stats": {
+        "timestamp": "20250303_041618",
+        "total_tests": 13,
+        "successful_tests": 0,
+        "failed_tests": 13,
+        "models_tested": 13,
+        "hardware_platforms": [
+          "cuda"
+        ],
+        "success_rate": 0.0
+      },
+      "model_results": {
+        "detr": {
+          "cuda": false
+        },
+        "clap": {
+          "cuda": false
+        },
+        "clip": {
+          "cuda": false
+        },
+        "bert": {
+          "cuda": false
+        },
+        "llama": {
+          "cuda": false
+        },
+        "llava": {
+          "cuda": false
+        },
+        "llava_next": {
+          "cuda": false
+        },
+        "qwen2": {
+          "cuda": false
+        },
+        "t5": {
+          "cuda": false
+        },
+        "vit": {
+          "cuda": false
+        },
+        "wav2vec2": {
+          "cuda": false
+        },
+        "whisper": {
+          "cuda": false
+        },
+        "xclip": {
+          "cuda": false
+        }
+      },
+      "detailed_results": [
+        {
+          "model": "detr",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "clap",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py\", line 1012\n    def enhanced_cuda_handler(audio_input=None, text=None):\nSyntaxError: expected 'except' or 'finally' block\n"
+        },
+        {
+          "model": "clip",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 528\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 527\n"
+        },
+        {
+          "model": "bert",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 562\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 561\n"
+        },
+        {
+          "model": "llama",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "llava",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py\", line 257\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "llava_next",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py\", line 1002\n    def init_webgpu(self, model_name=None):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "qwen2",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 518\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 517\n"
+        },
+        {
+          "model": "t5",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 500\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 499\n"
+        },
+        {
+          "model": "vit",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 505\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 504\n"
+        },
+        {
+          "model": "wav2vec2",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py\", line 277\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "whisper",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 283\n    def init_rocm(self, model_name=None, device=\"hip\"):\n                                                       ^\nIndentationError: unindent does not match any outer indentation level\n"
+        },
+        {
+          "model": "xclip",
+          "hardware": "cuda",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 164\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+        }
+      ]
+    }
+  },
+  "performance_benchmarks": {
+    "embedding": {
+      "status": "error",
+      "error": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 45, in <module>\n    \"include_web_platforms\": false,\n                             ^^^^^\nNameError: name 'false' is not defined. Did you mean: 'False'?\n"
+    },
+    "audio": {
+      "status": "error",
+      "error": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 45, in <module>\n    \"include_web_platforms\": false,\n                             ^^^^^\nNameError: name 'false' is not defined. Did you mean: 'False'?\n"
+    },
+    "multimodal": {
+      "status": "error",
+      "error": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 45, in <module>\n    \"include_web_platforms\": false,\n                             ^^^^^\nNameError: name 'false' is not defined. Did you mean: 'False'?\n"
+    },
+    "vision": {
+      "status": "error",
+      "error": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 45, in <module>\n    \"include_web_platforms\": false,\n                             ^^^^^\nNameError: name 'false' is not defined. Did you mean: 'False'?\n"
+    },
+    "text_generation": {
+      "status": "error",
+      "error": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 45, in <module>\n    \"include_web_platforms\": false,\n                             ^^^^^\nNameError: name 'false' is not defined. Did you mean: 'False'?\n"
+    }
+  },
+  "hardware_detected": {
+    "cpu": true,
+    "cuda": true,
+    "mps": false,
+    "openvino": true,
+    "rocm": false
+  }
+}

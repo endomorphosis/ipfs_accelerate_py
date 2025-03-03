@@ -380,38 +380,43 @@ class BenchmarkDBUpdater:
         Returns:
             True if successful, False otherwise
         """
-        # Use default directory if not specified
-        if output_dir is None:
-            output_dir = os.path.join(os.path.dirname(self.db_path), "auto_store")
-        
-        # Check if directory exists
-        if not os.path.exists(output_dir):
-            logger.warning(f"Auto-store directory not found: {output_dir}")
-            return False
-        
-        # Find all JSON files in the directory
-        pattern = os.path.join(output_dir, "*.json")
-        json_files = glob.glob(pattern)
-        
-        if not json_files:
-            logger.info(f"No auto-store files found in {output_dir}")
-            return True
-        
-        logger.info(f"Found {len(json_files)} auto-store files in {output_dir}")
-        
-        # Process each file
-        processed_files = []
-        for file_path in json_files:
-            result = self.update_from_file(file_path)
+        try:
+            # Use default directory if not specified
+            if output_dir is None:
+                output_dir = os.path.join(os.path.dirname(self.db_path), "auto_store")
             
-            if result:
-                processed_files.append(file_path)
+            # Check if directory exists
+            if not os.path.exists(output_dir):
+                logger.warning(f"Auto-store directory not found: {output_dir}")
+                return False
+            
+            # Find all JSON files in the directory
+            pattern = os.path.join(output_dir, "*.json")
+            json_files = glob.glob(pattern)
+            
+            if not json_files:
+                logger.info(f"No auto-store files found in {output_dir}")
+                return True
+            
+            logger.info(f"Found {len(json_files)} auto-store files in {output_dir}")
+            
+            # Process each file
+            processed_files = []
+            for file_path in json_files:
+                result = self.update_from_file(file_path)
                 
-                # Optionally move or delete the file after processing
-                # os.remove(file_path)
-        
-        logger.info(f"Processed {len(processed_files)} auto-store files")
-        return True
+                if result:
+                    processed_files.append(file_path)
+                    
+                    # Optionally move or delete the file after processing
+                    # os.remove(file_path)
+            
+            logger.info(f"Processed {len(processed_files)} auto-store files")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing auto-store files: {e}")
+            return False
 
 def main():
     """Command-line interface for the benchmark database updater."""

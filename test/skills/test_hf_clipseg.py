@@ -141,13 +141,13 @@ except ImportError:
         return "Default test input"
     
     
-def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
+    def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
             # Mock implementation
             return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
             
         
 
-def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
+    def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
             # Mock implementation
             return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
             
@@ -183,7 +183,7 @@ def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebNN
-                def webnn_handler(image_input, **kwargs):
+    def webnn_handler(image_input, **kwargs):
                     try:
                         # Process image input (path or PIL Image)
                         if isinstance(image_input, str):
@@ -271,7 +271,7 @@ def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
                 endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
                 
                 # Wrap the CPU function to simulate WebGPU/transformers.js
-                def webgpu_handler(image_input, **kwargs):
+    def webgpu_handler(image_input, **kwargs):
                     try:
                         # Process image input (path or PIL Image)
                         if isinstance(image_input, str):

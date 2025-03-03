@@ -1,0 +1,39 @@
+{
+  "model_families": {
+    "embedding": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": true,
+          "performance_rating": "medium",
+          "benchmark_results": [
+            {
+              "mean_latency": 1.7802078353034123,
+              "mean_throughput": 4.946130056232237,
+              "timestamp": "2025-03-03T05:23:03.374275",
+              "model_name": "bert-base-uncased"
+            },
+            {
+              "mean_latency": 0.4869488212797377,
+              "mean_throughput": 25.13838014947092,
+              "timestamp": "2025-03-03T05:23:03.374294",
+              "model_name": "distilbert-base-uncased"
+            },
+            {
+              "mean_latency": 1.0573945879936217,
+              "mean_throughput": 14.236650715987942,
+              "timestamp": "2025-03-03T05:23:03.374304",
+              "model_name": "roberta-base"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "mps",
+    "rocm",
+    "openvino"
+  ]
+}

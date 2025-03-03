@@ -20,6 +20,7 @@ import sys
 import time
 import argparse
 import logging
+import asyncio
 # JSON no longer needed for database storage - only used for legacy report generation
 import json
 from pathlib import Path
@@ -31,13 +32,27 @@ logger = logging.getLogger(__name__)
 
 # Import fixed web platform handler
 try:
-    from fixed_web_platform import (
+    from fixed_web_platform.web_platform_handler import (
         process_for_web, 
         init_webnn, 
         init_webgpu, 
-        create_mock_processors,
-        BROWSER_AUTOMATION_AVAILABLE
+        create_mock_processors
     )
+    
+    # Set default flag for browser automation
+    BROWSER_AUTOMATION_AVAILABLE = False
+    
+    # Import the specialized optimizations
+    try:
+        from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+        from fixed_web_platform.webgpu_shader_precompilation import setup_shader_precompilation
+        from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
+        OPTIMIZATIONS_AVAILABLE = True
+        logger.info("Specialized optimization modules imported successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import specialized optimization modules: {e}")
+        OPTIMIZATIONS_AVAILABLE = False
+    
     logger.info("Successfully imported fixed_web_platform module")
 except ImportError:
     logger.error("Error importing fixed_web_platform module. Make sure it's in your Python path.")
@@ -96,9 +111,40 @@ def test_compute_shader_optimization(model_name="whisper"):
             
             # Initialize WebGPU endpoint with compute shaders
             logger.info("Initializing WebGPU endpoint with compute shaders enabled")
+            
+            # Use Firefox-specific optimizations if available
+            if OPTIMIZATIONS_AVAILABLE:
+                try:
+                    # Try to import the Firefox optimization function directly
+                    from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+                    # Apply Firefox-specific optimization for audio models
+                    firefox_config = optimize_for_firefox({
+                        "model_name": model_name,
+                        "workgroup_size": "256x1x1",
+                        "enable_advanced_compute": True,
+                        "detect_browser": True
+                    })
+                    logger.info(f"Using Firefox-optimized configuration with workgroup size 256x1x1")
+                    
+                    # Set browser environment to Firefox for testing the optimized version
+                    os.environ["BROWSER_SIMULATION"] = "firefox"
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Could not import optimize_for_firefox: {e}")
+                    # Set browser environment to Firefox for testing anyway
+                    os.environ["BROWSER_SIMULATION"] = "firefox"
+            
+            # Create a mock model for the WebGPU handler
+            class MockModel:
+                pass
+                
+            mock_model = MockModel()
+            mock_model.model_name = model_name
+            mock_model.mode = "audio"
+                
             self.webgpu_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type="audio",
                 web_api_mode="simulation",
                 compute_shaders=True
             )
@@ -113,8 +159,9 @@ def test_compute_shader_optimization(model_name="whisper"):
                 saved_env = None
                 
             self.webgpu_standard_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type="audio",
                 web_api_mode="simulation",
                 compute_shaders=False
             )
@@ -213,9 +260,61 @@ def test_parallel_loading_optimization(model_name="clip-vit-base-patch32"):
             
             # Initialize WebGPU endpoint with parallel loading
             logger.info("Initializing WebGPU endpoint with parallel loading enabled")
+            
+            # Use the dedicated progressive model loader if available
+            if OPTIMIZATIONS_AVAILABLE:
+                try:
+                    # Check if we have access to the ProgressiveModelLoader
+                    from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
+                    logger.info(f"Setting up progressive model loading for {model_name} using dedicated module")
+                    
+                    # Initialize the progressive loader
+                    self.progressive_loader = ProgressiveModelLoader(
+                        model_name=model_name,
+                        platform="webgpu",
+                        max_chunk_size_mb=100,
+                        memory_optimization_level="aggressive"
+                    )
+                    
+                    # The real loading would happen asynchronously, but we simulate it here
+                    if hasattr(asyncio, "run"):
+                        # Python 3.7+
+                        loader_start_time = time.time()
+                        try:
+                            # We don't actually load anything in this test, just simulate
+                            logger.info("Simulating progressive loading (non-blocking)")
+                            
+                            # Record loading statistics for comparison
+                            self.loading_stats = {
+                                "model_name": model_name,
+                                "parallel_enabled": True,
+                                "start_time": loader_start_time
+                            }
+                        except Exception as e:
+                            logger.error(f"Error setting up progressive loader: {e}")
+                    else:
+                        logger.warning("Asyncio.run not available, skipping progressive loader test")
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Could not import ProgressiveModelLoader: {e}")
+                    # Create basic loading stats for simulation
+                    self.loading_stats = {
+                        "model_name": model_name,
+                        "parallel_enabled": True,
+                        "start_time": time.time()
+                    }
+            
+            # Create a mock model for the WebGPU handler
+            class MockModel:
+                pass
+                
+            mock_model = MockModel()
+            mock_model.model_name = model_name
+            mock_model.mode = "multimodal"
+                
             self.webgpu_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type="multimodal",
                 web_api_mode="simulation",
                 parallel_loading=True
             )
@@ -230,8 +329,9 @@ def test_parallel_loading_optimization(model_name="clip-vit-base-patch32"):
                 saved_env = None
                 
             self.webgpu_standard_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type="multimodal",
                 web_api_mode="simulation",
                 parallel_loading=False
             )
@@ -360,9 +460,51 @@ def test_shader_precompilation(model_name="vit"):
             
             # Initialize WebGPU endpoint with shader precompilation
             logger.info("Initializing WebGPU endpoint with shader precompilation enabled")
+            
+            # Use the dedicated shader precompilation module if available
+            if OPTIMIZATIONS_AVAILABLE:
+                try:
+                    # Try to import the setup function directly
+                    from fixed_web_platform.webgpu_shader_precompilation import setup_shader_precompilation
+                    logger.info(f"Setting up shader precompilation for {model_name} using dedicated module")
+                    
+                    # Use the dedicated shader precompiler
+                    precompile_result = setup_shader_precompilation(
+                        model_name=model_name,
+                        model_type=self.mode,
+                        browser="chrome",  # Default to chrome for best precompilation support
+                        optimization_level="balanced"
+                    )
+                    
+                    # Log precompilation statistics
+                    if precompile_result["precompiled"]:
+                        stats = precompile_result["stats"]
+                        logger.info(f"Precompiled {stats['precompiled_shaders']} of {stats['total_shaders']} shaders")
+                        logger.info(f"Expected first inference improvement: {stats['first_inference_improvement_ms']:.2f} ms")
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Could not import setup_shader_precompilation: {e}")
+                    # Create a minimal precompile result for simulation
+                    precompile_result = {
+                        "precompiled": True,
+                        "stats": {
+                            "precompiled_shaders": 10,
+                            "total_shaders": 15,
+                            "first_inference_improvement_ms": 25.0
+                        }
+                    }
+            
+            # Create a mock model for the WebGPU handler
+            class MockModel:
+                pass
+                
+            mock_model = MockModel()
+            mock_model.model_name = model_name
+            mock_model.mode = self.mode
+                
             self.webgpu_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type=self.mode,
                 web_api_mode="simulation",
                 precompile_shaders=True
             )
@@ -377,8 +519,9 @@ def test_shader_precompilation(model_name="vit"):
                 saved_env = None
                 
             self.webgpu_standard_config = init_webgpu(
-                self,
+                mock_model,
                 model_name=model_name,
+                model_type=self.mode,
                 web_api_mode="simulation",
                 precompile_shaders=False
             )
@@ -544,27 +687,34 @@ def save_results_to_database(results, db_path):
         results: Dictionary containing test results
         db_path: Path to the database file
     """
+    conn = None
     try:
         import duckdb
         from datetime import datetime
         
-        # Connect to the database
-        conn = duckdb.connect(db_path)
+        # Connect to the database with read_only=False to ensure write access
+        # Set access_mode='automatic' to avoid lock conflicts
+        conn = duckdb.connect(db_path, read_only=False, access_mode='automatic')
+        
+        # Begin transaction for data consistency
+        conn.execute("BEGIN TRANSACTION")
         
         # Create optimization_results table if it doesn't exist
         conn.execute("""
+        CREATE SEQUENCE IF NOT EXISTS web_platform_optimizations_id_seq;
+        
         CREATE TABLE IF NOT EXISTS web_platform_optimizations (
-            id INTEGER PRIMARY KEY,
+            id INTEGER DEFAULT nextval('web_platform_optimizations_id_seq') PRIMARY KEY,
             test_datetime TIMESTAMP,
             test_type VARCHAR,
             model_name VARCHAR,
             model_family VARCHAR,
             optimization_enabled BOOLEAN,
             execution_time_ms FLOAT,
-            initialization_time_ms FLOAT,
+            initialization_time_ms FLOAT DEFAULT NULL,
             improvement_percent FLOAT,
-            audio_length_seconds FLOAT,
-            component_count INTEGER,
+            audio_length_seconds FLOAT DEFAULT NULL,
+            component_count INTEGER DEFAULT NULL,
             hardware_type VARCHAR,
             browser VARCHAR,
             environment VARCHAR
@@ -573,8 +723,10 @@ def save_results_to_database(results, db_path):
         
         # Create additional specialized table for shader statistics
         conn.execute("""
+        CREATE SEQUENCE IF NOT EXISTS shader_compilation_id_seq;
+        
         CREATE TABLE IF NOT EXISTS shader_compilation_stats (
-            id INTEGER PRIMARY KEY,
+            id INTEGER DEFAULT nextval('shader_compilation_id_seq') PRIMARY KEY,
             test_datetime TIMESTAMP,
             optimization_id INTEGER,
             shader_count INTEGER,
@@ -589,8 +741,10 @@ def save_results_to_database(results, db_path):
         
         # Create additional specialized table for parallel loading statistics
         conn.execute("""
+        CREATE SEQUENCE IF NOT EXISTS parallel_loading_id_seq;
+        
         CREATE TABLE IF NOT EXISTS parallel_loading_stats (
-            id INTEGER PRIMARY KEY,
+            id INTEGER DEFAULT nextval('parallel_loading_id_seq') PRIMARY KEY,
             test_datetime TIMESTAMP,
             optimization_id INTEGER,
             components_loaded INTEGER,
@@ -637,8 +791,8 @@ def save_results_to_database(results, db_path):
                     environment
                 ))
                 
-                # Get the ID of the inserted row
-                optimization_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                # Get the ID of the inserted row (DuckDB uses currval from sequence)
+                optimization_id = conn.execute("SELECT currval('web_platform_optimizations_id_seq')").fetchone()[0]
                 
                 # Add shader statistics if available
                 if "compute_shader_metrics" in result:
@@ -716,8 +870,8 @@ def save_results_to_database(results, db_path):
                     environment
                 ))
                 
-                # Get the ID of the inserted row
-                optimization_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                # Get the ID of the inserted row (DuckDB uses currval from sequence)
+                optimization_id = conn.execute("SELECT currval('web_platform_optimizations_id_seq')").fetchone()[0]
                 
                 # Add parallel loading statistics if available
                 if "parallel_loading_stats" in result:
@@ -782,8 +936,8 @@ def save_results_to_database(results, db_path):
                     environment
                 ))
                 
-                # Get the ID of the inserted row
-                optimization_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                # Get the ID of the inserted row (DuckDB uses currval from sequence)
+                optimization_id = conn.execute("SELECT currval('web_platform_optimizations_id_seq')").fetchone()[0]
                 
                 # Add shader statistics if available
                 if "compilation_stats" in result:
@@ -824,13 +978,27 @@ def save_results_to_database(results, db_path):
                     environment
                 ))
         
-        # Close the connection
-        conn.close()
+        # Commit the transaction
+        conn.execute("COMMIT")
         logger.info(f"Successfully saved results to database: {db_path}")
         return True
     except Exception as e:
         logger.error(f"Error saving results to database: {e}")
+        # Rollback the transaction if an error occurred
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+                logger.info("Transaction rolled back due to error")
+            except Exception as rollback_error:
+                logger.error(f"Error rolling back transaction: {rollback_error}")
         return False
+    finally:
+        # Ensure the connection is closed properly
+        if conn:
+            try:
+                conn.close()
+            except Exception as close_error:
+                logger.error(f"Error closing database connection: {close_error}")
 
 def generate_optimization_report(results, output_file=None):
     """

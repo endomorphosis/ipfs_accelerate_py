@@ -42,13 +42,13 @@ EXAMPLE_CONFIG = {
         "multimodal": ["openai/clip-vit-base-patch32"]
     },
     "hardware_types": ["cpu", "cuda", "mps", "openvino"],
-    "include_web_platforms": false,
-    "parallel": true,
-    "use_resource_pool": true,
-    "generate_plots": true,
-    "update_compatibility_matrix": true,
+    "include_web_platforms": False,
+    "parallel": True,
+    "use_resource_pool": True,
+    "generate_plots": True,
+    "update_compatibility_matrix": True,
     "schedule": {
-        "enabled": false,
+        "enabled": False,
         "frequency": "daily",
         "time": "02:00"
     }

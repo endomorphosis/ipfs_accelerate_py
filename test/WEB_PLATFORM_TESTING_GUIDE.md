@@ -1,6 +1,6 @@
-# Web Platform Testing Guide (June 2025)
+# Web Platform Testing Guide (August 2025)
 
-This guide provides comprehensive instructions for testing models on web platforms using WebNN and WebGPU, including the latest March 2025 and May 2025 optimizations with the new database integration.
+This guide provides comprehensive instructions for testing models on web platforms using WebNN and WebGPU, including the latest March-July 2025 optimizations with the new database integration and cross-origin model sharing capabilities.
 
 ## Overview
 
@@ -30,20 +30,28 @@ The IPFS Accelerate Python Framework includes extensive web platform testing cap
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `WEBNN_ENABLED` | Enable WebNN support | `0` |
-| `WEBNN_SIMULATION` | Use simulation mode for WebNN | `1` |
-| `WEBNN_AVAILABLE` | Indicate WebNN is available | `0` |
-| `WEBGPU_ENABLED` | Enable WebGPU support | `0` |
-| `WEBGPU_SIMULATION` | Use simulation mode for WebGPU | `1` |
-| `WEBGPU_AVAILABLE` | Indicate WebGPU is available | `0` |
-| `WEBGPU_COMPUTE_SHADERS_ENABLED` | Enable compute shader optimization | `0` |
-| `WEB_PARALLEL_LOADING_ENABLED` | Enable parallel model loading | `0` |
-| `WEBGPU_SHADER_PRECOMPILE_ENABLED` | Enable shader precompilation | `0` |
-| `BENCHMARK_DB_PATH` | Path to benchmark database | `./benchmark_db.duckdb` |
-| `DEPRECATE_JSON_OUTPUT` | Disable JSON output and use only database | `0` |
-| `TEST_BROWSER` | Browser to use for testing | `chrome` |
+| Variable | Description | Default | Added |
+|----------|-------------|---------|-------|
+| `WEBNN_ENABLED` | Enable WebNN support | `0` | Phase 16 |
+| `WEBNN_SIMULATION` | Use simulation mode for WebNN | `1` | Phase 16 |
+| `WEBNN_AVAILABLE` | Indicate WebNN is available | `0` | Phase 16 |
+| `WEBGPU_ENABLED` | Enable WebGPU support | `0` | Phase 16 |
+| `WEBGPU_SIMULATION` | Use simulation mode for WebGPU | `1` | Phase 16 |
+| `WEBGPU_AVAILABLE` | Indicate WebGPU is available | `0` | Phase 16 |
+| `WEBGPU_COMPUTE_SHADERS_ENABLED` | Enable compute shader optimization | `0` | March 2025 |
+| `WEB_PARALLEL_LOADING_ENABLED` | Enable parallel model loading | `0` | March 2025 |
+| `WEBGPU_SHADER_PRECOMPILE_ENABLED` | Enable shader precompilation | `0` | March 2025 |
+| `WEBGPU_4BIT_INFERENCE` | Enable 4-bit quantized inference | `0` | May 2025 |
+| `WEBGPU_EFFICIENT_KV_CACHE` | Enable efficient KV-cache | `0` | May 2025 |
+| `WEB_COMPONENT_CACHE` | Enable component-wise caching | `0` | May 2025 |
+| `WEBGPU_ULTRA_LOW_PRECISION` | Enable 2-bit/3-bit quantization | `0` | June 2025 |
+| `WEBASSEMBLY_FALLBACK` | Enable WebAssembly fallback | `0` | June 2025 |
+| `BROWSER_CAPABILITY_DETECTION` | Enable browser detection | `1` | June 2025 |
+| `CROSS_ORIGIN_MODEL_SHARING` | Enable cross-origin sharing | `1` | July 2025 |
+| `CROSS_ORIGIN_SECURITY_LEVEL` | Security level for sharing | `high` | July 2025 |
+| `BENCHMARK_DB_PATH` | Path to benchmark database | `./benchmark_db.duckdb` | Phase 16 |
+| `DEPRECATE_JSON_OUTPUT` | Disable JSON output and use only database | `0` | Phase 16 |
+| `TEST_BROWSER` | Browser to use for testing | `chrome` | Phase 16 |
 
 ## Basic Usage
 
@@ -397,6 +405,45 @@ The `run_integrated_web_tests.sh` script provides a unified interface for all we
 ## Conclusion
 
 This guide covers the comprehensive web platform testing capabilities in the IPFS Accelerate Python Framework. By following these instructions, you can effectively test models on web platforms, evaluate optimization benefits, and store results in a structured database for analysis.
+
+## July 2025 Implementation Status
+
+Key implementation status for the latest July 2025 features:
+
+### 1. Cross-origin Model Sharing Protocol (100% Complete)
+
+**Description**: Secure model sharing between domains with permission-based access control.
+
+**Features**:
+- Permission-based access control with multiple security levels
+- Secure token-based authorization with cryptographic verification
+- Resource usage monitoring and constraints enforcement
+- Domain verification and secure handshaking
+- Configurable security policies (standard, high, maximum)
+
+**Testing Command**:
+```bash
+# Test server mode with security level configuration
+./run_web_platform_tests.sh python test/test_cross_origin_sharing.py --model bert --server-mode --security-level high
+
+# Test client mode connecting to a server
+./run_web_platform_tests.sh python test/test_cross_origin_sharing.py --model bert --client-mode --server-origin https://model-provider.com
+```
+
+**Expected Results**:
+- Successful token generation and verification
+- Secure communication between domains
+- Resource usage monitoring and enforcement
+- Permission-based access control functioning correctly
+
+### 2. Other July 2025 Features (In Progress)
+
+| Feature | Progress | Status |
+|---------|----------|--------|
+| Mobile Device Optimizations | 65% | Power-efficient inference for mobile browsers |
+| Browser CPU Core Detection | 70% | Maximizing available computing resources |
+| Model Sharding Across Tabs | 55% | Running larger models through distributed execution |
+| Auto-tuning Parameter System | 48% | Optimizing configuration based on device capabilities |
 
 For more information about web platform integration and optimizations, see:
 - [Web Platform Integration Guide](./web_platform_integration_guide.md)

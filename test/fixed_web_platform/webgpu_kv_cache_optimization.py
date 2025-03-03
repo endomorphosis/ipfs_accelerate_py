@@ -931,6 +931,549 @@ def generate_kv_cache_shaders(seq_length=2048, num_heads=16, head_dim=64,
         }
     }
 
+def create_optimized_kv_cache(
+    batch_size: int,
+    num_heads: int,
+    head_dim: int,
+    max_seq_len: int,
+    bits: int = 2,
+    group_size: int = 64
+) -> Dict[str, Any]:
+    """
+    Create memory-efficient KV cache using ultra-low precision quantization.
+    
+    Args:
+        batch_size: Batch size for the request
+        num_heads: Number of attention heads
+        head_dim: Dimension of each attention head
+        max_seq_len: Maximum sequence length to support
+        bits: Bit width for quantization (2 or 3)
+        group_size: Group size for quantization
+        
+    Returns:
+        Optimized KV cache with 87.5% (2-bit) or 81.25% (3-bit) memory reduction
+    """
+    import math
+    import numpy as np
+    
+    # Determine total cache size
+    total_size = batch_size * num_heads * head_dim * max_seq_len
+    memory_savings = (16 - bits) / 16 * 100
+    
+    # Create quantized storage for K and V
+    if bits == 2:
+        # 2-bit quantization (87.5% memory reduction)
+        # Pack 16 values per 32-bit word
+        k_storage_size = math.ceil(total_size / 16)
+        v_storage_size = k_storage_size
+        
+        # Allocate storage for quantized values and scales
+        k_quantized = np.zeros(k_storage_size, dtype=np.uint32)
+        v_quantized = np.zeros(v_storage_size, dtype=np.uint32)
+        
+        # Scales are per group (each group shares a scale)
+        k_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
+        v_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
+        
+        # Zero points for asymmetric quantization (not used in symmetric case)
+        k_zero_points = None
+        v_zero_points = None
+        
+        # Create optimized KV cache with 87.5% memory reduction
+        optimized_kv_cache = {
+            "k_quantized": k_quantized,
+            "v_quantized": v_quantized,
+            "k_scales": k_scales,
+            "v_scales": v_scales,
+            "k_zero_points": k_zero_points,
+            "v_zero_points": v_zero_points,
+            "bits": bits,
+            "group_size": group_size,
+            "original_size_bytes": total_size * 2,  # 16-bit per value
+            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4 + (len(k_scales) + len(v_scales)) * 4,
+            "memory_reduction_percent": memory_savings,
+            "max_seq_len": max_seq_len,
+            "current_len": 0,
+            "batch_size": batch_size,
+            "num_heads": num_heads,
+            "head_dim": head_dim
+        }
+    elif bits == 3:
+        # 3-bit quantization (81.25% memory reduction)
+        # Pack 10 complete 3-bit values per 32-bit word (30 bits) with 2 bits padding
+        values_per_word = 10
+        k_storage_size = math.ceil(total_size / values_per_word)
+        v_storage_size = k_storage_size
+        
+        # Allocate storage for quantized values and scales
+        k_quantized = np.zeros(k_storage_size, dtype=np.uint32)
+        v_quantized = np.zeros(v_storage_size, dtype=np.uint32)
+        
+        # Scales are per group (each group shares a scale)
+        k_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
+        v_scales = np.zeros(math.ceil(total_size / group_size), dtype=np.float32)
+        
+        # Zero points for asymmetric quantization (not used in symmetric case)
+        k_zero_points = None
+        v_zero_points = None
+        
+        # Create optimized KV cache with 81.25% memory reduction
+        optimized_kv_cache = {
+            "k_quantized": k_quantized,
+            "v_quantized": v_quantized,
+            "k_scales": k_scales,
+            "v_scales": v_scales,
+            "k_zero_points": k_zero_points,
+            "v_zero_points": v_zero_points,
+            "bits": bits,
+            "group_size": group_size,
+            "original_size_bytes": total_size * 2,  # 16-bit per value
+            "quantized_size_bytes": (k_storage_size + v_storage_size) * 4 + (len(k_scales) + len(v_scales)) * 4,
+            "memory_reduction_percent": memory_savings,
+            "max_seq_len": max_seq_len,
+            "current_len": 0,
+            "batch_size": batch_size,
+            "num_heads": num_heads,
+            "head_dim": head_dim
+        }
+    else:
+        raise ValueError(f"Unsupported bit width for ultra-low precision: {bits}. Use 2 or 3 bits.")
+    
+    logger.info(f"Created ultra-low precision KV cache with {bits}-bit quantization: {memory_savings:.1f}% memory reduction")
+    logger.info(f"Original size: {optimized_kv_cache['original_size_bytes'] / (1024*1024):.2f} MB, " 
+                f"Quantized size: {optimized_kv_cache['quantized_size_bytes'] / (1024*1024):.2f} MB")
+    
+    return optimized_kv_cache
+
+def update_kv_cache(
+    kv_cache: Dict[str, Any],
+    key_states: np.ndarray,
+    value_states: np.ndarray,
+    current_positions: np.ndarray
+) -> Dict[str, Any]:
+    """
+    Update the KV cache with new tokens.
+    
+    Args:
+        kv_cache: Existing KV cache
+        key_states: New key states to add [batch_size, num_heads, seq_len, head_dim]
+        value_states: New value states to add [batch_size, num_heads, seq_len, head_dim]
+        current_positions: Current position in sequence for each batch item
+        
+    Returns:
+        Updated KV cache
+    """
+    import numpy as np
+    
+    bits = kv_cache["bits"]
+    group_size = kv_cache["group_size"]
+    
+    # Get cache dimensions
+    batch_size = kv_cache["batch_size"]
+    num_heads = kv_cache["num_heads"]
+    head_dim = kv_cache["head_dim"]
+    
+    # Ensure input shapes match expected dimensions
+    expected_shape = (batch_size, num_heads, len(current_positions), head_dim)
+    if key_states.shape != expected_shape or value_states.shape != expected_shape:
+        raise ValueError(f"Key/value states shape mismatch. Expected {expected_shape}, got {key_states.shape}/{value_states.shape}")
+    
+    # Choose the appropriate update function based on bit width
+    if bits == 2:
+        return _update_kv_cache_2bit(kv_cache, key_states, value_states, current_positions)
+    elif bits == 3:
+        return _update_kv_cache_3bit(kv_cache, key_states, value_states, current_positions)
+    else:
+        # For other bit widths (4-bit or higher), use the original implementation
+        return _update_kv_cache_generic(kv_cache, key_states, value_states, current_positions)
+
+def _update_kv_cache_2bit(
+    kv_cache: Dict[str, Any],
+    key_states: np.ndarray,
+    value_states: np.ndarray,
+    current_positions: np.ndarray
+) -> Dict[str, Any]:
+    """
+    Ultra-low precision 2-bit quantization KV cache update.
+    
+    Args:
+        kv_cache: Existing KV cache
+        key_states: New key states to add [batch_size, num_heads, seq_len, head_dim]
+        value_states: New value states to add [batch_size, num_heads, seq_len, head_dim]
+        current_positions: Current position in sequence for each batch item
+        
+    Returns:
+        Updated KV cache with 2-bit precision (87.5% memory reduction)
+    """
+    import numpy as np
+    
+    # Get cache dimensions
+    batch_size = kv_cache["batch_size"]
+    num_heads = kv_cache["num_heads"]
+    head_dim = kv_cache["head_dim"]
+    group_size = kv_cache["group_size"]
+    
+    # Process each new token position
+    for batch_idx in range(batch_size):
+        for pos_idx, seq_pos in enumerate(current_positions):
+            # Skip if position is out of range
+            if seq_pos >= kv_cache["max_seq_len"]:
+                logger.warning(f"Position {seq_pos} exceeds max sequence length {kv_cache['max_seq_len']}")
+                continue
+            
+            # Update current length if needed
+            kv_cache["current_len"] = max(kv_cache["current_len"], seq_pos + 1)
+            
+            # Process each attention head
+            for head_idx in range(num_heads):
+                # Get the key and value for this position
+                key = key_states[batch_idx, head_idx, pos_idx]
+                value = value_states[batch_idx, head_idx, pos_idx]
+                
+                # Calculate group index for this position
+                flat_idx = ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim
+                group_idx = flat_idx // group_size
+                
+                # Calculate scale for this group (use max absolute value)
+                k_scale = np.max(np.abs(key))
+                v_scale = np.max(np.abs(value))
+                
+                # Store scales
+                # If group already has a scale, use the max to avoid overflow
+                kv_cache["k_scales"][group_idx] = max(kv_cache["k_scales"][group_idx], k_scale) if k_scale > 0 else kv_cache["k_scales"][group_idx]
+                kv_cache["v_scales"][group_idx] = max(kv_cache["v_scales"][group_idx], v_scale) if v_scale > 0 else kv_cache["v_scales"][group_idx]
+                
+                # Skip empty/zero tensors
+                if k_scale == 0 or v_scale == 0:
+                    continue
+                
+                # 2-bit quantization: pack 16 values per 32-bit word
+                for d_idx in range(0, head_dim, 16):
+                    # Process up to 16 dimensions at once (one 32-bit word)
+                    end_idx = min(d_idx + 16, head_dim)
+                    num_values = end_idx - d_idx
+                    
+                    # Get key/value slices
+                    key_slice = key[d_idx:end_idx]
+                    value_slice = value[d_idx:end_idx]
+                    
+                    # Quantize key slice to 2 bits per value (0-3)
+                    # Scale values to [-1.5, 1.5] range, then quantize to [0,3]
+                    normalized_key = key_slice / k_scale 
+                    quant_key_values = np.clip(np.round(normalized_key / 0.5 + 2), 0, 3).astype(np.uint32)
+                    
+                    # Quantize value slice to 2 bits per value (0-3)
+                    normalized_value = value_slice / v_scale
+                    quant_value_values = np.clip(np.round(normalized_value / 0.5 + 2), 0, 3).astype(np.uint32)
+                    
+                    # Pack into 32-bit words (16 values * 2 bits = 32 bits)
+                    k_word = 0
+                    v_word = 0
+                    
+                    for i in range(num_values):
+                        k_word |= (quant_key_values[i] & 0x3) << (i * 2)
+                        v_word |= (quant_value_values[i] & 0x3) << (i * 2)
+                    
+                    # Calculate word index in the storage array
+                    word_idx = (((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim + d_idx) // 16
+                    
+                    # Store packed words
+                    if word_idx < len(kv_cache["k_quantized"]):
+                        kv_cache["k_quantized"][word_idx] = k_word
+                        kv_cache["v_quantized"][word_idx] = v_word
+    
+    return kv_cache
+
+def _update_kv_cache_3bit(
+    kv_cache: Dict[str, Any],
+    key_states: np.ndarray,
+    value_states: np.ndarray,
+    current_positions: np.ndarray
+) -> Dict[str, Any]:
+    """
+    Ultra-low precision 3-bit quantization KV cache update.
+    
+    Args:
+        kv_cache: Existing KV cache
+        key_states: New key states to add [batch_size, num_heads, seq_len, head_dim]
+        value_states: New value states to add [batch_size, num_heads, seq_len, head_dim]
+        current_positions: Current position in sequence for each batch item
+        
+    Returns:
+        Updated KV cache with 3-bit precision (81.25% memory reduction)
+    """
+    import numpy as np
+    
+    # Get cache dimensions
+    batch_size = kv_cache["batch_size"]
+    num_heads = kv_cache["num_heads"]
+    head_dim = kv_cache["head_dim"]
+    group_size = kv_cache["group_size"]
+    
+    # Process each new token position
+    for batch_idx in range(batch_size):
+        for pos_idx, seq_pos in enumerate(current_positions):
+            # Skip if position is out of range
+            if seq_pos >= kv_cache["max_seq_len"]:
+                logger.warning(f"Position {seq_pos} exceeds max sequence length {kv_cache['max_seq_len']}")
+                continue
+            
+            # Update current length if needed
+            kv_cache["current_len"] = max(kv_cache["current_len"], seq_pos + 1)
+            
+            # Process each attention head
+            for head_idx in range(num_heads):
+                # Get the key and value for this position
+                key = key_states[batch_idx, head_idx, pos_idx]
+                value = value_states[batch_idx, head_idx, pos_idx]
+                
+                # Calculate group index for this position
+                flat_idx = ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim
+                group_idx = flat_idx // group_size
+                
+                # Calculate scale for this group (use max absolute value)
+                k_scale = np.max(np.abs(key))
+                v_scale = np.max(np.abs(value))
+                
+                # Store scales
+                # If group already has a scale, use the max to avoid overflow
+                kv_cache["k_scales"][group_idx] = max(kv_cache["k_scales"][group_idx], k_scale) if k_scale > 0 else kv_cache["k_scales"][group_idx]
+                kv_cache["v_scales"][group_idx] = max(kv_cache["v_scales"][group_idx], v_scale) if v_scale > 0 else kv_cache["v_scales"][group_idx]
+                
+                # Skip empty/zero tensors
+                if k_scale == 0 or v_scale == 0:
+                    continue
+                
+                # 3-bit quantization: pack 10 values per 32-bit word (30 bits used, 2 bits padding)
+                for d_idx in range(0, head_dim, 10):
+                    # Process up to 10 dimensions at once (one 32-bit word)
+                    end_idx = min(d_idx + 10, head_dim)
+                    num_values = end_idx - d_idx
+                    
+                    # Get key/value slices
+                    key_slice = key[d_idx:end_idx]
+                    value_slice = value[d_idx:end_idx]
+                    
+                    # Quantize key slice to 3 bits per value (0-7)
+                    # Scale values to [-3.5, 3.5] range, then quantize to [0,7]
+                    normalized_key = key_slice / (k_scale / 4) 
+                    quant_key_values = np.clip(np.round(normalized_key + 4), 0, 7).astype(np.uint32)
+                    
+                    # Quantize value slice to 3 bits per value (0-7)
+                    normalized_value = value_slice / (v_scale / 4)
+                    quant_value_values = np.clip(np.round(normalized_value + 4), 0, 7).astype(np.uint32)
+                    
+                    # Pack into 32-bit words (10 values * 3 bits = 30 bits, with 2 bits padding)
+                    k_word = 0
+                    v_word = 0
+                    
+                    for i in range(num_values):
+                        k_word |= (quant_key_values[i] & 0x7) << (i * 3)
+                        v_word |= (quant_value_values[i] & 0x7) << (i * 3)
+                    
+                    # Calculate word index in the storage array
+                    word_idx = (((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim + d_idx) // 10
+                    
+                    # Store packed words
+                    if word_idx < len(kv_cache["k_quantized"]):
+                        kv_cache["k_quantized"][word_idx] = k_word
+                        kv_cache["v_quantized"][word_idx] = v_word
+    
+    return kv_cache
+
+def _update_kv_cache_generic(
+    kv_cache: Dict[str, Any],
+    key_states: np.ndarray,
+    value_states: np.ndarray,
+    current_positions: np.ndarray
+) -> Dict[str, Any]:
+    """
+    Generic implementation for KV cache update with arbitrary bit precision.
+    
+    Args:
+        kv_cache: Existing KV cache
+        key_states: New key states to add [batch_size, num_heads, seq_len, head_dim]
+        value_states: New value states to add [batch_size, num_heads, seq_len, head_dim]
+        current_positions: Current position in sequence for each batch item
+        
+    Returns:
+        Updated KV cache
+    """
+    import numpy as np
+    
+    bits = kv_cache["bits"]
+    group_size = kv_cache["group_size"]
+    
+    # Get cache dimensions
+    batch_size = kv_cache["batch_size"]
+    num_heads = kv_cache["num_heads"]
+    head_dim = kv_cache["head_dim"]
+    
+    # Calculate values per word based on bit precision
+    values_per_word = 32 // bits
+    
+    # Process each new token position
+    for batch_idx in range(batch_size):
+        for pos_idx, seq_pos in enumerate(current_positions):
+            # Skip if position is out of range
+            if seq_pos >= kv_cache["max_seq_len"]:
+                logger.warning(f"Position {seq_pos} exceeds max sequence length {kv_cache['max_seq_len']}")
+                continue
+            
+            # Update current length if needed
+            kv_cache["current_len"] = max(kv_cache["current_len"], seq_pos + 1)
+            
+            # Quantize and store key/value for each head
+            for head_idx in range(num_heads):
+                # Get the key and value for this position
+                key = key_states[batch_idx, head_idx, pos_idx]
+                value = value_states[batch_idx, head_idx, pos_idx]
+                
+                # Calculate group index for this position
+                flat_idx = ((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim
+                group_idx = flat_idx // group_size
+                
+                # Calculate scale for this group (use max absolute value)
+                k_scale = np.max(np.abs(key))
+                v_scale = np.max(np.abs(value))
+                
+                # Store scales
+                # If group already has a scale, use the max to avoid overflow
+                kv_cache["k_scales"][group_idx] = max(kv_cache["k_scales"][group_idx], k_scale) if k_scale > 0 else kv_cache["k_scales"][group_idx]
+                kv_cache["v_scales"][group_idx] = max(kv_cache["v_scales"][group_idx], v_scale) if v_scale > 0 else kv_cache["v_scales"][group_idx]
+                
+                # Skip empty/zero tensors
+                if k_scale == 0 or v_scale == 0:
+                    continue
+                
+                # Pack and store quantized values
+                max_quant_value = (1 << bits) - 1
+                mid_value = max_quant_value // 2
+                
+                for d_idx in range(0, head_dim, values_per_word):
+                    # Process dimensions in blocks of values_per_word
+                    end_idx = min(d_idx + values_per_word, head_dim)
+                    num_values = end_idx - d_idx
+                    
+                    # Get key/value slices
+                    key_slice = key[d_idx:end_idx]
+                    value_slice = value[d_idx:end_idx]
+                    
+                    # Quantize key values
+                    normalized_key = key_slice / k_scale
+                    quant_key_values = np.clip(np.round(normalized_key + mid_value), 0, max_quant_value).astype(np.uint32)
+                    
+                    # Quantize value values
+                    normalized_value = value_slice / v_scale
+                    quant_value_values = np.clip(np.round(normalized_value + mid_value), 0, max_quant_value).astype(np.uint32)
+                    
+                    # Pack into words
+                    k_word = 0
+                    v_word = 0
+                    
+                    for i in range(num_values):
+                        k_word |= (quant_key_values[i] & ((1 << bits) - 1)) << (i * bits)
+                        v_word |= (quant_value_values[i] & ((1 << bits) - 1)) << (i * bits)
+                    
+                    # Calculate word index in the storage array
+                    word_idx = (((batch_idx * num_heads + head_idx) * kv_cache["max_seq_len"] + seq_pos) * head_dim + d_idx) // values_per_word
+                    
+                    # Store packed words
+                    if word_idx < len(kv_cache["k_quantized"]):
+                        kv_cache["k_quantized"][word_idx] = k_word
+                        kv_cache["v_quantized"][word_idx] = v_word
+    
+    return kv_cache
+
+def simulate_context_extension(
+    model_name: str,
+    bits: int,
+    base_context_len: int = 4096,
+    memory_budget_mb: int = 4096
+) -> dict:
+    """
+    Simulate maximum context length with optimized KV cache.
+    
+    Args:
+        model_name: Name of the model (used to determine head configuration)
+        bits: Bit width for quantization (2 or 3)
+        base_context_len: Base context length with FP16
+        memory_budget_mb: Memory budget in MB
+        
+    Returns:
+        Maximum possible context length with the given memory budget
+    """
+    # Get model configuration
+    model_config = get_model_config(model_name)
+    num_heads = model_config["num_heads"]
+    head_dim = model_config["head_dim"]
+    
+    # Calculate bytes per token with different precision formats
+    fp16_bytes_per_token = 2 * num_heads * head_dim * 2  # 2 bytes per value, both K and V
+    quant_bytes_per_token = (bits / 8) * num_heads * head_dim * 2  # bits/8 bytes per value
+    
+    # Calculate maximum context length
+    fp16_max_len = int((memory_budget_mb * 1024 * 1024) / fp16_bytes_per_token)
+    quant_max_len = int((memory_budget_mb * 1024 * 1024) / quant_bytes_per_token)
+    
+    # The ratio of improvement
+    improvement_ratio = quant_max_len / fp16_max_len
+    
+    return {
+        "base_context_len": base_context_len,
+        "optimized_context_len": int(base_context_len * improvement_ratio),
+        "improvement_ratio": improvement_ratio,
+        "memory_reduction_percent": (16 - bits) / 16 * 100,
+        "model": model_name,
+        "num_heads": num_heads,
+        "head_dim": head_dim,
+        "memory_budget_mb": memory_budget_mb
+    }
+
+def get_model_config(model_name: str) -> Dict[str, Any]:
+    """
+    Get model configuration based on model name.
+    
+    Args:
+        model_name: Name of the model
+        
+    Returns:
+        Dictionary with model configuration
+    """
+    # Model configurations for common LLMs
+    model_configs = {
+        "llama-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "llama-13b": {"num_heads": 40, "head_dim": 128, "hidden_size": 5120},
+        "llama-70b": {"num_heads": 64, "head_dim": 128, "hidden_size": 8192},
+        "llama2-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "llama2-13b": {"num_heads": 40, "head_dim": 128, "hidden_size": 5120},
+        "llama2-70b": {"num_heads": 64, "head_dim": 128, "hidden_size": 8192},
+        "llama3-8b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "llama3-70b": {"num_heads": 64, "head_dim": 128, "hidden_size": 8192},
+        "mistral-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "mixtral-8x7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "gemma-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "gemma-2b": {"num_heads": 16, "head_dim": 128, "hidden_size": 2048},
+        "phi-2": {"num_heads": 32, "head_dim": 80, "hidden_size": 2560},
+        "qwen1.5-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "qwen2-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "gpt-neox-20b": {"num_heads": 64, "head_dim": 96, "hidden_size": 6144},
+        "falcon-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "mpt-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+        "bloom-7b": {"num_heads": 32, "head_dim": 128, "hidden_size": 4096},
+    }
+    
+    # Return configuration for the requested model, or a default configuration
+    if model_name.lower() in model_configs:
+        return model_configs[model_name.lower()]
+    elif "7b" in model_name.lower():
+        # Generic 7B model configuration
+        return model_configs["llama-7b"]
+    else:
+        # Default configuration
+        logger.warning(f"Unknown model: {model_name}. Using default configuration.")
+        return {"num_heads": 32, "head_dim": 128, "hidden_size": 4096}
+
 if __name__ == "__main__":
     # Example usage
     print("WebGPU KV Cache Optimization Module")
@@ -968,7 +1511,32 @@ if __name__ == "__main__":
     print(f"Cache memory: {stats['memory_mb']:.2f}MB")
     print(f"Current length: {stats['current_length']}")
     
-    # Example 5: Generate shader code
-    print("\nExample 5: Generate shader code")
+    # Example 5: Create ultra-low precision KV cache
+    print("\nExample 5: Creating ultra-low precision KV cache")
+    optimized_cache = create_optimized_kv_cache(
+        batch_size=1,
+        num_heads=32,
+        head_dim=128,
+        max_seq_len=8192,
+        bits=2,
+        group_size=64
+    )
+    print(f"Created {optimized_cache['bits']}-bit KV cache with {optimized_cache['memory_reduction_percent']:.1f}% memory reduction")
+    
+    # Example 6: Simulate context extension with ultra-low precision
+    print("\nExample 6: Simulating context extension with ultra-low precision")
+    extension = simulate_context_extension(
+        model_name="llama-70b",
+        bits=2,
+        base_context_len=4096,
+        memory_budget_mb=24576
+    )
+    print(f"Model: {extension['model']}")
+    print(f"Base context length: {extension['base_context_len']}")
+    print(f"Optimized context length: {extension['optimized_context_len']}")
+    print(f"Improvement ratio: {extension['improvement_ratio']:.2f}x")
+    
+    # Example 7: Generate shader code
+    print("\nExample 7: Generate shader code")
     shaders = generate_kv_cache_shaders(seq_length=2048, num_heads=32, head_dim=128, use_4bit=True)
     print(f"Generated shaders for KV cache operations: {list(shaders.keys())}")

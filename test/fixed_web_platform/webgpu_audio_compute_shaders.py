@@ -311,7 +311,7 @@ def optimize_audio_inference(
     
     return result
 
-def optimize_for_firefox(config: Dict[str, Any]) -> Dict[str, Any]:
+def optimize_for_firefox(config):
     """
     Create Firefox-optimized compute shaders for audio processing.
     
@@ -326,16 +326,29 @@ def optimize_for_firefox(config: Dict[str, Any]) -> Dict[str, Any]:
             - workgroup_size: Workgroup size configuration (defaults to "256x1x1" for Firefox)
             - enable_advanced_compute: Whether to enable advanced compute features
             - detect_browser: Whether to auto-detect Firefox
+            Or a string representing the model name.
             
     Returns:
         Dictionary with optimized configuration and processor methods
     """
+    # Handle string input (model name only)
+    if isinstance(config, str):
+        config_dict = {
+            "model_name": config,
+            "browser": "firefox",
+            "workgroup_size": "256x1x1",
+            "enable_advanced_compute": True,
+            "detect_browser": True
+        }
+    else:
+        config_dict = config
+        
     # Extract configuration
-    model_name = config.get("model_name", "whisper")
-    browser = config.get("browser", "firefox").lower()
-    workgroup_size = config.get("workgroup_size", "256x1x1")
-    enable_advanced_compute = config.get("enable_advanced_compute", True)
-    detect_browser = config.get("detect_browser", True)
+    model_name = config_dict.get("model_name", "whisper")
+    browser = config_dict.get("browser", "firefox").lower()
+    workgroup_size = config_dict.get("workgroup_size", "256x1x1")
+    enable_advanced_compute = config_dict.get("enable_advanced_compute", True)
+    detect_browser = config_dict.get("detect_browser", True)
     
     # Auto-detect Firefox if requested
     if detect_browser:
@@ -400,11 +413,24 @@ def optimize_for_firefox(config: Dict[str, Any]) -> Dict[str, Any]:
         """Firefox-optimized audio processor using WebGPU compute shaders."""
         
         def __init__(self, config):
-            self.config = config
-            self.browser = config.get("browser", "firefox")
-            self.model_name = config.get("model_name", "whisper")
+            # Handle string input (model name only)
+            if isinstance(config, str):
+                self.config = {
+                    "model_name": config,
+                    "browser": "firefox",
+                    "workgroup_size": "256x1x1",
+                    "enable_advanced_compute": True,
+                    "detect_browser": True
+                }
+                self.browser = "firefox"
+                self.model_name = config
+            else:
+                self.config = config
+                self.browser = config.get("browser", "firefox")
+                self.model_name = config.get("model_name", "whisper")
+                
             self.workgroup_size = workgroup_dims
-            self.enable_advanced_compute = config.get("enable_advanced_compute", True)
+            self.enable_advanced_compute = self.config.get("enable_advanced_compute", True)
             
             # Performance tracking
             self.performance_metrics = {}
