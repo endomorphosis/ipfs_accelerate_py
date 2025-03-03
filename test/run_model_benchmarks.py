@@ -15,6 +15,7 @@ Features:
 - Visualization of results with comparative analysis
 - Integration with hardware compatibility matrix
 - Support for custom model sets and hardware configurations
+- Integration with DuckDB database for storing and analyzing benchmark results
 """
 
 import os
@@ -24,9 +25,13 @@ import time
 import logging
 import argparse
 import datetime
+import duckdb
 from pathlib import Path
 import subprocess
 from typing import Dict, List, Any, Optional, Union, Tuple
+
+# Add scripts directory to path for module imports
+sys.path.append(str(Path(__file__).parent / "scripts"))
 
 # Try to import key components with graceful degradation
 try:
@@ -95,7 +100,9 @@ class ModelBenchmarkRunner:
         measure_performance: bool = True,
         generate_plots: bool = True,
         update_compatibility_matrix: bool = True,
-        use_resource_pool: bool = True
+        use_resource_pool: bool = True,
+        db_path: str = "./benchmark_db.duckdb",
+        store_in_db: bool = True
     ):
         """
         Initialize the benchmark runner.
@@ -111,6 +118,8 @@ class ModelBenchmarkRunner:
             generate_plots: Whether to generate visualization plots
             update_compatibility_matrix: Whether to update hardware compatibility matrix
             use_resource_pool: Whether to use ResourcePool for model caching
+            db_path: Path to DuckDB database for storing results
+            store_in_db: Whether to store results in the database
         """
         self.output_dir = Path(output_dir)
         self.models_set = models_set
@@ -122,6 +131,9 @@ class ModelBenchmarkRunner:
         self.generate_plots = generate_plots and HAS_VISUALIZATION
         self.update_compatibility_matrix = update_compatibility_matrix
         self.use_resource_pool = use_resource_pool
+        self.db_path = db_path
+        self.store_in_db = store_in_db
+        self.db_conn = None
         
         # Set up models to benchmark
         if models_set == "key":
@@ -153,6 +165,53 @@ class ModelBenchmarkRunner:
             "performance_benchmarks": {},
             "hardware_detected": self.available_hardware
         }
+        
+        # Initialize database connection if needed
+        if self.store_in_db:
+            self._initialize_db()
+            
+    def _initialize_db(self):
+        """Initialize database connection and check schema"""
+        try:
+            # Check if database file exists
+            if not os.path.exists(self.db_path):
+                logger.warning(f"Database file not found: {self.db_path}")
+                logger.warning("Will create new database file")
+                
+                # Try to import schema creation module
+                try:
+                    from create_benchmark_schema import create_schema
+                    create_schema(self.db_path)
+                    logger.info(f"Created new benchmark database at {self.db_path}")
+                except ImportError:
+                    logger.error("Failed to import create_benchmark_schema module")
+                    logger.error("Please run scripts/create_benchmark_schema.py first")
+                    self.store_in_db = False
+                    return
+            
+            # Connect to database
+            self.db_conn = duckdb.connect(self.db_path)
+            
+            # Check if required tables exist
+            tables = self.db_conn.execute("SHOW TABLES").fetchall()
+            table_names = [t[0].lower() for t in tables]
+            
+            required_tables = ['hardware_platforms', 'models', 'test_runs', 
+                             'performance_results', 'hardware_compatibility']
+            
+            missing_tables = [t for t in required_tables if t.lower() not in table_names]
+            
+            if missing_tables:
+                logger.error(f"Required tables missing from database: {', '.join(missing_tables)}")
+                logger.error("Please run scripts/create_benchmark_schema.py to initialize the schema")
+                self.store_in_db = False
+                return
+            
+            logger.info(f"Successfully connected to benchmark database: {self.db_path}")
+            
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            self.store_in_db = False
         
     def _detect_hardware(self) -> Dict[str, bool]:
         """
@@ -216,35 +275,45 @@ class ModelBenchmarkRunner:
         """
         logger.info(f"Starting model benchmarks for {len(self.models)} models on {len(self.hardware_types)} hardware platforms")
         
-        # Create run config file
-        self._save_run_configuration()
-        
-        # Step 1: Verify basic model functionality
-        if self.verify_functionality:
-            self._verify_model_functionality()
+        try:
+            # Create run config file
+            self._save_run_configuration()
             
-        # Step 2: Measure detailed performance metrics
-        if self.measure_performance:
-            self._run_performance_benchmarks()
+            # Step 1: Verify basic model functionality
+            if self.verify_functionality:
+                self._verify_model_functionality()
+                
+            # Step 2: Measure detailed performance metrics
+            if self.measure_performance:
+                self._run_performance_benchmarks()
+                
+            # Step 3: Generate visualization plots
+            if self.generate_plots:
+                self._generate_plots()
+                
+            # Step 4: Update hardware compatibility matrix
+            if self.update_compatibility_matrix:
+                self._update_compatibility_matrix()
+                
+            # Save final results
+            self._save_results()
             
-        # Step 3: Generate visualization plots
-        if self.generate_plots:
-            self._generate_plots()
+            # Generate final report
+            report_path = self._generate_report()
             
-        # Step 4: Update hardware compatibility matrix
-        if self.update_compatibility_matrix:
-            self._update_compatibility_matrix()
+            logger.info(f"Benchmark run completed. Results saved to {self.run_dir}")
+            logger.info(f"Report available at: {report_path}")
             
-        # Save final results
-        self._save_results()
+            return self.results
         
-        # Generate final report
-        report_path = self._generate_report()
-        
-        logger.info(f"Benchmark run completed. Results saved to {self.run_dir}")
-        logger.info(f"Report available at: {report_path}")
-        
-        return self.results
+        finally:
+            # Close database connection if it exists
+            if self.store_in_db and self.db_conn:
+                try:
+                    self.db_conn.close()
+                    logger.info("Database connection closed")
+                except Exception as e:
+                    logger.error(f"Error closing database connection: {e}")
     
     def _save_run_configuration(self):
         """Save the configuration for this benchmark run"""
@@ -989,12 +1058,287 @@ class ModelBenchmarkRunner:
         logger.info(f"Compatibility matrix copy saved at {run_compatibility_file}")
     
     def _save_results(self):
-        """Save benchmark results to file"""
+        """Save benchmark results to file and database"""
+        # Save to JSON file
         results_file = self.run_dir / "benchmark_results.json"
         with open(results_file, 'w') as f:
             json.dump(self.results, f, indent=2)
         
         logger.info(f"Benchmark results saved to {results_file}")
+        
+        # Save to database if enabled
+        if self.store_in_db and self.db_conn:
+            try:
+                self._store_results_in_db()
+                logger.info("Benchmark results stored in database")
+            except Exception as e:
+                logger.error(f"Error storing results in database: {e}")
+    
+    def _store_results_in_db(self):
+        """Store benchmark results in DuckDB database"""
+        # Create a test run entry
+        run_id = self._create_test_run()
+        
+        # Process functionality verification results
+        if self.verify_functionality and self.results.get("functionality_verification"):
+            self._store_functionality_results(run_id)
+        
+        # Process performance benchmark results
+        if self.measure_performance and self.results.get("performance_benchmarks"):
+            self._store_performance_results(run_id)
+        
+        # Commit changes
+        self.db_conn.commit()
+    
+    def _create_test_run(self):
+        """Create a test run entry in the database"""
+        # Get current git info
+        git_commit = None
+        git_branch = None
+        try:
+            git_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+            git_branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+        except:
+            pass
+        
+        # Create test run entry
+        test_name = f"benchmark_run_{self.timestamp}"
+        test_type = "benchmark"
+        command_line = " ".join(sys.argv)
+        metadata = {
+            "models_set": self.models_set,
+            "hardware_types": self.hardware_types,
+            "batch_sizes": self.batch_sizes,
+            "verify_functionality": self.verify_functionality,
+            "measure_performance": self.measure_performance
+        }
+        metadata_json = json.dumps(metadata)
+        
+        # Insert test run
+        self.db_conn.execute("""
+        INSERT INTO test_runs (test_name, test_type, started_at, completed_at, 
+                             git_commit, git_branch, command_line, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            test_name, test_type, 
+            datetime.datetime.strptime(self.timestamp, "%Y%m%d_%H%M%S"),
+            datetime.datetime.now(),
+            git_commit, git_branch, command_line, metadata_json
+        ])
+        
+        # Get the inserted run ID
+        run_id = self.db_conn.execute("""
+        SELECT run_id FROM test_runs WHERE test_name = ?
+        """, [test_name]).fetchone()[0]
+        
+        return run_id
+    
+    def _find_or_create_model(self, model_name, model_family, modality):
+        """Find or create a model entry in the database"""
+        # Check if model exists
+        model_id = self.db_conn.execute("""
+        SELECT model_id FROM models WHERE model_name = ?
+        """, [model_name]).fetchone()
+        
+        if model_id:
+            return model_id[0]
+        
+        # Create new model
+        self.db_conn.execute("""
+        INSERT INTO models (model_name, model_family, modality, source)
+        VALUES (?, ?, ?, ?)
+        """, [model_name, model_family, modality, None])
+        
+        # Get the inserted ID
+        model_id = self.db_conn.execute("""
+        SELECT model_id FROM models WHERE model_name = ?
+        """, [model_name]).fetchone()[0]
+        
+        return model_id
+    
+    def _find_or_create_hardware(self, hardware_type, device_name=None):
+        """Find or create a hardware entry in the database"""
+        # Check if hardware exists
+        query = "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ?"
+        params = [hardware_type]
+        
+        if device_name:
+            query += " AND device_name = ?"
+            params.append(device_name)
+        
+        hardware_id = self.db_conn.execute(query, params).fetchone()
+        
+        if hardware_id:
+            return hardware_id[0]
+        
+        # Create new hardware
+        self.db_conn.execute("""
+        INSERT INTO hardware_platforms (hardware_type, device_name)
+        VALUES (?, ?)
+        """, [hardware_type, device_name])
+        
+        # Get the inserted ID
+        hardware_id = self.db_conn.execute(query, params).fetchone()[0]
+        
+        return hardware_id
+    
+    def _store_functionality_results(self, run_id):
+        """Store functionality verification results in the database"""
+        for hw_type, hw_results in self.results["functionality_verification"].items():
+            # Skip if no status or models
+            if not hw_results or not isinstance(hw_results, dict):
+                continue
+            
+            # Get hardware ID
+            hardware_id = self._find_or_create_hardware(hw_type)
+            
+            # Process model results
+            model_results = {}
+            
+            # Extract model results based on format (handle different formats)
+            if "models" in hw_results:
+                model_results = hw_results["models"]
+            elif "model_results" in hw_results:
+                model_results = hw_results["model_results"]
+            
+            # Store each model's compatibility result
+            for model_key, result in model_results.items():
+                if model_key not in self.models:
+                    continue
+                
+                model_info = self.models[model_key]
+                model_name = model_info.get("name", model_key)
+                model_family = model_info.get("family", "unknown")
+                modality = model_info.get("modality", "unknown")
+                
+                # Get model ID
+                model_id = self._find_or_create_model(model_name, model_family, modality)
+                
+                # Extract success status
+                success = False
+                error_message = None
+                
+                if isinstance(result, dict):
+                    success = result.get("success", False)
+                    error_message = result.get("error")
+                elif isinstance(result, bool):
+                    success = result
+                
+                # Add compatibility result
+                self.db_conn.execute("""
+                INSERT INTO hardware_compatibility (run_id, model_id, hardware_id, is_compatible, 
+                                                 error_message, compatibility_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, [
+                    run_id, model_id, hardware_id, success, 
+                    error_message, 1.0 if success else 0.0
+                ])
+    
+    def _store_performance_results(self, run_id):
+        """Store performance benchmark results in the database"""
+        for family, results in self.results["performance_benchmarks"].items():
+            if "benchmarks" not in results:
+                continue
+            
+            for model_name, hw_results in results["benchmarks"].items():
+                for hw_type, hw_metrics in hw_results.items():
+                    # Skip if no performance summary
+                    if "performance_summary" not in hw_metrics:
+                        continue
+                    
+                    # Extract performance summary
+                    perf = hw_metrics["performance_summary"]
+                    
+                    # Extract model metadata
+                    model_family = family
+                    modality = self._get_modality_from_family(family)
+                    
+                    # Get model and hardware IDs
+                    model_id = self._find_or_create_model(model_name, model_family, modality)
+                    hardware_id = self._find_or_create_hardware(hw_type)
+                    
+                    # Extract batch size information from benchmark results
+                    batch_results = []
+                    
+                    if "benchmark_results" in hw_metrics:
+                        for config, config_result in hw_metrics["benchmark_results"].items():
+                            if "batch_" in config and config_result.get("status") == "completed":
+                                # Extract batch size from config name (e.g., "batch_8_seq_128")
+                                parts = config.split("_")
+                                batch_idx = parts.index("batch") + 1
+                                if batch_idx < len(parts):
+                                    try:
+                                        batch_size = int(parts[batch_idx])
+                                        
+                                        # Add to batch results
+                                        batch_results.append({
+                                            "batch_size": batch_size,
+                                            "latency": config_result.get("avg_latency", 0) * 1000,  # ms
+                                            "throughput": config_result.get("throughput", 0),
+                                            "memory_peak": config_result.get("memory_peak_mb", 0)
+                                        })
+                                    except ValueError:
+                                        pass
+                    
+                    # Store results for each batch size
+                    if batch_results:
+                        for batch_result in batch_results:
+                            self._store_single_performance_result(
+                                run_id, model_id, hardware_id, 
+                                family, batch_result["batch_size"],
+                                batch_result["latency"], batch_result["throughput"], 
+                                batch_result["memory_peak"]
+                            )
+                    else:
+                        # Store aggregate results if no batch-specific results
+                        latency_ms = 0
+                        if "latency" in perf and "mean" in perf["latency"]:
+                            latency_ms = perf["latency"]["mean"] * 1000  # Convert to ms
+                        
+                        throughput = 0
+                        if "throughput" in perf and "mean" in perf["throughput"]:
+                            throughput = perf["throughput"]["mean"]
+                        
+                        memory_mb = 0
+                        if "memory" in perf and "max_allocated" in perf["memory"]:
+                            memory_mb = perf["memory"]["max_allocated"] / (1024 * 1024)  # Convert to MB
+                        
+                        # Use default batch size if not specified
+                        batch_size = self.batch_sizes[0] if self.batch_sizes else 1
+                        
+                        self._store_single_performance_result(
+                            run_id, model_id, hardware_id, 
+                            family, batch_size, 
+                            latency_ms, throughput, memory_mb
+                        )
+    
+    def _store_single_performance_result(self, run_id, model_id, hardware_id, 
+                                        test_case, batch_size, latency_ms, 
+                                        throughput, memory_mb):
+        """Store a single performance result in the database"""
+        self.db_conn.execute("""
+        INSERT INTO performance_results (
+            run_id, model_id, hardware_id, test_case, batch_size,
+            average_latency_ms, throughput_items_per_second, memory_peak_mb
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            run_id, model_id, hardware_id, test_case, batch_size,
+            latency_ms, throughput, memory_mb
+        ])
+    
+    def _get_modality_from_family(self, family):
+        """Get modality based on model family"""
+        if family in ["embedding", "text_generation"]:
+            return "text"
+        elif family in ["vision"]:
+            return "image"
+        elif family in ["audio"]:
+            return "audio"
+        elif family in ["multimodal"]:
+            return "multimodal"
+        else:
+            return "unknown"
     
     def _generate_report(self) -> Path:
         """
@@ -1507,6 +1851,11 @@ def main():
     parser.add_argument("--specific-models", type=str, nargs="+", help="Only benchmark specific models (by key) from the selected set")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
+    # Database-related arguments
+    parser.add_argument("--db-path", type=str, default="./benchmark_db.duckdb", help="Path to DuckDB database for storing results")
+    parser.add_argument("--no-db-store", action="store_true", help="Disable storing results in the database")
+    parser.add_argument("--visualize-from-db", action="store_true", help="Generate visualizations from database instead of current run results")
+    
     args = parser.parse_args()
     
     # Configure logging
@@ -1556,7 +1905,9 @@ def main():
         measure_performance=not args.verify_only,
         generate_plots=not args.no_plots,
         update_compatibility_matrix=not args.no_compatibility_update,
-        use_resource_pool=not args.no_resource_pool
+        use_resource_pool=not args.no_resource_pool,
+        db_path=args.db_path,
+        store_in_db=not args.no_db_store
     )
     
     results = runner.run_benchmarks()
@@ -1582,7 +1933,29 @@ def main():
         for family in results["performance_benchmarks"].keys():
             print(f"  {family}: Benchmarks completed")
     
+    # Database storage status
+    if runner.store_in_db and runner.db_conn:
+        print("\nResults stored in database:")
+        print(f"  Database path: {runner.db_path}")
+    
     print(f"\nFull results saved to: {os.path.join(args.output_dir, runner.timestamp)}")
+    
+    # Additional database visualization if requested
+    if args.visualize_from_db and not args.no_db_store:
+        try:
+            from scripts.benchmark_db_query import generate_report
+            print("\nGenerating database visualizations...")
+            report_path = generate_report(
+                db_path=args.db_path,
+                report_type="performance",
+                output_format="html",
+                output_file=os.path.join(args.output_dir, runner.timestamp, "db_performance_report.html")
+            )
+            print(f"Database report generated: {report_path}")
+        except ImportError:
+            print("Could not generate database visualizations - benchmark_db_query module not found")
+        except Exception as e:
+            print(f"Error generating database visualizations: {e}")
 
 if __name__ == "__main__":
     main()
