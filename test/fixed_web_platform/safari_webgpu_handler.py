@@ -193,8 +193,6 @@ class MetalAPIIntegrationLayer:
             "@compute @workgroup_size": "kernel",
             "fn main": "kernel void main",
             "arrayLength(&": "uint(",
-            ").length",
-            "let ": "const ",
             "f32": "float",
             "u32": "uint",
             "i32": "int",
@@ -209,7 +207,7 @@ class MetalAPIIntegrationLayer:
             "ivec4": "int4",
             "mat2x2": "float2x2",
             "mat3x3": "float3x3",
-            "mat4x4": "float4x4",
+            "mat4x4": "float4x4"
         }
         
         # Apply simple replacements
@@ -1120,6 +1118,41 @@ class SafariWebGPUHandler:
         # Default case: unknown operation
         return {"result": "simulated", "operation_type": operation_type}
     
+    def _recover_from_memory_error(self):
+        """Recover from memory error in Safari."""
+        logger.warning("Recovering from memory error in Safari")
+        if hasattr(self, "progressive_loader") and self.progressive_loader:
+            try:
+                # Unload non-critical components
+                self.progressive_loader.unload_components(["middle_layers"])
+                
+                # Force garbage collection if available
+                import gc
+                gc.collect()
+                
+                return True
+            except Exception as e:
+                logger.error(f"Failed to recover from memory error: {e}")
+                return False
+        return False
+        
+    def _recover_from_timeout(self):
+        """Recover from timeout in Safari."""
+        logger.warning("Recovering from timeout in Safari")
+        # Reduce batch size and retry
+        if hasattr(self, "_current_batch_size"):
+            self._current_batch_size = max(1, self._current_batch_size // 2)
+            return True
+        return False
+        
+    def _recover_from_connection_error(self):
+        """Recover from connection error in Safari."""
+        logger.warning("Recovering from connection error in Safari")
+        # Wait and retry
+        import time
+        time.sleep(0.5)
+        return True
+        
     def get_metrics(self) -> Dict[str, Any]:
         """
         Get performance and usage metrics.
