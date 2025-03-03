@@ -1,194 +1,41 @@
 # IPFS Accelerate Python Framework - Development Guide
 
-## Current Focus: Test-Driven Hugging Face Transformers Integration (Updated March 2025)
+## Current Focus: Advanced Hardware Benchmarking and Database Consolidation (Updated March 2025)
 
-### Phase 1: Development Pipeline for Test and Skillset Generators (COMPLETED)
-- ✅ Enhance the test generator first (priority task)
-- ✅ Push generated tests to test/skills/ directory
-- ✅ Compare expected vs. collected values from test runs
-- ✅ Implement structured error handling in test collector
-- ✅ Add resource management for test execution environment
-- ✅ Create hardware-aware test generation
-- ✅ Implement dynamic code generation for all hardware platforms
-- ✅ Build integration with model registry and classification system
-- ✅ Use test results to inform skillset implementation
-- ✅ Create Jinja2-based template system based on ipfs_accelerate_py/worker/skillset/hf_*.py
-- ✅ Develop iterative feedback loop between test and skillset generators
-- ✅ Create documentation generation for new models
+### Project Status Overview
 
-### Phase 2: Comprehensive Test Analysis Framework (COMPLETED)
-- ✅ Develop test result collector to extract implementation requirements
-- ✅ Create structured format for test expectations and results
-- ✅ Implement test-to-implementation mapping system
-- ✅ Add robust error handling for template selection
-- ✅ Add proper type checking in template selection function
-- ✅ Build validation system for generated implementations
-- ✅ Create discrepancy analysis and reporting tools
-- ✅ Implement continuous integration for test-driven development
+The project has successfully completed 15 phases of implementation, focusing on test-driven development, hardware compatibility, model optimization, and cross-platform support. Key accomplishments include:
 
-### Phase 3: Model Registry Enhancement and Integration (COMPLETED)
-- ✅ Update model registry schema to support implementation details
-- ✅ Add hardware compatibility tracking to registry 
-- ✅ Implement model family classification integration
-- ✅ Create comprehensive hardware compatibility matrix
-- ✅ Add test validation tracking to registry entries
-- ✅ Implement automatic registry updates from test results
-- ✅ Create registry query tools for implementation status
-- ✅ Build visualization and reporting for implementation coverage
+- ✅ Complete development pipeline for test and skillset generators
+- ✅ Comprehensive hardware detection and compatibility system
+- ✅ Advanced resource management system with hardware awareness
+- ✅ Web platform integration (WebNN and WebGPU)
+- ✅ Model family classification and compatibility matrix 
+- ✅ Integration testing and platform support
+- ✅ Advanced model compression and optimization
+- ✅ Complete hardware platform test coverage for key models
+- ✅ Test results database architecture and core components implemented
+- ⏱️ Historical data migration and CI/CD integration (20% complete)
 
-### Phase 4: Resource Management System (COMPLETED)
-- ✅ Implement centralized ResourcePool for efficient resource sharing
-- ✅ Add memory management for large model testing
-- ✅ Create resource cleanup mechanisms
-- ✅ Implement model caching for faster testing
-- ✅ Add resource usage monitoring and reporting
-- ✅ Add device-specific model caching
-- ✅ Create hardware-aware model classification system
-- ✅ Integrate resource pool with hardware detection
-- ✅ Add low-memory mode for resource-constrained environments
-- ✅ Create comprehensive RESOURCE_POOL_GUIDE.md with examples
-- ✅ Integrate ResourcePool with test generator workflow
-- ✅ Add intelligent hardware selection based on model families
-- ✅ Implement automatic memory detection and management
+### Current Focus: Phase 16 - Advanced Hardware Benchmarking and Database Consolidation
 
-### Phase 5: Advanced Template System and Error Handling (COMPLETED)
-- ✅ Create hardware-aware template selection system
-- ✅ Add resource requirement-based template customization
-- ✅ Implement model family template mapping
-- ✅ Implement robust error handling framework
-- ✅ Create extended template system with multi-template inheritance
-- ✅ Add template verification and validation
-- ✅ Create specialized templates for edge cases
-- ✅ Develop template compatibility testing
+#### Hardware Performance Work
+- ✅ Create comprehensive benchmark database for all model-hardware combinations (100% complete)
+- ✅ Implement comparative analysis reporting system for hardware performance (100% complete)
+- ⏱️ Create automated hardware selection based on benchmarking data (80% complete)
+- ⏱️ Implement training mode test coverage in addition to inference (40% complete)
+- ✅ Complete cross-platform test coverage for 13 key model classes (100% complete)
+- ✅ Develop specialized web platform tests for audio models (100% complete)
+- ⏱️ Implement distributed training test suite (15% complete)
+- ⏱️ Add performance prediction for model-hardware combinations (45% complete)
 
-### Phase 6: Comprehensive Documentation (COMPLETED)
-- ✅ Create ResourcePool usage documentation
-- ✅ Create Hardware Detection guide
-- ✅ Create Model Family Classifier guide
-- ✅ Create Hardware-Model Integration guide
-- ✅ Create hardware compatibility matrix
-- ✅ Create model template selection guide
-- ✅ Create resource requirement estimation guide
-- ✅ Create summary of improvements document
-- ✅ Update main README with new features
-- ✅ Add integrated architecture diagram for ResourcePool documentation
-- ✅ Add comprehensive troubleshooting sections
-- ✅ Update API references with latest functionality
-- ✅ Document cross-platform compatibility strategies
-- ✅ Create web platform integration documentation
-- ✅ Document WebNN and WebGPU support in ResourcePool
-- ✅ Add browser-specific optimization guides
-
-### Phase 7: Hardware-Aware Resource Management (COMPLETED)
-- ✅ Create model family-based hardware compatibility matrix
-- ✅ Implement hardware-aware device selection for different model types
-- ✅ Add memory requirement checking against available hardware
-- ✅ Create specialized handling for multimodal models
-- ✅ Implement fallback mechanisms when preferred hardware is unavailable
-- ✅ Add hardware compatibility documentation to resource pool guide
-- ✅ Enhance test infrastructure with hardware-aware functionality
-- ✅ Create model family integration with hardware detection
-- ✅ Implement resource optimization based on hardware capabilities
-- ✅ Update documentation with hardware integration information
-
-### Phase 8: WebNN and WebGPU Integration (COMPLETED)
-- ✅ Add WebNN detection to hardware system
-- ✅ Add WebGPU detection for browser-based inference
-- ✅ Implement cross-platform model compatibility checking
-- ✅ Create WebNN-compatible test templates
-- ✅ Enhance ResourcePool with web platform support
-- ✅ Document web platform integration in guides
-- ✅ Create web deployment examples
-- ✅ Implement browser testing harness
-- ✅ Add web platform benchmarking tools
-
-### Phase 9: Integration Testing and Platform Support (COMPLETED)
-- ✅ Create comprehensive integration test suite across all components
-- ✅ Enhance ResourcePool with WebNN and WebGPU platform testing
-- ✅ Implement resilient error handling for web platform detection
-- ✅ Add web-specific hardware preferences with subfamily support
-- ✅ Improve ResourcePool tests with WebNN/WebGPU compatibility
-- ✅ Implement hardware-model integration with robust error handling
-- ✅ Add resilient component detection with graceful degradation
-- ✅ Create comprehensive hardware-model compatibility matrix
-- ✅ Create comprehensive integration test script with extensive diagnostics
-- ✅ Implement robust file existence checks before imports across system
-- ✅ Add resilient error handling with multi-level fallback mechanisms
-- ✅ Add continuous integration for hardware tests
-- ✅ Develop custom tests for all hardware platforms
-- ✅ Implement error reporting system for hardware compatibility with intelligent recommendations
-
-### Phase 10: Advanced Web Platform Support (COMPLETED)
-- ✅ Create simulation mode for web platform testing in non-browser environments
-- ✅ Develop web-specific subfamily configurations for different model families
-- ✅ Implement browser-specific optimizations for web deployment
-- ✅ Add model size limitation controls for resource-constrained browsers
-- ✅ Create dedicated WEB_PLATFORM_INTEGRATION_GUIDE.md
-- ✅ Implement specialized test cases for WebNN and WebGPU compatibility
-- ✅ Add web platform error reporting with helpful diagnostics
-- ✅ Create hardware preference templates for different web deployment scenarios
-- ✅ Add progressive enhancement for browser compatibility
-- ✅ Implement model size limiting based on device capabilities
-- ✅ Create browser feature detection for optimal configuration
-- ✅ Add offline support for browser-based inference
-- ✅ Implement dedicated WebGPU shader optimization
-- ✅ Create WebNN-specific model optimizations
-- ✅ Add comprehensive browser compatibility testing
-- ✅ Implement WebWorker-based parallel processing
-- ✅ Support model quantization for web deployment
-
-### Phase 11: Key Model Test Generation Reliability (COMPLETED)
-- ✅ Implement robust test generation for 13 key model types identified in test reports
-- ✅ Verify existence of test implementations for all 13 key models
-- ✅ Create specialized templates for complex multimodal models like LLaVA and CLIP
-- ✅ Develop standardized test inputs for audio models like Whisper and Wav2vec2
-- ✅ Implement automatic dependency resolution for test generation
-- ✅ Add enhanced error logging for test generation failures
-- ✅ Create dedicated test generators for each key model family
-- ✅ Implement parallelized test generation with improved reliability
-- ✅ Add verification steps for generated test files
-- ✅ Create fallback mechanisms when primary test generation fails
-- ✅ Implement model-specific configuration validation
-- ✅ Add comprehensive test coverage metrics for key models
-- ✅ Develop continuous monitoring of test generation success rates
-- ✅ Create test generation outcome prediction based on model characteristics
-- ✅ Implement automated remediation for common test generation failures
-
-### Phase 12: Model Functionality Verification and Local Benchmarking (COMPLETED)
-- ✅ Create automated benchmark runner for local hardware performance testing
-- ✅ Implement standardized model validation tests to confirm functionality
-- ✅ Develop performance profile generation for local hardware configurations
-- ✅ Build model validation tracking database to ensure correctness
-- ✅ Create visualization tools for functionality and performance comparisons
-- ✅ Implement local compatibility matrix updates based on validation results
-- ✅ Add regression detection for model functionality across hardware types
-- ✅ Create configuration recommendation engine based on validation results
-- ✅ Implement batch size and throughput optimization based on empirical measurements
-- ✅ Create comprehensive performance reporting system
-- ✅ Implement scheduled validation execution for continuous monitoring
-- ✅ Add functionality-based device selection to ResourcePool
-- ✅ Create hardware-specific optimization suggestions based on validation results
-- ✅ Develop distributed benchmark coordination for multi-node testing
-- ✅ Add cloud platform benchmarking support (AWS, GCP, Azure)
-
-### Phase 13: Advanced Model Compression and Optimization (PLANNED)
-- Implement comprehensive model quantization pipeline
-- Add support for mixed precision and quantization-aware training
-- Create automated pruning workflows for model size reduction
-- Implement knowledge distillation framework for model compression
-- Develop model-family specific compression strategies
-- Add support for dynamic model loading based on resource constraints
-- Implement model ensemble pruning techniques
-- Create hardware-aware model optimization strategies
-
-### Phase 14: Multi-Node and Cloud Integration (PLANNED)
-- Develop distributed benchmark coordination for multi-node testing
-- Add cloud platform integration support (AWS, GCP, Azure)
-- Create comprehensive performance reporting system for distributed environments
-- Implement cloud-based model serving infrastructure
-- Add cloud-specific optimizations for different providers
-- Create cost optimization guidelines for cloud deployment
-- Implement benchmark comparisons between local and cloud environments
+#### Database Restructuring Effort
+- ✅ Consolidate benchmark and test output JSON files into DuckDB/Parquet for efficient storage and querying (100% complete)
+- ✅ Design unified schema for all test result types (100% complete)
+- ⏱️ Develop data migration pipeline for historical test data (15% complete)
+- ✅ Create programmatic database interface for test runners (100% complete)
+- ✅ Build analysis and visualization tools on the new database (100% complete)
+- ⏱️ Integrate database with CI/CD pipeline for automatic result storage (5% complete)
 
 ## Hardware Compatibility Matrix
 
@@ -199,134 +46,48 @@
 | Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ Medium | ✅ High | ✅ Medium | Efficient on all hardware |
 | Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Low | ❌ N/A | ✅ Low | Memory requirements critical |
 | Vision (ViT, CLIP, etc.) | ✅ High | ✅ Medium | ✅ High | ✅ High | ✅ Medium | ✅ Medium | OpenVINO optimized |
-| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ❌ N/A | ❌ N/A | CUDA preferred |
+| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Low | ⚠️ Low | CUDA preferred, Web support added |
 | Multimodal (LLaVA, etc.) | ✅ High | ❌ N/A | ❌ N/A | ❌ N/A | ❌ N/A | ❌ N/A | Primarily CUDA only |
 
-### Platform-Specific Incompatible Models
+### Key Model Test Coverage Status
 
-1. CUDA Incompatible Models (need optimization):
-   - Vision-T5
-   - MobileViT
-   - UPerNet
+| Model Class | Model Used | CUDA | AMD | MPS | OpenVINO | WebNN | WebGPU | Notes |
+|-------------|------------|------|-----|-----|----------|-------|--------|-------|
+| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ⚠️* | ✅ | ✅ | *OpenVINO implementation mocked |
+| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | Web platform N/A |
+| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| CLAP | Local test model | ✅ | ✅ | ✅ | ⚠️* | ✅ | ✅ | Complete tests with WebNN/WebGPU |
+| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete tests with WebNN/WebGPU |
+| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ⚠️* | ✅ | ✅ | Complete tests with WebNN/WebGPU |
+| LLaVA | llava-onevision-base | ✅ | ❌ | ❌ | ⚠️* | ❌ | ❌ | *OpenVINO implementation mocked |
+| LLaVA-Next | Local test model | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | CUDA-only support |
+| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | No web platform tests |
+| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ⚠️* | ⚠️* | ⚠️* | ❌ | ❌ | *Limited testing implementation |
+| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | No web platform tests |
 
-2. OpenVINO Incompatible Models:
-   - StableDiffusion
-   - LLaVA-Next
-   - BLIP
-
-3. OpenVINO Partial Compatibility:
-   - Whisper-Large
-   - MusicGen
-
-4. Apple Silicon (MPS) Incompatible Models:
-   - StableDiffusion
-   - LLaVA-Next
-   - BLIP
-   - AudioLDM
-   - MusicGen
-   - Vision-T5
-
-5. AMD ROCm Incompatible Models:
-   - StableDiffusion
-   - Vision-T5
-   - UPerNet
-   - AudioLDM
-
-6. WebNN Incompatible Models:
-   - StableDiffusion
-   - LLaVA-Next
-   - BLIP
-   - AudioLDM
-   - MusicGen
-   - Vision-T5
-   - UPerNet
-
-7. WebGPU/transformers.js Incompatible Models:
-   - StableDiffusion
-   - LLaVA-Next
-   - BLIP
-   - AudioLDM
-   - MusicGen
-   - Vision-T5
-   - UPerNet
-   - DPT
-   - MobileViT
-
-## Test Commands
-
-### Hardware-Aware Testing
-```bash
-# Generate hardware-aware test with resource pool integration
-python test/test_generator_with_resource_pool.py --model [model_name] --output-dir ./skills
-
-# Test with specific hardware preferences
-python test/test_generator_with_resource_pool.py --model [model_name] --device [cpu|cuda|mps|auto]
-
-# Use model family classifier for optimal template selection
-python test/test_generator_with_resource_pool.py --model [model_name] --use-model-family
-```
-
-### Model Testing
-```bash
-# Generate test using merged generator
-python test/merged_test_generator.py --model [model_name]
-
-# Run test to collect actual behavior
-python test/skills/test_hf_[model_name].py
-
-# Analyze test execution results
-python test/analyze_test_results.py --model [model_name]
-
-# Generate implementation requirements based on test results
-python test/generate_implementation_requirements.py --model [model_name]
-
-# Generate initial implementation template from test results
-python test/generate_skillset_template.py --model [model_name] --from-test
-
-# Verify generated implementation against test expectations
-python test/verify_implementation.py --model [model_name]
-
-# Update implementation based on test verification
-python test/update_implementation.py --model [model_name] --fix-issues
-```
+## Essential Test Commands
 
 ### Hardware Testing
 ```bash
 # Comprehensive hardware detection and compatibility test
 python test/test_comprehensive_hardware.py --test all
 
-# Test hardware backends (CPU, CUDA, OpenVINO)
-python test/test_hardware_backend.py --backend [cpu|cuda|openvino] --model [model_name]
-
-# Test Apple Silicon MPS hardware
-python test/test_hardware_backend.py --backend mps --model [model_name]
-
-# Test AMD ROCm hardware
-python test/test_hardware_backend.py --backend rocm --model [model_name]
-
-# Test WebNN compatibility
-python test/test_hardware_backend.py --backend webnn --model [model_name]
-
-# Test WebGPU compatibility
-python test/test_hardware_backend.py --backend webgpu --model [model_name]
-
-# Test all hardware platforms
-python test/test_hardware_backend.py --backend all --model [model_name]
+# Test hardware backends with specific model
+python test/test_hardware_backend.py --backend [cpu|cuda|openvino|mps|rocm|webnn|webgpu|all] --model [model_name]
 
 # Test resource pool with hardware awareness
 python test/test_resource_pool.py --test hardware
 
-# Test resource pool with web platform focus
-python test/test_resource_pool.py --test hardware --web-platform
-
 # Test model family integration with web platform support
 python test/test_resource_pool.py --test family --debug
 
-# Test all ResourcePool functionality including WebNN and WebGPU support
-python test/test_resource_pool.py --test all --web-platform --debug
+# Run web audio platform tests
+python test/web_audio_platform_tests.py --run-all --browser chrome
 
-# Test performance metrics
-python test/run_performance_tests.py --batch_size 8 --models all
+# Run specific audio model web tests
+python test/web_audio_platform_tests.py --test-whisper --test-wav2vec2 --test-clap
 ```
 
 ### Model Benchmarking and Validation
@@ -334,23 +95,8 @@ python test/run_performance_tests.py --batch_size 8 --models all
 # Run comprehensive model benchmarks with key models
 python test/run_model_benchmarks.py --output-dir ./benchmark_results
 
-# Use small model set for faster testing
-python test/run_model_benchmarks.py --models-set small
-
-# Only verify model functionality
-python test/run_model_benchmarks.py --verify-only
-
-# Only run performance benchmarks
-python test/run_model_benchmarks.py --benchmark-only
-
-# Benchmark specific models
-python test/run_model_benchmarks.py --specific-models bert t5 vit
-
-# Test on specific hardware platforms
+# Test on specific hardware platforms with small model set
 python test/run_model_benchmarks.py --hardware cpu cuda --models-set small
-
-# Use custom batch sizes
-python test/run_model_benchmarks.py --batch-sizes 1 2 4 --models-set small
 
 # Manual model functionality verification
 python test/verify_model_functionality.py --models bert t5 vit --hardware cpu cuda
@@ -359,28 +105,63 @@ python test/verify_model_functionality.py --models bert t5 vit --hardware cpu cu
 python test/hardware_benchmark_runner.py --model-families embedding text_generation --hardware cpu cuda
 ```
 
-### Web Platform Testing and Benchmarking
+### Benchmark Database and Result Management
 ```bash
-# Run web platform testing for a specific model
-python test/web_platform_testing.py --test-model bert
+# Convert benchmark JSON files to Parquet/DuckDB format
+python test/benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
 
-# Test models from a specific modality
-python test/web_platform_testing.py --test-modality vision
+# Consolidate test results across directories
+python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility
 
-# Compare WebNN and WebGPU performance
-python test/web_platform_testing.py --compare
+# Query benchmark database with SQL
+python test/benchmark_db_query.py --sql "SELECT model, hardware, AVG(throughput) FROM benchmark_performance GROUP BY model, hardware"
 
-# Run web platform benchmarking
-python test/web_platform_benchmark.py --model bert
+# Generate reports from DuckDB benchmark database
+python test/benchmark_db_query.py --report performance --format html --output benchmark_report.html
+python test/benchmark_db_query.py --report hardware --format html --output hardware_report.html
+python test/benchmark_db_query.py --report compatibility --format html --output compatibility_report.html
 
-# Run comprehensive benchmark across modalities
-python test/web_platform_benchmark.py --comparative
+# Compare hardware platforms for a specific model using the new database
+python test/benchmark_db_query.py --model bert-base-uncased --metric throughput --compare-hardware --output bert_hardware_comparison.png
 
-# List models with web platform support
-python test/web_platform_benchmark.py --list-models
+# Compare models on a specific hardware platform
+python test/benchmark_db_query.py --hardware cuda --metric throughput --compare-models --output cuda_model_comparison.png
 
-# Benchmark specific modality with custom batch sizes
-python test/web_platform_benchmark.py --modality text --batch-sizes 1 8 16 32
+# Plot performance trends over time
+python test/benchmark_db_query.py --model bert-base-uncased --hardware cuda --metric throughput --plot-trend
+
+# Export data from the database
+python test/benchmark_db_query.py --export performance --format csv --output performance_data.csv
+
+# Generate compatibility matrix
+python test/benchmark_db_query.py --matrix --format html --output compatibility_matrix.html
+
+# API for programmatic access to benchmark data
+python test/benchmark_db_api.py --serve  # Starts a FastAPI server on port 8000
+
+# Automatically convert newly generated test results
+python test/run_model_benchmarks.py --hardware all --auto-store-db
+
+# Run scheduled cleanup of JSON files already migrated to database
+python test/benchmark_db_maintenance.py --clean-json --older-than 30
+```
+
+### Developing Database Scripts
+```bash
+# Create initial database schema
+python test/scripts/create_benchmark_schema.py
+
+# Validate and fix any schema inconsistencies in existing data
+python test/scripts/validate_benchmark_data.py --fix
+
+# Create Python ORM models for the benchmark database
+python test/scripts/generate_db_models.py
+
+# Test database performance with synthetic benchmark data
+python test/scripts/benchmark_db_performance.py --rows 1000000
+
+# Develop modular analysis functions
+python test/scripts/develop_analysis_modules.py --interactive
 ```
 
 ### Integration Testing
@@ -391,40 +172,7 @@ python test/integration_test_suite.py
 # Run tests for specific categories
 python test/integration_test_suite.py --categories hardware_detection resource_pool
 
-# Run tests on specific hardware platforms
-python test/integration_test_suite.py --hardware cpu cuda
-
-# Skip slow tests for faster results
-python test/integration_test_suite.py --skip-slow
-
-# Specify custom timeout for tests
-python test/integration_test_suite.py --timeout 600
-
-# Save results to a specific file
-python test/integration_test_suite.py --output ./my_integration_results.json
-
-# Focus on hardware compatibility testing
-python test/integration_test_suite.py --hardware-compatibility
-
-# Focus on web platform testing
-python test/integration_test_suite.py --web-platforms
-
-# Run cross-platform validation tests
-python test/integration_test_suite.py --cross-platform
-
-# Run in CI mode with smaller models and faster tests
-python test/integration_test_suite.py --ci-mode
-
 # Use the CI test runner script
-./test/run_integration_ci_tests.sh
-
-# Run CI tests with focus on hardware compatibility
-./test/run_integration_ci_tests.sh --hardware-only
-
-# Run CI tests with focus on web platforms
-./test/run_integration_ci_tests.sh --web-only
-
-# Run all CI tests
 ./test/run_integration_ci_tests.sh --all
 ```
 
@@ -436,85 +184,89 @@ python test/hardware_compatibility_reporter.py --collect-all
 # Generate hardware compatibility matrix
 python test/hardware_compatibility_reporter.py --matrix
 
-# Test full hardware stack
-python test/hardware_compatibility_reporter.py --test-hardware
-
 # Check compatibility for a specific model
 python test/hardware_compatibility_reporter.py --check-model bert-base-uncased
-
-# Generate JSON format report
-python test/hardware_compatibility_reporter.py --collect-all --format json
-
-# Enable debug logging
-python test/hardware_compatibility_reporter.py --collect-all --debug
-
-# Specify custom output directory
-python test/hardware_compatibility_reporter.py --collect-all --output-dir ./custom_reports
-
-# Test error reporting system for hardware compatibility
-python test/test_resource_pool.py --test error
-
-# Test error reporting with debugging information
-python test/test_resource_pool.py --test error --debug
 ```
 
-## Current Performance Benchmarks
+### Web Platform Audio Testing
+```bash
+# Run all audio model web platform tests
+python test/web_audio_platform_tests.py --run-all --browser chrome
 
-### Text Generation Models
-| Model | Platform | Throughput | Memory Usage | Latency |
-|-------|----------|------------|--------------|---------|
-| LLAMA (opt-125m) | CUDA | 125 tokens/sec | 240MB | 0.14s |
-| LLAMA (opt-125m) | AMD | 115 tokens/sec | 245MB | 0.17s |
-| LLAMA (opt-125m) | MPS | 85 tokens/sec | 250MB | 0.22s |
-| LLAMA (opt-125m) | CPU | 38 tokens/sec | 275MB | 0.40s |
-| Language Model (gpt2) | CUDA | 68 tokens/sec | 490MB | 0.26s |
-| Language Model (gpt2) | AMD | 62 tokens/sec | 495MB | 0.29s |
-| Language Model (gpt2) | MPS | 45 tokens/sec | 500MB | 0.36s |
-| Language Model (gpt2) | CPU | 20 tokens/sec | 510MB | 0.85s |
-| T5 (t5-efficient-tiny) | CUDA | 98 tokens/sec | 75MB | 0.16s |
-| T5 (t5-efficient-tiny) | AMD | 90 tokens/sec | 79MB | 0.18s |
-| T5 (t5-efficient-tiny) | MPS | 70 tokens/sec | 84MB | 0.22s |
-| T5 (t5-efficient-tiny) | CPU | 32 tokens/sec | 90MB | 0.50s |
+# Run tests for specific audio models
+python test/web_audio_platform_tests.py --test-whisper
+python test/web_audio_platform_tests.py --test-wav2vec2
+python test/web_audio_platform_tests.py --test-clap
 
-### Embedding Models
-| Model | Platform | Processing Speed | Memory Usage | Dimensionality |
-|-------|----------|------------------|--------------|----------------|
-| BERT (tiny) | CUDA | 0.7ms/sentence | 18MB | 128 |
-| BERT (tiny) | AMD | 0.9ms/sentence | 19MB | 128 |
-| BERT (tiny) | MPS | 1.2ms/sentence | 21MB | 128 |
-| BERT (tiny) | CPU | 4.3ms/sentence | 24MB | 128 |
+# Generate a test report from previous runs
+python test/web_audio_platform_tests.py --generate-report
 
-### Vision Models
-| Model | Platform | Processing Speed | Memory Usage | Resolution |
-|-------|----------|------------------|--------------|------------|
-| ViT (base) | CUDA | 5ms/image | 340MB | 224x224 |
-| ViT (base) | AMD | 7ms/image | 345MB | 224x224 |
-| ViT (base) | MPS | 12ms/image | 350MB | 224x224 |
-| ViT (base) | OpenVINO | 9ms/image | 320MB | 224x224 |
-| ViT (base) | CPU | 35ms/image | 360MB | 224x224 |
+# Use headless mode for CI environments
+python test/web_audio_platform_tests.py --run-all --headless --browser edge
+```
 
-### Audio Models
-| Model | Platform | Processing Speed | Memory Usage | Audio Length |
-|-------|----------|------------------|--------------|-------------|
-| Whisper (tiny) | CUDA | 0.3x realtime | 450MB | 30 sec |
-| Whisper (tiny) | AMD | 0.4x realtime | 460MB | 30 sec |
-| Whisper (tiny) | MPS | 0.6x realtime | 465MB | 30 sec |
-| Whisper (tiny) | CPU | 1.8x realtime | 480MB | 30 sec |
+## Performance Benchmarks
 
-### Web Platform Performance
-| Model | Platform | Processing Speed | Memory Usage | First Inference | Batch Processing | Notes |
-|-------|----------|------------------|--------------|----------------|------------------|-------|
-| BERT (tiny) | WebNN | 12ms/sentence | 35MB | 45ms | 72ms (batch=8) | Chrome/Edge |
-| BERT (tiny) | WebGPU | 8ms/sentence | 40MB | 38ms | 48ms (batch=8) | Chrome |
-| ViT (tiny) | WebNN | 60ms/image | 90MB | 185ms | 420ms (batch=8) | Chrome/Edge |
-| ViT (tiny) | WebGPU | 45ms/image | 95MB | 150ms | 315ms (batch=8) | Chrome |
-| T5 (efficient-tiny) | WebNN | 72ms/sequence | 48MB | 215ms | 480ms (batch=8) | Chrome/Edge |
-| T5 (efficient-tiny) | WebGPU | 51ms/sequence | 52MB | 175ms | 350ms (batch=8) | Chrome |
-| ResNet (18) | WebNN | 68ms/image | 45MB | 145ms | 410ms (batch=8) | Chrome/Edge |
-| ResNet (18) | WebGPU | 38ms/image | 47MB | 110ms | 265ms (batch=8) | Chrome |
-| CLIP | WebNN | 82ms/item | 120MB | 240ms | 580ms (batch=8) | Chrome/Edge |
-| CLIP | WebGPU | 65ms/item | 135MB | 195ms | 420ms (batch=8) | Chrome |
-| Whisper (tiny) | WebNN* | 420ms/sec | 85MB | 780ms | 3200ms (batch=8) | Simulated |
-| Whisper (tiny) | WebGPU* | 350ms/sec | 95MB | 620ms | 2800ms (batch=8) | Simulated |
+### Latest Performance Metrics
 
-\* Whisper models are partially supported in simulation mode only. Real browser performance may vary.
+For detailed performance benchmarks, please refer to the following files:
+- Comprehensive results: `test/performance_results/consolidated_performance_summary.md`
+- Hardware-specific benchmarks: `test/HARDWARE_BENCHMARKING_GUIDE.md`
+- Model compression results: `test/MODEL_COMPRESSION_GUIDE.md`
+- Training benchmarks: `test/TRAINING_BENCHMARKING_GUIDE.md`
+- Web platform audio tests: `test/WEB_PLATFORM_AUDIO_TESTING_GUIDE.md`
+- Hardware selection system: `test/HARDWARE_SELECTION_GUIDE.md`
+- Phase 16 implementation: `test/PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md`
+- Database-backed benchmark dashboard: `http://localhost:8000/dashboard` (when running benchmark_db_api.py)
+
+### Test Results Database Architecture
+
+The new DuckDB/Parquet-based database system consolidates all test results and provides:
+- Efficient storage (50-80% size reduction over JSON files)
+- Fast SQL-based querying for analysis and reporting
+- Programmatic access through Python API and REST endpoints
+- Version-controlled schema for tracking benchmark metrics over time
+- Support for time-series analysis of performance trends
+- Integration with existing testing infrastructure
+- Data validation and integrity checking
+- Automated database maintenance and optimization
+
+For detailed documentation, see:
+- [Benchmark Database Guide](BENCHMARK_DATABASE_GUIDE.md)
+- [Database Migration Guide](DATABASE_MIGRATION_GUIDE.md)
+- [Phase 16 Database Implementation](PHASE16_DATABASE_IMPLEMENTATION.md)
+
+#### Database Migration Plan (To Be Implemented by April 2025)
+
+1. **Schema Definition:**
+   - Define standard schemas for different test types (hardware, performance, compatibility)
+   - Create common timestamp, hardware, and model dimensions for all test types
+   - Implement schema versioning mechanism for future evolution
+
+2. **Data Migration Process:**
+   - Develop conversion utilities for each JSON result format
+   - Batch migration of historical data in archived_test_results, performance_results
+   - Implement cleanup to remove redundant JSON files after confirmation
+
+3. **Script Modularization:**
+   - Refactor existing test runners to use the database interface
+   - Create adapter layers for existing tools to write to database
+   - Develop shared query library for common analysis patterns
+   - Build visualization components for benchmark comparison
+
+4. **Integration with CI/CD:**
+   - Update CI workflows to store results directly in the database
+   - Implement versioned snapshots for historical comparisons
+   - Create regression detection system using historical data
+
+### Key Performance Metrics (Updated March 2, 2025)
+
+| Model Category | Best Hardware | Throughput Improvement | Memory Optimization | Batch Scaling Efficiency |
+|----------------|---------------|------------------------|---------------------|--------------------------|
+| Embedding Models | CUDA/WebNN | 5-15x vs CPU | 25-40% reduction | Excellent (near-linear) |
+| Text Generation | CUDA | 3-8x vs CPU | 15-30% with quantization | Good (sub-linear) |
+| Vision Models | CUDA/MPS | 5-12x vs CPU | 20-45% with optimizations | Very good (near-linear) |
+| Audio Models | CUDA | 4-8x vs CPU | 10-25% reduction | Moderate (plateaus at 8-16) |
+| Multimodal | CUDA only | 5-10x vs CPU | 15-35% with pruning | Limited (memory-bound) |
+
+For web platform specific performance data, see `test/WEB_PLATFORM_INTEGRATION_GUIDE.md`.
