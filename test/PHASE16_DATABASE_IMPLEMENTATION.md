@@ -306,6 +306,23 @@ Preliminary performance metrics show significant improvements:
 4. **Optimization**: Regular database optimization and efficient query patterns
 5. **Artifact Management**: Specialized workflow for database artifacts in CI
 
+## Recent Enhancements
+
+Recent additions to the database implementation include:
+
+1. **Web Platform Database Integration**: Comprehensive integration of web platform testing with the database system
+   - Dedicated tables for web platform results with WebGPU advanced features
+   - Custom views for web-specific analysis and cross-platform comparison
+   - Environment variable control for deprecating JSON output
+   - Transition strategy for gradual migration to database-only storage
+
+2. **Enhanced Database Schema**:
+   - New tables: `web_platform_results` and `webgpu_advanced_features`
+   - New views: `web_platform_performance_metrics`, `webgpu_feature_analysis`, and `cross_platform_performance`
+   - Extended model analysis with web browser capabilities
+
+See [PHASE16_WEB_DATABASE_INTEGRATION.md](PHASE16_WEB_DATABASE_INTEGRATION.md) for details on these enhancements.
+
 ## Future Enhancements
 
 Now that the database implementation is complete, future enhancements could include:
@@ -315,6 +332,8 @@ Now that the database implementation is complete, future enhancements could incl
 3. **Real-time Dashboard**: Create a dynamic web dashboard for real-time monitoring of benchmarks
 4. **Cloud Integration**: Extend database capabilities to support cloud storage and multi-user access
 5. **Advanced Regression Analysis**: Develop more sophisticated regression detection algorithms with root cause analysis
+6. **Complete JSON Deprecation**: Set `DEPRECATE_JSON_OUTPUT=1` as the default in the next release
+7. **Database Schema Versioning**: Add version tracking to schema for future migrations
 
 ## Documentation
 
@@ -348,6 +367,8 @@ As part of the database implementation, we have successfully migrated all benchm
    - `web_audio_platform_tests.py`: Platform-specific audio tests
    - `web_platform_benchmark.py`: Web platform benchmarking
    - `web_platform_test_runner.py`: Web platform test runner
+   - `web_platform_testing.py`: Comprehensive web platform testing
+   - `run_web_platform_tests_with_db.py`: Direct database integration for web platform tests
 
 4. **Other Benchmarking Tools**:
    - `continuous_hardware_benchmarking.py`: Continuous monitoring

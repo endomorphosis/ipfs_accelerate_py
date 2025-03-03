@@ -443,7 +443,7 @@ class WebPlatformTesting:
     def generate_report(self, 
                        report_data: Dict[str, Any],
                        report_type: str,
-                       output_format: str = "json") -> str:
+                       output_format: str = "md") -> str:
         """Generate a report for web platform testing results.
         
         Args:
@@ -456,20 +456,97 @@ class WebPlatformTesting:
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        if output_format == "json":
-            # JSON report
-            filename = f"web_platform_{report_type}_{timestamp}.json"
-            file_path = os.path.join(self.results_dir, filename)
+        # Try to save to DuckDB database first
+        try:
+            # Check if we have database integration module
+            from run_web_platform_tests_with_db import WebPlatformTestsDBIntegration
             
-            with open(file_path, "w") as f:
-                json.dump(report_data, f, indent=2)
+            # Get database path from environment or use default
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            
+            # Format report data for database storage
+            if os.path.exists(db_path):
+                print(f"Storing report data in database: {db_path}")
                 
-        elif output_format == "md":
+                # Create a structur that WebPlatformTestsDBIntegration.store_results_in_db can handle
+                # This method expects a dictionary of model keys with platforms as inner keys
+                db_ready_results = {}
+                
+                if report_type == "comparison":
+                    # For comparison reports, extract model data
+                    for model_key, comparison_data in report_data.get("comparisons", {}).items():
+                        if model_key not in db_ready_results:
+                            db_ready_results[model_key] = {}
+                        
+                        # Add both platform results
+                        if "webnn" in comparison_data:
+                            db_ready_results[model_key]["webnn"] = comparison_data["webnn"]
+                        if "webgpu" in comparison_data:
+                            db_ready_results[model_key]["webgpu"] = comparison_data["webgpu"]
+                elif report_type == "single":
+                    # For single platform reports, use platform from summary
+                    platform = report_data.get("summary", {}).get("platform", "unknown")
+                    results = report_data.get("results", {})
+                    
+                    for model_key, result in results.items():
+                        if model_key not in db_ready_results:
+                            db_ready_results[model_key] = {}
+                        db_ready_results[model_key][platform] = result
+                elif report_type == "multi":
+                    # For multi-platform reports, iterate over platforms
+                    for platform, platform_data in report_data.items():
+                        results = platform_data.get("results", {})
+                        
+                        for model_key, result in results.items():
+                            if model_key not in db_ready_results:
+                                db_ready_results[model_key] = {}
+                            db_ready_results[model_key][platform] = result
+                
+                # Store data in database if we have any results
+                if db_ready_results:
+                    db_integration = WebPlatformTestsDBIntegration(db_path=db_path)
+                    db_integration.store_results_in_db(db_ready_results)
+                    
+                    # Generate markdown report even if JSON was requested
+                    # since data is now in database
+                    output_format = "md"
+                    print("Data saved to database, generating markdown report")
+                else:
+                    print("No compatible results to store in database")
+        except ImportError:
+            print("Database integration not available, falling back to file output")
+        except Exception as e:
+            print(f"Error storing in database: {e}, falling back to file output")
+        
+        # Generate file report
+        if output_format == "json":
+            # Check if JSON output is deprecated
+            if os.environ.get("DEPRECATE_JSON_OUTPUT") == "1":
+                print("WARNING: JSON output is deprecated. Using markdown format instead.")
+                output_format = "md"
+            else:
+                # JSON report
+                filename = f"web_platform_{report_type}_{timestamp}.json"
+                file_path = os.path.join(self.results_dir, filename)
+                
+                with open(file_path, "w") as f:
+                    # Add metadata about database storage
+                    report_data["metadata"] = report_data.get("metadata", {})
+                    report_data["metadata"]["stored_in_db"] = os.path.exists(os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+                    report_data["metadata"]["deprecated_format"] = True
+                    report_data["metadata"]["timestamp"] = timestamp
+                    json.dump(report_data, f, indent=2)
+                    
+        if output_format == "md":
             # Markdown report
             filename = f"web_platform_{report_type}_{timestamp}.md"
             file_path = os.path.join(self.results_dir, filename)
             
             with open(file_path, "w") as f:
+                # Add note about database storage
+                if os.path.exists(os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")):
+                    f.write("> **Note:** This data has also been stored in the benchmark database.\n\n")
+                    
                 if report_type == "comparison":
                     self._write_comparison_markdown(f, report_data)
                 elif report_type == "single":

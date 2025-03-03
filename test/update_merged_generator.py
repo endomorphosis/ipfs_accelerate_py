@@ -1,175 +1,398 @@
 #!/usr/bin/env python3
 """
-Script to update the merged_test_generator.py file to better align with
-the implementation structure of the ipfs_accelerate_py worker/skillset modules.
+Update the merged_test_generator.py to integrate the WebNN and WebGPU platform fixes.
 
-This script will:
-1. Update the generator template to match the worker/skillset implementation structure
-2. Add support for handler creation methods that follow the implementation pattern
-3. Enhance the mock interface to match real implementation classes
-4. Add proper WebNN and WebGPU support for all 13 key model types
+This script:
+1. Makes a backup of the original merged_test_generator.py
+2. Adds the import for the fixed_web_platform package
+3. Updates the test_platform method to properly handle WebNN and WebGPU
+4. Replaces the init_webnn and init_webgpu functions with the fixed versions
+5. Verifies the changes work by running a simple test
+
+Usage:
+  python update_merged_generator.py
 """
 
 import os
+import re
 import sys
-import json
-import glob
 import shutil
-import datetime
+import importlib
 from pathlib import Path
+from datetime import datetime
 
-# Determine the project root and relevant directories
-PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEST_DIR = PROJECT_ROOT / "test"
-WORKER_SKILLSET = PROJECT_ROOT / "ipfs_accelerate_py" / "worker" / "skillset"
-GENERATOR_FILE = TEST_DIR / "merged_test_generator.py"
+# Set up paths
+CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+GENERATOR_FILE = CURRENT_DIR / "merged_test_generator.py"
+BACKUP_DIR = CURRENT_DIR / "backups"
+BACKUP_FILE = BACKUP_DIR / f"merged_test_generator.py.bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-def backup_existing_generator():
-    """Create a backup of the existing merged_test_generator.py file."""
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = GENERATOR_FILE.with_suffix(f".py.bak_{timestamp}")
-    
-    print(f"Creating backup of merged_test_generator.py at {backup_path}")
-    shutil.copy2(GENERATOR_FILE, backup_path)
-    return backup_path
+# Ensure backup directory exists
+BACKUP_DIR.mkdir(exist_ok=True)
 
-def get_all_hf_skillset_modules():
-    """Get all HF model implementations from the worker/skillset directory."""
-    hf_modules = []
-    
-    for file_path in WORKER_SKILLSET.glob("hf_*.py"):
-        module_name = file_path.stem  # Get file name without extension
-        if "test" not in module_name:  # Skip test files
-            hf_modules.append({
-                "name": module_name,
-                "path": file_path,
-                "model_type": module_name[3:] if module_name.startswith("hf_") else module_name
-            })
-    
-    print(f"Found {len(hf_modules)} HF model implementations in worker/skillset")
-    return sorted(hf_modules, key=lambda x: x["name"])
+def backup_generator():
+    """Create a backup of the generator file."""
+    try:
+        shutil.copy2(GENERATOR_FILE, BACKUP_FILE)
+        print(f"Created backup of generator at {BACKUP_FILE}")
+        return True
+    except Exception as e:
+        print(f"Error creating backup: {e}")
+        return False
 
-def extract_handler_methods(module_file):
-    """Extract handler creation method patterns from an implementation file."""
-    handler_methods = []
-    
-    with open(module_file, 'r') as f:
-        content = f.read()
+def update_imports():
+    """Add import for fixed_web_platform module."""
+    try:
+        # Read the current file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Check if the import already exists
+        if "from fixed_web_platform import" in content:
+            print("Import already exists - skipping")
+            return True
+            
+        # Find where to add the import
+        last_import = re.search(r'^from .*? import .*?$', content, re.MULTILINE)
+        if not last_import:
+            print("Could not find a place to add import")
+            return False
+            
+        # Get position after the last import
+        import_pos = content.find('\n', last_import.end())
+        if import_pos == -1:
+            import_pos = last_import.end()
+            
+        # Add our import after the last one
+        new_import = "\n\n# Import fixed WebNN and WebGPU platform support\nfrom fixed_web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors"
+        content = content[:import_pos] + new_import + content[import_pos:]
         
-    # Look for handler creation methods
-    method_markers = [
-        "def create_cpu_",
-        "def create_cuda_",
-        "def create_openvino_",
-        "def create_apple_",
-        "def create_qualcomm_"
-    ]
-    
-    for marker in method_markers:
-        if marker in content:
-            print(f"Found handler method pattern: {marker}")
-            handler_methods.append(marker)
-    
-    return handler_methods
+        # Write the updated file
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print("Added fixed_web_platform import")
+        return True
+    except Exception as e:
+        print(f"Error updating imports: {e}")
+        return False
 
-def update_template_structure():
-    """Update the test file template in merged_test_generator.py to match worker/skillset structure."""
-    
-    # Get a model module as reference
-    hf_modules = get_all_hf_skillset_modules()
-    if not hf_modules:
-        print("No HF model modules found in worker/skillset")
+def update_test_platform_method():
+    """Update the test_platform method to properly handle WebNN and WebGPU platforms."""
+    try:
+        # Read the current file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Find the test_platform method
+        test_platform_pattern = r'def test_platform\(self, .*?(?=\n    def|\Z)'
+        test_platform_match = re.search(test_platform_pattern, content, re.DOTALL)
+        
+        if not test_platform_match:
+            print("Could not find test_platform method")
+            return False
+            
+        # Get the current method 
+        current_method = test_platform_match.group(0)
+        
+        # Check if we've already updated it
+        if "process_for_web" in current_method:
+            print("test_platform method already updated - skipping")
+            return True
+        
+        # Find WebNN and WebGPU sections
+        webnn_section_pattern = r'elif platform_lower == "webnn":(.*?)(?=elif |else:)'
+        webgpu_section_pattern = r'elif platform_lower == "webgpu":(.*?)(?=elif |else:)'
+        
+        webnn_section_match = re.search(webnn_section_pattern, current_method, re.DOTALL)
+        webgpu_section_match = re.search(webgpu_section_pattern, current_method, re.DOTALL)
+        
+        if not webnn_section_match or not webgpu_section_match:
+            print("Could not find WebNN or WebGPU sections in test_platform method")
+            return False
+            
+        # Create the improved WebNN section
+        improved_webnn_section = """
+            elif platform_lower == "webnn":
+                if hasattr(self, "endpoint_webnn"):
+                    start_time = time.time()
+                    
+                    # Determine if batch operations are supported for this model type
+                    web_batch_supported = True
+                    if self.mode == "text":
+                        web_batch_supported = True  # Text models usually support batching
+                    elif self.mode == "vision":
+                        web_batch_supported = True  # Vision models usually support batching
+                    elif self.mode == "audio":
+                        web_batch_supported = False  # Audio models may not support batching in WebNN
+                    elif self.mode == "multimodal":
+                        web_batch_supported = False  # Multimodal often doesn't batch well on web
+                    
+                    # Process the input using the fixed web platform handler
+                    inputs = process_for_web(self.mode, input_data, web_batch_supported)
+                    
+                    # Execute WebNN model
+                    _ = self.endpoint_webnn(inputs)
+                    elapsed = time.time() - start_time
+                    return elapsed
+                else:
+                    print("WebNN endpoint not available")
+                    return None"""
+                    
+        # Create the improved WebGPU section
+        improved_webgpu_section = """
+            elif platform_lower == "webgpu":
+                if hasattr(self, "endpoint_webgpu"):
+                    start_time = time.time()
+                    
+                    # Determine if batch operations are supported for this model type
+                    web_batch_supported = True
+                    if self.mode == "text":
+                        web_batch_supported = True  # Text models usually support batching
+                    elif self.mode == "vision":
+                        web_batch_supported = True  # Vision models usually support batching
+                    elif self.mode == "audio":
+                        web_batch_supported = False  # Audio models may not support batching in WebGPU
+                    elif self.mode == "multimodal":
+                        web_batch_supported = False  # Multimodal often doesn't batch well on web
+                    
+                    # Process the input using the fixed web platform handler
+                    inputs = process_for_web(self.mode, input_data, web_batch_supported)
+                    
+                    # Execute WebGPU model
+                    _ = self.endpoint_webgpu(inputs)
+                    elapsed = time.time() - start_time
+                    return elapsed
+                else:
+                    print("WebGPU endpoint not available")
+                    return None"""
+                    
+        # Replace the sections in the method
+        updated_method = current_method.replace(webnn_section_match.group(0), improved_webnn_section)
+        updated_method = updated_method.replace(webgpu_section_match.group(0), improved_webgpu_section)
+        
+        # Update the content with the new method
+        content = content.replace(current_method, updated_method)
+        
+        # Write the updated file
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print("Updated test_platform method")
+        return True
+    except Exception as e:
+        print(f"Error updating test_platform method: {e}")
         return False
-    
-    # Backup the existing file first
-    backup_path = backup_existing_generator()
-    
-    # Create reference model set from different categories
-    reference_models = {
-        "language": next((m for m in hf_modules if m["model_type"] in ["bert", "t5", "llama"]), None),
-        "vision": next((m for m in hf_modules if m["model_type"] in ["clip", "vit", "detr"]), None),
-        "audio": next((m for m in hf_modules if m["model_type"] in ["whisper", "wav2vec2", "clap"]), None),
-        "multimodal": next((m for m in hf_modules if m["model_type"] in ["llava", "llava_next"]), None)
-    }
-    
-    # Extract handler methods from reference models
-    handler_patterns = {}
-    for category, module in reference_models.items():
-        if module:
-            print(f"Analyzing {category} reference model: {module['name']}")
-            handler_patterns[category] = extract_handler_methods(module['path'])
-    
-    # Read the existing generator file
-    with open(GENERATOR_FILE, 'r') as f:
-        generator_content = f.read()
-    
-    # Update the template in the generator file
-    # This is where we'll modify the template to align with worker/skillset structure
-    
-    # 1. Update the class structure to match worker/skillset
-    print("Updating class structure to match worker/skillset pattern...")
-    
-    # Parse out the template definition section
-    template_start = generator_content.find("def generate_test_template(")
-    if template_start == -1:
-        print("Could not find template generation function")
+
+def update_init_methods():
+    """Replace the init_webnn and init_webgpu methods with the fixed versions."""
+    try:
+        # Read the current file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Find the init_webnn method
+        init_webnn_pattern = r'def init_webnn\(self.*?\):.*?(?=\n    def|\Z)'
+        init_webnn_match = re.search(init_webnn_pattern, content, re.DOTALL)
+        
+        # Find the init_webgpu method
+        init_webgpu_pattern = r'def init_webgpu\(self.*?\):.*?(?=\n    def|\Z)'
+        init_webgpu_match = re.search(init_webgpu_pattern, content, re.DOTALL)
+        
+        if not init_webnn_match or not init_webgpu_match:
+            print("Could not find init_webnn or init_webgpu methods")
+            return False
+            
+        # Get the current methods
+        current_init_webnn = init_webnn_match.group(0)
+        current_init_webgpu = init_webgpu_match.group(0)
+        
+        # Check if we've already updated them
+        if "Using the fixed version from fixed_web_platform" in current_init_webnn:
+            print("init methods already updated - skipping")
+            return True
+            
+        # Create the improved init_webnn method (this is just a wrapper around the fixed version)
+        improved_init_webnn = """    def init_webnn(self, model_name=None, model_path=None, model_type=None, device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
+        \"\"\"
+        Initialize the model for WebNN inference.
+        
+        Using the fixed version from fixed_web_platform.
+        
+        Args:
+            model_name: Name of the model to load
+            model_path: Path to the model files 
+            model_type: Type of model (text, vision, audio, etc.)
+            device: Device to use ('webnn')
+            web_api_mode: Mode for web API ('real', 'simulation', 'mock')
+            tokenizer: Optional tokenizer for text models
+            
+        Returns:
+            Dictionary with endpoint, processor, etc.
+        \"\"\""""
+        # Pass through to the fixed implementation
+        kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
+        return init_webnn(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)"""
+        
+        # Create the improved init_webgpu method (this is just a wrapper around the fixed version)
+        improved_init_webgpu = """    def init_webgpu(self, model_name=None, model_path=None, model_type=None, device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
+        \"\"\"
+        Initialize the model for WebGPU inference.
+        
+        Using the fixed version from fixed_web_platform.
+        
+        Args:
+            model_name: Name of the model to load
+            model_path: Path to the model files 
+            model_type: Type of model (text, vision, audio, etc.)
+            device: Device to use ('webgpu')
+            web_api_mode: Mode for web API ('simulation', 'mock')
+            tokenizer: Optional tokenizer for text models
+            
+        Returns:
+            Dictionary with endpoint, processor, etc.
+        \"\"\""""
+        # Pass through to the fixed implementation
+        kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
+        return init_webgpu(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)"""
+        
+        # Replace the methods in the content
+        content = content.replace(current_init_webnn, improved_init_webnn)
+        content = content.replace(current_init_webgpu, improved_init_webgpu)
+        
+        # Write the updated file
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print("Updated init_webnn and init_webgpu methods")
+        return True
+    except Exception as e:
+        print(f"Error updating init methods: {e}")
         return False
+
+def add_cli_arguments():
+    """Add WebNN and WebGPU CLI arguments if they don't exist."""
+    try:
+        # Read the current file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Check if the arguments already exist
+        if "--webnn-mode" in content and "--webgpu-mode" in content:
+            print("WebNN and WebGPU CLI arguments already exist - skipping")
+            return True
+            
+        # Find the argument parser section and add platform arguments
+        platform_arg_pattern = r'parser\.add_argument\("--platform".*?\n'
+        platform_arg_match = re.search(platform_arg_pattern, content, re.DOTALL)
+        
+        if not platform_arg_match:
+            print("Could not find --platform argument")
+            return False
+        
+        # Get the end position to add our new arguments
+        arg_pos = platform_arg_match.end()
+        
+        # Add the web platform arguments
+        web_platform_args = """    # Web platform options
+    parser.add_argument("--webnn-mode", choices=["real", "simulation", "mock"], 
+                      default="simulation", help="WebNN implementation mode")
+    parser.add_argument("--webgpu-mode", choices=["simulation", "mock"], 
+                      default="simulation", help="WebGPU implementation mode")
+"""
+        content = content[:arg_pos] + web_platform_args + content[arg_pos:]
+        
+        # Find the main function to update how it passes arguments to init methods
+        main_func_pattern = r'def main\(\):'
+        main_func_match = re.search(main_func_pattern, content)
+        
+        if main_func_match:
+            # Find the part where it initializes the generator
+            init_pattern = r'test_generator\.init_\w+\(.*?\)'
+            init_match = re.search(init_pattern, content[main_func_match.end():], re.DOTALL)
+            
+            if init_match:
+                # Get the current initialization call
+                init_call = init_match.group(0)
+                
+                # Add web_api_mode parameter if not already there
+                if "web_api_mode" not in init_call:
+                    # Check if the call ends with a comma or not
+                    if init_call.rstrip().endswith(","):
+                        # Already has a trailing comma, just add the parameter
+                        updated_init = init_call.rstrip() + " web_api_mode=args.webnn_mode if args.platform == 'webnn' else args.webgpu_mode if args.platform == 'webgpu' else 'simulation')"
+                    else:
+                        # No trailing comma, remove the closing paren and add parameter
+                        updated_init = init_call[:-1] + ", web_api_mode=args.webnn_mode if args.platform == 'webnn' else args.webgpu_mode if args.platform == 'webgpu' else 'simulation')"
+                    
+                    # Replace in content
+                    content = content.replace(init_call, updated_init)
+                    
+        # Write the updated file
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print("Added WebNN and WebGPU CLI arguments")
+        return True
+    except Exception as e:
+        print(f"Error adding CLI arguments: {e}")
+        return False
+
+def verify_changes():
+    """Verify the changes work by importing and checking the generator."""
+    try:
+        # Add parent directory to path
+        sys.path.append(str(CURRENT_DIR.parent))
+        
+        # Try to import the module
+        generator_module = importlib.import_module("test.merged_test_generator")
+        
+        # Reload to ensure we have the latest version
+        importlib.reload(generator_module)
+        
+        # Check that our fixed imports are there
+        if not hasattr(generator_module, "process_for_web"):
+            print("ERROR: process_for_web not found in the generator")
+            return False
+            
+        print("Changes verified - merged_test_generator.py now has proper WebNN and WebGPU support")
+        return True
+    except Exception as e:
+        print(f"Error verifying changes: {e}")
+        return False
+
+def main():
+    """Run the update process."""
+    print("Updating merged_test_generator.py with WebNN and WebGPU platform fixes...")
     
-    template_end = generator_content.find("def extract_implementation_status(", template_start)
-    if template_end == -1:
-        template_end = len(generator_content)
-    
-    template_section = generator_content[template_start:template_end]
-    
-    # Key patterns to update
-    updates = [
-        # Update class structure initialization
-        (
-            "class {test_class_name}:",
-            "class {class_name}:\n    \"\"\"{model} implementation.\n    \n    This class provides standardized interfaces for working with {model} models\n    across different hardware backends (CPU, CUDA, OpenVINO, Apple, Qualcomm).\n    \"\"\""
-        ),
-        # Update initialization to match worker/skillset
-        (
-            "def __init__(self, resources=None, metadata=None):",
-            "def __init__(self, resources=None, metadata=None):\n        \"\"\"Initialize the {model} model.\n        \n        Args:\n            resources (dict): Dictionary of shared resources (torch, transformers, etc.)\n            metadata (dict): Configuration metadata\n        \"\"\""
-        ),
-        # Add handler creation methods
-        (
-            "# Initialize model handler",
-            "# Handler creation methods\n        self.create_cpu_text_embedding_endpoint_handler = self.create_cpu_text_embedding_endpoint_handler\n        self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler\n        self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler\n        self.create_apple_text_embedding_endpoint_handler = self.create_apple_text_embedding_endpoint_handler\n        self.create_qualcomm_text_embedding_endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler\n        \n        # Initialization methods\n        self.init = self.init\n        self.init_cpu = self.init_cpu\n        self.init_cuda = self.init_cuda\n        self.init_openvino = self.init_openvino\n        self.init_apple = self.init_apple\n        self.init_qualcomm = self.init_qualcomm\n        \n        # Test methods\n        self.__test__ = self.__test__"
-        ),
-    ]
-    
+    # Create a backup first
+    if not backup_generator():
+        print("Failed to create backup, aborting")
+        return 1
+        
     # Apply the updates
-    updated_template_section = template_section
-    for old_pattern, new_pattern in updates:
-        updated_template_section = updated_template_section.replace(old_pattern, new_pattern)
-    
-    # Combine everything back together
-    updated_generator_content = (
-        generator_content[:template_start] +
-        updated_template_section +
-        generator_content[template_end:]
-    )
-    
-    # Write the updated content back to the file
-    with open(GENERATOR_FILE, 'w') as f:
-        f.write(updated_generator_content)
-    
-    print(f"Updated merged_test_generator.py with worker/skillset structure")
-    print(f"Original file backed up at: {backup_path}")
-    
-    return True
-
-if __name__ == "__main__":
-    print("Starting update of merged_test_generator.py to align with worker/skillset implementation...")
-    success = update_template_structure()
+    success = True
+    success = update_imports() and success
+    success = update_test_platform_method() and success
+    success = update_init_methods() and success
+    success = add_cli_arguments() and success
     
     if success:
-        print("\nUpdate completed successfully!")
-        print("\nRecommended next steps:")
-        print("1. Review the changes made to merged_test_generator.py")
-        print("2. Test the updated generator by running: python merged_test_generator.py --generate bert")
-        print("3. Verify the generated test file matches the worker/skillset structure")
+        # Verify the changes
+        if verify_changes():
+            print("\nSuccessfully updated merged_test_generator.py with WebNN and WebGPU platform fixes")
+            print("\nYou can now generate tests with Web platform support:")
+            print("  python merged_test_generator.py --generate bert --platform webnn")
+            print("  python merged_test_generator.py --generate vit --platform webgpu --webgpu-mode simulation")
+            return 0
+        else:
+            print("\nUpdates applied but verification failed - check the generator manually")
+            return 1
     else:
-        print("\nUpdate failed! Check the error messages above.")
+        print("\nFailed to update merged_test_generator.py - restoring from backup")
+        shutil.copy2(BACKUP_FILE, GENERATOR_FILE)
+        print(f"Restored generator from {BACKUP_FILE}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

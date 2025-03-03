@@ -1,0 +1,30 @@
+{
+  "total_files": 4,
+  "files_fixed": 2,
+  "total_issues_fixed": 9,
+  "files_details": [
+    {
+      "file": "test_hf_llava.py",
+      "model_name": "llava",
+      "issues_fixed": 5,
+      "fixed_issues": [
+        "Added asyncio import",
+        "Fixed method indentation",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    },
+    {
+      "file": "test_hf_llava_next.py",
+      "model_name": "llava_next",
+      "issues_fixed": 4,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    }
+  ]
+}

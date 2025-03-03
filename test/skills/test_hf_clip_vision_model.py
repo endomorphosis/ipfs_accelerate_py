@@ -140,7 +140,201 @@ except ImportError:
             return self.test_input
         return "Default test input"
     
-    def test_platform(self, platform, init_method, device_arg):
+    
+def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
+            # Mock implementation
+            return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
+            
+        
+
+def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
+            # Mock implementation
+            return None, None, lambda x: {"output": "Mock output", "implementation_type": "MOCK"}, None, 1
+            
+        
+
+    def init_webnn(self, model_name=None):
+        """Initialize vision model for WebNN inference."""
+        try:
+            print("Initializing WebNN for vision model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebNN support
+            webnn_support = False
+            try:
+                # In browser environments, check for WebNN API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
+                    webnn_support = True
+                    print("WebNN API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webnn_support:
+                # Create a WebNN simulation using CPU implementation for vision models
+                print("Using WebNN simulation for vision model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebNN
+                def webnn_handler(image_input, **kwargs):
+                    try:
+                        # Process image input (path or PIL Image)
+                        if isinstance(image_input, str):
+                            from PIL import Image
+                            image = Image.open(image_input).convert("RGB")
+                        elif isinstance(image_input, list):
+                            if all(isinstance(img, str) for img in image_input):
+                                from PIL import Image
+                                image = [Image.open(img).convert("RGB") for img in image_input]
+                            else:
+                                image = image_input
+                        else:
+                            image = image_input
+                            
+                        # Process with processor
+                        inputs = processor(images=image, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebNN-specific metadata
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBNN",
+                            "model": model_name,
+                            "backend": "webnn-simulation",
+                            "device": "cpu"
+                        }
+                    except Exception as e:
+                        print(f"Error in WebNN simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webnn_handler, queue, batch_size
+            else:
+                # Use actual WebNN implementation when available
+                # (This would use the WebNN API in browser environments)
+                print("Using native WebNN implementation")
+                
+                # Since WebNN API access depends on browser environment,
+                # implementation details would involve JS interop
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebNN: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
+
+    def init_webgpu(self, model_name=None):
+        """Initialize vision model for WebGPU inference using transformers.js simulation."""
+        try:
+            print("Initializing WebGPU for vision model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebGPU support
+            webgpu_support = False
+            try:
+                # In browser environments, check for WebGPU API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'gpu'):
+                    webgpu_support = True
+                    print("WebGPU API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webgpu_support:
+                # Create a WebGPU simulation using CPU implementation for vision models
+                print("Using WebGPU/transformers.js simulation for vision model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebGPU/transformers.js
+                def webgpu_handler(image_input, **kwargs):
+                    try:
+                        # Process image input (path or PIL Image)
+                        if isinstance(image_input, str):
+                            from PIL import Image
+                            image = Image.open(image_input).convert("RGB")
+                        elif isinstance(image_input, list):
+                            if all(isinstance(img, str) for img in image_input):
+                                from PIL import Image
+                                image = [Image.open(img).convert("RGB") for img in image_input]
+                            else:
+                                image = image_input
+                        else:
+                            image = image_input
+                            
+                        # Process with processor
+                        inputs = processor(images=image, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebGPU-specific metadata to match transformers.js
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBGPU_TRANSFORMERS_JS",
+                            "model": model_name,
+                            "backend": "webgpu-simulation",
+                            "device": "webgpu",
+                            "transformers_js": {
+                                "version": "2.9.0",  # Simulated version
+                                "quantized": False,
+                                "format": "float32",
+                                "backend": "webgpu"
+                            }
+                        }
+                    except Exception as e:
+                        print(f"Error in WebGPU simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webgpu_handler, queue, batch_size
+            else:
+                # Use actual WebGPU implementation when available
+                # (This would use transformers.js in browser environments)
+                print("Using native WebGPU implementation with transformers.js")
+                
+                # Since WebGPU API access depends on browser environment,
+                # implementation details would involve JS interop
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x: {"output": "Native WebGPU output", "implementation_type": "WEBGPU_TRANSFORMERS_JS"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebGPU: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
+def test_platform(self, platform, init_method, device_arg):
         # Run tests for a specific platform
         results = {}
         

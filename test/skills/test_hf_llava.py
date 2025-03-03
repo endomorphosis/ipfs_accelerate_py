@@ -9,6 +9,7 @@ import datetime
 import traceback
 from unittest.mock import patch, MagicMock
 
+import asyncio
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -253,7 +254,7 @@ class test_hf_llava:
 
 
 
-    def init_rocm(self, model_name=None, device="hip"):
+                def init_rocm(self, model_name=None, device="hip"):
         """Initialize audio model for ROCm (AMD GPU) inference."""
         model_name = model_name or self.model_name
         
@@ -327,7 +328,7 @@ class test_hf_llava:
 
 
 
-    def init_webnn(self, model_name=None):
+                def init_webnn(self, model_name=None):
         """Initialize audio model for WebNN inference.
         
         WebNN support requires browser environment or dedicated WebNN runtime.
@@ -395,7 +396,7 @@ class test_hf_llava:
 
 
 
-    def init_webgpu(self, model_name=None):
+                def init_webgpu(self, model_name=None):
         """Initialize audio model for WebGPU inference.
         
         WebGPU support requires browser environment or dedicated WebGPU runtime.

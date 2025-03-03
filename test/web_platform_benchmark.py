@@ -139,9 +139,85 @@ class WebBenchmarkSuite:
         self.results.append(result)
     
     def save_results(self, filename: str) -> None:
-        """Save benchmark results to JSON file"""
-        with open(filename, 'w') as f:
-            json.dump([result.as_dict() for result in self.results], f, indent=2)
+        """Save benchmark results to DuckDB database and optionally to JSON file"""
+        # Try to save to DuckDB database first
+        try:
+            # Check if we have database integration module
+            from run_web_platform_tests_with_db import WebPlatformTestsDBIntegration
+            
+            # Get database path from environment or use default
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            
+            if os.path.exists(db_path):
+                # Format benchmark results for database storage
+                db_ready_results = {}
+                
+                for result in self.results:
+                    model_key = result.model_name
+                    platform = result.platform
+                    
+                    if model_key not in db_ready_results:
+                        db_ready_results[model_key] = {}
+                    
+                    # Format the result as expected by WebPlatformTestsDBIntegration
+                    db_ready_results[model_key][platform] = {
+                        "status": "success" if result.initialized else "error",
+                        "success": result.initialized,
+                        "model_name": result.model_name,
+                        "platform": result.platform,
+                        "modality": result.modality,
+                        "implementation_type": result.implementation_type,
+                        "load_time_ms": result.model_load_time_ms,
+                        "initialization_time_ms": result.first_inference_time_ms,
+                        "inference_time_ms": result.avg_inference_time_ms,
+                        "total_time_ms": result.inference_time_ms,
+                        "memory_usage_mb": result.peak_memory_mb,
+                        "metrics": {
+                            "batch_size": result.batch_size,
+                            "iterations": result.iteration_count,
+                            "throughput": result.throughput,
+                            "tokenization_time_ms": result.tokenization_time_ms,
+                            "preprocessing_time_ms": result.preprocessing_time_ms,
+                            "postprocessing_time_ms": result.postprocessing_time_ms
+                        },
+                        "error_message": result.error if not result.initialized else None,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
+                # Store in database
+                logger.info(f"Storing benchmark results in database: {db_path}")
+                db_integration = WebPlatformTestsDBIntegration(db_path=db_path)
+                db_integration.store_results_in_db(db_ready_results)
+                
+                # Check if JSON output is deprecated
+                if os.environ.get("DEPRECATE_JSON_OUTPUT") == "1":
+                    logger.info("JSON output is deprecated, results saved to database only")
+                    return
+                
+                # If not deprecated, save to JSON with metadata about database storage
+                with open(filename, 'w') as f:
+                    results_with_metadata = [result.as_dict() for result in self.results]
+                    for result_dict in results_with_metadata:
+                        result_dict["metadata"] = {
+                            "stored_in_db": True,
+                            "deprecated_format": True,
+                            "db_path": db_path,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    json.dump(results_with_metadata, f, indent=2)
+                logger.info(f"Results saved to both database and JSON file: {filename}")
+                
+            else:
+                # If database doesn't exist, fall back to JSON
+                logger.warning(f"Database not found at {db_path}, saving to JSON only")
+                with open(filename, 'w') as f:
+                    json.dump([result.as_dict() for result in self.results], f, indent=2)
+                
+        except ImportError:
+            # If database integration not available, fall back to JSON
+            logger.warning("Database integration not available, saving to JSON only")
+            with open(filename, 'w') as f:
+                json.dump([result.as_dict() for result in self.results], f, indent=2)
     
     def load_results(self, filename: str) -> None:
         """Load benchmark results from JSON file"""
@@ -562,6 +638,11 @@ class WebPlatformBenchmark:
                 end_preprocess = time.time()
                 benchmark_result.preprocessing_time_ms = (end_preprocess - start_preprocess) * 1000
                 
+                # Get shader compilation time for WebGPU
+                shader_compilation_time = 0
+                if platform == "webgpu" and hasattr(handler, "get_shader_compilation_time"):
+                    shader_compilation_time = handler.get_shader_compilation_time()
+                
                 # Warmup iterations
                 logger.info(f"Running {warmup_iterations} warmup iterations")
                 for _ in range(warmup_iterations):
@@ -599,12 +680,28 @@ class WebPlatformBenchmark:
                 benchmark_result.throughput = total_items / total_time
                 benchmark_result.initialized = True
                 
-                # Estimate memory usage (if available from the result)
-                if isinstance(first_result, dict) and "memory_usage_mb" in first_result:
-                    benchmark_result.peak_memory_mb = first_result["memory_usage_mb"]
+                # Get memory usage and shader compilation time if available from the result
+                if isinstance(first_result, dict):
+                    if "memory_usage_mb" in first_result:
+                        benchmark_result.peak_memory_mb = first_result["memory_usage_mb"]
+                    # Store shader compilation time if available
+                    if platform == "webgpu" and shader_compilation_time > 0:
+                        if "performance_metrics" not in first_result:
+                            first_result["performance_metrics"] = {}
+                        first_result["performance_metrics"]["shader_compilation_ms"] = shader_compilation_time
                 else:
                     # Placeholder for memory usage
                     benchmark_result.peak_memory_mb = 0
+                
+                # Measure parallel model loading if supported
+                if hasattr(test_instance, "test_parallel_load"):
+                    try:
+                        parallel_load_time = test_instance.test_parallel_load(platform)
+                        if isinstance(first_result, dict) and "performance_metrics" not in first_result:
+                            first_result["performance_metrics"] = {}
+                        first_result["performance_metrics"]["parallel_load_ms"] = parallel_load_time
+                    except Exception as load_err:
+                        logger.warning(f"Failed to test parallel loading: {load_err}")
                 
                 results.append(benchmark_result)
                 

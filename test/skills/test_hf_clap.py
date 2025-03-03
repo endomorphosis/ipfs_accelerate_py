@@ -1009,7 +1009,7 @@ class test_hf_clap:
                         mock_processor.is_real_simulation = True
                         
                         # Create handler that returns CUDA tensors
-                        def enhanced_cuda_handler(audio_input=None, text=None):
+                def enhanced_cuda_handler(audio_input=None, text=None):
                             result = {}
                             
                             # Check if CUDA is available
@@ -1655,7 +1655,7 @@ class test_hf_clap:
 
 
 
-    def init_rocm(self, model_name=None, device="hip"):
+                def init_rocm(self, model_name=None, device="hip"):
         """Initialize vision model for ROCm (AMD GPU) inference."""
         model_name = model_name or self.model_name
         

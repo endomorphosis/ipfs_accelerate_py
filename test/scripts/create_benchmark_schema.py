@@ -281,6 +281,110 @@ def create_views(conn):
     GROUP BY 
         test_module
     """)
+    
+    # Web platform performance view
+    conn.execute("""
+    CREATE OR REPLACE VIEW web_platform_performance_metrics AS
+    SELECT 
+        m.model_name,
+        m.model_family,
+        wpr.platform,
+        wpr.browser,
+        wpr.browser_version,
+        AVG(wpr.load_time_ms) as avg_load_time_ms,
+        AVG(wpr.inference_time_ms) as avg_inference_time_ms,
+        AVG(wpr.total_time_ms) as avg_total_time_ms,
+        AVG(CASE WHEN wpr.shader_compilation_time_ms > 0 THEN wpr.shader_compilation_time_ms END) as avg_shader_compilation_ms,
+        AVG(wpr.memory_usage_mb) as avg_memory_usage_mb,
+        COUNT(*) as test_count,
+        COUNT(CASE WHEN wpr.success THEN 1 END) as success_count,
+        MAX(wpr.created_at) as last_tested
+    FROM 
+        web_platform_results wpr
+    JOIN 
+        models m ON wpr.model_id = m.model_id
+    GROUP BY 
+        m.model_name, m.model_family, wpr.platform, wpr.browser, wpr.browser_version
+    """)
+    
+    # WebGPU advanced features analysis view
+    conn.execute("""
+    CREATE OR REPLACE VIEW webgpu_feature_analysis AS
+    SELECT 
+        m.model_name,
+        m.model_family,
+        wpr.browser,
+        COUNT(*) as total_tests,
+        COUNT(CASE WHEN wgf.compute_shader_support THEN 1 END) as compute_shader_count,
+        COUNT(CASE WHEN wgf.parallel_compilation THEN 1 END) as parallel_compilation_count,
+        COUNT(CASE WHEN wgf.shader_cache_hit THEN 1 END) as shader_cache_hit_count,
+        COUNT(CASE WHEN wgf.pre_compiled_pipeline THEN 1 END) as pre_compiled_pipeline_count,
+        COUNT(CASE WHEN wgf.audio_acceleration THEN 1 END) as audio_acceleration_count,
+        COUNT(CASE WHEN wgf.video_acceleration THEN 1 END) as video_acceleration_count,
+        AVG(wgf.compute_pipeline_time_ms) as avg_compute_pipeline_time_ms,
+        AVG(wgf.workgroup_size) as avg_workgroup_size
+    FROM 
+        webgpu_advanced_features wgf
+    JOIN 
+        web_platform_results wpr ON wgf.result_id = wpr.result_id
+    JOIN 
+        models m ON wpr.model_id = m.model_id
+    WHERE 
+        wpr.platform = 'webgpu'
+    GROUP BY 
+        m.model_name, m.model_family, wpr.browser
+    """)
+    
+    # Cross-platform performance comparison view
+    conn.execute("""
+    CREATE OR REPLACE VIEW cross_platform_performance AS
+    WITH web_perf AS (
+        SELECT 
+            m.model_id,
+            wpr.platform as hardware_type,
+            AVG(wpr.inference_time_ms) as avg_latency_ms,
+            1000 / AVG(wpr.inference_time_ms) as throughput_items_per_second
+        FROM 
+            web_platform_results wpr
+        JOIN 
+            models m ON wpr.model_id = m.model_id
+        WHERE 
+            wpr.success = TRUE
+        GROUP BY 
+            m.model_id, wpr.platform
+    ),
+    native_perf AS (
+        SELECT 
+            pr.model_id,
+            hp.hardware_type,
+            pr.average_latency_ms as avg_latency_ms,
+            pr.throughput_items_per_second
+        FROM 
+            performance_results pr
+        JOIN 
+            hardware_platforms hp ON pr.hardware_id = hp.hardware_id
+        QUALIFY ROW_NUMBER() OVER(PARTITION BY pr.model_id, hp.hardware_type ORDER BY pr.created_at DESC) = 1
+    ),
+    combined_perf AS (
+        SELECT * FROM web_perf
+        UNION ALL
+        SELECT * FROM native_perf
+    )
+    SELECT 
+        m.model_name,
+        m.model_family,
+        cp.hardware_type,
+        cp.avg_latency_ms,
+        cp.throughput_items_per_second,
+        CASE
+            WHEN cp.hardware_type IN ('webnn', 'webgpu') THEN TRUE
+            ELSE FALSE
+        END as is_web_platform
+    FROM 
+        combined_perf cp
+    JOIN 
+        models m ON cp.model_id = m.model_id
+    """)
 
 def generate_sample_data(conn):
     """Generate sample data for testing the schema"""
@@ -452,6 +556,60 @@ def generate_sample_data(conn):
     ])
     conn.execute("INSERT INTO integration_test_assertions SELECT * FROM assertion_df")
 
+def create_web_platform_tables(conn, force=False):
+    """Create tables for web platform test results"""
+    
+    if force:
+        conn.execute("DROP TABLE IF EXISTS web_platform_results")
+    
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS web_platform_results (
+        result_id INTEGER PRIMARY KEY,
+        run_id INTEGER NOT NULL,
+        model_id INTEGER NOT NULL,
+        hardware_id INTEGER NOT NULL,
+        platform VARCHAR NOT NULL, -- 'webnn', 'webgpu'
+        browser VARCHAR, -- 'chrome', 'firefox', 'safari', 'edge'
+        browser_version VARCHAR,
+        test_file VARCHAR,
+        success BOOLEAN,
+        load_time_ms FLOAT,
+        initialization_time_ms FLOAT,
+        inference_time_ms FLOAT,
+        total_time_ms FLOAT,
+        shader_compilation_time_ms FLOAT,
+        memory_usage_mb FLOAT,
+        error_message VARCHAR,
+        metrics JSON, -- Additional web-specific metrics
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+        FOREIGN KEY (model_id) REFERENCES models(model_id),
+        FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+    )
+    """)
+    
+    # Create specific table for advanced WebGPU features
+    if force:
+        conn.execute("DROP TABLE IF EXISTS webgpu_advanced_features")
+    
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
+        feature_id INTEGER PRIMARY KEY,
+        result_id INTEGER NOT NULL,
+        compute_shader_support BOOLEAN,
+        parallel_compilation BOOLEAN,
+        shader_cache_hit BOOLEAN,
+        workgroup_size INTEGER,
+        compute_pipeline_time_ms FLOAT,
+        pre_compiled_pipeline BOOLEAN,
+        memory_optimization_level VARCHAR, -- 'none', 'low', 'medium', 'high'
+        audio_acceleration BOOLEAN,
+        video_acceleration BOOLEAN,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (result_id) REFERENCES web_platform_results(result_id)
+    )
+    """)
+
 def main():
     args = parse_args()
     
@@ -463,6 +621,7 @@ def main():
     create_performance_tables(conn, args.force)
     create_hardware_compatibility_tables(conn, args.force)
     create_integration_test_tables(conn, args.force)
+    create_web_platform_tables(conn, args.force)
     create_views(conn)
     
     # Generate sample data if requested

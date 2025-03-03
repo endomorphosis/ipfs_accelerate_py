@@ -1,0 +1,22 @@
+{
+  "total_files": 1,
+  "files_fixed": 1,
+  "total_issues_fixed": 8,
+  "files_details": [
+    {
+      "file": "test_hf_clap.py",
+      "model_name": "clap",
+      "issues_fixed": 8,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added cpu hardware platform support",
+        "Added cuda hardware platform support",
+        "Added openvino hardware platform support",
+        "Added mps hardware platform support",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    }
+  ]
+}

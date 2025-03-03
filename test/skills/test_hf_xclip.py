@@ -17,6 +17,7 @@ from unittest.mock import patch, MagicMock, Mock
 from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 
+import asyncio
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -517,7 +518,7 @@ def test_from_pretrained(self, device="auto"):
 
     
     
-def test_with_openvino(self):
+    def test_with_openvino(self):
     """Test the model using OpenVINO integration."""
     results = {
         "model": self.model_id,
@@ -783,7 +784,7 @@ def test_with_openvino(self):
 
 
 
-    def init_rocm(self, model_name=None, device="hip"):
+                    def init_rocm(self, model_name=None, device="hip"):
         """Initialize vision model for ROCm (AMD GPU) inference."""
         model_name = model_name or self.model_name
         
@@ -858,7 +859,7 @@ def test_with_openvino(self):
 
 
 
-    def init_webnn(self, model_name=None):
+                    def init_webnn(self, model_name=None):
         """Initialize vision model for WebNN inference.
         
         WebNN support requires browser environment or dedicated WebNN runtime.
@@ -926,7 +927,7 @@ def test_with_openvino(self):
 
 
 
-    def init_webgpu(self, model_name=None):
+                def init_webgpu(self, model_name=None):
         """Initialize vision model for WebGPU inference.
         
         WebGPU support requires browser environment or dedicated WebGPU runtime.

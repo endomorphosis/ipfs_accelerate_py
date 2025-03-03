@@ -1,0 +1,46 @@
+{
+  "total_files": 4,
+  "files_fixed": 3,
+  "total_issues_fixed": 18,
+  "files_details": [
+    {
+      "file": "test_hf_clip.py",
+      "model_name": "clip",
+      "issues_fixed": 8,
+      "fixed_issues": [
+        "Added asyncio import",
+        "Fixed method indentation",
+        "Added cpu hardware platform support",
+        "Added cuda hardware platform support",
+        "Added mps hardware platform support",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    },
+    {
+      "file": "test_hf_clip_vision_model.py",
+      "model_name": "clip_vision_model",
+      "issues_fixed": 5,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added mps hardware platform support",
+        "Added rocm hardware platform support",
+        "Added webnn hardware platform support",
+        "Added webgpu hardware platform support"
+      ]
+    },
+    {
+      "file": "test_hf_clipseg.py",
+      "model_name": "clipseg",
+      "issues_fixed": 5,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added mps hardware platform support",
+        "Added rocm hardware platform support",
+        "Added webnn hardware platform support",
+        "Added webgpu hardware platform support"
+      ]
+    }
+  ]
+}

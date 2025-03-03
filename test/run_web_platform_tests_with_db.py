@@ -6,14 +6,29 @@ This script runs web platform tests for HuggingFace models and stores
 the results directly in the DuckDB database. It integrates both WebNN
 and WebGPU testing with the benchmark database.
 
+March 2025 Update: Now supports all 13 high-priority model classes with
+enhanced WebGPU features including compute shaders for audio models,
+parallel loading for multimodal models, and shader precompilation.
+
 Usage:
+    # Run tests for specific models
     python run_web_platform_tests_with_db.py --models bert t5 vit
+    
+    # Run all models with WebGPU
     python run_web_platform_tests_with_db.py --all-models --run-webgpu
+    
+    # Run audio models with compute shader acceleration
+    python run_web_platform_tests_with_db.py --models whisper wav2vec2 clap --run-webgpu --compute-shaders
+    
+    # Run multimodal models with parallel loading
+    python run_web_platform_tests_with_db.py --models clip llava xclip --run-webgpu --parallel-loading
+    
+    # Run vision models with shader precompilation
+    python run_web_platform_tests_with_db.py --models vit clip --run-webgpu --shader-precompile
 """
 
 import os
 import sys
-import json
 import logging
 import argparse
 import datetime
@@ -21,6 +36,10 @@ import time
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple
+
+# JSON is deprecated for storage, but still needed for legacy compatibility
+# in certain areas where structured data conversion is required
+import json
 
 # Try to import required packages
 try:
@@ -84,7 +103,10 @@ class WebPlatformTestsDBIntegration:
                  use_small_models: bool = True,
                  platforms: Optional[List[str]] = None,
                  headless: bool = False,
-                 debug: bool = False):
+                 debug: bool = False,
+                 compute_shaders: bool = False,
+                 parallel_loading: bool = False,
+                 shader_precompile: bool = False):
         """
         Initialize the web platform tests database integration.
         
@@ -96,11 +118,19 @@ class WebPlatformTestsDBIntegration:
             platforms: Web platforms to test ('webnn', 'webgpu', or both)
             headless: Run in headless mode
             debug: Enable debug logging
+            compute_shaders: Enable compute shaders for audio models (March 2025 feature)
+            parallel_loading: Enable parallel loading for multimodal models (March 2025 feature)
+            shader_precompile: Enable shader precompilation (March 2025 feature)
         """
         self.db_path = db_path
         self.results_dir = Path(results_dir)
         self.use_small_models = use_small_models
         self.headless = headless
+        
+        # March 2025 WebGPU enhancements
+        self.compute_shaders = compute_shaders
+        self.parallel_loading = parallel_loading
+        self.shader_precompile = shader_precompile
         
         # Set debug logging if requested
         if debug:
@@ -336,13 +366,17 @@ class WebPlatformTestsDBIntegration:
             hardware_id INTEGER NOT NULL,
             platform VARCHAR NOT NULL,
             browser VARCHAR,
+            browser_version VARCHAR,
             test_file VARCHAR,
             success BOOLEAN,
             load_time_ms FLOAT,
+            initialization_time_ms FLOAT,
             inference_time_ms FLOAT,
+            total_time_ms FLOAT,
+            shader_compilation_time_ms FLOAT,
+            memory_usage_mb FLOAT,
             error_message VARCHAR,
             metrics JSON,
-            test_html TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
             FOREIGN KEY (model_id) REFERENCES models(model_id),
@@ -350,7 +384,30 @@ class WebPlatformTestsDBIntegration:
         )
         """)
         
-        logger.info("Web platform results table created successfully")
+        # Create the WebGPU advanced features table if it doesn't exist
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS webgpu_advanced_features (
+            feature_id INTEGER PRIMARY KEY,
+            result_id INTEGER NOT NULL,
+            compute_shader_support BOOLEAN,
+            parallel_compilation BOOLEAN,
+            shader_cache_hit BOOLEAN,
+            workgroup_size INTEGER,
+            compute_pipeline_time_ms FLOAT,
+            pre_compiled_pipeline BOOLEAN,
+            memory_optimization_level VARCHAR,
+            audio_acceleration BOOLEAN,
+            video_acceleration BOOLEAN,
+            parallel_loading BOOLEAN,
+            parallel_loading_speedup FLOAT,
+            components_loaded INTEGER,
+            component_loading_time_ms FLOAT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (result_id) REFERENCES web_platform_results(result_id)
+        )
+        """)
+        
+        logger.info("Web platform tables created successfully")
     
     def _create_test_run(self) -> int:
         """
@@ -610,6 +667,30 @@ class WebPlatformTestsDBIntegration:
                     
                     if self.use_small_models:
                         cmd.append("--small-models")
+                        
+                    # Set environment variables for the subprocess
+                    env = os.environ.copy()
+                    if platform == "webnn":
+                        env["WEBNN_ENABLED"] = "1"
+                        env["WEBNN_SIMULATION"] = "1"
+                        env["WEBNN_AVAILABLE"] = "1"
+                    elif platform == "webgpu":
+                        env["WEBGPU_ENABLED"] = "1"
+                        env["WEBGPU_SIMULATION"] = "1"
+                        env["WEBGPU_AVAILABLE"] = "1"
+                        
+                        # March 2025 enhancements
+                        if self.compute_shaders:
+                            env["WEBGPU_COMPUTE_SHADERS"] = "1"
+                            logger.info("Enabling WebGPU compute shaders")
+                        
+                        if self.parallel_loading:
+                            env["WEB_PARALLEL_LOADING"] = "1"
+                            logger.info("Enabling parallel model loading")
+                            
+                        if self.shader_precompile:
+                            env["WEBGPU_SHADER_PRECOMPILE"] = "1"
+                            logger.info("Enabling shader precompilation")
                     
                     # Run command
                     logger.info(f"Running command: {' '.join(cmd)}")
@@ -618,7 +699,8 @@ class WebPlatformTestsDBIntegration:
                         cmd,
                         capture_output=True,
                         text=True,
-                        timeout=60  # 1 minute timeout
+                        timeout=60,  # 1 minute timeout
+                        env=env
                     )
                     
                     # Process result
@@ -720,20 +802,69 @@ class WebPlatformTestsDBIntegration:
                     ).fetchone()
                     result_id = result_id_result[0] if result_id_result else 1
                     
+                    # Extract performance metrics
+                    load_time_ms = result.get("load_time_ms", None)
+                    inference_time_ms = result.get("inference_time_ms", None)
+                    initialization_time_ms = result.get("initialization_time_ms", None)
+                    total_time_ms = result.get("total_time_ms", None)
+                    shader_compilation_time_ms = result.get("shader_compilation_time_ms", None)
+                    memory_usage_mb = result.get("memory_usage_mb", None)
+                    browser_version = result.get("browser_version", None)
+                    
                     # Insert result
                     conn.execute("""
                     INSERT INTO web_platform_results (
                         result_id, run_id, model_id, hardware_id, platform, browser,
-                        test_file, success, load_time_ms, inference_time_ms,
-                        error_message, metrics, test_html
+                        browser_version, test_file, success, load_time_ms, initialization_time_ms,
+                        inference_time_ms, total_time_ms, shader_compilation_time_ms,
+                        memory_usage_mb, error_message, metrics
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, [
                         result_id, self.run_id, model_id, hardware_id, 
-                        platform, browser, test_file, success,
-                        None, None, error_message, 
-                        json.dumps(metrics), test_html
+                        platform, browser, browser_version, test_file, success,
+                        load_time_ms, initialization_time_ms, inference_time_ms,
+                        total_time_ms, shader_compilation_time_ms, memory_usage_mb,
+                        error_message, json.dumps(metrics)
                     ])
+                    
+                    # Store advanced WebGPU features if available
+                    if platform == "webgpu" and success and "advanced_features" in result:
+                        adv_features = result.get("advanced_features", {})
+                        
+                        # Get next feature_id
+                        feature_id_result = conn.execute(
+                            "SELECT COALESCE(MAX(feature_id), 0) + 1 FROM webgpu_advanced_features"
+                        ).fetchone()
+                        feature_id = feature_id_result[0] if feature_id_result else 1
+                        
+                        # Insert advanced features
+                        conn.execute("""
+                        INSERT INTO webgpu_advanced_features (
+                            feature_id, result_id, compute_shader_support, parallel_compilation,
+                            shader_cache_hit, workgroup_size, compute_pipeline_time_ms,
+                            pre_compiled_pipeline, memory_optimization_level,
+                            audio_acceleration, video_acceleration,
+                            parallel_loading, parallel_loading_speedup, components_loaded,
+                            component_loading_time_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, [
+                            feature_id, result_id,
+                            adv_features.get("compute_shader_support", False),
+                            adv_features.get("parallel_compilation", False),
+                            adv_features.get("shader_cache_hit", False),
+                            adv_features.get("workgroup_size", 64),
+                            adv_features.get("compute_pipeline_time_ms", 0.0),
+                            adv_features.get("pre_compiled_pipeline", False),
+                            adv_features.get("memory_optimization_level", "none"),
+                            adv_features.get("audio_acceleration", False),
+                            adv_features.get("video_acceleration", False),
+                            adv_features.get("parallel_loading", False),
+                            adv_features.get("parallel_loading_speedup", 1.0),
+                            adv_features.get("components_loaded", 1),
+                            adv_features.get("component_loading_time_ms", 0.0)
+                        ])
                     
                     # Store compatibility info
                     compatibility_id_result = conn.execute(
@@ -872,6 +1003,13 @@ class WebPlatformTestsDBIntegration:
             print(f"  - Timeout: {counts['timeout']}")
             print(f"  - Other: {counts['other']}")
         
+        # Print March 2025 feature usage
+        if "webgpu" in self.platforms:
+            print("\nMarch 2025 Features:")
+            print(f"  - Compute Shaders: {'Enabled' if self.compute_shaders else 'Disabled'}")
+            print(f"  - Parallel Loading: {'Enabled' if self.parallel_loading else 'Disabled'}")
+            print(f"  - Shader Precompilation: {'Enabled' if self.shader_precompile else 'Disabled'}")
+        
         # Print overall results
         print("\nTest run details:")
         print(f"  - Run ID: {self.run_id}")
@@ -901,6 +1039,14 @@ def main():
                               help="Run WebNN tests only")
     platform_group.add_argument("--run-webgpu", action="store_true",
                               help="Run WebGPU tests only")
+    
+    # March 2025 WebGPU enhancements
+    parser.add_argument("--compute-shaders", action="store_true",
+                       help="Enable compute shaders for audio models (March 2025 feature)")
+    parser.add_argument("--parallel-loading", action="store_true",
+                       help="Enable parallel loading for multimodal models (March 2025 feature)")
+    parser.add_argument("--shader-precompile", action="store_true",
+                       help="Enable shader precompilation (March 2025 feature)")
     
     # Other options
     parser.add_argument("--small-models", action="store_true",
@@ -935,7 +1081,10 @@ def main():
             use_small_models=args.small_models,
             platforms=platforms,
             headless=args.headless,
-            debug=args.debug
+            debug=args.debug,
+            compute_shaders=args.compute_shaders,
+            parallel_loading=args.parallel_loading,
+            shader_precompile=args.shader_precompile
         )
         
         # Run tests

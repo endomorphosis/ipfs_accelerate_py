@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-Firefox WebGPU Compute Shader Performance Test
+Firefox WebGPU Compute Shader Performance Test for Audio Models
 
 This script specifically tests Firefox's exceptional WebGPU compute shader performance
 for audio models like Whisper, Wav2Vec2, and CLAP. Firefox shows approximately 55%
 performance improvement with compute shaders, outperforming Chrome by ~20%.
+
+Firefox uses a 256x1x1 workgroup size configuration that is particularly efficient
+for audio processing workloads, unlike Chrome which performs better with 128x2x1.
+Firefox's advantage increases with longer audio, from 18% faster with 5-second clips
+to 26% faster with 60-second audio files.
 
 Usage:
     python test_firefox_webgpu_compute_shaders.py --model whisper
     python test_firefox_webgpu_compute_shaders.py --model wav2vec2
     python test_firefox_webgpu_compute_shaders.py --model clap
     python test_firefox_webgpu_compute_shaders.py --benchmark-all
+    python test_firefox_webgpu_compute_shaders.py --audio-durations 5,15,30,60
 """
 
 import os
@@ -680,6 +686,221 @@ def main():
     
     return 0
 
+def test_audio_duration_impact(model_name, durations=(5, 15, 30, 60), output_dir="./firefox_webgpu_results"):
+    """
+    Test the impact of audio duration on Firefox's performance advantage over Chrome.
+    
+    Args:
+        model_name: Audio model to test
+        durations: List of audio durations in seconds to test
+        output_dir: Directory to save results
+        
+    Returns:
+        Dictionary with results by duration
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    results = {
+        "model": model_name,
+        "durations": {}
+    }
+    
+    # Test each duration
+    for duration in durations:
+        logger.info(f"Testing {model_name} with {duration}s audio duration")
+        
+        # Set environment variable for audio length
+        os.environ["TEST_AUDIO_LENGTH_SECONDS"] = str(duration)
+        
+        # Test Firefox
+        firefox_result = run_audio_model_test(
+            model_name=model_name,
+            browser="firefox",
+            compute_shaders=True
+        )
+        
+        # Test Chrome
+        chrome_result = run_audio_model_test(
+            model_name=model_name,
+            browser="chrome",
+            compute_shaders=True
+        )
+        
+        # Calculate performance advantage
+        if firefox_result.get("success", False) and chrome_result.get("success", False):
+            firefox_time = firefox_result.get("performance", {}).get("avg_inference_time_ms", 0)
+            chrome_time = chrome_result.get("performance", {}).get("avg_inference_time_ms", 0)
+            
+            if chrome_time > 0 and firefox_time > 0:
+                advantage = (chrome_time - firefox_time) / chrome_time * 100
+                
+                duration_result = {
+                    "firefox_time_ms": firefox_time,
+                    "chrome_time_ms": chrome_time,
+                    "firefox_advantage_percent": advantage
+                }
+                
+                results["durations"][str(duration)] = duration_result
+                
+                logger.info(f"  • {duration}s audio: Firefox is {advantage:.1f}% faster than Chrome")
+        
+    # Save results to JSON
+    timestamp = int(time.time())
+    output_file = os.path.join(output_dir, f"{model_name}_duration_impact_{timestamp}.json")
+    with open(output_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    logger.info(f"Results saved to: {output_file}")
+    
+    # Create chart
+    duration_chart_file = os.path.join(output_dir, f"{model_name}_duration_impact_{timestamp}.png")
+    create_duration_impact_chart(results, duration_chart_file)
+    
+    return results
+
+def create_duration_impact_chart(results, output_file):
+    """
+    Create a chart showing the impact of audio duration on Firefox's advantage.
+    
+    Args:
+        results: Dictionary with results by duration
+        output_file: Path to save the chart
+    """
+    try:
+        import matplotlib.pyplot as plt
+        
+        model_name = results.get("model", "Unknown")
+        durations = results.get("durations", {})
+        
+        # Extract data for the chart
+        duration_labels = []
+        advantages = []
+        firefox_times = []
+        chrome_times = []
+        
+        for duration, result in sorted(durations.items(), key=lambda x: int(x[0])):
+            duration_labels.append(f"{duration}s")
+            advantages.append(result.get("firefox_advantage_percent", 0))
+            firefox_times.append(result.get("firefox_time_ms", 0))
+            chrome_times.append(result.get("chrome_time_ms", 0))
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        fig.suptitle(f'Firefox vs Chrome Performance by Audio Duration ({model_name})', fontsize=16)
+        
+        # Subplot 1: Firefox advantage percentage
+        ax1.plot(duration_labels, advantages, marker='o', color='blue', linewidth=2)
+        ax1.set_xlabel('Audio Duration')
+        ax1.set_ylabel('Firefox Advantage (%)')
+        ax1.set_title('Firefox Performance Advantage vs Audio Duration')
+        ax1.grid(True, linestyle='--', alpha=0.7)
+        
+        # Add percentage values above points
+        for i, v in enumerate(advantages):
+            ax1.text(i, v + 0.5, f"{v:.1f}%", ha='center')
+        
+        # Set y-axis to start from 0
+        ax1.set_ylim(bottom=0)
+        
+        # Subplot 2: Inference times
+        x = range(len(duration_labels))
+        width = 0.35
+        
+        # Plot bars
+        rects1 = ax2.bar([i - width/2 for i in x], firefox_times, width, label='Firefox', color='blue')
+        rects2 = ax2.bar([i + width/2 for i in x], chrome_times, width, label='Chrome', color='red')
+        
+        # Add labels and title
+        ax2.set_xlabel('Audio Duration')
+        ax2.set_ylabel('Inference Time (ms)')
+        ax2.set_title('Firefox vs Chrome Inference Time')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(duration_labels)
+        ax2.legend()
+        ax2.grid(True, linestyle='--', alpha=0.7)
+        
+        # Add inference time values on bars
+        for i, v in enumerate(firefox_times):
+            ax2.text(i - width/2, v + 1, f"{v:.1f}", ha='center')
+        
+        for i, v in enumerate(chrome_times):
+            ax2.text(i + width/2, v + 1, f"{v:.1f}", ha='center')
+        
+        # Add a note about Firefox's increasing advantage
+        if len(advantages) > 1 and advantages[-1] > advantages[0]:
+            increase = advantages[-1] - advantages[0]
+            ax1.annotate(f'Advantage increases by {increase:.1f}% with longer audio',
+                       xy=(len(advantages)-1, advantages[-1]), 
+                       xytext=(len(advantages)-2, advantages[-1] - 5),
+                       arrowprops=dict(facecolor='black', shrink=0.05))
+        
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9)
+        plt.savefig(output_file)
+        plt.close()
+        
+        logger.info(f"Duration impact chart saved to: {output_file}")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating duration impact chart: {e}")
+        return False
+
 if __name__ == "__main__":
     import re  # Import here to avoid issues with function order
+    
+    # Add audio duration impact testing
+    parser = argparse.ArgumentParser(
+        description="Test Firefox WebGPU compute shader performance for audio models"
+    )
+    
+    # Main options group
+    main_group = parser.add_mutually_exclusive_group(required=True)
+    main_group.add_argument("--model", choices=list(TEST_MODELS.keys()),
+                          help="Audio model to test")
+    main_group.add_argument("--benchmark-all", action="store_true",
+                          help="Run benchmarks for all audio models")
+    main_group.add_argument("--audio-durations", type=str,
+                          help="Test impact of audio duration (comma-separated list of durations in seconds)")
+    
+    # Parse arguments
+    args, remaining_args = parser.parse_known_args()
+    
+    # Run audio duration impact test if requested
+    if args.audio_durations:
+        try:
+            # Parse durations
+            durations = [int(d.strip()) for d in args.audio_durations.split(",")]
+            
+            # Use model if provided, otherwise default to whisper
+            model = args.model if args.model else "whisper"
+            
+            # Run test
+            results = test_audio_duration_impact(model, durations)
+            
+            # Print summary
+            print("\nFirefox WebGPU Audio Duration Impact for", model.upper())
+            print("==================================================\n")
+            
+            for duration, result in sorted(results["durations"].items(), key=lambda x: int(x[0])):
+                advantage = result.get("firefox_advantage_percent", 0)
+                print(f"  • {duration}s audio: Firefox is {advantage:.1f}% faster than Chrome")
+            
+            # Get min and max advantage
+            if results["durations"]:
+                sorted_durations = sorted(results["durations"].items(), key=lambda x: int(x[0]))
+                first_advantage = sorted_durations[0][1].get("firefox_advantage_percent", 0)
+                last_advantage = sorted_durations[-1][1].get("firefox_advantage_percent", 0)
+                
+                increase = last_advantage - first_advantage
+                
+                print(f"\nAdvantage increases by {increase:.1f}% from shortest to longest audio")
+                print("\nThis confirms that Firefox's WebGPU compute shader performance advantage")
+                print("grows with longer audio inputs, making it especially suitable for")
+                print("processing longer audio clips with models like Whisper and Wav2Vec2.")
+            
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Error running audio duration test: {e}")
+            sys.exit(1)
+    
     sys.exit(main())

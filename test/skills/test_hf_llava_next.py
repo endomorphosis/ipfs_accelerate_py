@@ -999,7 +999,7 @@ class test_hf_llava_next:
 
 
 
-    def init_webgpu(self, model_name=None):
+                def init_webgpu(self, model_name=None):
         """Initialize vision model for WebGPU inference.
         
         WebGPU support requires browser environment or dedicated WebGPU runtime.

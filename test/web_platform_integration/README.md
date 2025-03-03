@@ -211,6 +211,53 @@ To verify the implementation:
    python test/scripts/benchmark_db_query.py --report web_platform --format html
    ```
 
+## High-Priority Model Coverage for Web Platforms
+
+All 13 high-priority model classes are now supported on web platforms with varying degrees of compatibility:
+
+| Model Class | WebNN | WebGPU | Simulation Mode | Key Enhancements |
+|-------------|-------|--------|----------------|------------------|
+| BERT | ✅ Full | ✅ Full | ✅ | Shader precompilation |
+| T5 | ✅ Full | ✅ Full | ✅ | Batch processing optimization |
+| LLAMA | ⚠️ Limited | ⚠️ Limited | ✅ | Memory optimization |
+| CLIP | ✅ Full | ✅ Full | ✅ | Parallel loading |
+| ViT | ✅ Full | ✅ Full | ✅ | Shader precompilation |
+| CLAP | ⚠️ Limited | ✅ Full | ✅ | Compute shader support |
+| Whisper | ⚠️ Limited | ✅ Full | ✅ | Compute shader support |
+| Wav2Vec2 | ⚠️ Limited | ✅ Full | ✅ | Compute shader support |
+| LLaVA | ⚠️ Limited | ⚠️ Limited | ✅ | Parallel loading |
+| LLaVA-Next | ⚠️ Limited | ⚠️ Limited | ✅ | Parallel loading |
+| XCLIP | ⚠️ Limited | ⚠️ Limited | ✅ | Frame processing optimization |
+| Qwen2/3 | ⚠️ Limited | ⚠️ Limited | ✅ | Memory optimization |
+| DETR | ⚠️ Limited | ✅ Limited | ✅ | Detection optimization |
+
+### Testing Recommendations for Each Model Class
+
+1. **BERT/T5/ViT/CLIP (Full Support)**
+   - Run full test suite across all browsers
+   - Benchmark with DB integration
+   - Test shader precompilation
+
+2. **CLAP/Whisper/Wav2Vec2 (Audio Models)**
+   - Focus on WebGPU with compute shaders
+   - Test on Chrome and Firefox
+   - Compare with and without compute shader optimization
+
+3. **LLaMA/Qwen (LLMs)**
+   - Test with memory constraints
+   - Use smaller variants only
+   - Focus on simulation mode testing
+
+4. **LLaVA/LLaVA-Next/XCLIP (Multimodal)**
+   - Test parallel loading feature
+   - Focus on component loading times
+   - Use simulation mode for comprehensive testing
+
+5. **DETR (Detection)**
+   - Test WebGPU implementation
+   - Focus on detection optimization
+   - Measure memory usage
+
 ## Browser Support
 
 | Browser | WebNN | WebGPU | Compute Shaders | Notes |

@@ -1,0 +1,34 @@
+{
+  "total_files": 7,
+  "files_fixed": 2,
+  "total_issues_fixed": 13,
+  "files_details": [
+    {
+      "file": "test_hf_vit_mae.py",
+      "model_name": "vit_mae",
+      "issues_fixed": 5,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added mps hardware platform support",
+        "Added rocm hardware platform support",
+        "Added webnn hardware platform support",
+        "Added webgpu hardware platform support"
+      ]
+    },
+    {
+      "file": "test_hf_vit.py",
+      "model_name": "vit",
+      "issues_fixed": 8,
+      "fixed_issues": [
+        "Added asyncio import",
+        "Fixed method indentation",
+        "Added cpu hardware platform support",
+        "Added cuda hardware platform support",
+        "Added mps hardware platform support",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    }
+  ]
+}

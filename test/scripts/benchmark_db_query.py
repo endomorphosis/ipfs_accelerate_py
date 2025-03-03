@@ -41,7 +41,7 @@ def parse_args():
     query_group = parser.add_mutually_exclusive_group(required=True)
     query_group.add_argument("--sql", type=str, 
                              help="Execute a custom SQL query")
-    query_group.add_argument("--report", type=str, choices=['performance', 'hardware', 'integration', 'summary'],
+    query_group.add_argument("--report", type=str, choices=['performance', 'hardware', 'integration', 'summary', 'web_platform', 'webgpu'],
                              help="Generate a predefined report")
     query_group.add_argument("--model", type=str,
                              help="Query data for a specific model")
@@ -1210,6 +1210,10 @@ def main():
             result = generate_integration_report(conn, args)
         elif args.report == 'summary':
             result = generate_summary_report(conn, args)
+        elif args.report == 'web_platform':
+            result = generate_web_platform_report(conn, args)
+        elif args.report == 'webgpu':
+            result = generate_webgpu_features_report(conn, args)
     
     elif args.model:
         # Query data for a specific model
