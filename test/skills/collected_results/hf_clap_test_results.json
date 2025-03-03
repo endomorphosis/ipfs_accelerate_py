@@ -5,38 +5,15 @@
     16000
   ],
   "load_audio_sample_rate": 16000,
-  "load_audio_timestamp": 1740892825.424461,
+  "load_audio_timestamp": 1740983824.75651,
   "load_audio_tensor": "Success (REAL)",
   "load_audio_tensor_shape": [
     1,
     16000
   ],
-  "load_audio_tensor_timestamp": 1740892825.4245307,
-  "cpu_init": "Success (REAL)",
-  "cpu_audio_embedding": "Success (REAL)",
-  "cpu_audio_embedding_shape": [
-    1,
-    512
-  ],
-  "cpu_audio_embedding_timestamp": 1740892825.9061613,
-  "cpu_audio_embedding_time": 6.794929504394531e-05,
-  "cpu_text_embedding": "Success (REAL)",
-  "cpu_text_embedding_shape": [
-    1,
-    512
-  ],
-  "cpu_text_embedding_timestamp": 1740892825.9061704,
-  "cpu_text_embedding_time": 7.3909759521484375e-06,
-  "cpu_similarity": "Success (REAL)",
-  "cpu_similarity_score": 0.800000011920929,
-  "cpu_similarity_timestamp": 1740892825.9061995,
-  "cpu_similarity_time": 2.47955322265625e-05,
-  "cpu_example": {
-    "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
-    "input_text": "buzzing bees",
-    "timestamp": 1740892825.9062006,
-    "implementation": "(REAL)"
-  },
+  "load_audio_tensor_timestamp": 1740983824.7565875,
+  "cpu_init": "Failed CPU initialization",
+  "cpu_tests": "Error: 'NoneType' object is not callable",
   "cuda_init": "Success (REAL)",
   "cuda_handler": "Success (REAL)",
   "cuda_capabilities": {
@@ -45,7 +22,7 @@
     "memory_allocated_mb": 3.8193359375,
     "memory_reserved_mb": 22.0
   },
-  "cuda_output_timestamp": 1740892826.1293721,
+  "cuda_output_timestamp": 1740983825.4386606,
   "cuda_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -57,12 +34,12 @@
     "memory_reserved_mb",
     "processing_time_ms"
   ],
-  "cuda_similarity_score": -0.2768245339393616,
+  "cuda_similarity_score": -0.24434645473957062,
   "cuda_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740892826.1302574,
-    "elapsed_time": 0.008658409118652344,
+    "timestamp": 1740983825.4397335,
+    "elapsed_time": 0.0019550323486328125,
     "implementation_type": "REAL",
     "platform": "CUDA",
     "is_simulated": false,
@@ -70,12 +47,12 @@
     "performance": {
       "memory_allocated_mb": 3.8193359375,
       "memory_reserved_mb": 22.0,
-      "processing_time_ms": 8.658409118652344
+      "processing_time_ms": 1.9550323486328125
     }
   },
   "openvino_init": "Success (REAL)",
   "openvino_handler": "Success (REAL)",
-  "openvino_output_timestamp": 1740892826.7744305,
+  "openvino_output_timestamp": 1740983825.704968,
   "openvino_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -93,13 +70,13 @@
   "openvino_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740892826.774456,
+    "timestamp": 1740983825.7049952,
     "implementation": "(REAL)"
   },
   "apple_tests": "Apple Silicon not available",
   "qualcomm_init": "Failed Qualcomm initialization",
   "qualcomm_handler": "Success (REAL)",
-  "qualcomm_output_timestamp": 1740892826.7804787,
+  "qualcomm_output_timestamp": 1740983825.7148244,
   "qualcomm_output_keys": [
     "audio_embedding",
     "text_embedding",
@@ -117,18 +94,18 @@
   "qualcomm_example": {
     "input_audio": "https://calamitymod.wiki.gg/images/2/29/Bees3.wav",
     "input_text": "buzzing bees",
-    "timestamp": 1740892826.7805037,
+    "timestamp": 1740983825.7148483,
     "implementation": "(REAL)"
   },
   "metadata": {
-    "timestamp": 1740892826.788187,
+    "timestamp": 1740983825.7203574,
     "torch_version": "2.6.0+cu124",
     "numpy_version": "2.1.3",
     "cuda_available": true,
     "cuda_device_count": 1,
     "mps_available": false,
     "test_model": "/tmp/clap_test_model",
-    "test_run_id": "clap-test-1740892826",
+    "test_run_id": "clap-test-1740983825",
     "mock_implementation": false,
     "implementation_type": "(REAL)",
     "transformers_available": true,

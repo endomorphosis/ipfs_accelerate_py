@@ -15,6 +15,35 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Third-party imports
 import numpy as np
 
+# WebGPU imports and mock setup
+HAS_WEBGPU = False
+try:
+    # Attempt to check for WebGPU availability
+    import ctypes
+    HAS_WEBGPU = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webgpu') is not None
+except ImportError:
+    HAS_WEBGPU = False
+
+# WebNN imports and mock setup
+HAS_WEBNN = False
+try:
+    # Attempt to check for WebNN availability
+    import ctypes
+    HAS_WEBNN = hasattr(ctypes.util, 'find_library') and ctypes.util.find_library('webnn') is not None
+except ImportError:
+    HAS_WEBNN = False
+
+# ROCm imports and detection
+HAS_ROCM = False
+try:
+    if torch.cuda.is_available() and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+        ROCM_VERSION = torch._C._rocm_version()
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+except:
+    HAS_ROCM = False
+
 # Try/except pattern for optional dependencies
 try:
     import torch
@@ -233,6 +262,216 @@ class test_hf_detr:
             print(f"Error saving results: {save_err}")
         
         return test_results
+
+
+
+    def init_rocm(self, model_name=None, device="hip"):
+        """Initialize audio model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_name
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing audio model {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize audio processor
+            processor = transformers.AutoProcessor.from_pretrained(model_name)
+            
+            # Initialize model based on model type
+            if "whisper" in model_name.lower():
+                model = transformers.AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+            else:
+                model = transformers.AutoModelForAudioClassification.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(audio_input, **kwargs):
+                try:
+                    # Process based on input type
+                    if isinstance(audio_input, str):
+                        # Assuming file path
+                        import librosa
+                        waveform, sample_rate = librosa.load(audio_input, sr=16000)
+                        inputs = processor(waveform, sampling_rate=sample_rate, return_tensors="pt")
+                    else:
+                        # Assume properly formatted input
+                        inputs = processor(audio_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm audio handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = 1  # For audio models
+            
+            # Return components
+            return model, processor, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing audio model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+
+
+
+    def init_webnn(self, model_name=None):
+        """Initialize audio model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_name
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the processor
+            processor = transformers.AutoProcessor.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load audio processor: {str(e)}")
+            # Create mock processor
+            class MockAudioProcessor:
+                def __call__(self, audio, **kwargs):
+                    return {"input_features": np.zeros((1, 80, 3000))}
+                    
+            processor = MockAudioProcessor()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Handler for WebNN
+        def handler(audio_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(audio_input, str):
+                # Assuming file path for audio
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for audio model",
+                    "implementation_type": "WebNN_READY",
+                    "input_audio_path": audio_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_audio  # Provide test data from the test class
+                }
+            elif isinstance(audio_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for audio model"] * len(audio_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": audio_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn  # Provide batch test data
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+
+
+
+    def init_webgpu(self, model_name=None):
+        """Initialize audio model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_name
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the processor
+            processor = transformers.AutoProcessor.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load audio processor: {str(e)}")
+            # Create mock processor
+            class MockAudioProcessor:
+                def __call__(self, audio, **kwargs):
+                    return {"input_features": np.zeros((1, 80, 3000))}
+                    
+            processor = MockAudioProcessor()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Handler for WebGPU
+        def handler(audio_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(audio_input, str):
+                # Assuming file path for audio
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for audio model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_audio_path": audio_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_audio  # Provide test data from the test class
+                }
+            elif isinstance(audio_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for audio model"] * len(audio_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": audio_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu  # Provide batch test data
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
 
 if __name__ == "__main__":
     try:

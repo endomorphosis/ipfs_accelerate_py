@@ -1,0 +1,62 @@
+[
+  {
+    "model_name": "bert-base-uncased",
+    "model_family": "bert",
+    "modality": "text",
+    "hardware_type": "cpu",
+    "device_name": "Intel Core i9-12900K",
+    "batch_size": 8,
+    "precision": "fp32",
+    "test_case": "embedding",
+    "total_time_seconds": 152.8,
+    "average_latency_ms": 19.1,
+    "throughput_items_per_second": 52.4,
+    "memory_peak_mb": 1536.2,
+    "iterations": 100,
+    "warmup_iterations": 10,
+    "metrics": {
+      "cpu_util_percent": 78.5,
+      "memory_util_percent": 12.3
+    }
+  },
+  {
+    "model_name": "bert-base-uncased",
+    "model_family": "bert",
+    "modality": "text",
+    "hardware_type": "cpu",
+    "device_name": "Intel Core i9-12900K",
+    "batch_size": 16,
+    "precision": "fp32",
+    "test_case": "embedding",
+    "total_time_seconds": 203.5,
+    "average_latency_ms": 12.7,
+    "throughput_items_per_second": 78.6,
+    "memory_peak_mb": 2048.4,
+    "iterations": 100,
+    "warmup_iterations": 10,
+    "metrics": {
+      "cpu_util_percent": 96.2,
+      "memory_util_percent": 18.5
+    }
+  },
+  {
+    "model_name": "bert-base-uncased",
+    "model_family": "bert",
+    "modality": "text",
+    "hardware_type": "cpu",
+    "device_name": "Intel Core i9-12900K",
+    "batch_size": 32,
+    "precision": "fp32",
+    "test_case": "embedding",
+    "total_time_seconds": 294.1,
+    "average_latency_ms": 9.2,
+    "throughput_items_per_second": 108.8,
+    "memory_peak_mb": 3072.6,
+    "iterations": 100,
+    "warmup_iterations": 10,
+    "metrics": {
+      "cpu_util_percent": 99.5,
+      "memory_util_percent": 27.8
+    }
+  }
+]

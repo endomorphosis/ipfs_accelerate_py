@@ -1,0 +1,79 @@
+{
+  "timestamp": "20250302_213021",
+  "hardware_types": [
+    "cpu",
+    "cuda"
+  ],
+  "model_families": {
+    "embedding": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "multimodal": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "audio": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "vision": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "text_generation": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    }
+  }
+}

@@ -108,10 +108,10 @@ Below is a compatibility matrix for different model families with web platforms:
 | Model Family | WebNN | WebGPU | Examples | Notes |
 |--------------|-------|--------|----------|-------|
 | Embedding | ✅ High | ✅ Medium | BERT, RoBERTa | Best on WebNN |
-| Vision | ✅ Medium | ✅ High | ViT, ResNet | Best on WebGPU |
-| Text Generation (small) | ✅ Medium | ❌ Low | T5 (tiny/small) | Limited to small models, WebNN preferred |
-| Audio | ❌ | ❌ | Whisper | Not currently supported in browsers |
-| Multimodal | ❌ | ❌ | LLaVA, CLIP | Not currently supported in browsers |
+| Vision | ✅ Medium | ✅ High | ViT, ResNet, XCLIP | Best on WebGPU |
+| Text Generation (small) | ✅ Medium | ✅ Low | T5 (tiny/small) | Limited to small models, WebNN preferred |
+| Audio | ✅ Medium | ✅ Low | Whisper, Wav2Vec2 | ONNX export with simulation support |
+| Multimodal | ✅ Low | ✅ Medium | CLIP, Qwen2_vl | Limited to vision-language models |
 
 ### Web Platform Simulation Mode
 

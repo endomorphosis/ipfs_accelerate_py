@@ -288,46 +288,46 @@ def generate_sample_data(conn):
     # Sample hardware platforms
     hardware_data = [
         (1, 'cpu', 'Intel Core i9-12900K', 'x86_64', '5.15.0-76-generic', 'N/A', 64.0, 16, 
-         json.dumps({'cores': 16, 'threads': 24})),
+         json.dumps({'cores': 16, 'threads': 24}), datetime.datetime.now()),
         (2, 'cuda', 'NVIDIA RTX 4090', 'CUDA', '12.1', '535.54.03', 24.0, 128, 
-         json.dumps({'cuda_cores': 16384, 'tensor_cores': 512})),
+         json.dumps({'cuda_cores': 16384, 'tensor_cores': 512}), datetime.datetime.now()),
         (3, 'rocm', 'AMD Radeon RX 7900 XTX', 'ROCm', '5.5.0', '5.5.0', 24.0, 96, 
-         json.dumps({'compute_units': 96, 'stream_processors': 12288})),
+         json.dumps({'compute_units': 96, 'stream_processors': 12288}), datetime.datetime.now()),
         (4, 'mps', 'Apple M2 Ultra', 'macOS', '14.1', 'N/A', 32.0, 76, 
-         json.dumps({'neural_engine_cores': 16})),
+         json.dumps({'neural_engine_cores': 16}), datetime.datetime.now()),
         (5, 'openvino', 'Intel Neural Compute Stick 2', 'OpenVINO', '2023.0', '2023.0', 4.0, 16,
-         json.dumps({'vpu_cores': 16})),
+         json.dumps({'vpu_cores': 16}), datetime.datetime.now()),
         (6, 'webnn', 'Chrome Browser', 'WebNN', '121.0', 'N/A', 0, 0,
-         json.dumps({'user_agent': 'Mozilla/5.0 Chrome/121.0.0.0'})),
+         json.dumps({'user_agent': 'Mozilla/5.0 Chrome/121.0.0.0'}), datetime.datetime.now()),
         (7, 'webgpu', 'Firefox Browser', 'WebGPU', '122.0', 'N/A', 0, 0,
-         json.dumps({'user_agent': 'Mozilla/5.0 Firefox/122.0'}))
+         json.dumps({'user_agent': 'Mozilla/5.0 Firefox/122.0'}), datetime.datetime.now())
     ]
     
     hardware_df = pd.DataFrame(hardware_data, columns=[
         'hardware_id', 'hardware_type', 'device_name', 'platform', 'platform_version',
-        'driver_version', 'memory_gb', 'compute_units', 'metadata'
+        'driver_version', 'memory_gb', 'compute_units', 'metadata', 'created_at'
     ])
     conn.execute("INSERT INTO hardware_platforms SELECT * FROM hardware_df")
     
     # Sample models
     model_data = [
         (1, 'bert-base-uncased', 'bert', 'text', 'huggingface', '1.0', 110.0,
-         json.dumps({'vocab_size': 30522, 'hidden_size': 768})),
+         json.dumps({'vocab_size': 30522, 'hidden_size': 768}), datetime.datetime.now()),
         (2, 't5-small', 't5', 'text', 'huggingface', '1.0', 60.0,
-         json.dumps({'vocab_size': 32128, 'hidden_size': 512})),
+         json.dumps({'vocab_size': 32128, 'hidden_size': 512}), datetime.datetime.now()),
         (3, 'whisper-tiny', 'whisper', 'audio', 'huggingface', '1.0', 39.0,
-         json.dumps({'mel_filters': 80, 'hidden_size': 384})),
+         json.dumps({'mel_filters': 80, 'hidden_size': 384}), datetime.datetime.now()),
         (4, 'opt-125m', 'llama', 'text', 'huggingface', '1.0', 125.0,
-         json.dumps({'vocab_size': 50272, 'hidden_size': 768})),
+         json.dumps({'vocab_size': 50272, 'hidden_size': 768}), datetime.datetime.now()),
         (5, 'vit-base', 'vit', 'image', 'huggingface', '1.0', 86.0,
-         json.dumps({'image_size': 224, 'patch_size': 16, 'hidden_size': 768})),
+         json.dumps({'image_size': 224, 'patch_size': 16, 'hidden_size': 768}), datetime.datetime.now()),
         (6, 'llava-onevision-base', 'llava', 'multimodal', 'huggingface', '1.0', 860.0,
-         json.dumps({'image_size': 336, 'hidden_size': 4096}))
+         json.dumps({'image_size': 336, 'hidden_size': 4096}), datetime.datetime.now())
     ]
     
     model_df = pd.DataFrame(model_data, columns=[
         'model_id', 'model_name', 'model_family', 'modality', 'source', 'version',
-        'parameters_million', 'metadata'
+        'parameters_million', 'metadata', 'created_at'
     ])
     conn.execute("INSERT INTO models SELECT * FROM model_df")
     

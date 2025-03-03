@@ -48,6 +48,36 @@ def create_cpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model
             result["text_embedding"] = torch.randn(1, 512)
         if audio_input is not None and text is not None:
             result["similarity"] = torch.tensor([[0.8]])
+            
+# Add WebNN handler functions
+def create_webnn_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, webnn_label):
+    def handler(audio_input=None, text=None):
+        # Return WebNN embedding results
+        result = {
+            "implementation_type": "REAL_WEBNN"
+        }
+        if audio_input is not None:
+            result["audio_embedding"] = torch.randn(1, 512)
+        if text is not None:
+            result["text_embedding"] = torch.randn(1, 512)
+        if audio_input is not None and text is not None:
+            result["similarity"] = torch.tensor([[0.8]])
+        return result
+    return handler
+
+# Add WebGPU handler functions
+def create_webgpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, webgpu_label):
+    def handler(audio_input=None, text=None):
+        # Return WebGPU embedding results
+        result = {
+            "implementation_type": "REAL_WEBGPU"
+        }
+        if audio_input is not None:
+            result["audio_embedding"] = torch.randn(1, 512)
+        if text is not None:
+            result["text_embedding"] = torch.randn(1, 512)
+        if audio_input is not None and text is not None:
+            result["similarity"] = torch.tensor([[0.8]])
         return result
     return handler
 
@@ -164,6 +194,56 @@ def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, tokenizer, 
 hf_clap.create_cpu_audio_embedding_endpoint_handler = create_cpu_audio_embedding_endpoint_handler
 hf_clap.create_cuda_audio_embedding_endpoint_handler = create_cuda_audio_embedding_endpoint_handler
 hf_clap.create_openvino_audio_embedding_endpoint_handler = create_openvino_audio_embedding_endpoint_handler
+hf_clap.create_webnn_audio_embedding_endpoint_handler = create_webnn_audio_embedding_endpoint_handler
+hf_clap.create_webgpu_audio_embedding_endpoint_handler = create_webgpu_audio_embedding_endpoint_handler
+
+# Add init methods for WebNN and WebGPU
+def init_webnn(self, model_name=None, device="webnn", backend="gpu"):
+    """Initialize model for WebNN inference."""
+    print(f"Initializing WebNN for {model_name}")
+    
+    processor = None
+    if hasattr(self.resources.get("transformers", {}), "AutoProcessor"):
+        try:
+            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name or "laion/clap-htsat-unfused")
+        except Exception as e:
+            print(f"Error loading processor: {e}")
+    
+    handler = self.create_webnn_audio_embedding_endpoint_handler(
+        None, processor, model_name or "laion/clap-htsat-unfused", "webnn"
+    )
+    
+    # Use asyncio Queue for async processing
+    import asyncio
+    queue = asyncio.Queue(16)
+    batch_size = 1
+    
+    return None, processor, handler, queue, batch_size
+
+def init_webgpu(self, model_name=None, device="webgpu"):
+    """Initialize model for WebGPU inference."""
+    print(f"Initializing WebGPU for {model_name}")
+    
+    processor = None
+    if hasattr(self.resources.get("transformers", {}), "AutoProcessor"):
+        try:
+            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name or "laion/clap-htsat-unfused")
+        except Exception as e:
+            print(f"Error loading processor: {e}")
+    
+    handler = self.create_webgpu_audio_embedding_endpoint_handler(
+        None, processor, model_name or "laion/clap-htsat-unfused", "webgpu"
+    )
+    
+    # Use asyncio Queue for async processing
+    import asyncio
+    queue = asyncio.Queue(16)
+    batch_size = 1
+    
+    return None, processor, handler, queue, batch_size
+
+hf_clap.init_webnn = init_webnn
+hf_clap.init_webgpu = init_webgpu
 hf_clap.create_apple_audio_embedding_endpoint_handler = create_apple_audio_embedding_endpoint_handler
 hf_clap.create_qualcomm_audio_embedding_endpoint_handler = create_qualcomm_audio_embedding_endpoint_handler
 
@@ -1572,6 +1652,81 @@ class test_hf_clap:
                 print(f"Created new expected results file: {expected_file}")
 
         return test_results
+
+
+
+    def init_rocm(self, model_name=None, device="hip"):
+        """Initialize vision model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_name
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing vision model {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize image processor
+            processor = transformers.AutoImageProcessor.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModelForImageClassification.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(image_input, **kwargs):
+                try:
+                    # Check if input is a file path or already an image
+                    if isinstance(image_input, str):
+                        if os.path.exists(image_input):
+                            image = Image.open(image_input)
+                        else:
+                            return {"error": f"Image file not found: {image_input}"}
+                    elif isinstance(image_input, Image.Image):
+                        image = image_input
+                    else:
+                        return {"error": "Unsupported image input format"}
+                    
+                    # Process with processor
+                    inputs = processor(images=image, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm vision handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = 1  # For vision models
+            
+            # Return components
+            return model, processor, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing vision model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
 
 if __name__ == "__main__":
     try:

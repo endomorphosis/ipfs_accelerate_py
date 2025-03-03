@@ -1,0 +1,344 @@
+name: Benchmark Database CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'test/**'
+      - '.github/workflows/benchmark_db_ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'test/**'
+  workflow_dispatch:
+    inputs:
+      test_model:
+        description: 'Model to test'
+        required: false
+        default: 'all'
+      hardware:
+        description: 'Hardware to test on'
+        required: false
+        default: 'cpu'
+        type: choice
+        options:
+          - cpu
+          - cuda
+          - all
+      batch_size:
+        description: 'Batch sizes to test'
+        required: false
+        default: '1,2,4,8'
+
+jobs:
+  setup_database:
+    runs-on: ubuntu-latest
+    outputs:
+      db_path: ${{ steps.setup_db.outputs.db_path }}
+      today_date: ${{ steps.date.outputs.date }}
+      run_id: ${{ steps.runid.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/scripts/requirements_db.txt
+      
+      - name: Get date
+        id: date
+        run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+        
+      - name: Generate run ID
+        id: runid
+        run: echo "run_id=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+      
+      - name: Set up database
+        id: setup_db
+        run: |
+          mkdir -p benchmark_db
+          echo "db_path=benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb" >> $GITHUB_OUTPUT
+          python test/scripts/create_benchmark_schema.py --output benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb --sample-data
+      
+      - name: Generate CI metadata
+        run: |
+          cat > ci_metadata.json << EOF
+          {
+            "workflow_id": "${{ github.run_id }}",
+            "workflow_name": "${{ github.workflow }}",
+            "run_id": "${{ steps.runid.outputs.run_id }}",
+            "github_ref": "${{ github.ref }}",
+            "github_repository": "${{ github.repository }}",
+            "github_actor": "${{ github.actor }}",
+            "trigger_event": "${{ github.event_name }}"
+          }
+          EOF
+          
+      - name: Upload database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db
+          path: benchmark_db/ci_benchmark_${{ steps.runid.outputs.run_id }}.duckdb
+          
+      - name: Upload CI metadata
+        uses: actions/upload-artifact@v3
+        with:
+          name: ci-metadata
+          path: ci_metadata.json
+          
+  run_benchmarks:
+    needs: setup_database
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        model:
+          - ${{ github.event.inputs.test_model == 'all' && 'bert-base-uncased' || github.event.inputs.test_model }}
+          - ${{ github.event.inputs.test_model == 'all' && 't5-small' || '' }}
+          - ${{ github.event.inputs.test_model == 'all' && 'vit-base' || '' }}
+        hardware:
+          - ${{ github.event.inputs.hardware == 'all' && 'cpu' || github.event.inputs.hardware }}
+          - ${{ github.event.inputs.hardware == 'all' && 'cuda' || '' }}
+        exclude:
+          - model: ""
+          - hardware: ""
+        
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/scripts/requirements_db.txt
+          pip install -r test/requirements.txt
+          
+      - name: Download database
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-db
+          path: benchmark_db
+          
+      - name: Download CI metadata
+        uses: actions/download-artifact@v3
+        with:
+          name: ci-metadata
+          path: .
+          
+      - name: Get git info
+        id: git_info
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+          
+      - name: Run benchmark with database
+        run: |
+          DB_FILE=$(find benchmark_db -name "*.duckdb" | head -n 1)
+          python test/run_benchmark_with_db.py \
+            --db $DB_FILE \
+            --model ${{ matrix.model }} \
+            --hardware ${{ matrix.hardware }} \
+            --batch-sizes ${{ github.event.inputs.batch_size || '1,2,4,8' }} \
+            --commit ${{ steps.git_info.outputs.commit }} \
+            --branch ${{ steps.git_info.outputs.branch }} \
+            --iterations 20 \
+            --warmup 5 \
+            --test-name "ci_benchmark_${{ matrix.model }}_${{ matrix.hardware }}_${{ needs.setup_database.outputs.run_id }}"
+            
+      - name: Generate result JSON
+        run: |
+          mkdir -p benchmark_results
+          cat > benchmark_results/benchmark_${{ matrix.model }}_${{ matrix.hardware }}.json << EOF
+          {
+            "model_name": "${{ matrix.model }}",
+            "hardware_type": "${{ matrix.hardware }}",
+            "batch_sizes": "${{ github.event.inputs.batch_size || '1,2,4,8' }}",
+            "git_commit": "${{ steps.git_info.outputs.commit }}",
+            "git_branch": "${{ steps.git_info.outputs.branch }}",
+            "ci_run_id": "${{ needs.setup_database.outputs.run_id }}",
+            "timestamp": "$(date -Iseconds)",
+            "test_name": "ci_benchmark_${{ matrix.model }}_${{ matrix.hardware }}_${{ needs.setup_database.outputs.run_id }}"
+          }
+          EOF
+            
+      - name: Upload updated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-db-updated-${{ matrix.model }}-${{ matrix.hardware }}
+          path: benchmark_db
+          
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results-${{ matrix.model }}-${{ matrix.hardware }}
+          path: benchmark_results
+          
+  consolidate_results:
+    needs: [setup_database, run_benchmarks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/scripts/requirements_db.txt
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+          
+      - name: List downloaded artifacts
+        run: |
+          find artifacts -type f | sort
+          
+      - name: Process CI artifacts with integrator
+        run: |
+          python test/scripts/ci_benchmark_integrator.py \
+            --artifacts-dir ./artifacts \
+            --db ./consolidated_db.duckdb \
+            --ci-metadata ./artifacts/ci-metadata/ci_metadata.json \
+            --commit ${{ github.sha }} \
+            --branch ${{ github.ref_name }} \
+            --build-id ${{ needs.setup_database.outputs.run_id }} \
+            --ci-platform "github" \
+            --archive-artifacts \
+            --archive-dir ./archived_artifacts
+          
+      - name: Generate reports
+        run: |
+          # Generate performance report
+          python test/scripts/benchmark_db_query.py \
+            --db ./consolidated_db.duckdb \
+            --report performance \
+            --format html \
+            --output performance_report_${{ needs.setup_database.outputs.today_date }}.html
+            
+          # Generate compatibility matrix
+          python test/scripts/benchmark_db_query.py \
+            --db ./consolidated_db.duckdb \
+            --compatibility-matrix \
+            --format html \
+            --output compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.html
+            
+          # Generate hardware comparison chart
+          python test/scripts/benchmark_db_query.py \
+            --db ./consolidated_db.duckdb \
+            --hardware-comparison-chart \
+            --metric throughput \
+            --output hardware_comparison_${{ needs.setup_database.outputs.today_date }}.png
+            
+          # Generate summary JSON
+          python test/scripts/benchmark_db_query.py \
+            --db ./consolidated_db.duckdb \
+            --summary \
+            --format json \
+            --output benchmark_summary_${{ needs.setup_database.outputs.today_date }}.json
+          
+      - name: Upload consolidated database
+        uses: actions/upload-artifact@v3
+        with:
+          name: consolidated-benchmark-db
+          path: consolidated_db.duckdb
+          
+      - name: Upload reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-reports
+          path: |
+            performance_report_*.html
+            compatibility_matrix_*.html
+            hardware_comparison_*.png
+            benchmark_summary_*.json
+
+  publish_results:
+    needs: [setup_database, consolidate_results]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r test/scripts/requirements_db.txt
+          
+      - name: Download reports
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-reports
+          path: reports
+          
+      - name: Download consolidated database
+        uses: actions/download-artifact@v3
+        with:
+          name: consolidated-benchmark-db
+          path: db
+          
+      - name: Create report index
+        run: |
+          # Generate HTML index file for reports
+          cat > reports/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Hardware Benchmark Reports</title>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+          </head>
+          <body>
+              <div class="container mt-4">
+                  <h1>Hardware Benchmark Reports</h1>
+                  <p>Latest benchmark run: ${{ needs.setup_database.outputs.today_date }}</p>
+                  
+                  <h2>Latest Reports</h2>
+                  <ul>
+                      <li><a href="performance_report_${{ needs.setup_database.outputs.today_date }}.html">Performance Report</a></li>
+                      <li><a href="compatibility_matrix_${{ needs.setup_database.outputs.today_date }}.html">Compatibility Matrix</a></li>
+                      <li><a href="hardware_comparison_${{ needs.setup_database.outputs.today_date }}.png">Hardware Comparison Chart</a></li>
+                      <li><a href="benchmark_summary_${{ needs.setup_database.outputs.today_date }}.json">Benchmark Summary (JSON)</a></li>
+                  </ul>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./reports
+          destination_dir: benchmark-reports
+          
+      - name: Create historical database copy
+        run: |
+          mkdir -p historical_db
+          cp db/consolidated_db.duckdb historical_db/benchmark_${{ needs.setup_database.outputs.today_date }}.duckdb
+          
+      - name: Upload historical database
+        uses: actions/upload-artifact@v3
+        with:
+          name: historical-benchmark-db
+          path: historical_db/

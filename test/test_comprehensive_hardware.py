@@ -300,44 +300,57 @@ def test_hardware_model_integration():
             "cuda": {"compatible": True, "memory_usage": {"peak": 500}},
             "mps": {"compatible": True},
             "openvino": {"compatible": True},
-            "webnn": {"compatible": True}
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "gpt2": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 1200}},
             "mps": {"compatible": True},
             "openvino": {"compatible": True},
-            "webnn": {"compatible": True}
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "t5-small": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 900}},
             "mps": {"compatible": True},
-            "openvino": {"compatible": True},
-            "webnn": {"compatible": True}
+            "openvino": {"compatible": False, "reason": "Implementation missing"},
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "facebook/wav2vec2-base": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 1500}},
             "mps": {"compatible": True},
-            "openvino": {"compatible": True},
-            "webnn": {"compatible": False},
-            "audio_incompatible": True
+            "openvino": {"compatible": False, "reason": "Implementation missing"},
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "clip-vit-base-patch32": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 1100}},
             "mps": {"compatible": True},
             "openvino": {"compatible": True},
-            "webnn": {"compatible": True}
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "vit-base-patch16-224": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 800}},
             "mps": {"compatible": True},
             "openvino": {"compatible": True},
-            "webnn": {"compatible": True}
+            "webnn": {"compatible": True},
+            "webgpu": {"compatible": True},
+            "rocm": {"compatible": True}
         },
         "llava-hf/llava-1.5-7b-hf": {
             "cuda": {"compatible": True, "memory_usage": {"peak": 15000}},
-            "mps": {"compatible": False},
-            "openvino": {"compatible": False},
-            "webnn": {"compatible": False}
+            "mps": {"compatible": False, "reason": "Memory requirements exceed device capability"},
+            "openvino": {"compatible": False, "reason": "Multimodal architecture not supported"},
+            "webnn": {"compatible": False, "reason": "Architecture not supported in web environment"},
+            "webgpu": {"compatible": False, "reason": "Memory requirements exceed device capability"},
+            "rocm": {"compatible": False, "reason": "Implementation missing"}
         }
     }
     

@@ -53,9 +53,9 @@ except ImportError:
 # Define modality types for categorization
 MODALITY_TYPES = {
     "text": ["bert", "gpt", "t5", "llama", "roberta", "distilbert", "mistral", "phi"],
-    "vision": ["vit", "resnet", "detr", "convnext", "swin", "sam"],
-    "audio": ["whisper", "wav2vec", "clap", "hubert", "speecht5"],
-    "multimodal": ["clip", "llava", "blip", "flava", "git", "pix2struct"]
+    "vision": ["vit", "resnet", "detr", "convnext", "swin", "sam", "xclip"],
+    "audio": ["whisper", "wav2vec", "clap", "hubert", "speecht5", "wav2vec2"],
+    "multimodal": ["clip", "llava", "blip", "flava", "git", "pix2struct", "qwen2_vl", "qwen3_vl"]
 }
 
 class WebPlatformTesting:

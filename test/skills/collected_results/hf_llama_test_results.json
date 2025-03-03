@@ -11,13 +11,13 @@
         "type": "<class 'dict'>",
         "implementation_type": "MOCK"
       },
-      "timestamp": "2025-03-01T21:26:51.644835",
+      "timestamp": "2025-03-02T22:28:18.468666",
       "platform": "CPU"
     }
   ],
   "metadata": {
     "model_name": "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T",
     "model_type": "llama",
-    "test_timestamp": "2025-03-01T21:26:51.644862"
+    "test_timestamp": "2025-03-02T22:28:18.468684"
   }
 }

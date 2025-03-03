@@ -82,6 +82,24 @@ This will benchmark all 13 high-priority model classes across all available hard
 
 ## Essential Test Commands
 
+### Hardware-Aware Test Generation
+```bash
+# Generate tests with cross-platform hardware compatibility
+python test/integrated_skillset_generator.py --model bert --cross-platform --hardware all
+
+# Generate tests for specific hardware platforms only
+python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,webnn
+
+# Run hardware-specific template generation
+python test/enhance_key_models_hardware_coverage.py --create-templates
+
+# Update the test generator with hardware-aware templates
+python test/update_test_generator_with_hardware_templates.py
+
+# Run validation on hardware compatibility
+python test/enhance_key_models_hardware_coverage.py --validate
+```
+
 ### Hardware Testing
 ```bash
 # Automated hardware selection for any model

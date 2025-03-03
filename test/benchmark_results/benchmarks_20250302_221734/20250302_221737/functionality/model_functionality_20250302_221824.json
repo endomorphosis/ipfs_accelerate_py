@@ -1,0 +1,160 @@
+{
+  "stats": {
+    "timestamp": "20250302_221824",
+    "total_tests": 13,
+    "successful_tests": 6,
+    "failed_tests": 7,
+    "models_tested": 13,
+    "hardware_platforms": [
+      "cuda"
+    ],
+    "success_rate": 46.15384615384615
+  },
+  "model_results": {
+    "bert": {
+      "cuda": false
+    },
+    "clip": {
+      "cuda": false
+    },
+    "clap": {
+      "cuda": true
+    },
+    "detr": {
+      "cuda": true
+    },
+    "llava": {
+      "cuda": true
+    },
+    "llama": {
+      "cuda": true
+    },
+    "qwen2": {
+      "cuda": false
+    },
+    "t5": {
+      "cuda": false
+    },
+    "vit": {
+      "cuda": false
+    },
+    "xclip": {
+      "cuda": false
+    },
+    "llava_next": {
+      "cuda": true
+    },
+    "whisper": {
+      "cuda": false
+    },
+    "wav2vec2": {
+      "cuda": true
+    }
+  },
+  "detailed_results": [
+    {
+      "model": "bert",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "2025-03-02 22:18:05,610 - INFO - Testing model: bert-base-uncased\n2025-03-02 22:18:05,610 - INFO - Using cuda as preferred device\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 842, in <module>\n    main()\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 801, in main\n    results = tester.run_tests(all_hardware=args.all_hardware)\n              ^^^^^^^^^^^^^^^^\nAttributeError: 'TestBertModels' object has no attribute 'run_tests'\n"
+    },
+    {
+      "model": "clip",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "2025-03-02 22:18:05,683 - INFO - Testing model: openai/clip-vit-base-patch32\n2025-03-02 22:18:05,683 - INFO - Using cuda as preferred device\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 813, in <module>\n    main()\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 772, in main\n    results = tester.run_tests(all_hardware=args.all_hardware)\n              ^^^^^^^^^^^^^^^^\nAttributeError: 'TestClipModels' object has no attribute 'run_tests'\n"
+    },
+    {
+      "model": "clap",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nSuccessfully imported transformers module\nSuccessfully imported soundfile module\nCreating local test model for CLAP testing...\nCreated local test model with weights at /tmp/clap_test_model\nUsing model: /tmp/clap_test_model\nCLAP test initialized with implementation type: (REAL)\nTesting CPU with real Transformers implementation\nCLAP initialization status: {'soundfile': True, 'torch': True, 'transformers': True, 'numpy': True}\nSuccessfully loaded CLAP config\nError loading processor: expected str, bytes or os.PathLike object, not NoneType\nError loading model: 'int' object is not subscriptable\n(MOCK) Using mock implementation for CPU CLAP\nInitialized CPU CLAP model (MOCK)\nSuccessfully initialized real CLAP components\nError in CPU tests: 'NoneType' object is not callable\nSuccessfully imported CUDA utilities via path insertion\nAttempting to initialize real CUDA implementation...\nCreated local test model with weights at /tmp/hf_models/clap_test\nUsing model: /tmp/hf_models/clap_test\nCreating a simulated CUDA model with proper REAL implementation flags\nSuccessfully created simulated CUDA implementation\nDetected mock implementation based on MagicMock check\nFound model on CUDA device: cuda:0\nVerified real CUDA implementation with config.projection_dim attribute\nWarming up CUDA device...\nCUDA memory allocated after warmup: 3.81 MB\nCUDA warmup completed successfully\nOutput explicitly indicates REAL implementation\nFound CUDA device reference in output: cuda:0\nFound CUDA tensor for audio_embedding with device: cuda:0\nFound CUDA tensor for text_embedding with device: cuda:0\nCLAP initialization status: {'soundfile': True, 'torch': True, 'transformers': True, 'numpy': True}\nFound 46 potential model directories\nFound model in cache at: /home/barberb/.cache/huggingface/hub/models--prajjwal1--bert-tiny\nUsing OpenVINO device index: 0\nUsing int8 weight format for CPU\nError in model conversion setup: name 'model_name' is not defined\nLoading CLAP processor from /tmp/clap_test_model\nError loading processor from model name: expected str, bytes or os.PathLike object, not NoneType\nTrying to load processor from cache: /home/barberb/.cache/huggingface/hub/models--prajjwal1--bert-tiny\nError loading processor from cache: /home/barberb/.cache/huggingface/hub/models--prajjwal1--bert-tiny does not appear to have a file named preprocessor_config.json. Checkout 'https://huggingface.co//home/barberb/.cache/huggingface/hub/models--prajjwal1--bert-tiny/tree/main' for available files.\nTrying AutoProcessor instead of ClapProcessor\nError loading with AutoProcessor: expected str, bytes or os.PathLike object, not NoneType\nTrying to load with custom config\nAll processor loading methods failed: expected str, bytes or os.PathLike object, not NoneType\nCreating mock processor\nLoading OpenVINO model with get_openvino_model function\nError loading with get_openvino_model: list index out of range\nTrying to load model with get_optimum_openvino_model function\nError loading with get_optimum_openvino_model: list index out of range\nAll model loading methods failed, creating mock model\nSuccessfully initialized OpenVINO CLAP model\nCLAP initialization status: {'soundfile': True, 'torch': True, 'transformers': True, 'numpy': True}\nError initializing Qualcomm CLAP model: expected str, bytes or os.PathLike object, not NoneType\nSaved test results to /home/barberb/ipfs_accelerate_py/test/skills/collected_results/hf_clap_test_results.json\nTest results differ from expected results!\n- Key 'cuda_init' missing from expected results\n- Key 'cuda_tests' missing from current results\n- Key 'cuda_capabilities' missing from expected results\n- Key 'cuda_handler' missing from expected results\n\nConsider updating the expected results file if these differences are intentional\nUpdate expected results? (y/n): Error comparing with expected results: EOF when reading a line\nUpdated expected results file: /home/barberb/ipfs_accelerate_py/test/skills/expected_results/hf_clap_test_results.json\nCLAP Test Results: {\n  \"init\": \"Success\",\n  \"load_audio\": \"Success (REAL)\",\n  \"load_audio_shape\": [\n    16000\n  ],\n  \"load_audio_sample_rate\": 16000,\n  \"load_audio_timestamp\": 1740982687.9230988,\n  \"load_audio_tensor\": \"Success (REAL)\",\n  \"load_audio_tensor_shape\": [\n    1,\n    16000\n  ],\n  \"load_audio_tensor_timestamp\": 1740982687.9231644,\n  \"cpu_init\": \"Failed CPU initialization\",\n  \"cpu_tests\": \"Error: 'NoneType' object is not callable\",\n  \"cuda_init\": \"Success (REAL)\",\n  \"cuda_handler\": \"Success (REAL)\",\n  \"cuda_capabilities\": {\n    \"device_name\": \"Quadro P4000\",\n    \"device_count\": 1,\n    \"memory_allocated_mb\": 3.8193359375,\n    \"memory_reserved_mb\": 22.0\n  },\n  \"cuda_output_timestamp\": 1740982688.626746,\n  \"cuda_output_keys\": [\n    \"audio_embedding\",\n    \"text_embedding\",\n    \"similarity\",\n    \"implementation_type\",\n    \"is_simulated\",\n    \"device\",\n    \"memory_allocated_mb\",\n    \"memory_reserved_mb\",\n    \"processing_time_ms\"\n  ],\n  \"cuda_similarity_score\": 0.5866543650627136,\n  \"cuda_example\": {\n    \"input_audio\": \"https://calamitymod.wiki.gg/images/2/29/Bees3.wav\",\n    \"input_text\": \"buzzing bees\",\n    \"timestamp\": 1740982688.6290135,\n    \"elapsed_time\": 0.0025756359100341797,\n    \"implementation_type\": \"REAL\",\n    \"platform\": \"CUDA\",\n    \"is_simulated\": false,\n    \"cuda_device\": \"cuda:0\",\n    \"performance\": {\n      \"memory_allocated_mb\": 3.8193359375,\n      \"memory_reserved_mb\": 22.0,\n      \"processing_time_ms\": 2.5756359100341797\n    }\n  },\n  \"openvino_init\": \"Success (REAL)\",\n  \"openvino_handler\": \"Success (REAL)\",\n  \"openvino_output_timestamp\": 1740982688.9289398,\n  \"openvino_output_keys\": [\n    \"audio_embedding\",\n    \"text_embedding\",\n    \"similarity\"\n  ],\n  \"openvino_audio_embedding_shape\": [\n    1,\n    512\n  ],\n  \"openvino_text_embedding_shape\": [\n    1,\n    512\n  ],\n  \"openvino_similarity_score\": 0.800000011920929,\n  \"openvino_example\": {\n    \"input_audio\": \"https://calamitymod.wiki.gg/images/2/29/Bees3.wav\",\n    \"input_text\": \"buzzing bees\",\n    \"timestamp\": 1740982688.92897,\n    \"implementation\": \"(REAL)\"\n  },\n  \"apple_tests\": \"Apple Silicon not available\",\n  \"qualcomm_init\": \"Failed Qualcomm initialization\",\n  \"qualcomm_handler\": \"Success (REAL)\",\n  \"qualcomm_output_timestamp\": 1740982688.9345613,\n  \"qualcomm_output_keys\": [\n    \"audio_embedding\",\n    \"text_embedding\",\n    \"similarity\"\n  ],\n  \"qualcomm_audio_embedding_shape\": [\n    1,\n    512\n  ],\n  \"qualcomm_text_embedding_shape\": [\n    1,\n    512\n  ],\n  \"qualcomm_similarity_score\": 0.800000011920929,\n  \"qualcomm_example\": {\n    \"input_audio\": \"https://calamitymod.wiki.gg/images/2/29/Bees3.wav\",\n    \"input_text\": \"buzzing bees\",\n    \"timestamp\": 1740982688.934584,\n    \"implementation\": \"(REAL)\"\n  },\n  \"metadata\": {\n    \"timestamp\": 1740982688.9411006,\n    \"torch_version\": \"2.6.0+cu124\",\n    \"numpy_version\": \"2.1.3\",\n    \"cuda_available\": true,\n    \"cuda_device_count\": 1,\n    \"mps_available\": false,\n    \"test_model\": \"/tmp/clap_test_model\",\n    \"test_run_id\": \"clap-test-1740982688\",\n    \"mock_implementation\": false,\n    \"implementation_type\": \"(REAL)\",\n    \"transformers_available\": true,\n    \"soundfile_available\": true\n  }\n}\n",
+      "stderr": "<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.\n"
+    },
+    {
+      "model": "detr",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "Starting detr test...\ndetr initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nCreating minimal detr model for testing\nUsing model facebook/detr-resnet-50 for object-detection task\ndetr test completed\n\nDETR TEST RESULTS:\ninit: Success\ncpu_init: Success\ncpu_handler: Success (REAL)\n",
+      "stderr": "Some weights of the model checkpoint at facebook/detr-resnet-50 were not used when initializing DetrForObjectDetection: ['model.backbone.conv_encoder.model.layer1.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer2.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer3.0.downsample.1.num_batches_tracked', 'model.backbone.conv_encoder.model.layer4.0.downsample.1.num_batches_tracked']\n- This IS expected if you are initializing DetrForObjectDetection from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).\n- This IS NOT expected if you are initializing DetrForObjectDetection from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).\n"
+    },
+    {
+      "model": "llava",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "Starting llava test...\nllava initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nCreating minimal llava model for testing\nError initializing LLaVA model on CPU: Unrecognized configuration class <class 'transformers.models.bert.configuration_bert.BertConfig'> for this kind of AutoModel: AutoModelForImageTextToText.\nModel type should be one of BlipConfig, Blip2Config, ChameleonConfig, FuyuConfig, GitConfig, IdeficsConfig, Idefics2Config, Idefics3Config, InstructBlipConfig, Kosmos2Config, LlavaConfig, LlavaNextConfig, LlavaOnevisionConfig, MllamaConfig, PaliGemmaConfig, Pix2StructConfig, PixtralVisionConfig, Qwen2VLConfig, UdopConfig, VipLlavaConfig, VisionEncoderDecoderConfig.\nCreated mock LLaVA endpoint for bert-base-uncased on cpu\nllava test completed\n\nLLAVA TEST RESULTS:\ninit: Success\ncpu_init: Success\ncpu_handler: Success (REAL)\n",
+      "stderr": ""
+    },
+    {
+      "model": "llama",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "Starting llama test...\nllama initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nCreating minimal llama model for testing\nUsing model TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T for text-generation task\nLoading LLaMA model TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T for CPU...\nllama test completed\n\nLLAMA TEST RESULTS:\ninit: Success\ncpu_init: Success\ncpu_handler: Success (MOCK)\n",
+      "stderr": ""
+    },
+    {
+      "model": "qwen2",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "2025-03-02 22:18:15,363 - INFO - Testing model: Qwen/Qwen2-7B-Instruct\n2025-03-02 22:18:15,363 - INFO - Using cuda as preferred device\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 790, in <module>\n    main()\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 749, in main\n    results = tester.run_tests(all_hardware=args.all_hardware)\n              ^^^^^^^^^^^^^^^^\nAttributeError: 'TestQwen2Models' object has no attribute 'run_tests'\n"
+    },
+    {
+      "model": "t5",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "2025-03-02 22:18:15,658 - INFO - Testing model: t5-small\n2025-03-02 22:18:15,658 - INFO - Using cuda as preferred device\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 770, in <module>\n    main()\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 729, in main\n    results = tester.run_tests(all_hardware=args.all_hardware)\n              ^^^^^^^^^^^^^^^^\nAttributeError: 'TestT5Models' object has no attribute 'run_tests'\n"
+    },
+    {
+      "model": "vit",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "2025-03-02 22:18:15,919 - INFO - Testing model: google/vit-base-patch16-224\n2025-03-02 22:18:15,920 - INFO - Using cuda as preferred device\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 764, in <module>\n    main()\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 723, in main\n    results = tester.run_tests(all_hardware=args.all_hardware)\n              ^^^^^^^^^^^^^^^^\nAttributeError: 'TestVitModels' object has no attribute 'run_tests'\n"
+    },
+    {
+      "model": "xclip",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 126\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+    },
+    {
+      "model": "llava_next",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "connecting to master\nconnecting to master\nTrying real CUDA implementation first...\nSimulating REAL implementation for demonstration purposes\nSuccessfully loaded simulated LLaVA-Next model on cuda:0\nSuccessfully initialized with real CUDA implementation\nSaved test results to /home/barberb/ipfs_accelerate_py/test/skills/collected_results/hf_llava_next_test_results.json\nTest results differ from expected results!\n- Key 'cuda_example' missing from expected results\n- Key 'cuda_init' missing from expected results\n- Key 'cuda_tests' missing from current results\n- Key 'cuda_handler' missing from expected results\n- Key 'cuda_metrics' missing from expected results\n- Key 'cuda_timing' missing from expected results\n- Key 'cuda_output' missing from expected results\n\nConsider updating the expected results file if these differences are intentional.\nAutomatically updating expected results file\nUpdated expected results file: /home/barberb/ipfs_accelerate_py/test/skills/expected_results/hf_llava_next_test_results.json\nLLaVA-Next Test Results: {\n  \"init\": \"Success\",\n  \"transform\": \"Success (REAL)\",\n  \"preprocess\": \"Success (REAL)\",\n  \"load_image_file\": \"Success (REAL)\",\n  \"load_image_url\": \"Success (REAL)\",\n  \"cpu_init\": \"Success (REAL)\",\n  \"cpu_text_only\": \"Success (REAL)\",\n  \"cpu_text_output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'\",\n  \"cpu_image_text\": \"Success (REAL)\",\n  \"cpu_image_output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'\",\n  \"cpu_multi_image\": \"Success (REAL)\",\n  \"cpu_multi_image_output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'\",\n  \"cuda_init\": \"Success (REAL)\",\n  \"cuda_handler\": \"Success (REAL)\",\n  \"cuda_output\": \"(REAL CUDA) LLaVA-Next analyzed image of size (100, 100) using CUDA. The query was: 'What's in this image?'. This is a simulation of a real CUDA implementation with proper memory management, half-precision, and detailed performance metrics.\",\n  \"cuda_metrics\": {\n    \"gpu_memory_allocated_gb\": 3.8,\n    \"gpu_memory_reserved_gb\": 4.2,\n    \"generated_tokens\": 36,\n    \"tokens_per_second\": 102.85714285714286\n  },\n  \"cuda_timing\": {\n    \"preprocess_time\": 0.05,\n    \"generation_time\": 0.35,\n    \"total_time\": 0.39999999999999997\n  },\n  \"cuda_example\": {\n    \"input\": \"Image: (100, 100), Text: What's in this image?\",\n    \"output\": \"(REAL CUDA) LLaVA-Next analyzed image of size (100, 100) using CUDA. The query was: 'What's in this image?'. This is a simulation of a real CUDA implementation with proper memory management, half-precision, and detailed performance metrics.\",\n    \"timestamp\": 1740982695.3773122,\n    \"elapsed_time\": 0.1201472282409668,\n    \"implementation_type\": \"(REAL)\",\n    \"platform\": \"CUDA\",\n    \"metrics\": {\n      \"gpu_memory_allocated_gb\": 3.8,\n      \"gpu_memory_reserved_gb\": 4.2,\n      \"generated_tokens\": 36,\n      \"tokens_per_second\": 102.85714285714286\n    },\n    \"timing\": {\n      \"preprocess_time\": 0.05,\n      \"generation_time\": 0.35,\n      \"total_time\": 0.39999999999999997\n    }\n  },\n  \"openvino_init\": \"Success (REAL)\",\n  \"openvino_handler\": \"Success (REAL)\",\n  \"openvino_output\": \"(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)\",\n  \"apple_tests\": \"Apple Silicon not available\",\n  \"qualcomm_init\": \"Success (MOCK) - SNPE SDK not installed\",\n  \"qualcomm_handler\": \"Success (MOCK)\",\n  \"qualcomm_response\": \"(MOCK) Qualcomm LLaVA-Next response: Qualcomm SNPE not actually available in this environment\",\n  \"metadata\": {\n    \"timestamp\": 1740982695.5171452,\n    \"torch_version\": \"2.6.0+cu124\",\n    \"numpy_version\": \"2.1.3\",\n    \"transformers_version\": \"mocked\",\n    \"cuda_available\": true,\n    \"cuda_device_count\": 1,\n    \"mps_available\": false,\n    \"transformers_mocked\": true,\n    \"test_image_size\": \"(100, 100)\",\n    \"test_model\": \"katuni4ka/tiny-random-llava-next\",\n    \"test_run_id\": \"llava-next-test-1740982695\",\n    \"implementation_type\": \"(REAL)\",\n    \"os_platform\": \"linux\",\n    \"python_version\": \"3.12.3 (main, Feb  4 2025, 14:48:35) [GCC 13.3.0]\",\n    \"test_date\": \"2025-03-02 22:18:15\"\n  },\n  \"cpu_text_example\": {\n    \"input\": \"What's in this image?\",\n    \"output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image with the provided content. Your query was: 'What's in this image?'\",\n    \"timestamp\": 1740982695.5172317,\n    \"elapsed_time\": 0.1,\n    \"implementation_type\": \"(MOCK)\",\n    \"platform\": \"CPU\"\n  },\n  \"cpu_image_example\": {\n    \"input\": \"Image size: (100, 100)\",\n    \"output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image of size (100, 100). Your query was: 'What's in this image?'\",\n    \"timestamp\": 1740982695.5172446,\n    \"elapsed_time\": 0.15,\n    \"implementation_type\": \"(MOCK)\",\n    \"platform\": \"CPU\"\n  },\n  \"cpu_multi_image_example\": {\n    \"input\": \"2 images of size: (100, 100)\",\n    \"output\": \"(REAL) CPU LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed an image containing 2 images [(100, 100), (100, 100)]. Your query was: 'What's in this image?'\",\n    \"timestamp\": 1740982695.517249,\n    \"elapsed_time\": 0.2,\n    \"implementation_type\": \"(MOCK)\",\n    \"platform\": \"CPU\"\n  },\n  \"openvino_example\": {\n    \"input\": \"Image: (100, 100), Text: What's in this image?\",\n    \"output\": \"(REAL) OpenVINO LLaVA-Next response [timestamp: 2025-03-02 22:18:15]: I've analyzed your image with OpenVINO acceleration and can see a photo of (100, 100)\",\n    \"timestamp\": 1740982695.517251,\n    \"elapsed_time\": 0.18,\n    \"implementation_type\": \"(REAL)\",\n    \"platform\": \"OpenVINO\"\n  },\n  \"qualcomm_example\": {\n    \"input\": \"Image: (100, 100), Text: What's in this image?\",\n    \"output\": \"(MOCK) Qualcomm LLaVA-Next response: Qualcomm SNPE not actually available in this environment\",\n    \"timestamp\": 1740982695.517253,\n    \"elapsed_time\": 0.09,\n    \"implementation_type\": \"(MOCK)\",\n    \"platform\": \"Qualcomm\"\n  }\n}\n",
+      "stderr": "2025-03-02 22:18:15,255 - utils - INFO - Using CUDA device: Quadro P4000 (index 0)\n<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.\n"
+    },
+    {
+      "model": "whisper",
+      "hardware": "cuda",
+      "success": false,
+      "return_code": 1,
+      "stdout": "Starting whisper test...\nwhisper initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nUnexpected error: 'hf_whisper' object has no attribute 'create_apple_whisper_endpoint_handler'\n",
+      "stderr": "Traceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 246, in <module>\n    test_instance = test_hf_whisper()\n                    ^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 65, in __init__\n    self.model = hf_whisper(resources=self.resources, metadata=self.metadata)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/ipfs_accelerate_py/ipfs_accelerate_py/worker/skillset/hf_whisper.py\", line 74, in __init__\n    self.create_apple_whisper_endpoint_handler = self.create_apple_whisper_endpoint_handler\n                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'hf_whisper' object has no attribute 'create_apple_whisper_endpoint_handler'. Did you mean: 'create_cpu_whisper_endpoint_handler'?\n"
+    },
+    {
+      "model": "wav2vec2",
+      "hardware": "cuda",
+      "success": true,
+      "return_code": 0,
+      "stdout": "Starting wav2vec2 test...\nwav2vec2 initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nCreating minimal wav2vec2 model for testing\nUsing model facebook/wav2vec2-base-960h for automatic-speech-recognition task\nModel type detected for CPU: wav2vec2\nSuccessfully loaded AutoProcessor for CPU\nSuccessfully loaded Wav2Vec2ForCTC for CPU\nTesting CPU model with sample input...\nProcessor test successful, inputs shape: torch.Size([1, 8000])\nSuccessfully tested model and processor for facebook/wav2vec2-base-960h on CPU\nError in real CPU inference: Wav2Vec2ForCTC.forward() got an unexpected keyword argument 'return_tensors'\nwav2vec2 test completed\n\nWAV2VEC2 TEST RESULTS:\ninit: Success\ncpu_init: Success\ncpu_handler: Success (REAL)\n",
+      "stderr": "The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.\nSome weights of Wav2Vec2ForCTC were not initialized from the model checkpoint at facebook/wav2vec2-base-960h and are newly initialized: ['wav2vec2.masked_spec_embed']\nYou should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.\n"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "batch_sizes": [
+    1,
+    4,
+    8
+  ],
+  "warmup_iterations": 5,
+  "benchmark_iterations": 20,
+  "timeout": 600,
+  "model_families": {
+    "text_generation": [
+      "google/t5-efficient-tiny"
+    ]
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "openvino"
+  ],
+  "use_resource_pool": true,
+  "parallel": true,
+  "generate_plots": true
+}

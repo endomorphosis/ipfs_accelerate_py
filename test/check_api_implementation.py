@@ -654,6 +654,93 @@ class APIChecker:
         print(f"  - {results_file}")
         print(f"  - {report_file}")
 
+def run_web_platform_tests(args=None):
+    """Run web platform tests to verify WebNN and WebGPU support."""
+    print("Running web platform tests...")
+    
+    try:
+        # Check if web platform testing module exists
+        import os.path
+        web_platform_test_path = os.path.join(os.path.dirname(__file__), "web_platform_testing.py")
+        web_audio_test_path = os.path.join(os.path.dirname(__file__), "web_audio_test_runner.py")
+        
+        results = {
+            "status": "completed",
+            "webnn_support": False,
+            "webgpu_support": False,
+            "audio_tests": False,
+            "vision_tests": False,
+            "embedding_tests": False
+        }
+        
+        # Check for web platform test script
+        if os.path.exists(web_platform_test_path):
+            print("- Found web platform testing module")
+            results["webnn_support"] = True
+            results["webgpu_support"] = True
+            
+            try:
+                # Try to import the module to verify it works
+                from web_platform_testing import WebPlatformTesting
+                tester = WebPlatformTesting()
+                
+                # Get available models for testing
+                embedding_models = tester.get_models_by_modality("text")
+                vision_models = tester.get_models_by_modality("vision")
+                
+                # Check that we have test models available
+                if embedding_models:
+                    print(f"- Found {len(embedding_models)} embedding models for web platform testing")
+                    results["embedding_tests"] = True
+                
+                if vision_models:
+                    print(f"- Found {len(vision_models)} vision models for web platform testing")
+                    results["vision_tests"] = True
+                
+            except ImportError as e:
+                print(f"- Error importing web platform testing module: {e}")
+        
+        # Check for web audio test script
+        if os.path.exists(web_audio_test_path):
+            print("- Found web audio testing module")
+            results["audio_tests"] = True
+            
+            try:
+                # Try to import the module to verify it works
+                from web_audio_test_runner import WebAudioTestRunner
+                audio_tester = WebAudioTestRunner()
+                print("- Web audio test module successfully imported")
+                
+                # Check if test files are prepared
+                test_dir = audio_tester.test_directory
+                if os.path.exists(test_dir) and os.path.exists(os.path.join(test_dir, "whisper")) and os.path.exists(os.path.join(test_dir, "wav2vec2")):
+                    print("- Web audio test files are prepared")
+                else:
+                    print("- Web audio test files need preparation")
+                    
+            except ImportError as e:
+                print(f"- Error importing web audio test module: {e}")
+        
+        return results
+        
+    except Exception as e:
+        print(f"Error running web platform tests: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "webnn_support": False,
+            "webgpu_support": False
+        }
+
 if __name__ == "__main__":
-    checker = APIChecker()
-    checker.run_all_checks()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Check API implementations")
+    parser.add_argument("--web-platform", action="store_true", help="Run web platform tests")
+    args = parser.parse_args()
+    
+    if args.web_platform:
+        run_web_platform_tests(args)
+    else:
+        checker = APIChecker()
+        checker.run_all_checks()

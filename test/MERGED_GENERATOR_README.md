@@ -1,4 +1,6 @@
-# Merged Hugging Face Test Generator
+# Merged Hugging Face Test Generator (Updated with Key Model Support)
+
+> **NEW!** Enhanced with specialized hardware support for 13 key model classes. For detailed information, see [KEY_MODELS_README.md](KEY_MODELS_README.md).
 
 This tool provides a comprehensive framework for generating test files that cover
 all Hugging Face model architectures, with enhanced functionality for managing test files
@@ -69,6 +71,12 @@ python merged_test_generator.py --generate-missing --high-priority-only
 
 # Generate tests for a specific category of models
 python merged_test_generator.py --generate-missing --category vision
+
+# Generate tests for key models with enhanced hardware support
+python merged_test_generator.py --generate-missing --key-models-only
+
+# Prioritize key models (t5, clap, whisper, llava, etc.) with hardware optimizations
+python merged_test_generator.py --generate-missing --prioritize-key-models
 ```
 
 ### 2. Export Model Registry
@@ -126,6 +134,48 @@ Each hardware platform includes:
 - Platform-specific optimizations
 - Modality-appropriate processing
 - Error handling and mock fallbacks
+
+## Enhanced Hardware Support for Key Models
+
+The generator now provides specialized hardware implementations for 13 key model types:
+
+### Key Supported Models
+
+1. **T5** - Enhanced OpenVINO support, complete web platform (WebNN/WebGPU) integration
+2. **CLAP** - Enhanced OpenVINO support
+3. **Wav2Vec2** - Enhanced OpenVINO support
+4. **Whisper** - Full web platform (WebNN/WebGPU) support
+5. **LLaVA** - Enhanced OpenVINO, MPS, and ROCm support
+6. **LLaVA-Next** - Added OpenVINO, MPS, and ROCm support
+7. **Qwen2/3** - Better implementations for OpenVINO, MPS, ROCm platforms
+8. **XCLIP** - Added web platform support
+9. **DETR** - Added web platform support
+10. **BERT** - Already has complete hardware support
+11. **ViT** - Already has complete hardware support
+12. **CLIP** - Already has complete hardware support
+13. **LLAMA** - Already has optimal hardware support for supported platforms
+
+### Enhanced Implementation Details
+
+These enhanced models include:
+
+- **OpenVINO Optimizations**: Real model conversion and specialized preprocessing for key models
+- **ROCm (AMD) Support**: Enhanced implementations with AMD-specific optimizations
+- **MPS (Apple) Support**: Optimized implementations for Apple Silicon
+- **WebNN/WebGPU Support**: Browser-specific optimizations for web deployment
+- **Multimodal Handling**: Specialized preprocessing for complex multimodal models
+
+To generate tests with these enhancements:
+```bash
+# Generate tests for all key models
+python merged_test_generator.py --generate-missing --key-models-only
+
+# Prioritize key models but include others
+python merged_test_generator.py --generate-missing --prioritize-key-models
+
+# Focus on a specific modality of key models
+python merged_test_generator.py --generate-missing --key-models-only --category multimodal
+```
 
 ## Test File Structure
 

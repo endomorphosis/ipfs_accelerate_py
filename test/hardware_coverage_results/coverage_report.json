@@ -1,0 +1,774 @@
+{
+  "timestamp": "2025-03-02T20:01:11.339096",
+  "total_models": 13,
+  "platform_coverage": {
+    "cpu": 0.0,
+    "cuda": 0.0,
+    "openvino": 0.0,
+    "mps": 0.0,
+    "rocm": 0.0,
+    "webnn": 0.0,
+    "webgpu": 0.0
+  },
+  "model_results": [
+    {
+      "model": "bert",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py",
+      "timestamp": "2025-03-02T20:01:11.330668",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "t5",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py",
+      "timestamp": "2025-03-02T20:01:11.331513",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "gpt2",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_gpt2.py",
+      "timestamp": "2025-03-02T20:01:11.332403",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "vit",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py",
+      "timestamp": "2025-03-02T20:01:11.333381",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "clip",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py",
+      "timestamp": "2025-03-02T20:01:11.334212",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "whisper",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py",
+      "timestamp": "2025-03-02T20:01:11.334896",
+      "platforms": {
+        "cpu": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "llava",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py",
+      "timestamp": "2025-03-02T20:01:11.335281",
+      "platforms": {
+        "cpu": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "clap",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py",
+      "timestamp": "2025-03-02T20:01:11.335678",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": true,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": true,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": true,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "wav2vec2",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py",
+      "timestamp": "2025-03-02T20:01:11.336838",
+      "platforms": {
+        "cpu": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "deit",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_deit.py",
+      "timestamp": "2025-03-02T20:01:11.337148",
+      "platforms": {
+        "cpu": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "roberta",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_roberta.py",
+      "timestamp": "2025-03-02T20:01:11.337405",
+      "platforms": {
+        "cpu": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": true,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "hubert",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_hubert.py",
+      "timestamp": "2025-03-02T20:01:11.337689",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    },
+    {
+      "model": "flava",
+      "filename": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_flava.py",
+      "timestamp": "2025-03-02T20:01:11.338497",
+      "platforms": {
+        "cpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "cuda": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "openvino": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "mps": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "rocm": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": true,
+          "supported": false
+        },
+        "webnn": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        },
+        "webgpu": {
+          "has_init_method": false,
+          "has_handler_method": false,
+          "has_platform_test": false,
+          "has_imports": false,
+          "supported": false
+        }
+      },
+      "coverage_percentage": 0.0
+    }
+  ],
+  "average_coverage": 0.0,
+  "fully_covered_models": [],
+  "partially_covered_models": [],
+  "poorly_covered_models": [
+    "bert",
+    "t5",
+    "gpt2",
+    "vit",
+    "clip",
+    "whisper",
+    "llava",
+    "clap",
+    "wav2vec2",
+    "deit",
+    "roberta",
+    "hubert",
+    "flava"
+  ]
+}

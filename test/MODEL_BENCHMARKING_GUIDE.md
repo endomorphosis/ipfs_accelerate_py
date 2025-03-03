@@ -1,215 +1,226 @@
 # Model Benchmarking Guide
 
-This guide explains how to use the model benchmarking tools to verify model functionality and measure performance across different hardware platforms.
+## Introduction
 
-## Overview
-
-The IPFS Accelerate framework provides comprehensive tools for benchmarking and validating models:
-
-1. **Functionality Verification**: Verify that models can be loaded and run on different hardware platforms
-2. **Performance Benchmarking**: Measure detailed performance metrics like latency, throughput, and memory usage
-3. **Visualization**: Generate plots to compare performance across models and hardware
-4. **Hardware Compatibility Matrix**: Track which models work on different hardware platforms
-
-## Key Components
-
-- `verify_model_functionality.py`: Tests if models can be loaded and run on different hardware
-- `hardware_benchmark_runner.py`: Measures detailed performance metrics for models
-- `run_benchmark_suite.py`: A suite runner for hardware benchmarks
-- `run_model_benchmarks.py`: A comprehensive tool that combines functionality verification and performance benchmarking
+This guide provides instructions for benchmarking models across different hardware platforms using the IPFS Accelerate Python Framework. It covers performance testing, hardware compatibility verification, and optimization techniques.
 
 ## Quick Start
 
-To run a complete benchmark of key models on all available hardware:
+To run basic model benchmarks:
 
 ```bash
 python test/run_model_benchmarks.py --output-dir ./benchmark_results
 ```
 
-For a faster run with smaller models:
+For a specific hardware platform:
 
 ```bash
-python test/run_model_benchmarks.py --models-set small --output-dir ./benchmark_results
+python test/run_model_benchmarks.py --hardware cuda --output-dir ./benchmark_results
 ```
 
-To benchmark only specific models:
+## Comprehensive Key Model Benchmarking
+
+For benchmarking all 13 high-priority model classes across all hardware platforms, use the dedicated script:
 
 ```bash
-python test/run_model_benchmarks.py --specific-models bert t5 vit --output-dir ./benchmark_results
+python test/benchmark_all_key_models.py --output-dir ./benchmark_results
 ```
 
-## Command-Line Options
+This script ensures complete hardware coverage for the following model classes:
+- BERT (embedding)
+- CLAP (audio)
+- CLIP (multimodal)
+- DETR (vision)
+- LLAMA (text generation)
+- LLaVA (multimodal)
+- LLaVA-Next (multimodal)
+- Qwen2 (text generation)
+- T5 (text generation)
+- ViT (vision)
+- Wav2Vec2 (audio)
+- Whisper (audio)
+- XCLIP (multimodal)
 
-### `run_model_benchmarks.py` Options
+To use smaller model variants for faster testing:
 
-| Option | Description |
-|--------|-------------|
-| `--output-dir` | Directory to save benchmark results (default: `./benchmark_results`) |
-| `--models-set` | Which model set to use: `key` (default), `small`, or `custom` |
-| `--custom-models` | JSON file with custom models configuration (required if `models-set=custom`) |
-| `--hardware` | Hardware platforms to test (defaults to all available) |
-| `--batch-sizes` | Batch sizes to test (default: `1 4 8`) |
-| `--verify-only` | Only verify functionality without performance benchmarks |
-| `--benchmark-only` | Only run performance benchmarks without verification |
-| `--no-plots` | Disable plot generation |
-| `--no-compatibility-update` | Disable compatibility matrix update |
-| `--no-resource-pool` | Disable ResourcePool for model caching |
-| `--specific-models` | Only benchmark specific models from the selected set |
-| `--debug` | Enable debug logging |
+```bash
+python test/benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
+```
 
-### Key Model Sets
+To test specific hardware platforms:
 
-The benchmarking tools include predefined model sets for different purposes:
+```bash
+python test/benchmark_all_key_models.py --hardware cpu cuda openvino --output-dir ./benchmark_results
+```
 
-#### Key Models
-The complete set of 13 critical models:
-- bert
-- clap
-- clip
-- detr
-- llama
-- llava
-- llava_next
-- qwen2
-- t5
-- vit
-- wav2vec2
-- whisper
-- xclip
+The script automatically identifies and attempts to fix implementation issues for complete compatibility across platforms. To disable this behavior:
 
-#### Small Models
-A smaller set for faster testing:
-- bert (tiny)
-- t5 (tiny)
-- vit (tiny)
-- whisper (tiny)
-- clip (base)
+```bash
+python test/benchmark_all_key_models.py --no-fix --output-dir ./benchmark_results
+```
 
-#### Custom Models
-Define your own set of models by creating a JSON file:
+## Benchmark Configuration
+
+The benchmark script accepts several configuration options:
+
+- `--models-set`: Which model set to use ('key', 'small', or 'custom')
+- `--hardware`: Hardware platforms to test
+- `--batch-sizes`: Batch sizes to test
+- `--verify-only`: Only verify functionality without performance benchmarks
+- `--benchmark-only`: Only run performance benchmarks without verification
+- `--specific-models`: Only benchmark specific models from the selected set
+
+Example:
+
+```bash
+python test/run_model_benchmarks.py --models-set small --hardware cpu cuda --batch-sizes 1 4 8 --specific-models bert t5
+```
+
+## Hardware Platforms
+
+The framework supports the following hardware platforms:
+
+- `cpu`: CPU (always available)
+- `cuda`: NVIDIA CUDA GPUs
+- `rocm`: AMD ROCm GPUs
+- `mps`: Apple Metal Performance Shaders (Apple Silicon)
+- `openvino`: Intel OpenVINO
+- `webnn`: Web Neural Network API
+- `webgpu`: WebGPU API
+
+## Model Sets
+
+The framework provides predefined model sets for benchmarking:
+
+- `key`: Standard set of key models for each family
+- `small`: Smaller variants of models for faster testing
+- `custom`: Custom model set defined in a JSON file
+
+## Benchmark Process
+
+The benchmark process includes:
+
+1. Hardware detection to identify available platforms
+2. Model functionality verification on each platform
+3. Performance benchmark measurement with varying batch sizes
+4. Result visualization and reporting
+5. Hardware compatibility matrix generation
+
+## Implementation Issue Detection and Fixing
+
+The comprehensive benchmarking script can detect and fix common implementation issues:
+
+- Mocked implementations in test files (particularly for OpenVINO)
+- Missing hardware-specific code paths
+- Compatibility issues between model architectures and hardware platforms
+
+When issues are detected, the script attempts to add the necessary implementation code to provide full hardware compatibility. The fixes are reported in the final benchmark report.
+
+## Hardware Compatibility Matrix
+
+The benchmark results include a hardware compatibility matrix that shows the compatibility level for each model family across different hardware platforms:
+
+- ✅ High: Fully compatible with excellent performance
+- ✅ Medium: Compatible with good performance
+- ⚠️ Low: Compatible but with performance limitations
+- ❌ N/A: Not compatible or not available
+
+This matrix helps guide hardware selection for different model types.
+
+## Results Interpretation
+
+Benchmark results include:
+
+- Functionality verification results for each model and hardware platform
+- Performance metrics (latency, throughput, memory usage)
+- Batch size scaling behavior
+- Hardware compatibility matrix
+- Implementation issues and fixes
+- Recommendations for hardware and model selection
+
+### Automated Hardware Selection and Performance Prediction
+
+To leverage benchmark results for automated hardware selection and performance prediction, use the new hardware model predictor:
+
+```bash
+# Get hardware recommendation based on benchmark data
+python test/hardware_model_predictor.py --model bert-base-uncased --batch-size 8
+
+# Predict performance for a model on specific hardware
+python test/hardware_model_predictor.py --model t5-small --hardware cuda --batch-size 16
+
+# Generate matrix of predictions for multiple models and hardware
+python test/hardware_model_predictor.py --generate-matrix --output-file matrix.json
+```
+
+The hardware model predictor uses machine learning trained on benchmark data to provide:
+- Optimal hardware recommendations for any model
+- Performance predictions (throughput, latency, memory usage)
+- Batch size scaling predictions
+- Hardware comparison visualizations
+
+For more details, see the [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md).
+
+## Advanced Usage
+
+### Custom Model Sets
+
+To benchmark custom models, create a JSON file with model definitions:
 
 ```json
 {
-  "custom_bert": {
+  "bert_tiny": {
     "name": "prajjwal1/bert-tiny",
     "family": "embedding",
     "size": "tiny",
     "modality": "text"
   },
-  "custom_t5": {
-    "name": "google/t5-efficient-tiny", 
+  "t5_small": {
+    "name": "t5-small",
     "family": "text_generation",
-    "size": "tiny",
+    "size": "small",
     "modality": "text"
   }
 }
 ```
 
-Then use it with:
-```bash
-python test/run_model_benchmarks.py --models-set custom --custom-models my_models.json
-```
-
-## Output and Reports
-
-The benchmarking tools generate comprehensive output:
-
-1. **JSON Results**: Raw benchmark data for each model and hardware platform
-2. **Markdown Reports**: Human-readable reports summarizing results
-3. **Visualizations**: Plots showing performance comparisons
-4. **Hardware Compatibility Matrix**: JSON file tracking model compatibility across hardware
-
-Example report sections:
-- Hardware platforms detected
-- Models tested
-- Functionality verification results
-- Performance benchmark results
-- Hardware compatibility matrix
-- Recommendations based on results
-- Next steps
-
-## Hardware Support
-
-The benchmarking tools automatically detect and test on available hardware:
-
-- CPU (always available)
-- CUDA (NVIDIA GPUs)
-- MPS (Apple Silicon)
-- OpenVINO
-- ROCm (AMD GPUs)
-
-## Use Cases
-
-### Verify Model Functionality Across Hardware
-
-To check if models run correctly on different hardware:
+Then run:
 
 ```bash
-python test/run_model_benchmarks.py --verify-only --specific-models bert t5 vit
+python test/run_model_benchmarks.py --models-set custom --custom-models path/to/models.json
 ```
 
-### Measure Performance for Specific Hardware
+### Performance Profiling
 
-To benchmark models only on specific hardware:
+For detailed performance profiling:
 
 ```bash
-python test/run_model_benchmarks.py --hardware cuda cpu --models-set small
+python test/run_benchmark_suite.py --profile --output-dir ./profiling_results
 ```
 
-### Generate New Hardware Compatibility Matrix
+### Result Visualization
 
-To update the hardware compatibility matrix:
+Generate visualizations from benchmark results:
 
 ```bash
-python test/run_model_benchmarks.py --verify-only
+python test/benchmark_visualizer.py --input-dir ./benchmark_results --output-dir ./visualizations
 ```
 
-### Comprehensive Benchmarks for All Models
+## Integrating with Database Storage
 
-To run complete benchmarks for all key models:
+To automatically store benchmark results in the database system:
 
 ```bash
-python test/run_model_benchmarks.py --output-dir ./comprehensive_benchmarks
+python test/benchmark_all_key_models.py --output-dir ./benchmark_results --auto-store-db
 ```
 
-## Integration with ResourcePool
-
-The benchmarking tools integrate with the ResourcePool system for efficient model caching and memory management. To disable ResourcePool integration:
-
-```bash
-python test/run_model_benchmarks.py --no-resource-pool
-```
-
-## Best Practices
-
-1. Start with the `small` model set to verify everything works correctly
-2. Use `--verify-only` for a quick check of model functionality
-3. Use `--benchmark-only` when you've already verified functionality
-4. Consider running benchmarks overnight for the full `key` model set
-5. Use `--specific-models` to focus on models relevant to your use case
-6. Review the hardware compatibility matrix to understand which models work on different hardware
-7. Use the resource pool to improve benchmark speed for repeated runs
+This integrates with the DuckDB/Parquet-based database system for efficient storage and analysis of benchmark results.
 
 ## Troubleshooting
 
-### Common Issues
+Common issues and solutions:
 
-1. **Out of Memory**: Reduce batch sizes or benchmark fewer models at once
-2. **Model Not Found**: Check if you're using the correct model name or try a smaller model
-3. **Hardware Not Detected**: Ensure the required drivers and libraries are installed
-4. **Plot Generation Fails**: Install missing matplotlib and pandas libraries
-
-### Debug Mode
-
-For detailed output, use the `--debug` flag:
-
-```bash
-python test/run_model_benchmarks.py --models-set small --debug
-```
-
-## Additional Resources
-
-- Check the `CLAUDE.md` file for the latest performance benchmarks
-- See `hardware_compatibility_matrix.json` for the current hardware compatibility status
-- Review `MODEL_FAMILY_CLASSIFIER_GUIDE.md` for information on model family classification
-- Refer to `RESOURCE_POOL_GUIDE.md` for details on resource management
+- **Out of memory errors**: Reduce batch size or use a smaller model variant
+- **Hardware detection failures**: Ensure hardware drivers are properly installed
+- **Model loading errors**: Check model compatibility with the specified hardware platform
+- **Implementation issues**: Use the `--debug` flag to get more information about implementation issues and fixes

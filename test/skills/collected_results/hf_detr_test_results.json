@@ -11,13 +11,13 @@
         "type": "<class 'dict'>",
         "implementation_type": "REAL"
       },
-      "timestamp": "2025-03-01T21:20:38.150172",
+      "timestamp": "2025-03-02T22:28:17.726890",
       "platform": "CPU"
     }
   ],
   "metadata": {
     "model_name": "facebook/detr-resnet-50",
     "model_type": "detr",
-    "test_timestamp": "2025-03-01T21:20:38.150186"
+    "test_timestamp": "2025-03-02T22:28:17.726905"
   }
 }

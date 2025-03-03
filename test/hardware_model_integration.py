@@ -18,11 +18,11 @@ logger = logging.getLogger(__name__)
 
 # Model family hardware preference mapping
 MODEL_FAMILY_DEVICE_PREFERENCES = {
-    "embedding": ["cuda", "mps", "openvino", "rocm", "cpu"],  # Embedding models work well on all hardware
-    "text_generation": ["cuda", "rocm", "cpu", "mps"],        # LLMs prefer CUDA, ROCm for performance
-    "vision": ["cuda", "openvino", "mps", "rocm", "cpu"],     # Vision models do well with OpenVINO
-    "audio": ["cuda", "cpu", "rocm", "mps"],                  # Audio models often need CUDA
-    "multimodal": ["cuda", "cpu"]                             # Multimodal models typically need CUDA
+    "embedding": ["cuda", "mps", "openvino", "rocm", "webnn", "cpu"],  # Embedding models work well on all hardware
+    "text_generation": ["cuda", "rocm", "cpu", "mps", "webgpu"],        # LLMs prefer CUDA, ROCm for performance
+    "vision": ["cuda", "openvino", "mps", "rocm", "webgpu", "webnn", "cpu"],  # Vision models do well with OpenVINO and WebGPU
+    "audio": ["cuda", "cpu", "rocm", "mps", "webnn", "webgpu"],        # Audio models with expanded web platform support
+    "multimodal": ["cuda", "rocm", "mps", "webgpu", "cpu"]            # Multimodal models with expanded platform support
 }
 
 # Memory requirements by model family (in MB)
@@ -70,7 +70,7 @@ MODEL_FAMILY_HARDWARE_COMPATIBILITY = {
         "rocm": True,
         "mps": {"constraint": "size", "max_size": "medium"},
         "openvino": {"constraint": "size", "max_size": "small"},
-        "webnn": False,
+        "webnn": {"constraint": "size", "max_size": "small"},
         "webgpu": {"constraint": "size", "max_size": "small"},
         "cpu": True
     },
@@ -88,17 +88,17 @@ MODEL_FAMILY_HARDWARE_COMPATIBILITY = {
         "rocm": True,
         "mps": {"constraint": "size", "max_size": "medium"},
         "openvino": {"constraint": "size", "max_size": "medium"},
-        "webnn": False,
-        "webgpu": False,
+        "webnn": {"constraint": "size", "max_size": "small"},
+        "webgpu": {"constraint": "size", "max_size": "small"},
         "cpu": True
     },
     "multimodal": {
         "cuda": True,
         "rocm": {"constraint": "size", "max_size": "small"},
         "mps": {"constraint": "size", "max_size": "small"},
-        "openvino": False,
-        "webnn": False,
-        "webgpu": False,
+        "openvino": {"constraint": "size", "max_size": "small"},
+        "webnn": {"constraint": "model", "models": ["clip"]},
+        "webgpu": {"constraint": "model", "models": ["clip", "qwen"]},
         "cpu": True
     }
 }
@@ -345,11 +345,11 @@ def classify_model_family(model_name: str, model_class: Optional[str] = None) ->
         elif family == "text_generation":
             keywords = ["gpt", "llama", "t5", "bart", "bloom", "opt", "falcon", "mistral", "phi"]
         elif family == "vision":
-            keywords = ["vit", "swin", "resnet", "convnext", "deit", "clip", "image", "vision"]
+            keywords = ["vit", "swin", "resnet", "convnext", "deit", "clip", "image", "vision", "xclip", "detr"]
         elif family == "audio":
-            keywords = ["whisper", "wav2vec", "hubert", "audio", "speech", "clap"]
+            keywords = ["whisper", "wav2vec", "wav2vec2", "hubert", "audio", "speech", "clap", "speecht5"]
         elif family == "multimodal":
-            keywords = ["llava", "blip", "flava", "multimodal", "vision-text", "mm"]
+            keywords = ["llava", "blip", "flava", "multimodal", "vision-text", "mm", "qwen2_vl", "qwen3_vl"]
         
         # Check for matches
         for keyword in keywords:

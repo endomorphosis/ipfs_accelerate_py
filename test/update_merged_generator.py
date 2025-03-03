@@ -7,6 +7,7 @@ This script will:
 1. Update the generator template to match the worker/skillset implementation structure
 2. Add support for handler creation methods that follow the implementation pattern
 3. Enhance the mock interface to match real implementation classes
+4. Add proper WebNN and WebGPU support for all 13 key model types
 """
 
 import os

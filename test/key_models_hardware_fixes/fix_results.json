@@ -1,0 +1,165 @@
+[
+  {
+    "model": "bert",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_bert.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webnn",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "clap",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_clap.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm"
+    ]
+  },
+  {
+    "model": "clip",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_clip.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webnn",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "detr",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_detr.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webnn",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "llama",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_llama.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "llava",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_llava.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino"
+    ]
+  },
+  {
+    "model": "llava_next",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_llava_next.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino"
+    ]
+  },
+  {
+    "model": "qwen2",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_qwen2.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "t5",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_t5.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "vit",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_vit.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm",
+      "webnn",
+      "webgpu"
+    ]
+  },
+  {
+    "model": "wav2vec2",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_wav2vec2.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm"
+    ]
+  },
+  {
+    "model": "whisper",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_whisper.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm"
+    ]
+  },
+  {
+    "model": "xclip",
+    "original_file": "/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py",
+    "fixed_file": "/home/barberb/ipfs_accelerate_py/test/key_models_hardware_fixes/test_hf_xclip.py",
+    "platforms_fixed": [
+      "cpu",
+      "cuda",
+      "openvino",
+      "mps",
+      "rocm"
+    ]
+  }
+]

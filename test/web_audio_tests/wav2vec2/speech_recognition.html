@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wav2Vec2 Speech Recognition Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        .test-container { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .result { margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 3px; }
+        .success { color: green; }
+        .error { color: red; }
+        .metrics { margin-top: 10px; }
+        pre { white-space: pre-wrap; overflow-x: auto; }
+        button { padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        select, input { padding: 8px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>Wav2Vec2 Speech Recognition Test</h1>
+    
+    <div class="test-container">
+        <h2>Test Configuration</h2>
+        
+        <div>
+            <label for="model-select">Model:</label>
+            <select id="model-select">
+                <!-- Will be populated with available models -->
+            </select>
+        </div>
+        
+        <div>
+            <label for="backend-select">WebNN Backend:</label>
+            <select id="backend-select">
+                <option value="gpu">GPU (preferred)</option>
+                <option value="cpu">CPU</option>
+                <option value="default">Default</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="format-select">Model Format:</label>
+            <select id="format-select">
+                <option value="onnx">ONNX</option>
+                <option value="webnn">WebNN</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="audio-select">Audio Sample:</label>
+            <select id="audio-select">
+                <!-- Will be populated with available audio samples -->
+            </select>
+        </div>
+        
+        <div>
+            <button id="run-test-btn">Run Test</button>
+            <button id="run-all-tests-btn">Run All Configurations</button>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Results</h2>
+        <div id="results">No tests run yet.</div>
+    </div>
+    
+    <script type="module">
+        import { initWebNN, loadOnnxModelWithWebNN, runWebNNInference, prepareAudioInputForWebNN } from '/common/webnn-utils.js';
+        import { initWebGPU, prepareAudioInputForWebGPU } from '/common/webgpu-utils.js';
+        import { loadAudioFile, audioBufferToMono, resampleAudio, generateSyntheticAudio } from '/common/audio-utils.js';
+        import { runTestCase, runAllTests, displayResultsOnPage } from '/common/test-runner.js';
+        
+        // Configuration
+        const modelType = 'wav2vec2';
+        const testCase = 'speech_recognition';
+        const modelOptions = ["facebook/wav2vec2-base", "facebook/wav2vec2-large"];
+        const audioOptions = ["sample1.wav", "sample2.wav", "sample3.wav"];
+        
+        // Initialize UI elements
+        const modelSelect = document.getElementById('model-select');
+        const backendSelect = document.getElementById('backend-select');
+        const formatSelect = document.getElementById('format-select');
+        const audioSelect = document.getElementById('audio-select');
+        const runTestBtn = document.getElementById('run-test-btn');
+        const runAllTestsBtn = document.getElementById('run-all-tests-btn');
+        const resultsDiv = document.getElementById('results');
+        
+        // Populate model options
+        modelOptions.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            modelSelect.appendChild(option);
+        });
+        
+        // Populate audio options
+        audioOptions.forEach(audio => {
+            const option = document.createElement('option');
+            option.value = audio;
+            option.textContent = audio;
+            audioSelect.appendChild(option);
+        });
+        
+        // Test function for speech_recognition
+        async function runTest(options) {
+            const { model, backend = 'gpu', format = 'onnx', audioSample } = options;
+            
+            // Initialize WebNN
+            const { context, deviceType } = await initWebNN(backend);
+            
+            // Load model
+            const modelUrl = `/models/${modelType}/${model}.${format}`;
+            const { graphBuilder, model: nnModel } = await loadOnnxModelWithWebNN(modelUrl, context);
+            
+            // Load audio
+            const audioUrl = `/audio/${audioSample}`;
+            const { audioBuffer, audioContext } = await loadAudioFile(audioUrl);
+            const { data: audioData, sampleRate } = audioBufferToMono(audioBuffer);
+            
+            // Prepare input for the model
+            const modelInput = prepareAudioInputForWebNN(graphBuilder, audioData, sampleRate, modelType);
+            
+            // Run inference
+            const { results, inferenceTime } = await runWebNNInference(nnModel, { input: modelInput });
+            
+            // Process results based on test case
+            let processedResults = {};
+            let metrics = { inferenceTime };
+            
+            if (testCase === 'speech_recognition') {
+                // Process speech recognition results
+                processedResults = decodeSpeechRecognitionResults(results, modelType);
+                metrics.decodingTime = performance.now() - (performance.now() - inferenceTime);
+            } else if (testCase === 'audio_classification') {
+                // Process audio classification results
+                processedResults = decodeAudioClassificationResults(results, modelType);
+            }
+            
+            return {
+                success: true,
+                results: processedResults,
+                metrics
+            };
+        }
+        
+        // Helper function to decode speech recognition results
+        function decodeSpeechRecognitionResults(results, modelType) {
+            // This would be model-specific decoding logic
+            // For now, return dummy results
+            return {
+                text: "This is a sample transcription.",
+                confidence: 0.95
+            };
+        }
+        
+        // Helper function to decode audio classification results
+        function decodeAudioClassificationResults(results, modelType) {
+            // This would be model-specific decoding logic
+            // For now, return dummy results
+            return {
+                topClasses: [
+                    { label: "Speech", score: 0.85 },
+                    { label: "Music", score: 0.10 },
+                    { label: "Background noise", score: 0.05 }
+                ]
+            };
+        }
+        
+        // Run a single test with current configuration
+        async function runSingleTest() {
+            const model = modelSelect.value;
+            const backend = backendSelect.value;
+            const format = formatSelect.value;
+            const audioSample = audioSelect.value;
+            
+            resultsDiv.innerHTML = 'Running test...';
+            
+            try {
+                const testResult = await runTestCase(runTest, {
+                    model,
+                    backend,
+                    format,
+                    audioSample
+                });
+                
+                // Display results
+                resultsDiv.innerHTML = `
+                    <div class="${testResult.success ? 'success' : 'error'}">
+                        Status: ${testResult.success ? 'Success' : 'Failed'}
+                    </div>
+                    ${testResult.error ? `<div class="error">Error: ${testResult.error}</div>` : ''}
+                    <div class="metrics">
+                        <p>Execution Time: ${testResult.executionTime.toFixed(2)} ms</p>
+                        <p>Inference Time: ${testResult.inferenceTime ? testResult.inferenceTime.toFixed(2) + ' ms' : 'N/A'}</p>
+                        ${testResult.decodingTime ? `<p>Decoding Time: ${testResult.decodingTime.toFixed(2)} ms</p>` : ''}
+                    </div>
+                    <h3>Results:</h3>
+                    <pre>${JSON.stringify(testResult, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        Test execution failed: ${error.message || String(error)}
+                    </div>
+                `;
+            }
+        }
+        
+        // Run all test configurations
+        async function runAllTestConfigurations() {
+            resultsDiv.innerHTML = 'Running all test configurations...';
+            
+            const testCases = [runTest];
+            const configurations = [];
+            
+            // Generate all combinations of model, backend, format, and audio sample
+            modelOptions.forEach(model => {
+                ['gpu', 'cpu'].forEach(backend => {
+                    ['onnx', 'webnn'].forEach(format => {
+                        audioOptions.slice(0, 2).forEach(audioSample => {
+                            configurations.push({
+                                model,
+                                backend,
+                                format,
+                                audioSample
+                            });
+                        });
+                    });
+                });
+            });
+            
+            try {
+                const results = await runAllTests(modelType, testCases, configurations);
+                displayResultsOnPage(results);
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        Failed to run all tests: ${error.message || String(error)}
+                    </div>
+                `;
+            }
+        }
+        
+        // Event listeners
+        runTestBtn.addEventListener('click', runSingleTest);
+        runAllTestsBtn.addEventListener('click', runAllTestConfigurations);
+        
+        // Initialize the page
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('Test page loaded for', modelType, testCase);
+            
+            // Check WebNN support
+            if (!('ml' in navigator)) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        WebNN is not supported in this browser.
+                    </div>
+                `;
+                runTestBtn.disabled = true;
+                runAllTestsBtn.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>

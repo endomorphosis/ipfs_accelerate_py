@@ -1,0 +1,39 @@
+{
+  "timestamp": "20250302_202226",
+  "system_info": {
+    "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+    "cpu": "x86_64",
+    "cuda_available": true,
+    "mps_available": false,
+    "openvino_available": true
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "mps",
+    "rocm",
+    "openvino"
+  ],
+  "model_families": {
+    "text_generation": {
+      "models_tested": [
+        "gpt2",
+        "t5-small",
+        "google/flan-t5-small"
+      ],
+      "hardware_results": {
+        "cpu": {
+          "latency_ms": [],
+          "throughput": []
+        },
+        "openvino": {
+          "latency_ms": [],
+          "throughput": []
+        }
+      }
+    }
+  },
+  "performance_comparison": {
+    "text_generation": {}
+  }
+}

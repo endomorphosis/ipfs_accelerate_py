@@ -854,6 +854,217 @@ class test_hf_llava_next:
         
         return test_results
 
+
+
+    def init_rocm(self, model_name=None, device="hip"):
+        """Initialize vision model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_name
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing vision model {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize image processor
+            processor = transformers.AutoImageProcessor.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModelForImageClassification.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(image_input, **kwargs):
+                try:
+                    # Check if input is a file path or already an image
+                    if isinstance(image_input, str):
+                        if os.path.exists(image_input):
+                            image = Image.open(image_input)
+                        else:
+                            return {"error": f"Image file not found: {image_input}"}
+                    elif isinstance(image_input, Image.Image):
+                        image = image_input
+                    else:
+                        return {"error": "Unsupported image input format"}
+                    
+                    # Process with processor
+                    inputs = processor(images=image, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm vision handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = 1  # For vision models
+            
+            # Return components
+            return model, processor, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing vision model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+
+
+
+    def init_webnn(self, model_name=None):
+        """Initialize vision model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_name
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the image processor
+            processor = transformers.AutoImageProcessor.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load image processor: {str(e)}")
+            # Create mock processor
+            class MockImageProcessor:
+                def __call__(self, images, **kwargs):
+                    return {"pixel_values": np.zeros((1, 3, 224, 224))}
+                    
+            processor = MockImageProcessor()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Handler for WebNN
+        def handler(image_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(image_input, str):
+                # Assuming file path for image
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for vision model",
+                    "implementation_type": "WebNN_READY",
+                    "input_image_path": image_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_image  # Provide test data from the test class
+                }
+            elif isinstance(image_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for vision model"] * len(image_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": image_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn  # Provide batch test data
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+
+
+
+    def init_webgpu(self, model_name=None):
+        """Initialize vision model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_name
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the image processor
+            processor = transformers.AutoImageProcessor.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load image processor: {str(e)}")
+            # Create mock processor
+            class MockImageProcessor:
+                def __call__(self, images, **kwargs):
+                    return {"pixel_values": np.zeros((1, 3, 224, 224))}
+                    
+            processor = MockImageProcessor()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Handler for WebGPU
+        def handler(image_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(image_input, str):
+                # Assuming file path for image
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for vision model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_image_path": image_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_image  # Provide test data from the test class
+                }
+            elif isinstance(image_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for vision model"] * len(image_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": image_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu  # Provide batch test data
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+
 if __name__ == "__main__":
     try:
         this_llava = test_hf_llava_next()

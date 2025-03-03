@@ -466,8 +466,11 @@ python run_benchmark_suite.py --plot-comparison ./benchmark_results/before ./ben
 
 - [ResourcePool Guide](RESOURCE_POOL_GUIDE.md): Details on the ResourcePool for model caching
 - [Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md): Information on the hardware detection system
-- [Model Family Classification Guide](MODEL_FAMILY_CLASSIFICATION_GUIDE.md): Details on model family classification
+- [Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md): Details on model family classification
 - [Model Compression Guide](MODEL_COMPRESSION_GUIDE.md): Guide to model compression techniques
+- [Hardware Platform Test Guide](HARDWARE_PLATFORM_TEST_GUIDE.md): Guide to hardware platform testing
+- [Hardware Model Validation Guide](HARDWARE_MODEL_VALIDATION_GUIDE.md): Guide to model validation
+- [Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md): Guide to hardware-model integration
 
 ---
 

@@ -1,0 +1,24 @@
+{
+  "batch_sizes": [
+    1,
+    4,
+    8
+  ],
+  "warmup_iterations": 5,
+  "benchmark_iterations": 20,
+  "timeout": 600,
+  "model_families": {
+    "audio": [
+      "laion/clap-htsat-unfused",
+      "facebook/wav2vec2-base"
+    ]
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "openvino"
+  ],
+  "use_resource_pool": true,
+  "parallel": true,
+  "generate_plots": true
+}

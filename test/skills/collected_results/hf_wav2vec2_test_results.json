@@ -6,18 +6,18 @@
   },
   "examples": [
     {
-      "input": "Test input for wav2vec2",
+      "input": "test.mp3",
       "output": {
         "type": "<class 'str'>",
         "implementation_type": "REAL"
       },
-      "timestamp": "2025-03-01T18:29:06.509013",
+      "timestamp": "2025-03-02T22:28:29.746922",
       "platform": "CPU"
     }
   ],
   "metadata": {
-    "model_name": "bert-base-uncased",
+    "model_name": "facebook/wav2vec2-base-960h",
     "model_type": "wav2vec2",
-    "test_timestamp": "2025-03-01T18:29:06.509024"
+    "test_timestamp": "2025-03-02T22:28:29.746932"
   }
 }
