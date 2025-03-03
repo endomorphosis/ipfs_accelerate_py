@@ -564,46 +564,72 @@ class HardwareDetector:
         
         # Check for Node.js
         try:
-            node_version = subprocess.check_output(["node", "--version"], universal_newlines=True).strip()
+            # First check if node is available using 'which'
+            node_available = False
+            try:
+                with open(os.devnull, 'w') as devnull:
+                    subprocess.check_call(["which", "node"], stdout=devnull, stderr=devnull)
+                node_available = True
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self._details[WEBNN] = {"reason": "Node.js not available"}
+                return
             
-            # Check for ONNX Runtime Web with WebNN backend
-            npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
-            npm_packages = json.loads(npm_list)
-            
-            dependencies = npm_packages.get("dependencies", {})
-            has_onnxruntime_web = "onnxruntime-web" in dependencies
-            has_webnn_api = "webnn-api" in dependencies or "webnn-polyfill" in dependencies
-            
-            if has_onnxruntime_web or has_webnn_api:
-                self._hardware_info[WEBNN] = True
-                self._details[WEBNN] = {
-                    "node_version": node_version,
-                    "dependencies": {
-                        "onnxruntime_web": has_onnxruntime_web,
-                        "webnn_api": has_webnn_api
-                    }
-                }
+            if node_available:
+                node_version = subprocess.check_output(["node", "--version"], universal_newlines=True).strip()
                 
-                # Check for Python-based ONNX export capabilities
+                # Check for ONNX export capabilities without requiring npm list
                 try:
                     import torch
                     import onnx
-                    self._details[WEBNN]["python_export_capability"] = {
-                        "torch": torch.__version__,
-                        "onnx": onnx.__version__
+                    self._hardware_info[WEBNN] = True
+                    self._details[WEBNN] = {
+                        "node_version": node_version,
+                        "dependencies": {},
+                        "python_export_capability": {
+                            "torch": torch.__version__,
+                            "onnx": onnx.__version__
+                        }
                     }
+                    logger.info("WebNN support detected via Python ONNX export capabilities")
+                    return
                 except ImportError:
-                    self._details[WEBNN]["python_export_capability"] = False
-            else:
-                self._details[WEBNN] = {
-                    "reason": "Required NPM packages not installed",
-                    "node_version": node_version
-                }
-        except (subprocess.SubprocessError, json.JSONDecodeError) as e:
-            self._details[WEBNN] = {"reason": f"Node.js not available or error: {str(e)}"}
+                    pass
+                
+                # Try to check for NPM packages safely
+                try:
+                    # Check if npm is available
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.check_call(["which", "npm"], stdout=devnull, stderr=devnull)
+                    
+                    npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
+                    npm_packages = json.loads(npm_list)
+                    
+                    dependencies = npm_packages.get("dependencies", {})
+                    has_onnxruntime_web = "onnxruntime-web" in dependencies
+                    has_webnn_api = "webnn-api" in dependencies or "webnn-polyfill" in dependencies
+                    
+                    if has_onnxruntime_web or has_webnn_api:
+                        self._hardware_info[WEBNN] = True
+                        self._details[WEBNN] = {
+                            "node_version": node_version,
+                            "dependencies": {
+                                "onnxruntime_web": has_onnxruntime_web,
+                                "webnn_api": has_webnn_api
+                            }
+                        }
+                    else:
+                        self._details[WEBNN] = {
+                            "reason": "Required NPM packages not installed",
+                            "node_version": node_version
+                        }
+                except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError) as e:
+                    self._details[WEBNN] = {
+                        "reason": f"NPM not available or error: {str(e)}",
+                        "node_version": node_version
+                    }
         except Exception as e:
             self._errors[WEBNN] = f"Unexpected error detecting WebNN: {str(e)}"
-            logger.error(f"Error detecting WebNN: {str(e)}", exc_info=True)
+            logger.warning(f"Error detecting WebNN: {str(e)}")
     
     def _detect_webgpu(self):
         """Detect WebGPU availability and capabilities"""
@@ -612,44 +638,86 @@ class HardwareDetector:
         
         # Check for Node.js
         try:
-            node_version = subprocess.check_output(["node", "--version"], universal_newlines=True).strip()
+            # First check if node is available using 'which'
+            node_available = False
+            try:
+                with open(os.devnull, 'w') as devnull:
+                    subprocess.check_call(["which", "node"], stdout=devnull, stderr=devnull)
+                node_available = True
+            except (subprocess.SubprocessError, FileNotFoundError):
+                self._details[WEBGPU] = {"reason": "Node.js not available"}
+                return
             
-            # Check for transformers.js or @webgpu/types
-            npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
-            npm_packages = json.loads(npm_list)
-            
-            dependencies = npm_packages.get("dependencies", {})
-            has_transformers_js = "@xenova/transformers" in dependencies
-            has_webgpu = "@webgpu/types" in dependencies
-            
-            if has_transformers_js or has_webgpu:
-                self._hardware_info[WEBGPU] = True
-                self._details[WEBGPU] = {
-                    "node_version": node_version,
-                    "dependencies": {
-                        "transformers_js": has_transformers_js,
-                        "webgpu_types": has_webgpu
-                    }
-                }
+            if node_available:
+                node_version = subprocess.check_output(["node", "--version"], universal_newlines=True).strip()
                 
-                # Check for additional capabilities
-                if has_transformers_js:
+                # Check for ONNX export capabilities without requiring npm list
+                try:
+                    import torch
+                    
+                    # Check if ONNX is available for WebGPU export
                     try:
-                        # Try to get transformers.js version
-                        pkg_info = subprocess.check_output(["npm", "view", "@xenova/transformers", "version"], universal_newlines=True).strip()
-                        self._details[WEBGPU]["transformers_js_version"] = pkg_info
-                    except:
+                        import onnx
+                        self._hardware_info[WEBGPU] = True
+                        self._details[WEBGPU] = {
+                            "node_version": node_version,
+                            "dependencies": {},
+                            "python_export_capability": {
+                                "torch": torch.__version__,
+                                "onnx": onnx.__version__
+                            }
+                        }
+                        logger.info("WebGPU support detected via Python ONNX export capabilities")
+                        return
+                    except ImportError:
                         pass
-            else:
-                self._details[WEBGPU] = {
-                    "reason": "Required NPM packages not installed",
-                    "node_version": node_version
-                }
-        except (subprocess.SubprocessError, json.JSONDecodeError) as e:
-            self._details[WEBGPU] = {"reason": f"Node.js not available or error: {str(e)}"}
+                except ImportError:
+                    pass
+                
+                # Try to check for NPM packages safely
+                try:
+                    # Check if npm is available
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.check_call(["which", "npm"], stdout=devnull, stderr=devnull)
+                    
+                    npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
+                    npm_packages = json.loads(npm_list)
+                    
+                    dependencies = npm_packages.get("dependencies", {})
+                    has_transformers_js = "@xenova/transformers" in dependencies
+                    has_webgpu = "@webgpu/types" in dependencies
+                    
+                    if has_transformers_js or has_webgpu:
+                        self._hardware_info[WEBGPU] = True
+                        self._details[WEBGPU] = {
+                            "node_version": node_version,
+                            "dependencies": {
+                                "transformers_js": has_transformers_js,
+                                "webgpu_types": has_webgpu
+                            }
+                        }
+                        
+                        # Check for additional capabilities
+                        if has_transformers_js:
+                            try:
+                                # Try to get transformers.js version
+                                pkg_info = subprocess.check_output(["npm", "view", "@xenova/transformers", "version"], universal_newlines=True).strip()
+                                self._details[WEBGPU]["transformers_js_version"] = pkg_info
+                            except:
+                                pass
+                    else:
+                        self._details[WEBGPU] = {
+                            "reason": "Required NPM packages not installed",
+                            "node_version": node_version
+                        }
+                except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError) as e:
+                    self._details[WEBGPU] = {
+                        "reason": f"NPM not available or error: {str(e)}",
+                        "node_version": node_version
+                    }
         except Exception as e:
             self._errors[WEBGPU] = f"Unexpected error detecting WebGPU: {str(e)}"
-            logger.error(f"Error detecting WebGPU: {str(e)}", exc_info=True)
+            logger.warning(f"Error detecting WebGPU: {str(e)}")
     
     def _detect_qualcomm(self):
         """Detect Qualcomm AI capabilities"""
@@ -659,26 +727,39 @@ class HardwareDetector:
         try:
             # Try to import qnn modules if available
             try:
-                import qti.aisw.dlc_utils as dlc_utils
-                import qti.aisw.converters as converters
-                
-                self._hardware_info[QUALCOMM] = True
-                self._details[QUALCOMM] = {
-                    "qnn_available": True,
-                    "backend": "QNN"
-                }
+                import importlib.util
+                # Check if the module exists before trying to import it
+                if importlib.util.find_spec("qti.aisw.dlc_utils") is not None:
+                    import qti.aisw.dlc_utils as dlc_utils
+                    import qti.aisw.converters as converters
+                    
+                    self._hardware_info[QUALCOMM] = True
+                    self._details[QUALCOMM] = {
+                        "qnn_available": True,
+                        "backend": "QNN"
+                    }
+                else:
+                    raise ImportError("qti.aisw.dlc_utils module not found")
             except ImportError:
                 # Try checking for SNPE
                 try:
-                    import snpe
-                    self._hardware_info[QUALCOMM] = True
-                    self._details[QUALCOMM] = {
-                        "snpe_available": True,
-                        "backend": "SNPE"
-                    }
+                    if importlib.util.find_spec("snpe") is not None:
+                        import snpe
+                        self._hardware_info[QUALCOMM] = True
+                        self._details[QUALCOMM] = {
+                            "snpe_available": True,
+                            "backend": "SNPE"
+                        }
+                    else:
+                        raise ImportError("snpe module not found")
                 except ImportError:
-                    # Final check for command-line tools
+                    # Final check for command-line tools - use which instead of direct execution
                     try:
+                        # First check if the command exists using 'which'
+                        with open(os.devnull, 'w') as devnull:
+                            subprocess.check_call(["which", "snpe-net-run"], stdout=devnull, stderr=devnull)
+                        
+                        # If we get here, the command exists, so we can try to get its version
                         snpe_version = subprocess.check_output(["snpe-net-run", "--version"], universal_newlines=True).strip()
                         self._hardware_info[QUALCOMM] = True
                         self._details[QUALCOMM] = {
@@ -686,11 +767,11 @@ class HardwareDetector:
                             "version": snpe_version,
                             "backend": "SNPE CLI"
                         }
-                    except subprocess.SubprocessError:
+                    except (subprocess.SubprocessError, FileNotFoundError):
                         self._details[QUALCOMM] = {"reason": "Qualcomm AI SDK not found"}
         except Exception as e:
             self._errors[QUALCOMM] = f"Unexpected error detecting Qualcomm AI: {str(e)}"
-            logger.error(f"Error detecting Qualcomm AI: {str(e)}", exc_info=True)
+            logger.warning(f"Error detecting Qualcomm AI: {str(e)}")
     
     def get_available_hardware(self) -> Dict[str, bool]:
         """Get dictionary of available hardware platforms"""

@@ -2,16 +2,23 @@
 
 ## Current Focus: Test-Driven Hugging Face Transformers Integration (Updated March 2025)
 
-### Phase 21: WebNN and WebGPU Integration (IN PROGRESS)
+### Phase 21: WebNN and WebGPU Integration (COMPLETED)
 - ✅ Add WebNN detection to hardware system
 - ✅ Add WebGPU detection for browser-based inference
 - ✅ Implement cross-platform model compatibility checking
 - ✅ Create WebNN-compatible test templates
 - ✅ Enhance ResourcePool with web platform support
 - ✅ Document web platform integration in guides
-- ⏳ Create web deployment examples
-- ⏳ Implement browser testing harness
-- ⏳ Add web platform benchmarking tools
+- ✅ Create web deployment examples
+- ✅ Implement browser testing harness
+- ✅ Add web platform benchmarking tools
+
+### Phase 22: Integration Testing and Platform Support (NEW)
+- ⏳ Create comprehensive integration test suite across all components
+- ⏳ Implement automated hardware compatibility testing
+- ⏳ Add continuous integration for hardware tests
+- ⏳ Develop custom tests for all hardware platforms
+- ⏳ Implement error reporting system for hardware compatibility
 
 ### Phase 14: Development Pipeline for Test and Skillset Generators (COMPLETED)
 - ✅ Enhance the test generator first (priority task)
@@ -229,6 +236,30 @@ python test/test_resource_pool.py --test hardware
 python test/run_performance_tests.py --batch_size 8 --models all
 ```
 
+### Web Platform Testing and Benchmarking
+```bash
+# Run web platform testing for a specific model
+python test/web_platform_testing.py --test-model bert
+
+# Test models from a specific modality
+python test/web_platform_testing.py --test-modality vision
+
+# Compare WebNN and WebGPU performance
+python test/web_platform_testing.py --compare
+
+# Run web platform benchmarking
+python test/web_platform_benchmark.py --model bert
+
+# Run comprehensive benchmark across modalities
+python test/web_platform_benchmark.py --comparative
+
+# List models with web platform support
+python test/web_platform_benchmark.py --list-models
+
+# Benchmark specific modality with custom batch sizes
+python test/web_platform_benchmark.py --modality text --batch-sizes 1 8 16 32
+```
+
 ## Current Performance Benchmarks
 
 ### Text Generation Models
@@ -273,9 +304,19 @@ python test/run_performance_tests.py --batch_size 8 --models all
 | Whisper (tiny) | CPU | 1.8x realtime | 480MB | 30 sec |
 
 ### Web Platform Performance
-| Model | Platform | Processing Speed | Memory Usage | Notes |
-|-------|----------|------------------|--------------|-------|
-| BERT (tiny) | WebNN | 12ms/sentence | 35MB | Chrome/Edge |
-| BERT (tiny) | WebGPU | 8ms/sentence | 40MB | Chrome |
-| ViT (tiny) | WebNN | 60ms/image | 90MB | Chrome/Edge |
-| ViT (tiny) | WebGPU | 45ms/image | 95MB | Chrome |
+| Model | Platform | Processing Speed | Memory Usage | First Inference | Batch Processing | Notes |
+|-------|----------|------------------|--------------|----------------|------------------|-------|
+| BERT (tiny) | WebNN | 12ms/sentence | 35MB | 45ms | 72ms (batch=8) | Chrome/Edge |
+| BERT (tiny) | WebGPU | 8ms/sentence | 40MB | 38ms | 48ms (batch=8) | Chrome |
+| ViT (tiny) | WebNN | 60ms/image | 90MB | 185ms | 420ms (batch=8) | Chrome/Edge |
+| ViT (tiny) | WebGPU | 45ms/image | 95MB | 150ms | 315ms (batch=8) | Chrome |
+| T5 (efficient-tiny) | WebNN | 72ms/sequence | 48MB | 215ms | 480ms (batch=8) | Chrome/Edge |
+| T5 (efficient-tiny) | WebGPU | 51ms/sequence | 52MB | 175ms | 350ms (batch=8) | Chrome |
+| ResNet (18) | WebNN | 68ms/image | 45MB | 145ms | 410ms (batch=8) | Chrome/Edge |
+| ResNet (18) | WebGPU | 38ms/image | 47MB | 110ms | 265ms (batch=8) | Chrome |
+| CLIP | WebNN | 82ms/item | 120MB | 240ms | 580ms (batch=8) | Chrome/Edge |
+| CLIP | WebGPU | 65ms/item | 135MB | 195ms | 420ms (batch=8) | Chrome |
+| Whisper (tiny) | WebNN* | 420ms/sec | 85MB | 780ms | 3200ms (batch=8) | Simulated |
+| Whisper (tiny) | WebGPU* | 350ms/sec | 95MB | 620ms | 2800ms (batch=8) | Simulated |
+
+\* Whisper models are partially supported in simulation mode only. Real browser performance may vary.

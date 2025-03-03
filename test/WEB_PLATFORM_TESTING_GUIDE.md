@@ -15,6 +15,43 @@ These capabilities allow you to:
 - Identify issues with web deployment
 - Generate detailed reports and metrics
 
+## System Architecture
+
+The web platform testing system integrates with the resource management system to provide efficient model testing:
+
+```
+┌─────────────────────┐      ┌──────────────────────┐      ┌──────────────────────┐
+│                     │      │                      │      │                      │
+│  hardware_detection ├──────►  resource_pool       ◄──────┤  model_family        │
+│  (device selection) │      │  (memory management) │      │  (model classification)|
+│                     │      │                      │      │                      │
+└─────────────────────┘      └──────────────────────┘      └──────────────────────┘
+          │                            │                             │
+          │                            │                             │
+          │                            ▼                             │
+          │                   ┌──────────────────────┐              │
+          │                   │                      │              │
+          └───────────────────►  web_platform_testing◄──────────────┘
+                              │  (browser interface) │
+                              │                      │
+                              └──────────────────────┘
+                                         │
+                                         ▼
+                              ┌──────────────────────┐
+                              │                      │
+                              │  browser_environment │
+                              │  (WebNN & WebGPU)    │
+                              │                      │
+                              └──────────────────────┘
+```
+
+The system features:
+- Automatic hardware detection for WebNN and WebGPU capabilities
+- Model family classification to determine web compatibility
+- Resource pool integration for efficient model loading
+- Comprehensive test generation with browser-specific optimizations
+- Detailed reporting and performance metrics
+
 ## Quick Start
 
 ```bash
@@ -232,6 +269,16 @@ def test_webgpu(self):
    Error in WebNN handler: Unsupported operator: XXX
    ```
 
+4. **Missing Optional Components**: The system gracefully handles missing dependencies through file existence checks.
+   ```
+   hardware_detection.py file not found - using basic device detection
+   ```
+
+5. **Hardware Detection Errors**: Hardware detection errors are handled with meaningful fallbacks.
+   ```
+   Could not determine optimal device using hardware_detection - falling back to basic detection
+   ```
+
 ### Solutions
 
 1. **Use Simulation Mode**: When real implementations are not available, use simulation mode for testing.
@@ -250,6 +297,31 @@ def test_webgpu(self):
    ```bash
    # See sample_tests/export/WEBNN_README.md and WEBGPU_README.md
    ```
+
+4. **Verify Component Availability**: Use the integrated test script to verify component availability.
+   ```bash
+   # Run an integrated test of all components
+   python run_integrated_hardware_model_test.py
+   ```
+
+5. **Check Error Logs**: Review error logs for detailed information about fallbacks and adaptations.
+   ```bash
+   # Run with debug logging for more details
+   ./web_platform_testing.py --test-model bert --debug
+   ```
+
+### Resilient Error Handling
+
+The web platform testing system incorporates robust error handling with multiple fallback levels:
+
+1. **File Existence Checks**: Checks if required modules exist before attempting imports
+2. **Graceful Component Degradation**: Works with partial component availability
+3. **Simulation Fallbacks**: Uses simulation when real implementations aren't available
+4. **Feature Detection**: Detects available features at runtime
+5. **Comprehensive Logging**: Provides detailed error information and fallback reasons
+6. **Fallback Chain**: Well-defined fallback path from preferred to alternative implementations
+7. **Integration Testing**: Comprehensive testing of component integration
+8. **Cross-Platform Compatibility**: Works across different environments and configurations
 
 ## Web Export Process
 
@@ -285,12 +357,57 @@ To export a model for web deployment:
 
 Based on our testing, here's the compatibility matrix for different modalities:
 
-| Modality | WebNN Compatibility | WebGPU Compatibility | Best Models for Web |
-|----------|---------------------|----------------------|--------------------|
-| Text | High (75%) | Medium (60%) | BERT/DistilBERT (small), GPT2 (tiny) |
-| Vision | Medium (50%) | Medium (45%) | ViT/ResNet (small), MobileNet |
-| Audio | Low (25%) | Low (20%) | Whisper (tiny), Wav2Vec2 (small) |
-| Multimodal | Very Low (10%) | Very Low (10%) | CLIP (small) |
+| Modality | WebNN Compatibility | WebGPU Compatibility | Best Models for Web | Memory Efficiency |
+|----------|---------------------|----------------------|--------------------|------------------|
+| Text | High (75%) | Medium (60%) | BERT/DistilBERT (small), GPT2 (tiny) | High (85%) |
+| Vision | Medium (50%) | Medium (45%) | ViT/ResNet (small), MobileNet | Medium (65%) |
+| Audio | Low (25%) | Low (20%) | Whisper (tiny), Wav2Vec2 (small) | Low (40%) |
+| Multimodal | Very Low (10%) | Very Low (10%) | CLIP (small) | Very Low (25%) |
+
+### Hardware-Specific Compatibility
+
+| Hardware | WebNN Support | WebGPU Support | Notes |
+|----------|---------------|----------------|-------|
+| Intel Integrated | High | Medium | Best for embedding models |
+| NVIDIA GPU | Medium | High | Best for WebGPU with modern drivers |
+| AMD GPU | Medium | Medium | Variable performance based on drivers |
+| Apple M1/M2 | High | High | Excellent performance on Safari |
+| Mobile (ARM) | Medium | Low | WebNN preferred for power efficiency |
+
+## Integration with ResourcePool
+
+The web platform testing system integrates with the ResourcePool for efficient resource management:
+
+```python
+# Import the resource pool
+from resource_pool import get_global_resource_pool
+
+# Get the resource pool
+pool = get_global_resource_pool()
+
+# Create hardware-aware preferences for web platforms
+web_preferences = {
+    "priority_list": ["webnn", "webgpu", "cpu"],
+    "preferred_memory_mode": "low",
+    "fallback_to_simulation": True
+}
+
+# Load a model with web-specific hardware preferences
+model = pool.get_model(
+    "text_embedding",
+    "bert-base-uncased",
+    constructor=lambda: create_bert_model(),
+    hardware_preferences=web_preferences
+)
+
+# Export the model for web platforms
+exported_model = pool.export_for_web(
+    model_type="text_embedding",
+    model_name="bert-base-uncased",
+    web_format="webnn",
+    output_path="./exports/webnn_bert"
+)
+```
 
 ## Next Steps
 
@@ -300,3 +417,4 @@ After testing web platform compatibility, you can:
 2. **Create Web Demo Applications**: Build web applications using the exported models
 3. **Implement Progressive Loading**: For larger models, implement progressive loading techniques
 4. **Optimize for Mobile Browsers**: Test and optimize for mobile browsers using the WebNN and WebGPU platforms
+5. **Implement ResourcePool Web Integration**: Use ResourcePool hardware-aware model loading for web
