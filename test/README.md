@@ -4,11 +4,13 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 ## Recent Documentation Updates
 
-The repository now includes new comprehensive guides on API enhancements and optimizations:
+The repository now includes new comprehensive guides on resource management, model classification, and hardware integration:
 
-- **[API Error Documentation](API_ERROR_DOCUMENTATION.md)** - Complete guide to error handling across all API backends
-- **[Performance Optimization Plan](PERFORMANCE_OPTIMIZATION_PLAN.md)** - Detailed plan for optimizing API backends with focus on VLLM
-- **[API Implementation Summary](API_IMPLEMENTATION_SUMMARY.md)** - Current status of all API implementations
+- **[Resource Pool Guide](RESOURCE_POOL_GUIDE.md)** - Enhanced guide to the resource management system with device-specific features
+- **[Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md)** - Comprehensive documentation for the model classification system
+- **[Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md)** - Guide to the hardware detection system with compatibility patterns
+- **[Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md)** - Documentation for hardware and model integration
+- **[Summary of Improvements](SUMMARY_OF_IMPROVEMENTS.md)** - Detailed overview of recent system enhancements
 - **[API Enhancement README](API_ENHANCEMENT_README.md)** - Guide to advanced API features
 
 ## Overview
@@ -66,6 +68,14 @@ The repository has been organized for better readability and maintainability:
 - [INTEGRATED_GENERATOR_README.md](INTEGRATED_GENERATOR_README.md) - Overview of generator capabilities
 - [WEB_DEPLOYMENT_EXAMPLE.md](WEB_DEPLOYMENT_EXAMPLE.md) - Complete example of web deployment
 
+### Model and Resource Management
+
+- [MODEL_FAMILY_CLASSIFIER_GUIDE.md](MODEL_FAMILY_CLASSIFIER_GUIDE.md) - Guide to model family classification
+- [RESOURCE_POOL_GUIDE.md](RESOURCE_POOL_GUIDE.md) - Documentation for resource management system
+- [SUMMARY_OF_IMPROVEMENTS.md](SUMMARY_OF_IMPROVEMENTS.md) - Summary of recent improvements
+- [AMD_PRECISION_README.md](AMD_PRECISION_README.md) - Guide to AMD precision optimizations
+- [ENHANCED_MODEL_REGISTRY_GUIDE.md](ENHANCED_MODEL_REGISTRY_GUIDE.md) - Enhanced model registry documentation
+
 ## Primary Implementation Tools
 
 The following tools are used for implementing and testing the API infrastructure:
@@ -121,6 +131,27 @@ python test_hardware_backend.py --backend [cpu|cuda|openvino|mps|amd|webnn|webgp
 
 # Test all hardware platforms for a specific model
 python test_hardware_backend.py --model bert --all-backends
+
+# Run comprehensive hardware detection tests
+python test_comprehensive_hardware.py
+
+# Test hardware-aware model classification
+python test_comprehensive_hardware.py --test integration
+
+# Test hardware and model integration
+python test_comprehensive_hardware.py --test comparison
+
+# Test resource pool with enhanced functionality
+python test_resource_pool.py --test all
+
+# Test device-specific caching in resource pool
+python test_resource_pool.py --test device
+
+# Test memory tracking in resource pool
+python test_resource_pool.py --test memory
+
+# Test hardware-aware model selection
+python test_resource_pool.py --test hardware
 ```
 
 ### Skillset Generation
@@ -145,7 +176,27 @@ python integrated_skillset_generator.py --all --max-workers 20
 
 ## Generating New Tests
 
-### Modality-Specific Test Generation (NEW!)
+### Hardware-Aware Test Generation (NEW!)
+
+The test generator system now includes hardware-aware test generation that automatically selects the optimal hardware for each model and creates tests that efficiently share resources:
+
+```bash
+# Generate hardware-aware tests for specific models
+python test_generator_with_resource_pool.py --model bert-base-uncased
+python test_generator_with_resource_pool.py --model t5-small
+python test_generator_with_resource_pool.py --model vit-base-patch16-224
+
+# Generate with specific settings
+python test_generator_with_resource_pool.py --model gpt2 --output-dir ./skills
+python test_generator_with_resource_pool.py --model distilbert-base-uncased --debug
+python test_generator_with_resource_pool.py --model roberta-base --clear-cache
+python test_generator_with_resource_pool.py --model facebook/bart-large --timeout 60
+
+# Generate tests for multiple models with shared resources
+python test_generator_with_resource_pool.py --models bert,roberta,gpt2 --output-dir ./skills
+```
+
+### Modality-Specific Test Generation
 
 The test generator system has been enhanced with modality-specific templates that create specialized tests based on model type:
 
@@ -185,24 +236,72 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 
 ### March 2025 Enhancements
 
-1. **Modality-Specific Test Templates** - Specialized test templates for text, vision, audio, and multimodal models with:
-   - Modality-appropriate imports and dependencies
-   - Automatic test data generation (text, images, audio files)
-   - Hardware-specific optimizations tailored to each modality
-   - Appropriate processing logic for each model type
+1. **Hardware-Aware Resource Management Integration** - Comprehensive integration of resource management with hardware systems:
+   - Complete integration of ResourcePool with hardware detection and model classification
+   - Automatic hardware capability detection and optimal device selection
+   - Model family-based hardware compatibility matrix for intelligent decisions
+   - Enhanced device-specific resource management for CPU, CUDA, MPS, OpenVINO, ROCm
+   - Memory monitoring and management across all hardware platforms
+   - Specialized handling for memory-intensive models like LLMs
+   - Automatic fallback when preferred hardware is unavailable
+   - Low-memory mode with automatic detection and memory-efficient operation
+   - Cross-device resource management with proper cleanup
 
-2. **Enhanced Hardware Support** - Comprehensive hardware platform support:
-   - CPU: Standard for all model types
-   - CUDA: With specialized optimizations by modality
-   - OpenVINO: Hardware-optimized inference
-   - Apple Silicon (MPS): M1/M2/M3 support
-   - AMD ROCm: GPU acceleration on AMD hardware
-   - Qualcomm AI: Mobile chip optimizations
+2. **Enhanced Model Family Classification** - Significantly improved model classification system:
+   - Sophisticated pattern matching with weighted scoring
+   - Partial keyword matching for better subfamily detection
+   - Enhanced task analysis with normalized scoring
+   - Hardware compatibility analysis for family identification
+   - Weighted analysis combination for accurate classifications
+   - Memory requirement analysis for better family detection
+   - Improved subfamily detection with specialized patterns
+   - Confidence calculation with better normalization
 
-3. **Automatic Modality Detection** - Smart detection of model type based on:
-   - Model name patterns
-   - Model task categories
-   - Pipeline compatibility
+3. **Resource Pool Enhancements** - Major improvements to the resource management system:
+   - Device-specific model caching for CPU, CUDA, and MPS
+   - Enhanced memory tracking capabilities with detailed device stats
+   - Model family classification integration for intelligent device selection
+   - Improved resource cleanup with configurable timeouts
+   - Comprehensive testing for different hardware configurations
+   - Low-memory mode for resource-constrained environments
+   - Proper cache separation across devices
+   - Enhanced API with device-specific functionality
+   - Thread-safe resource sharing with robust locking
+
+4. **Hardware Detection System** - Comprehensive hardware detection capabilities:
+   - Robust detection across multiple platforms (Linux, macOS, Windows)
+   - Detailed hardware capability analysis with comprehensive checks
+   - Fine-grained CUDA capability detection (device count, memory, compute capability)
+   - Apple Silicon (MPS) support with specialized capability detection
+   - AMD ROCm support with proper identification of AMD GPUs
+   - OpenVINO device detection with detailed capability reporting
+   - WebNN and WebGPU capability detection for browser environments
+   - Automatic selection of optimal hardware based on model characteristics
+   - Enhanced support for multiple hardware backends:
+     - CPU: Standard for all model types with instruction set detection
+     - CUDA: With specialized optimizations by modality and memory requirements
+     - OpenVINO: Hardware-optimized inference for CPU, GPU and VPU
+     - Apple Silicon (MPS): M1/M2/M3 support with optimizations
+     - AMD ROCm: GPU acceleration on AMD hardware with HIP detection
+     - WebNN: Browser-based acceleration with feature detection
+     - WebGPU: Enhanced graphics processing in browser environments
+
+5. **Testing Infrastructure Improvements** - Enhanced testing capabilities:
+   - Device-specific test verification
+   - Hardware-aware test generation
+   - Model family-based test optimization
+   - Memory-efficient test execution
+   - Command-line options for focused testing
+   - Intelligent test skipping for unavailable hardware
+   - Cross-device verification
+   - Enhanced error reporting
+
+5. **Documentation Enhancements** - Comprehensive documentation updates:
+   - Detailed MODEL_FAMILY_CLASSIFIER_GUIDE.md with examples
+   - Enhanced RESOURCE_POOL_GUIDE.md with device-specific features
+   - New hardware integration documentation
+   - Updated progress tracking in CLAUDE.md
+   - Comprehensive SUMMARY_OF_IMPROVEMENTS.md
 
 ### Previous Improvements
 
@@ -276,39 +375,54 @@ python check_api_implementation.py
 
 The following areas have been identified for future development:
 
-1. **Template Generation Improvements**
-   - Integrate modality-specific templates into the merged test generator pipeline
-   - Add more specialized optimizations per modality
-   - Expand model registry with more detailed modality information
-   - Add performance benchmarks that leverage modality-specific metrics
+1. **Model Registry Enhancement and Integration**
+   - Implement automatic registry updates from test results
+   - Create registry query tools for implementation status
+   - Build visualization and reporting for implementation coverage
+   - Add performance statistics to registry entries
+   - Integrate registry with CI/CD pipeline
 
-2. **Web Backend Enhancements**
-   - Enhance WebNN export pipeline with optimizations for mobile devices
-   - Improve transformers.js integration with advanced caching strategies
-   - Add progressive enhancement for browsers with limited capabilities
-   - Create comprehensive deployment patterns for web applications
+2. **Advanced Template System**
+   - Create extended template system with multi-template inheritance
+   - Add template verification and validation
+   - Create specialized templates for edge cases
+   - Develop template compatibility testing
+   - Add dynamic template selection based on model version and size
 
-3. **Qualcomm AI Support**
-   - Complete implementation for Qualcomm AI backend
-   - Add specific optimizations for mobile deployments
-   - Implement test infrastructure for Qualcomm devices
-   - Create conversion utilities for efficient deployment
+3. **Resource Management Enhancements**
+   - Extend resource pool to handle distributed resources across machines
+   - Implement cross-process resource sharing capabilities
+   - Add fine-grained memory management based on hardware characteristics
+   - Add multi-device model splitting for large models
+   - Create visualization tools for resource usage and allocation
 
-4. **Semantic Caching Implementation**
-   - Add caching layer for frequently used requests
-   - Implement embedding-based similarity search
-   - Add cache invalidation strategies
+4. **Advanced Hardware Integration**
+   - Add specialized optimizations for different hardware platforms
+   - Implement automatic quantization based on hardware capabilities
+   - Create dynamic hardware selection based on workload
+   - Add fallback mechanisms for hardware-specific failures
+   - Develop specialized memory management for different devices
 
-5. **Advanced Rate Limiting**
-   - Implement token-bucket rate limiters
-   - Add adaptive rate limiting based on response codes
-   - Implement sliding-window rate limiters
+5. **Learning-Based Classification**
+   - Implement machine learning-based model classification
+   - Create adaptive classification that improves with usage
+   - Add feedback mechanism from test results
+   - Develop specialized classifiers for different model domains
+   - Create confidence-based fallback mechanisms
 
 6. **Performance Optimization**
-   - Benchmark throughput and latency across all backends
-   - Optimize queue processing for higher throughput
-   - Fine-tune backoff parameters per provider
-   - Create performance comparison dashboard
+   - Implement model-specific performance tuning
+   - Optimize memory usage across different hardware
+   - Create benchmarking tools for different model families
+   - Add performance comparison across hardware platforms
+   - Develop performance prediction based on model characteristics
+
+7. **Web Backend Enhancements**
+   - Enhance WebNN and WebGPU support
+   - Improve browser-based model execution
+   - Create specialized templates for web deployment
+   - Add progressive enhancement for different browser capabilities
+   - Develop web-specific memory management strategies
 
 ## Contributing
 
