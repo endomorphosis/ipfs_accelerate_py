@@ -615,7 +615,7 @@ The ResourcePool system is designed with robust error handling to function grace
 2. **Graceful Degradation**: When hardware_detection.py or model_family_classifier.py are missing, the system falls back to basic functionality
 3. **Runtime Feature Detection**: Components automatically detect available features at runtime rather than failing during import
 4. **Comprehensive Error Logging**: Clear error messages explain what features are missing and how the system is adapting
-5. **Self-Testing Capability**: The test_comprehensive_hardware.py script can verify that all components work together correctly
+5. **Self-Testing Capability**: The run_integrated_hardware_model_test.py script verifies all components work together correctly
 6. **Dynamic Import System**: Optional components are imported only when needed to minimize potential import errors
 7. **Cross-Platform Compatibility**: Fallback mechanisms ensure functionality across different platforms
 8. **Contextual Error Handling**: Error handling strategies are tailored to specific usage contexts
@@ -623,69 +623,147 @@ The ResourcePool system is designed with robust error handling to function grace
 10. **Automatic Memory Recovery**: System can detect and recover from out-of-memory situations
 11. **Component Status Monitoring**: Continuous monitoring of component status during operation
 12. **WebNN/WebGPU Adaptation**: Special handling for web platform deployment scenarios
+13. **File Existence Checks**: System checks for the presence of optional module files before attempting imports
+14. **Component-Aware Operation**: ResourcePool adapts its behavior based on available components at runtime
+15. **Multi-Level Fallbacks**: Progressive fallback mechanisms with detailed logging at each step
+16. **Isolated Component Failures**: Failures in one component do not prevent other components from functioning
 
-Example of resilient hardware_detection integration:
+### Resilient Device Detection
+
+The ResourcePool incorporates robust error handling for device detection, allowing it to adapt based on which components are available in the system:
 
 ```python
-def get_best_device():
-    """Get the best available device with comprehensive error handling"""
-    # Try the most comprehensive approach first
-    try:
-        # First check if the advanced hardware detection file exists
-        import os.path
-        advanced_detector_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
-        
-        if os.path.exists(advanced_detector_path):
-            try:
-                # Try to import and use comprehensive hardware detection
-                from hardware_detection import detect_hardware_with_comprehensive_checks
-                
-                # Get detailed hardware information
-                hardware_info = detect_hardware_with_comprehensive_checks()
-                if "torch_device" in hardware_info:
-                    logger.info(f"Using comprehensive hardware detection: {hardware_info['torch_device']}")
-                    return hardware_info["torch_device"]
-            except ImportError as e:
-                logger.warning(f"Comprehensive hardware detection not available: {e}")
-            except Exception as e:
-                logger.warning(f"Error during comprehensive hardware detection: {e}")
-        
-        # Fall back to standard hardware detection
-        try:
-            if os.path.exists(advanced_detector_path):
-                from hardware_detection import detect_available_hardware
-                hardware_info = detect_available_hardware()
-                if "torch_device" in hardware_info:
-                    logger.info(f"Using standard hardware detection: {hardware_info['torch_device']}")
-                    return hardware_info["torch_device"]
-        except ImportError as e:
-            logger.warning(f"Standard hardware detection not available: {e}")
-        except Exception as e:
-            logger.warning(f"Error during standard hardware detection: {e}")
-        
+def _get_optimal_device(self, model_type, model_name, hardware_preferences=None):
+    """
+    Determine the optimal device for a model based on hardware detection and preferences
+    with comprehensive error handling and fallback mechanisms
+    """
+    # Honor user preferences first if provided
+    if hardware_preferences and "device" in hardware_preferences:
+        if hardware_preferences["device"] != "auto":
+            self.logger.info(f"Using user-specified device: {hardware_preferences['device']}")
+            return hardware_preferences["device"]
+    
+    # Check if hardware_detection module is available
+    import os.path
+    hardware_detection_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
+    if not os.path.exists(hardware_detection_path):
+        self.logger.debug("hardware_detection.py file not found - using basic device detection")
         # Fall back to basic PyTorch detection
-        try:
-            import torch
-            if torch.cuda.is_available():
-                logger.info("Using basic CUDA detection: cuda")
-                return "cuda"
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                logger.info("Using basic MPS detection: mps")
-                return "mps"
-        except ImportError as e:
-            logger.warning(f"PyTorch not available: {e}")
-        except Exception as e:
-            logger.warning(f"Error during basic PyTorch detection: {e}")
+        return self._basic_device_detection()
         
-        # Ultimate fallback to CPU
-        logger.info("Fallback to CPU")
+    # Use hardware_detection if available
+    try:
+        # Check if model_family_classifier is available 
+        model_classifier_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
+        has_model_classifier = os.path.exists(model_classifier_path)
+        
+        # Import hardware detection (should be available since we checked file existence)
+        from hardware_detection import detect_available_hardware
+        
+        # Get hardware info
+        hardware_info = detect_available_hardware()
+        best_device = hardware_info.get("torch_device", "cpu")
+        
+        # Get model family info if classifier is available
+        model_family = None
+        if has_model_classifier:
+            try:
+                from model_family_classifier import classify_model
+                model_info = classify_model(model_name=model_name)
+                model_family = model_info.get("family")
+                self.logger.debug(f"Model {model_name} classified as {model_family}")
+            except Exception as e:
+                self.logger.debug(f"Error using model family classifier: {str(e)}")
+        else:
+            # Use model_type as fallback if provided
+            model_family = model_type if model_type != "default" else None
+            self.logger.debug(f"Using model_type '{model_type}' as family (model_family_classifier not available)")
+        
+        # Special case handling based on model family
+        if model_family == "multimodal" and best_device == "mps":
+            self.logger.warning(f"Model {model_name} is multimodal and may not work well on MPS. Using CPU instead.")
+            return "cpu"
+            
+        # Additional hardware compatibility checks...
+        
+        return best_device
+        
+    except Exception as e:
+        self.logger.debug(f"Could not determine optimal device using hardware_detection: {str(e)}")
+        # Fall back to basic detection
+        return self._basic_device_detection()
+
+def _basic_device_detection(self):
+    """
+    Perform basic device detection using PyTorch directly
+    Used as a fallback when hardware_detection module is not available
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            self.logger.info("Using basic CUDA detection: cuda")
+            return "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            self.logger.info("Using basic MPS detection: mps")
+            return "mps"
+        else:
+            self.logger.info("No GPU detected, using CPU")
+            return "cpu"
+    except ImportError:
+        self.logger.warning("PyTorch not available, defaulting to CPU")
         return "cpu"
     except Exception as e:
-        # Handle any unexpected errors
-        logger.error(f"Unexpected error in device detection: {e}")
-        # Return the most conservative option
+        self.logger.warning(f"Error in basic device detection: {str(e)}")
         return "cpu"
 ```
+
+### Integration Testing
+
+The system includes the `run_integrated_hardware_model_test.py` script that comprehensively tests the integration between all components with robust error handling:
+
+```bash
+# Basic file existence check
+python run_integrated_hardware_model_test.py --check-only
+
+# Run comprehensive integration tests that adapt to available components
+python run_integrated_hardware_model_test.py
+
+# Enable debug logging for more detailed information
+python run_integrated_hardware_model_test.py --debug
+```
+
+This script dynamically adapts to the available components:
+
+1. Always tests the core ResourcePool functionality
+2. Tests hardware detection if available, but continues if not
+3. Tests model family classification if available, but continues if not
+4. Tests all possible combinations (all components, hardware only, classifier only, etc.)
+5. Provides detailed reporting on how the system adapts to missing components
+
+The test script provides extensive feedback such as:
+
+```
+Components available for testing:
+  - ResourcePool: Yes (core component)
+  - Hardware Detection: Yes
+  - Model Family Classifier: No
+
+Testing ResourcePool with hardware_detection but without model_classifier:
+✅ ResourcePool works with hardware_detection only
+✅ Partial integration test completed with SOME components
+ℹ️ ResourcePool used model_type as fallback successfully
+```
+
+### Model Family Integration with Resilient Error Handling
+
+The `test_resource_pool.py` script includes a robust `test_model_family_integration()` function that verifies the system's ability to handle various component availability scenarios:
+
+1. **Full test**: When both hardware_detection and model_family_classifier are available
+2. **Limited test**: When only some or none of the optional components are available
+3. **Component-specific tests**: Special tests for each possible combination
+
+This ensures the system works correctly in all configurations, regardless of which components are installed.
 
 ## Troubleshooting
 

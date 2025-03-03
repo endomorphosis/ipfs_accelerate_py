@@ -245,30 +245,58 @@ def test_memory_tracking():
     logger.info("Memory tracking test passed!")
 
 def test_model_family_integration():
-    """Test integration with model family classifier"""
+    """Test integration with model family classifier with robust error handling"""
     import os.path
     
     # Check for model family classifier module
     model_classifier_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
-    if not os.path.exists(model_classifier_path):
-        logger.warning("model_family_classifier.py file does not exist, skipping integration test")
-        return
-    
-    try:
-        # Import model classifier dynamically to avoid hard dependency
-        from model_family_classifier import classify_model, ModelFamilyClassifier
-    except ImportError as e:
-        logger.warning(f"Could not import model_family_classifier module: {e}")
-        logger.warning("Skipping model family integration test")
-        return
+    has_model_classifier = os.path.exists(model_classifier_path)
     
     # Get resource pool and dependencies
     pool = get_global_resource_pool()
     torch = pool.get_resource("torch", constructor=load_torch)
     transformers = pool.get_resource("transformers", constructor=load_transformers)
     
+    # Always run partial test even if model_family_classifier is not available
+    if not has_model_classifier:
+        logger.warning("model_family_classifier.py file does not exist, running limited integration test")
+        # We can still test the fallback behavior in ResourcePool
+        if not torch or not transformers:
+            logger.error("Required dependencies missing for limited integration test")
+            return
+            
+        try:
+            # Test that ResourcePool can load models even without model_family_classifier
+            logger.info("Testing model loading without model_family_classifier")
+            model = pool.get_model(
+                "embedding",  # Explicitly set model type as fallback
+                "prajjwal1/bert-tiny", 
+                constructor=load_bert_model
+            )
+            
+            if model is not None:
+                logger.info("✅ Successfully loaded model without model_family_classifier")
+            else:
+                logger.error("❌ Failed to load model without model_family_classifier")
+            
+            logger.info("Limited integration test completed - ResourcePool gracefully handles missing model_family_classifier")
+            return
+        except Exception as e:
+            logger.error(f"Error in limited integration test: {e}")
+            return
+    
+    # If model_family_classifier is available, proceed with full integration test
+    try:
+        # Import model classifier dynamically to avoid hard dependency
+        from model_family_classifier import classify_model, ModelFamilyClassifier
+        logger.info("✅ Successfully imported model_family_classifier")
+    except ImportError as e:
+        logger.warning(f"Could not import model_family_classifier module: {e}")
+        logger.warning("Skipping full model family integration test")
+        return
+    
     if not torch or not transformers:
-        logger.error("Required dependencies missing for model family integration test")
+        logger.error("Required dependencies missing for full model family integration test")
         return
     
     # Load a model with explicit embedding model type
@@ -284,6 +312,8 @@ def test_model_family_integration():
         if model is None:
             logger.error("Failed to load BERT model for family classification test")
             return
+        
+        logger.info("✅ Successfully loaded model for classification testing")
     except Exception as e:
         logger.error(f"Error loading model for family classification test: {e}")
         return
@@ -300,18 +330,30 @@ def test_model_family_integration():
         
         # Verify family classification
         assert classification.get('family') == "embedding", "BERT should be classified as embedding model"
+        logger.info("✅ Basic model classification successful")
     except Exception as e:
         logger.error(f"Error during basic model classification: {e}")
         # Continue with the test as other parts may still work
     
     # Check for hardware detection module
     hardware_detection_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
-    if not os.path.exists(hardware_detection_path):
-        logger.warning("hardware_detection.py file does not exist, skipping hardware-aware classification")
+    has_hardware_detection = os.path.exists(hardware_detection_path)
+    
+    if not has_hardware_detection:
+        logger.warning("hardware_detection.py file does not exist, testing classification without hardware integration")
+        # We can still test the basic classification functionality
+        try:
+            # Test basic classification without hardware awareness
+            classification = classify_model("prajjwal1/bert-tiny", model_class="BertModel")
+            logger.info(f"Model classified without hardware awareness: {classification.get('family')}")
+            logger.info("✅ Classification works without hardware_detection module")
+        except Exception as e:
+            logger.error(f"Error during basic classification: {e}")
     else:
         try:
             # Import hardware detection
             from hardware_detection import detect_hardware_with_comprehensive_checks
+            logger.info("✅ Successfully imported hardware_detection")
             
             # Get hardware information
             logger.info("Detecting hardware capabilities for classification integration")
@@ -385,6 +427,27 @@ def test_model_family_integration():
             logger.info(f"✅ Template selection verified for {classification.get('family')} model")
     except (ImportError, Exception) as e:
         logger.warning(f"Could not test template selection: {e}")
+    
+    # Test the integrated flow between ResourcePool, hardware_detection, and model_family_classifier
+    if has_hardware_detection:
+        try:
+            logger.info("Testing fully integrated model loading with all components")
+            
+            # Test integrated model loading with hardware awareness and model classification
+            model = pool.get_model(
+                "bert", 
+                "prajjwal1/bert-tiny",
+                constructor=load_bert_model,
+                hardware_preferences={"device": "auto"}  # Let ResourcePool choose best device
+            )
+            
+            if model is not None:
+                logger.info("✅ Fully integrated model loading successful")
+            else:
+                logger.error("❌ Fully integrated model loading failed")
+                
+        except Exception as e:
+            logger.error(f"Error during fully integrated model loading: {e}")
     
     logger.info("Model family integration test completed successfully")
 

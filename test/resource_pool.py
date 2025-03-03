@@ -227,18 +227,47 @@ class ResourcePool:
         Returns:
             String with recommended device or None if not applicable
         """
+        # Honor user preferences first if provided
+        if hardware_preferences and "device" in hardware_preferences:
+            if hardware_preferences["device"] != "auto":
+                self.logger.info(f"Using user-specified device: {hardware_preferences['device']}")
+                return hardware_preferences["device"]
+        
+        # Check if hardware_detection module is available
+        import os.path
+        hardware_detection_path = os.path.join(os.path.dirname(__file__), "hardware_detection.py")
+        if not os.path.exists(hardware_detection_path):
+            self.logger.debug("hardware_detection.py file not found - using basic device detection")
+            # Fall back to basic PyTorch detection
+            return self._basic_device_detection()
+            
         # Use hardware_detection if available
         try:
+            # Check if model_family_classifier is available 
+            model_classifier_path = os.path.join(os.path.dirname(__file__), "model_family_classifier.py")
+            has_model_classifier = os.path.exists(model_classifier_path)
+            
+            # Import hardware detection (should be available since we checked file existence)
             from hardware_detection import detect_available_hardware
-            from model_family_classifier import classify_model
             
             # Get hardware info
             hardware_info = detect_available_hardware()
             best_device = hardware_info.get("torch_device", "cpu")
             
-            # Get model family info
-            model_info = classify_model(model_name=model_name)
-            model_family = model_info.get("family")
+            # Get model family info if classifier is available
+            model_family = None
+            if has_model_classifier:
+                try:
+                    from model_family_classifier import classify_model
+                    model_info = classify_model(model_name=model_name)
+                    model_family = model_info.get("family")
+                    self.logger.debug(f"Model {model_name} classified as {model_family}")
+                except (ImportError, Exception) as e:
+                    self.logger.debug(f"Error using model family classifier: {str(e)}")
+            else:
+                # Use model_type as fallback if provided
+                model_family = model_type if model_type != "default" else None
+                self.logger.debug(f"Using model_type '{model_type}' as family (model_family_classifier not available)")
             
             # Special case handling based on model family
             if model_family == "multimodal" and best_device == "mps":
@@ -273,15 +302,38 @@ class ResourcePool:
                 except (ImportError, AttributeError, Exception) as e:
                     self.logger.debug(f"Error checking GPU memory: {str(e)}")
             
-            # Honor user preferences if provided
-            if hardware_preferences and "device" in hardware_preferences:
-                return hardware_preferences["device"]
-                
             return best_device
             
         except (ImportError, Exception) as e:
-            self.logger.debug(f"Could not determine optimal device: {str(e)}")
-            return None
+            self.logger.debug(f"Could not determine optimal device using hardware_detection: {str(e)}")
+            # Fall back to basic detection
+            return self._basic_device_detection()
+    
+    def _basic_device_detection(self):
+        """
+        Perform basic device detection using PyTorch directly
+        Used as a fallback when hardware_detection module is not available
+        
+        Returns:
+            String with recommended device
+        """
+        try:
+            import torch
+            if torch.cuda.is_available():
+                self.logger.info("Using basic CUDA detection: cuda")
+                return "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.logger.info("Using basic MPS detection: mps")
+                return "mps"
+            else:
+                self.logger.info("No GPU detected, using CPU")
+                return "cpu"
+        except ImportError:
+            self.logger.warning("PyTorch not available, defaulting to CPU")
+            return "cpu"
+        except Exception as e:
+            self.logger.warning(f"Error in basic device detection: {str(e)}")
+            return "cpu"
     
     def get_tokenizer(self, model_type, model_name, constructor=None):
         """
