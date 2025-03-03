@@ -6,12 +6,13 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 The repository now includes new comprehensive guides on resource management, model classification, and hardware integration:
 
-- **[Resource Pool Guide](RESOURCE_POOL_GUIDE.md)** - Enhanced guide to the resource management system with device-specific features
+- **[Resource Pool Guide](RESOURCE_POOL_GUIDE.md)** - Enhanced guide to the resource management system with device-specific features and integrated architecture diagram
 - **[Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md)** - Comprehensive documentation for the model classification system
-- **[Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md)** - Guide to the hardware detection system with compatibility patterns
+- **[Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md)** - Guide to the hardware detection system with compatibility patterns and error handling
 - **[Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md)** - Documentation for hardware and model integration
 - **[Summary of Improvements](SUMMARY_OF_IMPROVEMENTS.md)** - Detailed overview of recent system enhancements
 - **[API Enhancement README](API_ENHANCEMENT_README.md)** - Guide to advanced API features
+- **[Web Platform Testing Guide](WEB_PLATFORM_TESTING_GUIDE.md)** - Guide to testing on WebNN and WebGPU platforms
 
 ## Overview
 
