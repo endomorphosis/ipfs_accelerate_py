@@ -1544,13 +1544,12 @@ class TestHF{class_name}:
             # Create simple mock implementation for ROCm
             handler = lambda x: {"output": "MOCK ROCM OUTPUT", "implementation_type": "MOCK_ROCM", "model": model_name}
             return None, None, handler, asyncio.Queue(16), self.batch_size
-            
+    
     def init_webnn(self, model_name=None, device="webnn", backend="gpu"):
         """Initialize model for WebNN-based inference.
         
         WebNN (Web Neural Network API) is a web standard for accelerated ML inference in browsers.
-        This implementation exports the model to ONNX and runs it through a WebNN runtime.
-        """
+        This implementation exports the model to ONNX and runs it through a WebNN runtime."""
         try:
             # First check if export utilities are available
             try:

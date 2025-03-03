@@ -1,6 +1,18 @@
 """
 Comprehensive hardware detection module for the IPFS Accelerate framework.
 This module provides robust hardware detection with detailed capabilities reporting.
+
+Latest updates (March 2025):
+- Added WebNN and WebGPU detection for web platform deployment
+- Enhanced device selection with model family integration
+- Improved error handling with graceful fallbacks
+- Added simulation mode for browser-specific testing
+- Added ROCm/AMD GPU detection and compatibility checks
+- Implemented browser feature detection with runtime adaptation
+- Enhanced subfamily support for web platform deployment
+- Added comprehensive error reporting with intelligent recommendations
+- Improved model family-based hardware selection
+- Added reliability enhancements for key model types
 """
 
 import os
@@ -562,6 +574,11 @@ class HardwareDetector:
         # WebNN is primarily for web browsers, but check for Node.js-based implementations
         self._hardware_info[WEBNN] = False
         
+        # First check for browser-specific WebNN API
+        browser_webnn_detected = self._detect_browser_webnn()
+        if browser_webnn_detected:
+            return
+            
         # Check for Node.js
         try:
             # First check if node is available using 'which'
@@ -630,11 +647,89 @@ class HardwareDetector:
         except Exception as e:
             self._errors[WEBNN] = f"Unexpected error detecting WebNN: {str(e)}"
             logger.warning(f"Error detecting WebNN: {str(e)}")
+            
+    def _detect_browser_webnn(self) -> bool:
+        """Detect WebNN in a browser environment or via simulation
+        
+        Returns:
+            bool: True if WebNN is detected in browser or simulated, False otherwise
+        """
+        # First check if we're running in a browser environment
+        running_in_browser = False
+        
+        # Check for browser-specific globals that would indicate we're in a browser
+        try:
+            # This would only work if executed in a browser environment like Pyodide
+            # or some browser Python runtime
+            js_window = eval("window")
+            running_in_browser = True
+            logger.info("Detected browser environment for WebNN check")
+        except:
+            # Not in a browser context
+            running_in_browser = False
+        
+        if running_in_browser:
+            try:
+                # Check for WebNN API in browser
+                has_webnn = False
+                try:
+                    # Try to access the WebNN API in the browser
+                    has_webnn = eval("'ml' in navigator && 'NeuralNetwork' in navigator.ml")
+                except:
+                    has_webnn = False
+                
+                if has_webnn:
+                    self._hardware_info[WEBNN] = True
+                    self._details[WEBNN] = {
+                        "environment": "browser",
+                        "navigator_ml": True,
+                        "mode": "direct_browser_detection"
+                    }
+                    logger.info("WebNN API detected in browser environment")
+                    return True
+                else:
+                    self._details[WEBNN] = {
+                        "environment": "browser",
+                        "navigator_ml": False,
+                        "reason": "WebNN API not available in browser"
+                    }
+            except Exception as e:
+                logger.warning(f"Error during browser WebNN detection: {str(e)}")
+        
+        # Check for WebNN simulation mode
+        if os.environ.get("WEBNN_SIMULATION") == "1":
+            self._hardware_info[WEBNN] = True
+            self._details[WEBNN] = {
+                "environment": "simulation",
+                "mode": "simulated_environment",
+                "simulation_enabled": True
+            }
+            logger.info("WebNN simulation mode enabled")
+            return True
+            
+        # Check if someone explicitly set WEBNN_AVAILABLE=1
+        if os.environ.get("WEBNN_AVAILABLE") == "1":
+            self._hardware_info[WEBNN] = True
+            self._details[WEBNN] = {
+                "environment": "override",
+                "mode": "environment_variable_override",
+                "simulation_enabled": True
+            }
+            logger.info("WebNN availability forced by environment variable")
+            return True
+        
+        # WebNN not detected in browser context
+        return False
     
     def _detect_webgpu(self):
         """Detect WebGPU availability and capabilities"""
         # WebGPU is primarily for web browsers, but check for Node.js-based implementations
         self._hardware_info[WEBGPU] = False
+        
+        # First check for browser-specific WebGPU API
+        browser_webgpu_detected = self._detect_browser_webgpu()
+        if browser_webgpu_detected:
+            return
         
         # Check for Node.js
         try:
@@ -718,6 +813,85 @@ class HardwareDetector:
         except Exception as e:
             self._errors[WEBGPU] = f"Unexpected error detecting WebGPU: {str(e)}"
             logger.warning(f"Error detecting WebGPU: {str(e)}")
+            
+    def _detect_browser_webgpu(self) -> bool:
+        """Detect WebGPU in a browser environment or via simulation
+        
+        Returns:
+            bool: True if WebGPU is detected in browser or simulated, False otherwise
+        """
+        # First check if we're running in a browser environment
+        running_in_browser = False
+        
+        # Check for browser-specific globals that would indicate we're in a browser
+        try:
+            # This would only work if executed in a browser environment like Pyodide
+            js_window = eval("window")
+            running_in_browser = True
+            logger.info("Detected browser environment for WebGPU check")
+        except:
+            # Not in a browser context
+            running_in_browser = False
+        
+        if running_in_browser:
+            try:
+                # Check for WebGPU API in browser
+                has_webgpu = False
+                try:
+                    # Try to access the WebGPU API in the browser
+                    has_webgpu = eval("'gpu' in navigator")
+                except:
+                    has_webgpu = False
+                
+                if has_webgpu:
+                    # Try to verify adapter availability
+                    try:
+                        has_adapter = eval("navigator.gpu.requestAdapter() !== null")
+                    except:
+                        has_adapter = False  # Can't verify adapter availability
+                    
+                    self._hardware_info[WEBGPU] = True
+                    self._details[WEBGPU] = {
+                        "environment": "browser",
+                        "navigator_gpu": True,
+                        "adapter_available": has_adapter,
+                        "mode": "direct_browser_detection"
+                    }
+                    logger.info("WebGPU API detected in browser environment")
+                    return True
+                else:
+                    self._details[WEBGPU] = {
+                        "environment": "browser",
+                        "navigator_gpu": False,
+                        "reason": "WebGPU API not available in browser"
+                    }
+            except Exception as e:
+                logger.warning(f"Error during browser WebGPU detection: {str(e)}")
+        
+        # Check for WebGPU simulation mode
+        if os.environ.get("WEBGPU_SIMULATION") == "1":
+            self._hardware_info[WEBGPU] = True
+            self._details[WEBGPU] = {
+                "environment": "simulation",
+                "mode": "simulated_environment",
+                "simulation_enabled": True
+            }
+            logger.info("WebGPU simulation mode enabled")
+            return True
+            
+        # Check if someone explicitly set WEBGPU_AVAILABLE=1
+        if os.environ.get("WEBGPU_AVAILABLE") == "1":
+            self._hardware_info[WEBGPU] = True
+            self._details[WEBGPU] = {
+                "environment": "override",
+                "mode": "environment_variable_override",
+                "simulation_enabled": True
+            }
+            logger.info("WebGPU availability forced by environment variable")
+            return True
+        
+        # WebGPU not detected in browser context
+        return False
     
     def _detect_qualcomm(self):
         """Detect Qualcomm AI capabilities"""
@@ -1026,6 +1200,112 @@ def detect_available_hardware(cache_file: Optional[str] = None,
     
     return result
 
+def detect_browser_features() -> Dict[str, Any]:
+    """
+    Detect browser-specific features and capabilities for web platform testing.
+    This function specifically checks for WebNN and WebGPU support in browser environments.
+    
+    Returns:
+        Dictionary with detected browser features
+    """
+    features = {
+        "running_in_browser": False,
+        "webnn_available": False,
+        "webgpu_available": False,
+        "environment": "node"
+    }
+    
+    # Check if we're running in a browser environment
+    try:
+        # This would only work if executed in a browser environment like Pyodide
+        js_window = eval("window")
+        features["running_in_browser"] = True
+        features["environment"] = "browser"
+        
+        # Detect browser information if possible
+        try:
+            features["browser"] = {
+                "user_agent": eval("navigator.userAgent"),
+                "platform": eval("navigator.platform"),
+                "language": eval("navigator.language")
+            }
+        except:
+            features["browser"] = {"detection_error": "Could not access navigator properties"}
+            
+        # Check for WebNN API
+        try:
+            has_webnn = eval("'ml' in navigator && 'NeuralNetwork' in navigator.ml")
+            features["webnn_available"] = has_webnn
+            
+            if has_webnn:
+                # Try to get WebNN capabilities if possible
+                try:
+                    features["webnn_capabilities"] = {
+                        "has_gpu": eval("navigator.ml.getNeuralNetworkContext().hasGPU()"),
+                        "preferred_backend": eval("navigator.ml.getNeuralNetworkContext().getPreferredBackend()")
+                    }
+                except:
+                    features["webnn_capabilities"] = {"detection_error": "Could not access WebNN capabilities"}
+        except:
+            features["webnn_available"] = False
+            
+        # Check for WebGPU API
+        try:
+            has_webgpu = eval("'gpu' in navigator")
+            features["webgpu_available"] = has_webgpu
+            
+            if has_webgpu:
+                # Try to get WebGPU adapter information if possible
+                try:
+                    # Note: This is asynchronous in reality, but we can't easily handle that here
+                    # This is a simplified check
+                    features["webgpu_capabilities"] = {
+                        "adapter_available": eval("navigator.gpu.requestAdapter() !== null")
+                    }
+                except:
+                    features["webgpu_capabilities"] = {"detection_error": "Could not access WebGPU capabilities"}
+        except:
+            features["webgpu_available"] = False
+            
+        # Get available memory if possible
+        try:
+            features["available_memory_mb"] = eval("performance.memory.totalJSHeapSize / (1024*1024)")
+            features["memory_limit_mb"] = eval("performance.memory.jsHeapSizeLimit / (1024*1024)")
+        except:
+            # Not all browsers expose this API
+            pass
+            
+        # Get GPU information if possible
+        try:
+            canvas = eval("document.createElement('canvas')")
+            gl = eval("canvas.getContext('webgl') || canvas.getContext('experimental-webgl')")
+            
+            if gl:
+                debugInfo = eval("gl.getExtension('WEBGL_debug_renderer_info')")
+                if debugInfo:
+                    features["gpu_info"] = {
+                        "vendor": eval("gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)"),
+                        "renderer": eval("gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)")
+                    }
+        except:
+            features["gpu_info"] = {"detection_error": "Could not access WebGL GPU information"}
+            
+    except:
+        # Not running in a browser
+        features["running_in_browser"] = False
+        
+        # Check for simulation mode
+        if os.environ.get("WEBNN_SIMULATION") == "1":
+            features["webnn_available"] = True
+            features["environment"] = "simulation"
+        
+        if os.environ.get("WEBGPU_SIMULATION") == "1":
+            features["webgpu_available"] = True
+            features["environment"] = "simulation"
+            
+    return features
+
+
 def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
     """
     Enhanced hardware detection with robust error handling and comprehensive checks.
@@ -1247,44 +1527,145 @@ def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
         hardware["openvino"] = False
         hardware["openvino_error"] = f"Exception detecting OpenVINO: {str(e)}"
     
-    # Test WebNN availability with detailed checks
+    # Enhanced WebNN detection with browser support and simulation mode
     try:
-        # WebNN requires TensorFlow.js or ONNX Runtime Web
-        hardware["webnn"] = False
-        
-        # Try TensorFlow.js approach first
-        try:
-            import tensorflowjs as tfjs
-            # If import succeeded, TensorFlow.js is available which might support WebNN
-            hardware["tfjs_available"] = True
+        # First try browser-specific detection
+        browser_features = detect_browser_features()
+        if browser_features["running_in_browser"]:
+            # Browser detection takes precedence for web platforms
+            hardware["webnn"] = browser_features["webnn_available"]
+            if browser_features["webnn_available"]:
+                hardware["webnn_capabilities"] = browser_features.get("webnn_capabilities", {})
+                hardware["webnn_environment"] = "browser"
+        else:
+            # If not in browser, use non-browser detection methods
+            hardware["webnn"] = False
             
-            # Try to check WebNN support
-            try:
-                # This is a mock check since true WebNN testing requires a browser environment
-                # In a real browser environment, you would use navigator.ml.isWebNNSupported()
-                hardware["webnn_potentially_supported"] = True
-            except:
-                pass
-        except ImportError:
-            hardware["tfjs_available"] = False
-        
-        # Try ONNX Runtime Web approach
-        try:
-            import onnxruntime as ort
-            hardware["onnxruntime_available"] = True
-            hardware["onnxruntime_version"] = ort.__version__
-            
-            # Check available providers
-            providers = ort.get_available_providers()
-            hardware["onnxruntime_providers"] = providers
-            
-            # WebNN would be accessible in browser contexts with onnxruntime-web
-            if "WebNNExecutionProvider" in providers:
+            # Check for simulation mode
+            if os.environ.get("WEBNN_SIMULATION") == "1":
                 hardware["webnn"] = True
-        except ImportError:
-            hardware["onnxruntime_available"] = False
+                hardware["webnn_environment"] = "simulation"
+                hardware["webnn_capabilities"] = {"simulated": True}
+            elif os.environ.get("WEBNN_AVAILABLE") == "1":
+                hardware["webnn"] = True
+                hardware["webnn_environment"] = "environment_override"
+                hardware["webnn_capabilities"] = {"override": True}
+            else:
+                # Try TensorFlow.js approach
+                try:
+                    import tensorflowjs as tfjs
+                    # If import succeeded, TensorFlow.js is available which might support WebNN
+                    hardware["tfjs_available"] = True
+                    hardware["webnn_potentially_supported"] = True
+                except ImportError:
+                    hardware["tfjs_available"] = False
+                
+                # Try ONNX Runtime Web approach
+                try:
+                    import onnxruntime as ort
+                    hardware["onnxruntime_available"] = True
+                    hardware["onnxruntime_version"] = ort.__version__
+                    
+                    # Check available providers
+                    providers = ort.get_available_providers()
+                    hardware["onnxruntime_providers"] = providers
+                    
+                    # WebNN would be accessible in browser contexts with onnxruntime-web
+                    if "WebNNExecutionProvider" in providers:
+                        hardware["webnn"] = True
+                        hardware["webnn_environment"] = "onnxruntime"
+                except ImportError:
+                    hardware["onnxruntime_available"] = False
+                
+                # Try checking for Node.js with WebNN capabilities
+                try:
+                    # Check if node is available
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.check_call(["which", "node"], stdout=devnull, stderr=devnull)
+                    
+                    # Check for WebNN-related packages
+                    try:
+                        with open(os.devnull, 'w') as devnull:
+                            subprocess.check_call(["which", "npm"], stdout=devnull, stderr=devnull)
+                        
+                        npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
+                        npm_packages = json.loads(npm_list)
+                        
+                        dependencies = npm_packages.get("dependencies", {})
+                        has_onnxruntime_web = "onnxruntime-web" in dependencies
+                        has_webnn_api = "webnn-api" in dependencies or "webnn-polyfill" in dependencies
+                        
+                        if has_onnxruntime_web or has_webnn_api:
+                            hardware["webnn"] = True
+                            hardware["webnn_environment"] = "node"
+                            hardware["webnn_node_packages"] = {
+                                "onnxruntime_web": has_onnxruntime_web,
+                                "webnn_api": has_webnn_api
+                            }
+                    except (subprocess.SubprocessError, json.JSONDecodeError):
+                        pass
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    pass
     except Exception as e:
         hardware["webnn_error"] = f"Exception detecting WebNN: {str(e)}"
+    
+    # Enhanced WebGPU detection with browser support and simulation mode
+    try:
+        # First try browser-specific detection
+        if not browser_features:
+            browser_features = detect_browser_features()
+            
+        if browser_features["running_in_browser"]:
+            # Browser detection takes precedence for web platforms
+            hardware["webgpu"] = browser_features["webgpu_available"]
+            if browser_features["webgpu_available"]:
+                hardware["webgpu_capabilities"] = browser_features.get("webgpu_capabilities", {})
+                hardware["webgpu_environment"] = "browser"
+        else:
+            # If not in browser, use non-browser detection methods
+            hardware["webgpu"] = False
+            
+            # Check for simulation mode
+            if os.environ.get("WEBGPU_SIMULATION") == "1":
+                hardware["webgpu"] = True
+                hardware["webgpu_environment"] = "simulation"
+                hardware["webgpu_capabilities"] = {"simulated": True}
+            elif os.environ.get("WEBGPU_AVAILABLE") == "1":
+                hardware["webgpu"] = True
+                hardware["webgpu_environment"] = "environment_override"
+                hardware["webgpu_capabilities"] = {"override": True}
+            else:
+                # Try Node.js with WebGPU capabilities
+                try:
+                    # Check if node is available
+                    with open(os.devnull, 'w') as devnull:
+                        subprocess.check_call(["which", "node"], stdout=devnull, stderr=devnull)
+                    
+                    # Check for WebGPU-related packages
+                    try:
+                        with open(os.devnull, 'w') as devnull:
+                            subprocess.check_call(["which", "npm"], stdout=devnull, stderr=devnull)
+                        
+                        npm_list = subprocess.check_output(["npm", "list", "--json"], universal_newlines=True)
+                        npm_packages = json.loads(npm_list)
+                        
+                        dependencies = npm_packages.get("dependencies", {})
+                        has_transformers_js = "@xenova/transformers" in dependencies
+                        has_webgpu = "@webgpu/types" in dependencies
+                        
+                        if has_transformers_js or has_webgpu:
+                            hardware["webgpu"] = True
+                            hardware["webgpu_environment"] = "node"
+                            hardware["webgpu_node_packages"] = {
+                                "transformers_js": has_transformers_js,
+                                "webgpu_types": has_webgpu
+                            }
+                    except (subprocess.SubprocessError, json.JSONDecodeError):
+                        pass
+                except (subprocess.SubprocessError, FileNotFoundError):
+                    pass
+    except Exception as e:
+        hardware["webgpu_error"] = f"Exception detecting WebGPU: {str(e)}"
     
     # Check for additional accelerators like TPUs
     try:

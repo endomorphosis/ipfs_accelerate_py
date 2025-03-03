@@ -135,6 +135,37 @@ class ModelFamilyClassifier:
                 "tasks": self.model_db[model_name].get("tasks", []),
                 "source": "model_db"
             }
+            
+        # Special handling for common cases to improve accuracy
+        # BERT is almost always an embedding model, not multimodal
+        if "bert" in normalized_name and not any(x in normalized_name for x in ["visual", "blip", "llava", "vilt", "flava"]):
+            return {
+                "model_name": model_name,
+                "family": "embedding", 
+                "subfamily": "masked_lm" if "masked" in normalized_name else None,
+                "confidence": 0.95,  # High confidence in this specific rule
+                "source": "name_analysis_rule"
+            }
+            
+        # T5 is always a text generation model
+        if "t5" in normalized_name:
+            return {
+                "model_name": model_name,
+                "family": "text_generation",
+                "subfamily": "seq2seq",
+                "confidence": 0.95,
+                "source": "name_analysis_rule"
+            }
+            
+        # GPT models are text generation
+        if any(x in normalized_name for x in ["gpt", "llama", "llm", "gemma", "mistral", "phi"]):
+            return {
+                "model_name": model_name,
+                "family": "text_generation",
+                "subfamily": "causal_lm",
+                "confidence": 0.95,
+                "source": "name_analysis_rule"
+            }
         
         # Initialize scores for each family
         family_scores = {family: 0 for family in self.families}

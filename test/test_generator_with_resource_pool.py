@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Try to import required components
 try:
     from resource_pool import get_global_resource_pool
-    from hardware_detection import HardwareDetector, CUDA, ROCM, MPS, OPENVINO, CPU
+    from hardware_detection import detect_hardware_with_comprehensive_checks, CUDA, ROCM, MPS, OPENVINO, CPU, WEBNN, WEBGPU
 except ImportError as e:
     logger.error(f"Required module not found: {e}")
     logger.error("Make sure resource_pool.py and hardware_detection.py are in your path")
@@ -124,19 +124,37 @@ def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_p
     logger.info("Using basic hardware-model integration")
     
     # Detect hardware
-    detector = HardwareDetector(cache_file=hw_cache_path)
-    hardware_info = detector.get_available_hardware()
-    best_hardware = detector.get_best_available_hardware()
-    torch_device = detector.get_torch_device()
+    hardware_result = detect_hardware_with_comprehensive_checks()
+    hardware_info = {k: v for k, v in hardware_result.items() if isinstance(v, bool)}
+    best_hardware = hardware_result.get('best_available', CPU)
+    torch_device = hardware_result.get('torch_device', 'cpu')
     
     # Classify model if classifier is available
     model_family = "default"
+    subfamily = None
     if classify_model:
         try:
-            classification = classify_model(model_name)
+            # Get hardware compatibility information for more accurate classification
+            hw_compatibility = {
+                "cuda": {"compatible": hardware_info.get("cuda", False)},
+                "mps": {"compatible": hardware_info.get("mps", False)},
+                "rocm": {"compatible": hardware_info.get("rocm", False)},
+                "openvino": {"compatible": hardware_info.get("openvino", False)},
+                "webnn": {"compatible": hardware_info.get("webnn", False)},
+                "webgpu": {"compatible": hardware_info.get("webgpu", False)}
+            }
+            
+            # Call classify_model with model name and hardware compatibility
+            classification = classify_model(
+                model_name=model_name,
+                hw_compatibility=hw_compatibility,
+                model_db_path=model_db_path
+            )
+            
             model_family = classification.get("family", "default")
             subfamily = classification.get("subfamily")
-            logger.info(f"Model classified as: {model_family} (subfamily: {subfamily})")
+            confidence = classification.get("confidence", 0)
+            logger.info(f"Model classified as: {model_family} (subfamily: {subfamily}, confidence: {confidence:.2f})")
         except Exception as e:
             logger.warning(f"Error classifying model: {e}")
     
@@ -153,20 +171,36 @@ def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_p
     }
     
     # Map model family to template
-    family_to_template = {
-        "embedding": "hf_embedding_template.py",
-        "text_generation": "hf_text_generation_template.py",
-        "vision": "hf_vision_template.py",
-        "audio": "hf_audio_template.py",
-        "multimodal": "hf_multimodal_template.py",
-        "default": "hf_template.py"
-    }
+    # Try to use ModelFamilyClassifier's get_template_for_family method if available
+    template = None
+    if ModelFamilyClassifier and model_family != "default":
+        try:
+            classifier = ModelFamilyClassifier()
+            template = classifier.get_template_for_family(model_family, subfamily)
+            logger.debug(f"Template selected by ModelFamilyClassifier: {template}")
+        except Exception as e:
+            logger.warning(f"Error getting template from ModelFamilyClassifier: {e}")
     
-    # Create simple hardware compatibility profile
+    # Fallback to static mapping if template selection failed
+    if not template:
+        family_to_template = {
+            "embedding": "hf_embedding_template.py",
+            "text_generation": "hf_text_generation_template.py",
+            "vision": "hf_vision_template.py",
+            "audio": "hf_audio_template.py",
+            "multimodal": "hf_multimodal_template.py",
+            "default": "hf_template.py"
+        }
+        template = family_to_template.get(model_family, "hf_template.py")
+    
+    # Create comprehensive hardware compatibility profile
     hw_profile = {
         "cuda": {"compatible": hardware_info.get("cuda", False)},
         "mps": {"compatible": hardware_info.get("mps", False)},
+        "rocm": {"compatible": hardware_info.get("rocm", False)},
         "openvino": {"compatible": hardware_info.get("openvino", False)},
+        "webnn": {"compatible": hardware_info.get("webnn", False)},
+        "webgpu": {"compatible": hardware_info.get("webgpu", False)},
         "cpu": {"compatible": True}
     }
     
@@ -174,8 +208,9 @@ def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_p
     return {
         "model_name": model_name,
         "family": model_family,
+        "subfamily": subfamily,
         "recommended_hardware": family_to_hardware.get(model_family, best_hardware),
-        "recommended_template": family_to_template.get(model_family, "hf_template.py"),
+        "recommended_template": template,
         "hardware_profile": hw_profile,
         "torch_device": torch_device,
         "resource_requirements": {
@@ -198,17 +233,47 @@ def load_model_with_hardware_awareness(model_name, hardware_preferences=None):
     logger.info(f"Loading model with hardware awareness: {model_name}")
     pool = get_global_resource_pool()
     
-    # Get model classification
+    # Get hardware information for classification
+    hardware_result = detect_hardware_with_comprehensive_checks()
+    hardware_info = {k: v for k, v in hardware_result.items() if isinstance(v, bool)}
+    
+    # Get model classification 
     model_family = "default"
-    if HARDWARE_MODEL_INTEGRATION_AVAILABLE:
+    subfamily = None
+    if classify_model:
+        try:
+            # Create hardware compatibility information
+            hw_compatibility = {
+                "cuda": {"compatible": hardware_info.get("cuda", False)},
+                "mps": {"compatible": hardware_info.get("mps", False)},
+                "rocm": {"compatible": hardware_info.get("rocm", False)},
+                "openvino": {"compatible": hardware_info.get("openvino", False)},
+                "webnn": {"compatible": hardware_info.get("webnn", False)},
+                "webgpu": {"compatible": hardware_info.get("webgpu", False)}
+            }
+            
+            # Call classify_model with hardware compatibility
+            classification = classify_model(
+                model_name=model_name,
+                hw_compatibility=hw_compatibility
+            )
+            
+            model_family = classification.get("family", "default")
+            subfamily = classification.get("subfamily")
+            confidence = classification.get("confidence", 0)
+            logger.info(f"Model classified as: {model_family} (subfamily: {subfamily}, confidence: {confidence:.2f})")
+        except Exception as e:
+            logger.warning(f"Error classifying model: {e}")
+    elif HARDWARE_MODEL_INTEGRATION_AVAILABLE:
         try:
             classification = get_hardware_aware_model_classification(model_name)
             model_family = classification.get("family", "default")
-            logger.info(f"Model classified as: {model_family}")
+            subfamily = classification.get("subfamily")
+            logger.info(f"Model classified as: {model_family} (subfamily: {subfamily})")
         except Exception as e:
             logger.warning(f"Error getting hardware-aware classification: {e}")
     
-    # Define model constructor
+    # Define model constructor with improved model family support
     def create_model():
         try:
             # Get necessary libraries from resource pool
@@ -217,18 +282,83 @@ def load_model_with_hardware_awareness(model_name, hardware_preferences=None):
             
             # Select appropriate AutoModel class based on model family
             if model_family == "text_generation":
-                from transformers import AutoModelForCausalLM
-                logger.debug(f"Using AutoModelForCausalLM for {model_name}")
-                model = AutoModelForCausalLM.from_pretrained(model_name)
+                # Check subfamily for more specific model class selection
+                if subfamily == "causal_lm":
+                    from transformers import AutoModelForCausalLM
+                    logger.debug(f"Using AutoModelForCausalLM for {model_name}")
+                    model = AutoModelForCausalLM.from_pretrained(model_name)
+                elif subfamily == "seq2seq":
+                    from transformers import AutoModelForSeq2SeqLM
+                    logger.debug(f"Using AutoModelForSeq2SeqLM for {model_name}")
+                    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+                else:
+                    # Default for text generation
+                    from transformers import AutoModelForCausalLM
+                    logger.debug(f"Using AutoModelForCausalLM for {model_name}")
+                    model = AutoModelForCausalLM.from_pretrained(model_name)
             elif model_family == "vision":
-                from transformers import AutoModelForImageClassification
-                logger.debug(f"Using AutoModelForImageClassification for {model_name}")
-                model = AutoModelForImageClassification.from_pretrained(model_name)
+                # Check subfamily for more specific vision model handling
+                if subfamily == "object_detector":
+                    from transformers import AutoModelForObjectDetection
+                    logger.debug(f"Using AutoModelForObjectDetection for {model_name}")
+                    model = AutoModelForObjectDetection.from_pretrained(model_name)
+                elif subfamily == "segmentation":
+                    from transformers import AutoModelForImageSegmentation
+                    logger.debug(f"Using AutoModelForImageSegmentation for {model_name}")
+                    model = AutoModelForImageSegmentation.from_pretrained(model_name)
+                else:
+                    # Default vision model
+                    from transformers import AutoModelForImageClassification
+                    logger.debug(f"Using AutoModelForImageClassification for {model_name}")
+                    model = AutoModelForImageClassification.from_pretrained(model_name)
             elif model_family == "audio":
-                from transformers import AutoModelForAudioClassification
-                logger.debug(f"Using AutoModelForAudioClassification for {model_name}")
-                model = AutoModelForAudioClassification.from_pretrained(model_name)
+                # Check subfamily for audio model types
+                if subfamily == "speech_recognition":
+                    from transformers import AutoModelForSpeechSeq2Seq
+                    logger.debug(f"Using AutoModelForSpeechSeq2Seq for {model_name}")
+                    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+                else:
+                    # Default audio model
+                    from transformers import AutoModelForAudioClassification
+                    logger.debug(f"Using AutoModelForAudioClassification for {model_name}")
+                    model = AutoModelForAudioClassification.from_pretrained(model_name)
+            elif model_family == "multimodal":
+                # Try to load appropriate multimodal model class
+                try:
+                    if "clip" in model_name.lower() or subfamily == "image_text_encoder":
+                        from transformers import CLIPModel
+                        logger.debug(f"Using CLIPModel for {model_name}")
+                        model = CLIPModel.from_pretrained(model_name)
+                    elif "blip" in model_name.lower():
+                        from transformers import BlipModel
+                        logger.debug(f"Using BlipModel for {model_name}")
+                        model = BlipModel.from_pretrained(model_name)
+                    elif "llava" in model_name.lower():
+                        from transformers import LlavaModel
+                        logger.debug(f"Using LlavaModel for {model_name}")
+                        model = LlavaModel.from_pretrained(model_name)
+                    else:
+                        # Fallback to VisionTextDualEncoder as a reasonable default
+                        from transformers import VisionTextDualEncoderModel
+                        logger.debug(f"Using VisionTextDualEncoderModel for {model_name}")
+                        model = VisionTextDualEncoderModel.from_pretrained(model_name)
+                except Exception as multimodal_err:
+                    logger.warning(f"Error loading multimodal model: {multimodal_err}. Falling back to AutoModel.")
+                    from transformers import AutoModel
+                    model = AutoModel.from_pretrained(model_name)
+            elif model_family == "embedding":
+                # Handle embedding models like BERT
+                if subfamily == "masked_lm":
+                    from transformers import AutoModelForMaskedLM
+                    logger.debug(f"Using AutoModelForMaskedLM for {model_name}")
+                    model = AutoModelForMaskedLM.from_pretrained(model_name)
+                else:
+                    # Default embedding model
+                    from transformers import AutoModel
+                    logger.debug(f"Using AutoModel for {model_name}")
+                    model = AutoModel.from_pretrained(model_name)
             else:
+                # Fallback to AutoModel for any unrecognized family
                 from transformers import AutoModel
                 logger.debug(f"Using AutoModel for {model_name}")
                 model = AutoModel.from_pretrained(model_name)
@@ -258,12 +388,12 @@ def load_model_with_hardware_awareness(model_name, hardware_preferences=None):
         logger.error(f"Failed to load model: {model_name}")
         return None, None
     
-    # Also load tokenizer or processor
+    # Also load tokenizer or processor with improved handling for different model types
     def create_tokenizer():
         try:
             transformers = pool.get_resource("transformers")
             
-            # Select appropriate tokenizer/processor based on model family
+            # Select appropriate tokenizer/processor based on model family and subfamily
             if model_family == "vision":
                 from transformers import AutoImageProcessor
                 logger.debug(f"Using AutoImageProcessor for {model_name}")
@@ -273,10 +403,31 @@ def load_model_with_hardware_awareness(model_name, hardware_preferences=None):
                 logger.debug(f"Using AutoProcessor for {model_name}")
                 return AutoProcessor.from_pretrained(model_name)
             elif model_family == "multimodal":
-                from transformers import AutoProcessor
-                logger.debug(f"Using AutoProcessor for {model_name}")
-                return AutoProcessor.from_pretrained(model_name)
+                # Try to pick the right processor for multimodal models
+                try:
+                    if "clip" in model_name.lower():
+                        from transformers import CLIPProcessor
+                        logger.debug(f"Using CLIPProcessor for {model_name}")
+                        return CLIPProcessor.from_pretrained(model_name)
+                    elif "blip" in model_name.lower():
+                        from transformers import BlipProcessor
+                        logger.debug(f"Using BlipProcessor for {model_name}")
+                        return BlipProcessor.from_pretrained(model_name)
+                    elif "llava" in model_name.lower():
+                        from transformers import LlavaProcessor
+                        logger.debug(f"Using LlavaProcessor for {model_name}")
+                        return LlavaProcessor.from_pretrained(model_name)
+                    else:
+                        # General processor fallback
+                        from transformers import AutoProcessor
+                        logger.debug(f"Using AutoProcessor for {model_name}")
+                        return AutoProcessor.from_pretrained(model_name)
+                except Exception as proc_err:
+                    logger.warning(f"Error loading specific multimodal processor: {proc_err}. Trying AutoProcessor.")
+                    from transformers import AutoProcessor
+                    return AutoProcessor.from_pretrained(model_name)
             else:
+                # Text-based models use tokenizers
                 from transformers import AutoTokenizer
                 logger.debug(f"Using AutoTokenizer for {model_name}")
                 return AutoTokenizer.from_pretrained(model_name)
@@ -376,8 +527,13 @@ def generate_test_file(model_name, output_dir, device=None, hw_cache_path=None, 
         torch = pool.get_resource("torch")
         
         # Analyze model outputs for better test generation
-        # The approach depends on the model family
-        output_shapes = analyze_model_outputs(model, tokenizer, classification.get("family", "default"))
+        # The approach depends on the model family and subfamily
+        output_shapes = analyze_model_outputs(
+            model, 
+            tokenizer, 
+            classification.get("family", "default"),
+            subfamily=classification.get("subfamily")
+        )
         logger.debug(f"Model output shapes: {output_shapes}")
     except Exception as e:
         logger.error(f"Error analyzing model outputs: {e}")
@@ -402,7 +558,7 @@ def generate_test_file(model_name, output_dir, device=None, hw_cache_path=None, 
         logger.error(f"Error writing test file: {e}")
         return None
 
-def analyze_model_outputs(model, tokenizer, model_family):
+def analyze_model_outputs(model, tokenizer, model_family, subfamily=None):
     """
     Analyze model outputs for test generation
     
@@ -410,6 +566,7 @@ def analyze_model_outputs(model, tokenizer, model_family):
         model: The model to analyze
         tokenizer: The tokenizer or processor for the model
         model_family: The model family (text_generation, vision, etc.)
+        subfamily: Optional subfamily for more specific behavior
         
     Returns:
         Dictionary with output shapes
@@ -419,47 +576,106 @@ def analyze_model_outputs(model, tokenizer, model_family):
     device = next(model.parameters()).device
     
     try:
-        # Different analysis based on model family
+        # Different analysis based on model family and subfamily
         if model_family == "vision":
-            # Create a simple test image as random tensor
-            sample_input = {"pixel_values": torch.rand(1, 3, 224, 224, device=device)}
+            if subfamily == "object_detector":
+                # Object detection has different input/output format
+                sample_input = {"pixel_values": torch.rand(1, 3, 800, 1200, device=device)}
+            elif subfamily == "segmentation":
+                # Segmentation typically uses higher resolution
+                sample_input = {"pixel_values": torch.rand(1, 3, 512, 512, device=device)}
+            else:
+                # Default vision model input
+                sample_input = {"pixel_values": torch.rand(1, 3, 224, 224, device=device)}
         elif model_family == "audio":
-            # Create a simple audio input as random tensor
-            sample_input = {"input_features": torch.rand(1, 80, 200, device=device)}
+            if subfamily == "speech_recognition":
+                # Whisper and similar models use input_features
+                sample_input = {"input_features": torch.rand(1, 80, 3000, device=device)}
+            else:
+                # Default audio model input shape
+                sample_input = {"input_features": torch.rand(1, 80, 200, device=device)}
         elif model_family == "multimodal":
-            # Try multiple possible input formats
-            try:
-                # First try CLIP-like inputs
+            # Handle different multimodal model types
+            if subfamily == "image_text_encoder" or "clip" in str(model.__class__.__name__).lower():
+                # CLIP-like inputs
                 sample_input = {
                     "pixel_values": torch.rand(1, 3, 224, 224, device=device),
                     "input_ids": torch.randint(0, 1000, (1, 20), device=device)
                 }
-            except Exception:
-                # Fallback to vision-only
-                sample_input = {"pixel_values": torch.rand(1, 3, 224, 224, device=device)}
+            elif "llava" in str(model.__class__.__name__).lower():
+                # LLaVA-like inputs
+                try:
+                    sample_input = {
+                        "pixel_values": torch.rand(1, 3, 336, 336, device=device),
+                        "input_ids": torch.randint(0, 1000, (1, 20), device=device),
+                        "attention_mask": torch.ones(1, 20, device=device)
+                    }
+                except Exception:
+                    # Simpler fallback for LLaVA analysis
+                    sample_input = {
+                        "pixel_values": torch.rand(1, 3, 336, 336, device=device),
+                        "input_ids": torch.randint(0, 1000, (1, 20), device=device)
+                    }
+            elif "blip" in str(model.__class__.__name__).lower():
+                # BLIP-like inputs
+                sample_input = {
+                    "pixel_values": torch.rand(1, 3, 224, 224, device=device),
+                    "input_ids": torch.randint(0, 1000, (1, 20), device=device),
+                    "attention_mask": torch.ones(1, 20, device=device)
+                }
+            else:
+                # Generic multimodal fallback - try multiple input formats
+                try:
+                    # First try CLIP-like inputs
+                    sample_input = {
+                        "pixel_values": torch.rand(1, 3, 224, 224, device=device),
+                        "input_ids": torch.randint(0, 1000, (1, 20), device=device)
+                    }
+                except Exception:
+                    # Fallback to vision-only
+                    sample_input = {"pixel_values": torch.rand(1, 3, 224, 224, device=device)}
+        elif model_family == "text_generation":
+            # Text generation models like GPT, T5, etc.
+            if subfamily == "seq2seq":
+                # Sequence-to-sequence models (T5, BART, etc.)
+                sample_input = tokenizer("translate English to French: Hello, world!", return_tensors="pt")
+            else:
+                # Causal language models (GPT, LLaMA, etc.)
+                sample_input = tokenizer("Hello, world!", return_tensors="pt")
+            # Move to device
+            sample_input = {k: v.to(device) for k, v in sample_input.items()}
         else:
-            # Text models - use tokenizer
+            # Default to text models for any other family (including embedding)
             sample_input = tokenizer("Hello, world!", return_tensors="pt")
             # Move to device
             sample_input = {k: v.to(device) for k, v in sample_input.items()}
         
-        # Run inference
-        with torch.no_grad():
-            outputs = model(**sample_input)
-        
-        # Extract output shapes
-        output_shapes = {}
-        if hasattr(outputs, "keys"):
-            # Dictionary-like output
-            for key, value in outputs.items():
-                if hasattr(value, "shape"):
-                    output_shapes[key] = list(value.shape)
-        else:
-            # Single tensor output
-            if hasattr(outputs, "shape"):
+        # Run inference with better error handling
+        try:
+            with torch.no_grad():
+                outputs = model(**sample_input)
+            
+            # Extract output shapes
+            output_shapes = {}
+            if hasattr(outputs, "keys"):
+                # Dictionary-like output
+                for key, value in outputs.items():
+                    if hasattr(value, "shape"):
+                        output_shapes[key] = list(value.shape)
+            elif hasattr(outputs, "shape"):
+                # Single tensor output
                 output_shapes["output"] = list(outputs.shape)
-        
-        return output_shapes
+            elif isinstance(outputs, tuple) and len(outputs) > 0:
+                # Tuple output (common in some models)
+                for i, item in enumerate(outputs):
+                    if hasattr(item, "shape"):
+                        output_shapes[f"output_{i}"] = list(item.shape)
+            
+            return output_shapes
+        except Exception as inference_error:
+            logger.warning(f"Error during model inference: {inference_error}")
+            # Return empty dict to avoid test generation failures
+            return {}
     except Exception as e:
         logger.warning(f"Error analyzing model outputs: {e}")
         return {}
