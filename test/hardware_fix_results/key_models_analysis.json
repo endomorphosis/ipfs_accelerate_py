@@ -70,7 +70,7 @@
     {
       "file": "test_hf_clip.py",
       "model_name": "clip",
-      "issues": 14,
+      "issues": 17,
       "hardware_methods": {
         "init_cpu": false,
         "test_with_cpu": false,
@@ -98,7 +98,10 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
@@ -197,7 +200,7 @@
     {
       "file": "test_hf_xclip.py",
       "model_name": "xclip",
-      "issues": 14,
+      "issues": 17,
       "hardware_methods": {
         "init_cpu": false,
         "test_with_cpu": false,
@@ -225,7 +228,10 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
@@ -324,7 +330,7 @@
     {
       "file": "test_hf_vit_mae.py",
       "model_name": "vit_mae",
-      "issues": 18,
+      "issues": 13,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -358,7 +364,7 @@
     {
       "file": "test_hf_llava.py",
       "model_name": "llava",
-      "issues": 10,
+      "issues": 13,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -387,7 +393,10 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
@@ -424,7 +433,7 @@
     {
       "file": "test_hf_clap.py",
       "model_name": "clap",
-      "issues": 12,
+      "issues": 14,
       "hardware_methods": {
         "init_cpu": false,
         "test_with_cpu": false,
@@ -453,13 +462,15 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Audio model missing WebGPU compute shader support",
+        "Audio model missing Firefox-specific optimizations"
       ]
     },
     {
       "file": "test_hf_t5_small.py",
       "model_name": "t5_small",
-      "issues": 14,
+      "issues": 16,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -493,7 +504,7 @@
     {
       "file": "test_hf_llama.py",
       "model_name": "llama",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -654,7 +665,7 @@
     {
       "file": "test_hf_whisper.py",
       "model_name": "whisper",
-      "issues": 11,
+      "issues": 12,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -682,13 +693,15 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Audio model missing WebGPU compute shader support",
+        "Audio model missing Firefox-specific optimizations"
       ]
     },
     {
       "file": "test_hf_clip_vision_model.py",
       "model_name": "clip_vision_model",
-      "issues": 17,
+      "issues": 16,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -716,7 +729,10 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
@@ -852,7 +868,7 @@
     {
       "file": "test_hf_detr.py",
       "model_name": "detr",
-      "issues": 11,
+      "issues": 10,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -886,7 +902,7 @@
     {
       "file": "test_hf_wav2vec2.py",
       "model_name": "wav2vec2",
-      "issues": 11,
+      "issues": 12,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -914,7 +930,9 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Audio model missing WebGPU compute shader support",
+        "Audio model missing Firefox-specific optimizations"
       ]
     },
     {
@@ -951,7 +969,7 @@
     {
       "file": "test_hf_clipseg.py",
       "model_name": "clipseg",
-      "issues": 17,
+      "issues": 16,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -979,13 +997,16 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
       "file": "test_hf_llava_next.py",
       "model_name": "llava_next",
-      "issues": 13,
+      "issues": 16,
       "hardware_methods": {
         "init_cpu": true,
         "test_with_cpu": false,
@@ -1014,7 +1035,10 @@
         "Has init_webgpu method but missing test_with_webgpu method",
         "Has ROCm support but missing AMD precision handling",
         "Has WebNN method but not integrated in testing",
-        "Has WebGPU method but not integrated in testing"
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
       ]
     },
     {
@@ -1080,11 +1104,11 @@
       "integration_issues": []
     }
   ],
-  "total_issues": 341,
+  "total_issues": 350,
   "issue_types": {
     "missing_hardware": 136,
-    "integration_issues": 140,
-    "indentation_issues": 65,
+    "integration_issues": 164,
+    "indentation_issues": 50,
     "asyncio_issues": 0
   }
 }

@@ -34,7 +34,7 @@ except ImportError:
 
 
 class MockHandler:
-def init_mps(self):
+    def init_mps(self):
     """Initialize for MPS platform."""
     import torch
     self.platform = "MPS"
@@ -43,7 +43,85 @@ def init_mps(self):
     return True
 
 
-def init_rocm(self):
+    def init_webnn(self, model_name=None):
+        """Initialize text model for WebNN inference."""
+        try:
+            print("Initializing WebNN for text model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebNN support
+            webnn_support = False
+            try:
+                # In browser environments, check for WebNN API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
+                    webnn_support = True
+                    print("WebNN API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webnn_support:
+                # Create a WebNN simulation using CPU implementation for text models
+                print("Using WebNN simulation for text model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebNN
+    def webnn_handler(text_input, **kwargs):
+                    try:
+                        # Process input with tokenizer
+                        if isinstance(text_input, list):
+                            inputs = processor(text_input, padding=True, truncation=True, return_tensors="pt")
+                        else:
+                            inputs = processor(text_input, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebNN-specific metadata
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBNN",
+                            "model": model_name,
+                            "backend": "webnn-simulation",
+                            "device": "cpu"
+                        }
+                    except Exception as e:
+                        print(f"Error in WebNN simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webnn_handler, queue, batch_size
+            else:
+                # Use actual WebNN implementation when available
+                # (This would use the WebNN API in browser environments)
+                print("Using native WebNN implementation")
+                
+                # Since WebNN API access depends on browser environment,
+                # implementation details would involve JS interop
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebNN: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
+
+    def init_rocm(self):
     """Initialize for ROCM platform."""
     import torch
     self.platform = "ROCM"
@@ -51,14 +129,14 @@ def init_rocm(self):
     self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
     return True
 
-def init_webgpu(self):
+    def init_webgpu(self):
     """Initialize for WEBGPU platform."""
     # WebGPU specific imports would be added at runtime
     self.platform = "WEBGPU"
     self.device = "webgpu"
     self.device_name = "webgpu"
     return True
-def create_cpu_handler(self):
+    def create_cpu_handler(self):
     """Create handler for CPU platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
@@ -67,13 +145,13 @@ def create_cpu_handler(self):
     """Mock handler for platforms that don't have real implementations."""
     
     
-def create_cuda_handler(self):
+    def create_cuda_handler(self):
     """Create handler for CUDA platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_openvino_handler(self):
+    def create_openvino_handler(self):
     """Create handler for OPENVINO platform."""
     model_path = self.get_model_path_or_name()
         from openvino.runtime import Core
@@ -83,19 +161,19 @@ def create_openvino_handler(self):
         handler = lambda input_text: compiled_model(np.array(input_text))[0]
     return handler
 
-def create_mps_handler(self):
+    def create_mps_handler(self):
     """Create handler for MPS platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_rocm_handler(self):
+    def create_rocm_handler(self):
     """Create handler for ROCM platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForCausalLM.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_webgpu_handler(self):
+    def create_webgpu_handler(self):
     """Create handler for WEBGPU platform."""
     # This is a mock handler for webgpu
         handler = MockHandler(self.model_path, platform="webgpu")

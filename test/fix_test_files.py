@@ -1,188 +1,239 @@
 #!/usr/bin/env python3
 """
-Script to fix common issues in generated HuggingFace test files.
+Fix Hugging Face Test Files
 
-This script addresses the following issues:
-1. Unterminated string literals in print statements
-2. Missing class_name variables
-3. Tensor contains string issues
-4. WebNN and WebGPU implementation type inconsistencies
+This script fixes the indentation and structure of Hugging Face test files
+to ensure consistency and proper hardware integration.
+
+It focuses on:
+1. Fixing indentation issues
+2. Placing methods inside the correct class
+3. Organizing methods in a consistent order
+4. Ensuring proper implementation of hardware methods
+
+Usage:
+python fix_test_files.py --file test_hf_bert.py
+python fix_test_files.py --directory key_models_hardware_fixes
 """
 
 import os
+import re
 import sys
 import glob
-import re
 import argparse
+from pathlib import Path
+from typing import List, Dict, Optional
 
-def fix_unterminated_string(file_path):
-    """Fix unterminated string literals in the file."""
-    with open(file_path, 'r') as f:
-        content = f.read()
-    
-    fixed = False
-    
-    # Fix unterminated string in print statement
-    if 'print("\nWould you like to update' in content:
-        print(f"Fixing unterminated string in {file_path}")
-        content = content.replace('print("\nWould you like to update', 'print("Would you like to update')
-        fixed = True
-    
-    # Fix missing class_name variable
-    if '    print(f"Warning: {class_name} module not found' in content:
-        # Extract the class name from the import statement or class definition
-        module_name = os.path.basename(file_path).replace("test_", "").replace(".py", "")
-        print(f"Fixing missing class_name in {file_path} (using {module_name})")
-        content = content.replace('    print(f"Warning: {class_name} module not found',
-                               f'    print(f"Warning: {module_name} module not found')
-        fixed = True
-    
-    # Fix tensor contains string issue
-    if '"implementation_type": "REAL" if "implementation_type" not in output else output["implementation_type"]' in content:
-        print(f"Fixing tensor contains string issue in {file_path}")
-        content = content.replace(
-            '"implementation_type": "REAL" if "implementation_type" not in output else output["implementation_type"]',
-            '"implementation_type": "REAL" if not isinstance(output, dict) or "implementation_type" not in output else output["implementation_type"]'
-        )
-        content = content.replace(
-            '"implementation_type": "MOCK" if "implementation_type" not in output else output["implementation_type"]',
-            '"implementation_type": "MOCK" if not isinstance(output, dict) or "implementation_type" not in output else output["implementation_type"]'
-        )
-        fixed = True
-    
-    # Write the updated content back to the file
-    with open(file_path, 'w') as f:
-        f.write(content)
-    
-    return fixed
+# Current directory
+CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 
-def fix_web_platform_implementation_types(file_path):
-    """Fix WebNN and WebGPU implementation types to be consistently marked as REAL."""
-    with open(file_path, 'r') as f:
-        content = f.read()
+def fix_file_structure(file_path: str) -> bool:
+    """
+    Fix the structure of a test file.
     
-    changed = False
+    Args:
+        file_path: Path to the file to fix
+        
+    Returns:
+        True if changes were made, False otherwise
+    """
+    print(f"Processing {file_path}...")
     
-    # Fix WebNN implementation types to consistently use REAL
-    if 'MOCK_WEBNN' in content:
-        print(f"Fixing WebNN implementation type in {file_path}")
-        content = content.replace('MOCK_WEBNN', 'REAL_WEBNN')
-        changed = True
-    
-    # Fix WebGPU implementation types to consistently use REAL
-    if 'MOCK_WEBGPU' in content:
-        print(f"Fixing WebGPU implementation type in {file_path}")
-        content = content.replace('MOCK_WEBGPU', 'REAL_WEBGPU')
-        changed = True
-    
-    # Fix SIMULATED_WEBNN/WEBGPU to consistently use REAL
-    if 'SIMULATED_WEBNN' in content:
-        print(f"Standardizing SIMULATED_WEBNN to REAL_WEBNN in {file_path}")
-        content = content.replace('SIMULATED_WEBNN', 'REAL_WEBNN')
-        changed = True
-    
-    if 'SIMULATED_WEBGPU' in content:
-        print(f"Standardizing SIMULATED_WEBGPU to REAL_WEBGPU in {file_path}")
-        content = content.replace('SIMULATED_WEBGPU', 'REAL_WEBGPU')
-        changed = True
-    
-    # Ensure consistent suffix pattern
-    if 'REAL_WEBNN_ENVIRONMENT' in content:
-        print(f"Standardizing REAL_WEBNN_ENVIRONMENT to REAL_WEBNN in {file_path}")
-        content = content.replace('REAL_WEBNN_ENVIRONMENT', 'REAL_WEBNN')
-        changed = True
-    
-    if 'REAL_WEBNN_ONNX' in content:
-        print(f"Standardizing REAL_WEBNN_ONNX to REAL_WEBNN in {file_path}")
-        content = content.replace('REAL_WEBNN_ONNX', 'REAL_WEBNN')
-        changed = True
-    
-    # Write the updated content back to the file if changes were made
-    if changed:
-        with open(file_path, 'w') as f:
-            f.write(content)
-        print(f"Fixed web platform implementation types in {file_path}")
-        return True
-    
-    return False
-
-def fix_merged_test_generator():
-    """Fix the merged_test_generator.py file to use consistent implementation types."""
-    import datetime
-    
-    generator_path = 'merged_test_generator.py'
-    
-    if not os.path.exists(generator_path):
-        print(f"Error: {generator_path} not found")
+    # Read the file
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}")
         return False
     
-    with open(generator_path, 'r') as f:
-        content = f.read()
+    # Find the class definition
+    class_pattern = r'^class\s+(\w+):'
+    class_match = re.search(class_pattern, content, re.MULTILINE)
+    if not class_match:
+        print(f"No class definition found in {file_path}")
+        return False
     
-    changed = False
+    class_name = class_match.group(1)
+    class_start = class_match.start()
     
-    # Ensure all implementation types for WebNN and WebGPU are marked as REAL consistently
-    # This ensures validation works properly with the updated run_web_platform_tests.sh
+    # Find methods that should be inside the class
+    method_patterns = [
+        r'^def\s+init_(\w+)\(',
+        r'^def\s+test_with_(\w+)\(',
+        r'^def\s+create_(\w+)_handler\('
+    ]
     
-    # Store the original file as a backup
-    now = datetime.datetime.now()
-    backup_path = f"{generator_path}.bak_{now.strftime('%Y%m%d_%H%M%S')}"
-    with open(backup_path, 'w') as f:
-        f.write(content)
-    print(f"Created backup of {generator_path} at {backup_path}")
+    methods_to_move = []
     
-    # Apply fixes to the generator file
-    fix_web_platform_implementation_types(generator_path)
+    for pattern in method_patterns:
+        for match in re.finditer(pattern, content, re.MULTILINE):
+            method_start = match.start()
+            
+            # Find the end of the method (next def or class or EOF)
+            next_def = re.search(r'^(def|class)\s', content[method_start+1:], re.MULTILINE)
+            if next_def:
+                method_end = method_start + 1 + next_def.start()
+            else:
+                method_end = len(content)
+            
+            # Extract the method code
+            method_code = content[method_start:method_end]
+            
+            # Check if this method is already inside the class
+            if method_start > class_start:
+                # Check if the indentation is correct (4 spaces)
+                lines = method_code.split('\n')
+                if not lines[0].startswith('    '):
+                    # Method is not correctly indented
+                    methods_to_move.append({
+                        'start': method_start,
+                        'end': method_end,
+                        'code': method_code,
+                        'indented_code': '    ' + method_code.replace('\n', '\n    ')
+                    })
+            else:
+                # Method is outside the class and needs to be moved inside
+                methods_to_move.append({
+                    'start': method_start,
+                    'end': method_end,
+                    'code': method_code,
+                    'indented_code': '    ' + method_code.replace('\n', '\n    ')
+                })
     
-    print(f"Fixed merged_test_generator.py implementation types")
-    return True
+    # If no methods need to be moved, we're done
+    if not methods_to_move:
+        print(f"No structure issues found in {file_path}")
+        return False
+    
+    # Sort methods by their position in the file (reverse order to avoid changing offsets)
+    methods_to_move.sort(key=lambda m: m['start'], reverse=True)
+    
+    # Remove the methods from their original positions
+    new_content = content
+    for method in methods_to_move:
+        new_content = new_content[:method['start']] + new_content[method['end']:]
+    
+    # Find a good insertion point within the class
+    # Look for the end of __init__ method
+    init_pattern = r'def\s+__init__\s*\(.*?\):.*?(?=\n\s*def|\n\s*$|\Z)'
+    init_match = re.search(init_pattern, new_content[class_start:], re.DOTALL)
+    
+    if init_match:
+        # Insert after __init__
+        insertion_point = class_start + init_match.end()
+    else:
+        # Insert right after class definition if no __init__
+        # Find the end of the class line
+        class_line_end = new_content.find('\n', class_start) + 1
+        insertion_point = class_line_end
+    
+    # Insert the methods in a logical order
+    # 1. init_* methods
+    # 2. create_*_handler methods
+    # 3. test_with_* methods
+    
+    # Sort methods by type and name
+    methods_by_type = {
+        'init': [],
+        'create': [],
+        'test': []
+    }
+    
+    for method in methods_to_move:
+        if 'def init_' in method['code']:
+            methods_by_type['init'].append(method)
+        elif 'def create_' in method['code']:
+            methods_by_type['create'].append(method)
+        elif 'def test_with_' in method['code']:
+            methods_by_type['test'].append(method)
+    
+    # Sort each type by name
+    for type_key in methods_by_type:
+        methods_by_type[type_key].sort(key=lambda m: m['code'])
+    
+    # Insert methods in order
+    methods_text = "\n\n"
+    for type_key in ['init', 'create', 'test']:
+        if methods_by_type[type_key]:
+            methods_text += "\n".join(m['indented_code'] for m in methods_by_type[type_key])
+            methods_text += "\n\n"
+    
+    # Insert the methods
+    fixed_content = new_content[:insertion_point] + methods_text + new_content[insertion_point:]
+    
+    # Save the fixed file
+    try:
+        # Create a backup of the original file
+        backup_path = file_path + '.bak'
+        with open(backup_path, 'w') as f:
+            f.write(content)
+        
+        # Write the fixed content
+        with open(file_path, 'w') as f:
+            f.write(fixed_content)
+        
+        print(f"Fixed {len(methods_to_move)} methods in {file_path}")
+        print(f"Backup saved to {backup_path}")
+        return True
+    except Exception as e:
+        print(f"Error writing file {file_path}: {e}")
+        return False
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Fix common issues in test files')
-    parser.add_argument('--fix-web-platforms', action='store_true', 
-                        help='Fix WebNN and WebGPU implementation types')
-    parser.add_argument('--fix-generator', action='store_true', 
-                        help='Fix the merged_test_generator.py file')
-    parser.add_argument('--fix-all', action='store_true', 
-                        help='Fix all issues in all files')
-    parser.add_argument('--dir', default='skills', 
-                        help='Directory containing test files to fix')
-    return parser.parse_args()
+def process_directory(directory: str) -> int:
+    """
+    Process all test files in a directory.
+    
+    Args:
+        directory: Directory to process
+        
+    Returns:
+        Number of files fixed
+    """
+    # Find all test files
+    pattern = os.path.join(directory, "test_hf_*.py")
+    files = glob.glob(pattern)
+    
+    if not files:
+        print(f"No test files found in {directory}")
+        return 0
+    
+    print(f"Found {len(files)} test files in {directory}")
+    fixed_count = 0
+    
+    for file_path in files:
+        if fix_file_structure(file_path):
+            fixed_count += 1
+    
+    return fixed_count
 
 def main():
-    args = parse_args()
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Fix Hugging Face test files structure")
     
-    # Fix the merged_test_generator.py file if requested
-    if args.fix_generator or args.fix_all:
-        try:
-            import datetime
-            fix_merged_test_generator()
-        except Exception as e:
-            print(f"Error fixing merged_test_generator.py: {e}")
+    # Source options
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--file", type=str, help="Path to a specific test file to fix")
+    group.add_argument("--directory", type=str, help="Path to a directory containing test files to fix")
     
-    # Get all test files from the specified directory
-    test_files = glob.glob(f'{args.dir}/test_hf_*.py')
-    print(f"Found {len(test_files)} test files in {args.dir}/")
+    args = parser.parse_args()
     
-    fixed_string_count = 0
-    fixed_web_count = 0
+    if args.file:
+        # Fix a single file
+        if fix_file_structure(args.file):
+            print(f"Successfully fixed file: {args.file}")
+            return 0
+        else:
+            print(f"No changes made to file: {args.file}")
+            return 1
     
-    for file_path in test_files:
-        try:
-            # Fix basic string issues
-            if fix_unterminated_string(file_path):
-                fixed_string_count += 1
-            
-            # Fix web platform implementation types if requested
-            if args.fix_web_platforms or args.fix_all:
-                if fix_web_platform_implementation_types(file_path):
-                    fixed_web_count += 1
-        except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+    if args.directory:
+        # Process a directory
+        fixed_count = process_directory(args.directory)
+        print(f"Fixed {fixed_count} files in directory: {args.directory}")
+        return 0 if fixed_count > 0 else 1
     
-    print(f"Fixed basic issues in {fixed_string_count} files")
-    if args.fix_web_platforms or args.fix_all:
-        print(f"Fixed web platform implementation types in {fixed_web_count} files")
+    return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

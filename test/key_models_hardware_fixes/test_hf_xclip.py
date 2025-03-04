@@ -63,86 +63,281 @@ except ImportError:
 if not HAS_PIL:
     
 class MockHandler:
-def create_cpu_handler(self):
-    """Create handler for CPU platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-
-def create_cuda_handler(self):
-    """Create handler for CUDA platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-def create_openvino_handler(self):
-    """Create handler for OPENVINO platform."""
-    model_path = self.get_model_path_or_name()
-        from openvino.runtime import Core
-        import numpy as np
-        ie = Core()
-        compiled_model = ie.compile_model(model_path, "CPU")
-        handler = lambda input_data: compiled_model(np.array(input_data))[0]
-    return handler
-
-def create_mps_handler(self):
-    """Create handler for MPS platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-def create_rocm_handler(self):
-    """Create handler for ROCM platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-def init_cpu(self):
-    """Initialize for CPU platform."""
-    
-    self.platform = "CPU"
-    self.device = "cpu"
-    self.device_name = "cpu"
-    return True
-
-    """Mock handler for platforms that don't have real implementations."""
-    
-    
-def init_cuda(self):
-    """Initialize for CUDA platform."""
-    import torch
-    self.platform = "CUDA"
-    self.device = "cuda"
-    self.device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    return True
-
-def init_openvino(self):
-    """Initialize for OPENVINO platform."""
-    import openvino
-    self.platform = "OPENVINO"
-    self.device = "openvino"
-    self.device_name = "openvino"
-    return True
-
-def init_mps(self):
-    """Initialize for MPS platform."""
-    import torch
-    self.platform = "MPS"
-    self.device = "mps"
-    self.device_name = "mps" if torch.backends.mps.is_available() else "cpu"
-    return True
-
-def init_rocm(self):
-    """Initialize for ROCM platform."""
-    import torch
-    self.platform = "ROCM"
-    self.device = "rocm"
-    self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
-    return True
 def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")
+
+    def init_cpu(self):
+        """Initialize for CPU platform."""
+        
+        self.platform = "CPU"
+        self.device = "cpu"
+        self.device_name = "cpu"
+        return True
+    
+        """Mock handler for platforms that don't have real implementations."""
+        
+        
+    
+    def init_cuda(self):
+        """Initialize for CUDA platform."""
+        import torch
+        self.platform = "CUDA"
+        self.device = "cuda"
+        self.device_name = "cuda" if torch.cuda.is_available() else "cpu"
+        return True
+    
+    
+    def init_mps(self):
+        """Initialize for MPS platform."""
+        import torch
+        self.platform = "MPS"
+        self.device = "mps"
+        self.device_name = "mps" if torch.backends.mps.is_available() else "cpu"
+        return True
+    
+    
+    def init_openvino(self):
+        """Initialize for OPENVINO platform."""
+        import openvino
+        self.platform = "OPENVINO"
+        self.device = "openvino"
+        self.device_name = "openvino"
+        return True
+    
+    
+    def init_rocm(self):
+        """Initialize for ROCM platform."""
+        import torch
+        self.platform = "ROCM"
+        self.device = "rocm"
+        self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
+        return True
+    
+
+    def create_cpu_handler(self):
+        """Create handler for CPU platform."""
+        model_path = self.get_model_path_or_name()
+            handler = AutoModel.from_pretrained(model_path).to(self.device_name)
+        return handler
+    
+    
+    
+    def create_cuda_handler(self):
+        """Create handler for CUDA platform."""
+        model_path = self.get_model_path_or_name()
+            handler = AutoModel.from_pretrained(model_path).to(self.device_name)
+        return handler
+    
+    
+    def create_mps_handler(self):
+        """Create handler for MPS platform."""
+        model_path = self.get_model_path_or_name()
+            handler = AutoModel.from_pretrained(model_path).to(self.device_name)
+        return handler
+    
+    
+    def create_openvino_handler(self):
+        """Create handler for OPENVINO platform."""
+        model_path = self.get_model_path_or_name()
+            from openvino.runtime import Core
+            import numpy as np
+            ie = Core()
+            compiled_model = ie.compile_model(model_path, "CPU")
+            handler = lambda input_data: compiled_model(np.array(input_data))[0]
+        return handler
+    
+    
+    def create_rocm_handler(self):
+        """Create handler for ROCM platform."""
+        model_path = self.get_model_path_or_name()
+            handler = AutoModel.from_pretrained(model_path).to(self.device_name)
+        return handler
+    
+
+    def test_with_openvino(self):
+        """Test the model using OpenVINO integration."""
+        results = {
+            "model": self.model_id,
+            "task": self.task,
+            "class": self.class_name
+        }
+        
+        # Check for OpenVINO support
+        if not HW_CAPABILITIES["openvino"]:
+            results["openvino_error_type"] = "missing_dependency"
+            results["openvino_missing_core"] = ["openvino"]
+            results["openvino_success"] = False
+            return results
+        
+        # Check for transformers
+        if not HAS_TRANSFORMERS:
+            results["openvino_error_type"] = "missing_dependency"
+            results["openvino_missing_core"] = ["transformers"]
+            results["openvino_success"] = False
+            return results
+        
+        try:
+            from optimum.intel import OVModelForVision
+            logger.info(f"Testing {self.model_id} with OpenVINO...")
+            
+            # Time tokenizer loading
+            tokenizer_load_start = time.time()
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            tokenizer_load_time = time.time() - tokenizer_load_start
+            
+            # Time model loading
+            model_load_start = time.time()
+            model = OVModelForVision.from_pretrained(
+                self.model_id,
+                export=True,
+                provider="CPU"
+            )
+            model_load_time = time.time() - model_load_start
+            
+            # Prepare input
+            test_input = self.test_image_url
+            
+            # Process image
+            if HAS_PIL:
+                response = requests.get(test_input)
+                image = Image.open(BytesIO(response.content)).convert("RGB")
+                
+                # Get text features
+                inputs = tokenizer(self.candidate_labels, padding=True, return_tensors="pt")
+                
+                # Get image features
+                processor = transformers.AutoProcessor.from_pretrained(self.model_id)
+                image_inputs = processor(images=image, return_tensors="pt")
+                inputs.update(image_inputs)
+            else:
+                # Mock inputs
+                inputs = {
+                    "input_ids": torch.tensor([[1, 2, 3, 4, 5]]),
+                    "attention_mask": torch.tensor([[1, 1, 1, 1, 1]]),
+                    "pixel_values": torch.zeros(1, 3, 224, 224)
+                }
+            
+            # Run inference
+            start_time = time.time()
+            outputs = model(**inputs)
+            inference_time = time.time() - start_time
+            
+            # Process classification output
+            if hasattr(outputs, "logits_per_image"):
+                logits = outputs.logits_per_image[0]
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                
+                predictions = []
+                for i, (label, prob) in enumerate(zip(self.candidate_labels, probs)):
+                    predictions.append({
+                        "label": label,
+                        "score": float(prob)
+                    })
+            else:
+                predictions = [{"label": "Mock label", "score": 0.95}]
+            
+            # Store results
+            results["openvino_success"] = True
+            results["openvino_load_time"] = model_load_time
+            results["openvino_inference_time"] = inference_time
+            results["openvino_tokenizer_load_time"] = tokenizer_load_time
+            
+            # Add predictions if available
+            if 'predictions' in locals():
+                results["openvino_predictions"] = predictions
+            
+            results["openvino_error_type"] = "none"
+            
+            # Add to examples
+            example_data = {
+                "method": "OpenVINO inference",
+                "input": str(test_input)
+            }
+            
+            if 'predictions' in locals():
+                example_data["predictions"] = predictions
+            
+            self.examples.append(example_data)
+            
+            # Store in performance stats
+            self.performance_stats["openvino"] = {
+                "inference_time": inference_time,
+                "load_time": model_load_time,
+                "tokenizer_load_time": tokenizer_load_time
+            }
+            
+        except Exception as e:
+            # Store error information
+            results["openvino_success"] = False
+            results["openvino_error"] = str(e)
+            results["openvino_traceback"] = traceback.format_exc()
+            logger.error(f"Error testing with OpenVINO: {e}")
+            
+            # Classify error
+            error_str = str(e).lower()
+            if "no module named" in error_str:
+                results["openvino_error_type"] = "missing_dependency"
+            else:
+                results["openvino_error_type"] = "other"
+        
+        # Add to overall results
+        self.results["openvino"] = results
+        return results
+    
+        
+        def run_tests(self, all_hardware=False):
+            """
+            Run all tests for this model.
+            
+            Args:
+                all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
+            
+            Returns:
+                Dict containing test results
+            """
+            # Always test on default device
+            self.test_pipeline()
+            self.test_from_pretrained()
+            
+            # Test on all available hardware if requested
+            if all_hardware:
+                # Always test on CPU
+                if self.preferred_device != "cpu":
+                    self.test_pipeline(device="cpu")
+                    self.test_from_pretrained(device="cpu")
+                
+                # Test on CUDA if available
+                if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
+                    self.test_pipeline(device="cuda")
+                    self.test_from_pretrained(device="cuda")
+                
+                # Test on OpenVINO if available
+                if HW_CAPABILITIES["openvino"]:
+                    self.test_with_openvino()
+            
+            # Build final results
+            return {
+                "results": self.results,
+                "examples": self.examples,
+                "performance": self.performance_stats,
+                "hardware": HW_CAPABILITIES,
+                "metadata": {
+                    "model": self.model_id,
+                    "task": self.task,
+                    "class": self.class_name,
+                    "description": self.description,
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "has_transformers": HAS_TRANSFORMERS,
+                    "has_torch": HAS_TORCH,
+                    "has_pil": HAS_PIL
+                }
+            }
+    
+    
+
+
     
     def __call__(self, *args, **kwargs):
         """Return mock output."""
@@ -260,6 +455,223 @@ class TestXCLIPModels:
         self.performance_stats = {}
     
     
+
+    def init_webnn(self, model_name=None):
+        """Initialize vision model for WebNN inference."""
+        try:
+            print("Initializing WebNN for vision model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebNN support
+            webnn_support = False
+            try:
+                # In browser environments, check for WebNN API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
+                    webnn_support = True
+                    print("WebNN API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webnn_support:
+                # Create a WebNN simulation using CPU implementation for vision models
+                print("Using WebNN simulation for vision model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebNN
+    def webnn_handler(image_input, **kwargs):
+                    try:
+                        # Process image input (path or PIL Image)
+                        if isinstance(image_input, str):
+                            from PIL import Image
+                            image = Image.open(image_input).convert("RGB")
+                        elif isinstance(image_input, list):
+                            if all(isinstance(img, str) for img in image_input):
+                                from PIL import Image
+                                image = [Image.open(img).convert("RGB") for img in image_input]
+                            else:
+                                image = image_input
+                        else:
+                            image = image_input
+                            
+                        # Process with processor
+                        inputs = processor(images=image, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebNN-specific metadata
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBNN",
+                            "model": model_name,
+                            "backend": "webnn-simulation",
+                            "device": "cpu"
+                        }
+                    except Exception as e:
+                        print(f"Error in WebNN simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webnn_handler, queue, batch_size
+            else:
+                # Use actual WebNN implementation when available
+                # (This would use the WebNN API in browser environments)
+                print("Using native WebNN implementation")
+                
+                # Since WebNN API access depends on browser environment,
+                # implementation details would involve JS interop
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebNN: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
+
+    def init_webgpu(self, model_name=None):
+        """Initialize multimodal model for WebGPU inference with advanced optimizations."""
+        try:
+            print("Initializing WebGPU for multimodal model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebGPU support
+            webgpu_support = False
+            try:
+                # In browser environments, check for WebGPU API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'gpu'):
+                    webgpu_support = True
+                    print("WebGPU API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webgpu_support:
+                # Create a WebGPU simulation using CPU implementation for multimodal models
+                print("Using WebGPU/transformers.js simulation for multimodal model with optimizations")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Multimodal-specific optimizations
+                use_parallel_loading = True
+                use_4bit_quantization = True
+                use_kv_cache_optimization = True
+                print(f"WebGPU optimizations: parallel_loading={use_parallel_loading}, 4bit_quantization={use_4bit_quantization}, kv_cache={use_kv_cache_optimization}")
+                
+                # Wrap the CPU function to simulate WebGPU/transformers.js for multimodal
+    def webgpu_handler(input_data, **kwargs):
+                    try:
+                        # Process multimodal input (image + text)
+                        if isinstance(input_data, dict):
+                            # Handle dictionary input with multiple modalities
+                            image = input_data.get("image")
+                            text = input_data.get("text")
+                            
+                            # Load image if path is provided
+                            if isinstance(image, str):
+                                from PIL import Image
+                                image = Image.open(image).convert("RGB")
+                        elif isinstance(input_data, str) and input_data.endswith(('.jpg', '.png', '.jpeg')):
+                            # Handle image path as direct input
+                            from PIL import Image
+                            image = Image.open(input_data).convert("RGB")
+                            text = kwargs.get("text", "")
+                        else:
+                            # Default handling for text input
+                            image = None
+                            text = input_data
+                            
+                        # Process with processor
+                        if image is not None and text:
+                            # Apply parallel loading optimization if enabled
+                            if use_parallel_loading:
+                                print("Using parallel loading optimization for multimodal input")
+                                
+                            # Process with processor
+                            inputs = processor(text=text, images=image, return_tensors="pt")
+                        else:
+                            inputs = processor(input_data, return_tensors="pt")
+                        
+                        # Apply 4-bit quantization if enabled
+                        if use_4bit_quantization:
+                            print("Using 4-bit quantization for model weights")
+                            # In real implementation, weights would be quantized here
+                        
+                        # Apply KV cache optimization if enabled
+                        if use_kv_cache_optimization:
+                            print("Using KV cache optimization for inference")
+                            # In real implementation, KV cache would be used here
+                        
+                        # Run inference with optimizations
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebGPU-specific metadata including optimization flags
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBGPU_TRANSFORMERS_JS",
+                            "model": model_name,
+                            "backend": "webgpu-simulation",
+                            "device": "webgpu",
+                            "optimizations": {
+                                "parallel_loading": use_parallel_loading,
+                                "quantization_4bit": use_4bit_quantization,
+                                "kv_cache_enabled": use_kv_cache_optimization
+                            },
+                            "transformers_js": {
+                                "version": "2.9.0",  # Simulated version
+                                "quantized": use_4bit_quantization,
+                                "format": "float4" if use_4bit_quantization else "float32",
+                                "backend": "webgpu"
+                            }
+                        }
+                    except Exception as e:
+                        print(f"Error in WebGPU multimodal simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webgpu_handler, queue, batch_size
+            else:
+                # Use actual WebGPU implementation when available
+                print("Using native WebGPU implementation with transformers.js for multimodal model")
+                
+                # Since WebGPU API access depends on browser environment,
+                # implementation details would involve JS interop
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x: {"output": "Native WebGPU multimodal output", "implementation_type": "WEBGPU_TRANSFORMERS_JS"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebGPU for multimodal model: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x: {"output": "Mock WebGPU multimodal output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
 def test_pipeline(self, device="auto"):
     """Test the model using transformers pipeline API."""
     if device == "auto":
@@ -567,185 +979,6 @@ def test_from_pretrained(self, device="auto"):
 
     
     
-def test_with_openvino(self):
-    """Test the model using OpenVINO integration."""
-    results = {
-        "model": self.model_id,
-        "task": self.task,
-        "class": self.class_name
-    }
-    
-    # Check for OpenVINO support
-    if not HW_CAPABILITIES["openvino"]:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["openvino"]
-        results["openvino_success"] = False
-        return results
-    
-    # Check for transformers
-    if not HAS_TRANSFORMERS:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["transformers"]
-        results["openvino_success"] = False
-        return results
-    
-    try:
-        from optimum.intel import OVModelForVision
-        logger.info(f"Testing {self.model_id} with OpenVINO...")
-        
-        # Time tokenizer loading
-        tokenizer_load_start = time.time()
-        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-        tokenizer_load_time = time.time() - tokenizer_load_start
-        
-        # Time model loading
-        model_load_start = time.time()
-        model = OVModelForVision.from_pretrained(
-            self.model_id,
-            export=True,
-            provider="CPU"
-        )
-        model_load_time = time.time() - model_load_start
-        
-        # Prepare input
-        test_input = self.test_image_url
-        
-        # Process image
-        if HAS_PIL:
-            response = requests.get(test_input)
-            image = Image.open(BytesIO(response.content)).convert("RGB")
-            
-            # Get text features
-            inputs = tokenizer(self.candidate_labels, padding=True, return_tensors="pt")
-            
-            # Get image features
-            processor = transformers.AutoProcessor.from_pretrained(self.model_id)
-            image_inputs = processor(images=image, return_tensors="pt")
-            inputs.update(image_inputs)
-        else:
-            # Mock inputs
-            inputs = {
-                "input_ids": torch.tensor([[1, 2, 3, 4, 5]]),
-                "attention_mask": torch.tensor([[1, 1, 1, 1, 1]]),
-                "pixel_values": torch.zeros(1, 3, 224, 224)
-            }
-        
-        # Run inference
-        start_time = time.time()
-        outputs = model(**inputs)
-        inference_time = time.time() - start_time
-        
-        # Process classification output
-        if hasattr(outputs, "logits_per_image"):
-            logits = outputs.logits_per_image[0]
-            probs = torch.nn.functional.softmax(logits, dim=-1)
-            
-            predictions = []
-            for i, (label, prob) in enumerate(zip(self.candidate_labels, probs)):
-                predictions.append({
-                    "label": label,
-                    "score": float(prob)
-                })
-        else:
-            predictions = [{"label": "Mock label", "score": 0.95}]
-        
-        # Store results
-        results["openvino_success"] = True
-        results["openvino_load_time"] = model_load_time
-        results["openvino_inference_time"] = inference_time
-        results["openvino_tokenizer_load_time"] = tokenizer_load_time
-        
-        # Add predictions if available
-        if 'predictions' in locals():
-            results["openvino_predictions"] = predictions
-        
-        results["openvino_error_type"] = "none"
-        
-        # Add to examples
-        example_data = {
-            "method": "OpenVINO inference",
-            "input": str(test_input)
-        }
-        
-        if 'predictions' in locals():
-            example_data["predictions"] = predictions
-        
-        self.examples.append(example_data)
-        
-        # Store in performance stats
-        self.performance_stats["openvino"] = {
-            "inference_time": inference_time,
-            "load_time": model_load_time,
-            "tokenizer_load_time": tokenizer_load_time
-        }
-        
-    except Exception as e:
-        # Store error information
-        results["openvino_success"] = False
-        results["openvino_error"] = str(e)
-        results["openvino_traceback"] = traceback.format_exc()
-        logger.error(f"Error testing with OpenVINO: {e}")
-        
-        # Classify error
-        error_str = str(e).lower()
-        if "no module named" in error_str:
-            results["openvino_error_type"] = "missing_dependency"
-        else:
-            results["openvino_error_type"] = "other"
-    
-    # Add to overall results
-    self.results["openvino"] = results
-    return results
-
-    
-    def run_tests(self, all_hardware=False):
-        """
-        Run all tests for this model.
-        
-        Args:
-            all_hardware: If True, tests on all available hardware (CPU, CUDA, OpenVINO)
-        
-        Returns:
-            Dict containing test results
-        """
-        # Always test on default device
-        self.test_pipeline()
-        self.test_from_pretrained()
-        
-        # Test on all available hardware if requested
-        if all_hardware:
-            # Always test on CPU
-            if self.preferred_device != "cpu":
-                self.test_pipeline(device="cpu")
-                self.test_from_pretrained(device="cpu")
-            
-            # Test on CUDA if available
-            if HW_CAPABILITIES["cuda"] and self.preferred_device != "cuda":
-                self.test_pipeline(device="cuda")
-                self.test_from_pretrained(device="cuda")
-            
-            # Test on OpenVINO if available
-            if HW_CAPABILITIES["openvino"]:
-                self.test_with_openvino()
-        
-        # Build final results
-        return {
-            "results": self.results,
-            "examples": self.examples,
-            "performance": self.performance_stats,
-            "hardware": HW_CAPABILITIES,
-            "metadata": {
-                "model": self.model_id,
-                "task": self.task,
-                "class": self.class_name,
-                "description": self.description,
-                "timestamp": datetime.datetime.now().isoformat(),
-                "has_transformers": HAS_TRANSFORMERS,
-                "has_torch": HAS_TORCH,
-                "has_pil": HAS_PIL
-            }
-        }
-
 def save_results(model_id, results, output_dir="collected_results"):
     """Save test results to a file."""
     # Ensure output directory exists

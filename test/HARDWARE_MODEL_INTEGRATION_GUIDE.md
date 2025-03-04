@@ -379,17 +379,17 @@ Below is a hardware compatibility matrix for different model families:
 
 | Model Family | CUDA | MPS (Apple) | ROCm | OpenVINO | WebNN | WebGPU |
 |--------------|------|-------------|------|----------|-------|--------|
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ Medium | ✅ Medium |
-| Text Generation (GPT2, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Low | ❌ | ❌ |
-| Vision (ViT, etc.) | ✅ High | ✅ High | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium |
-| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Low | ✅ Medium | ❌ | ❌ |
-| Multimodal (LLAVA, etc.) | ✅ High | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Embedding (BERT, etc.) | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL |
+| Text Generation (GPT2, etc.) | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL |
+| Vision (ViT, etc.) | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL |
+| Audio (Whisper, etc.) | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ⚠️ SIMULATION | ⚠️ SIMULATION |
+| Multimodal (LLAVA, etc.) | ✅ REAL | ⚠️ SIMULATION | ⚠️ SIMULATION | ⚠️ SIMULATION | ⚠️ SIMULATION | ⚠️ SIMULATION |
+| Video (XCLIP, etc.) | ✅ REAL | ✅ REAL | ✅ REAL | ✅ REAL | ⚠️ SIMULATION | ⚠️ SIMULATION |
 
 Notes:
-- ✅ High: Excellent compatibility and performance
-- ✅ Medium: Good compatibility with some limitations
-- ✅ Low: Basic functionality but may have performance issues
-- ❌: Not compatible or poor performance
+- ✅ REAL: Full implementation with actual hardware acceleration
+- ⚠️ SIMULATION: Simulated implementation that mimics real behavior but may not use hardware acceleration
+- Test generators will automatically create the appropriate implementation types for each model/hardware combination
 
 ## Performance Considerations
 

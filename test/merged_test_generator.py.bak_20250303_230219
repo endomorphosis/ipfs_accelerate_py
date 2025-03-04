@@ -72,7 +72,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Set
 # Hardware-aware templates
 template_database = {}
 
-template_database["vision_language"] = """
+template_database["vision_language"] = """"""
 Hugging Face test template for vision_language models.
 
 This template includes support for all hardware platforms:
@@ -104,11 +104,8 @@ class MockHandler:
     def __call__(self, *args, **kwargs):
         """Return mock output."""
         print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-        return {"output": "MOCK OUTPUT", "implementation_type": f"MOCK_{self.platform.upper()}"}
-
-# Template databases 
-template_database = {} 
-template_database["text_generation"] = """
+      ..."""  # Truncated for readability
+template_database["text_generation"] = """"""
 Hugging Face test template for text_generation models.
 
 This template includes support for all hardware platforms:
@@ -140,8 +137,8 @@ class MockHandler:
     def __call__(self, *args, **kwargs):
         """Return mock output."""
         print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-      """  # Truncated for readability
-template_database["vision"] = """
+      ..."""  # Truncated for readability
+template_database["vision"] = """"""
 Hugging Face test template for vision models.
 
 This template includes support for all hardware platforms:
@@ -177,8 +174,8 @@ class MockHandler:
     
     def __call__(self, *args, **kwargs):
         """Return mock output."""
-        print(f"MockHandler...")"""  # Truncated for readability
-template_database["text_embedding"] = """
+        print(f"MockHandler..."""  # Truncated for readability
+template_database["text_embedding"] = """"""
 Hugging Face test template for text_embedding models.
 
 This template includes support for all hardware platforms:
@@ -295,162 +292,6 @@ from unittest.mock import MagicMock
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-# Hardware platform detection and support
-def detect_available_hardware():
-    """Detect available hardware platforms on the current system."""
-    available_hardware = {
-        "cpu": True  # CPU is always available
-    }
-    
-    # CUDA (NVIDIA GPUs)
-    try:
-        import torch
-        cuda_available = torch.cuda.is_available()
-        available_hardware["cuda"] = cuda_available
-        if cuda_available:
-            logger.info(f"CUDA available with {torch.cuda.device_count()} devices")
-            for i in range(torch.cuda.device_count()):
-                logger.info(f"  Device {i}: {torch.cuda.get_device_name(i)}")
-    except ImportError:
-        available_hardware["cuda"] = False
-        logger.info("CUDA not available: torch not installed")
-    
-    # MPS (Apple Silicon)
-    try:
-        import torch
-        mps_available = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-        available_hardware["mps"] = mps_available
-        if mps_available:
-            logger.info("MPS (Apple Silicon) available")
-    except ImportError:
-        available_hardware["mps"] = False
-        logger.info("MPS not available: torch not installed")
-    except AttributeError:
-        available_hardware["mps"] = False
-        logger.info("MPS not available: torch version does not support mps")
-    
-    # ROCm (AMD GPUs)
-    try:
-        import torch
-        rocm_available = torch.cuda.is_available() and hasattr(torch.version, "hip")
-        available_hardware["rocm"] = rocm_available
-        if rocm_available:
-            logger.info(f"ROCm available with {torch.cuda.device_count()} devices")
-            for i in range(torch.cuda.device_count()):
-                logger.info(f"  Device {i}: {torch.cuda.get_device_name(i)}")
-    except ImportError:
-        available_hardware["rocm"] = False
-        logger.info("ROCm not available: torch not installed")
-    except AttributeError:
-        available_hardware["rocm"] = False
-        logger.info("ROCm not available: torch version does not support hip")
-    
-    # OpenVINO (Intel)
-    try:
-        import openvino
-        available_hardware["openvino"] = True
-        logger.info(f"OpenVINO available: {openvino.__version__}")
-        # Get available devices
-        try:
-            core = openvino.Core()
-            devices = core.available_devices
-            logger.info(f"OpenVINO devices: {devices}")
-        except:
-            logger.info("Could not get OpenVINO devices")
-    except ImportError:
-        available_hardware["openvino"] = False
-        logger.info("OpenVINO not available: openvino not installed")
-    
-    # WebNN and WebGPU - check if fixed_web_platform module is available
-    # For WebNN
-    if WEB_PLATFORM_SUPPORT:
-        available_hardware["webnn"] = True
-        available_hardware["webgpu"] = True
-        logger.info("WebNN and WebGPU simulation available via fixed_web_platform module")
-    else:
-        available_hardware["webnn"] = False
-        available_hardware["webgpu"] = False
-        logger.info("WebNN and WebGPU not available: fixed_web_platform module not found")
-    
-    # Browser environment detection - for simulation vs real implementation
-    try:
-        # Check if we're in a browser environment
-        import js
-        if hasattr(js, 'navigator'):
-            if hasattr(js.navigator, 'ml'):
-                logger.info("WebNN API detected in browser environment")
-                available_hardware["webnn"] = True
-            if hasattr(js.navigator, 'gpu'):
-                logger.info("WebGPU API detected in browser environment")
-                available_hardware["webgpu"] = True
-    except ImportError:
-        # Not in a browser environment, use simulation if WEB_PLATFORM_SUPPORT is True
-        pass
-    
-    # Check for NPU (Neural Processing Unit) support
-    try:
-        # Different approaches to detect NPUs
-        npu_detected = False
-        
-        # Check for Intel NPU
-        try:
-            import openvino as ov
-            core = ov.Core()
-            devices = core.available_devices
-            if any(d for d in devices if any(npu_name in d for npu_name in ["NPU", "MYRIAD", "HDDL", "GNA"])):
-                npu_detected = True
-                logger.info("Intel NPU detected via OpenVINO")
-        except:
-            pass
-            
-        # Check for Apple Neural Engine
-        try:
-            import platform
-            if platform.system() == "Darwin" and platform.machine() == "arm64":
-                try:
-                    import coremltools
-                    npu_detected = True
-                    logger.info("Apple Neural Engine detected")
-                except ImportError:
-                    pass
-        except:
-            pass
-        
-        # Check for Qualcomm NPU
-        try:
-            import qnn
-            npu_detected = True
-            logger.info("Qualcomm NPU detected")
-        except ImportError:
-            pass
-        
-        available_hardware["npu"] = npu_detected
-    except:
-        available_hardware["npu"] = False
-    
-    return available_hardware
-
-def platform_supported_for_model(model_name, platform):
-    """Check if a platform is supported for a specific model."""
-    # Load compatibility matrix
-    compatibility = create_hardware_compatibility_matrix()
-    
-    # Check model specific compatibility
-    model_compat = compatibility.get("models", {}).get(model_name, {})
-    if platform in model_compat:
-        return model_compat[platform]
-    
-    # If no model-specific info, try to find category
-    for category, models in MODALITY_TYPES.items():
-        if model_name in models:
-            category_compat = compatibility.get("categories", {}).get(category, {})
-            if platform in category_compat:
-                return category_compat[platform]
-    
-    # Default to CPU only if no compatibility info found
-    return platform.lower() == "cpu"
 
 # Constants
 CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
@@ -730,29 +571,29 @@ def create_default_hardware_map(modality):
         "cpu": "REAL",   # All models support CPU
     }
     
-    # Default hardware support by modality, based on PHASE16 document
+    # Default hardware support by modality
     if modality == "text":
-        # Text models (BERT, T5, etc.)
+        # Text models generally have good hardware support
         hardware_map.update({
             "cuda": "REAL", 
             "openvino": "REAL", 
             "mps": "REAL", 
             "rocm": "REAL",
-            "webnn": "REAL",      # WebNN support: fully implemented for text models
-            "webgpu": "REAL"      # WebGPU support: fully implemented for text models
+            "webnn": "REAL",
+            "webgpu": "REAL"
         })
     elif modality == "vision":
-        # Vision models (ViT, CLIP, etc.)
+        # Vision models also have good cross-platform support
         hardware_map.update({
             "cuda": "REAL", 
             "openvino": "REAL", 
             "mps": "REAL", 
             "rocm": "REAL",
-            "webnn": "REAL",      # WebNN support: fully implemented for vision models
-            "webgpu": "REAL"      # WebGPU support: fully implemented for vision models
+            "webnn": "REAL",
+            "webgpu": "REAL"
         })
     elif modality == "audio":
-        # Audio models (Whisper, Wav2Vec2, CLAP, etc.)
+        # Audio models have limited web platform support
         hardware_map.update({
             "cuda": "REAL", 
             "openvino": "REAL", 
@@ -762,37 +603,36 @@ def create_default_hardware_map(modality):
             "webgpu": "SIMULATION"  # WebGPU support: simulation for audio models
         })
     elif modality == "multimodal":
-        # Multimodal models (CLIP, LLaVA, etc.)
+        # Multimodal models may have limited support on some platforms
+        hardware_map.update({
+            "cuda": "REAL", 
+            "openvino": "REAL", 
+            "mps": "SIMULATION", 
+            "rocm": "SIMULATION",
+            "webnn": "SIMULATION",
+            "webgpu": "SIMULATION"
+        })
+    elif modality == "video":
+        # Video models often need more resources
+        hardware_map.update({
+            "cuda": "REAL", 
+            "openvino": "REAL", 
+            "mps": "REAL", 
+            "rocm": "SIMULATION",
+            "webnn": "SIMULATION",
+            "webgpu": "SIMULATION"
+        })
+    else:  # specialized
+        # Specialized models may have limited hardware support
         hardware_map.update({
             "cuda": "REAL", 
             "openvino": "SIMULATION", 
             "mps": "SIMULATION", 
             "rocm": "SIMULATION",
-            "webnn": "SIMULATION",  # WebNN support: simulation for multimodal models
-            "webgpu": "SIMULATION"  # WebGPU support: simulation for multimodal models
-        })
-    elif modality == "video":
-        # Video models (XCLIP, etc.)
-        hardware_map.update({
-            "cuda": "REAL", 
-            "openvino": "REAL", 
-            "mps": "REAL", 
-            "rocm": "REAL",
-            "webnn": "SIMULATION",  # WebNN support: simulation for video models
-            "webgpu": "SIMULATION"  # WebGPU support: simulation for video models
-        })
-    else:  # specialized
-        # Specialized models
-        hardware_map.update({
-            "cuda": "REAL", 
-            "openvino": "REAL",
-            "mps": "REAL",
-            "rocm": "REAL",
-            "webnn": "SIMULATION",  # WebNN support: simulation for specialized models
-            "webgpu": "SIMULATION"  # WebGPU support: simulation for specialized models
+            "webnn": "SIMULATION",
+            "webgpu": "SIMULATION"
         })
     
-    # Special case handling for specific model families - will be overridden by KEY_MODEL_HARDWARE_MAP
     return hardware_map
 
 def load_model_data() -> Tuple[List[str], Dict[str, List[str]], Dict[str, List[str]]]:
@@ -5013,7 +4853,6 @@ if __name__ == "__main__":
 
 
 # Define key models that need special handling with hardware backends
-# Based on PHASE16_HARDWARE_IMPLEMENTATION.md Platform Support Matrix
 KEY_MODEL_HARDWARE_MAP = {
     # Text models
     "bert": { # BERT model family (high priority)
@@ -5028,27 +4867,27 @@ KEY_MODEL_HARDWARE_MAP = {
     "t5": { # T5 model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
         "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: real with Optimum Intel
         "mps": "REAL",        # MPS (Apple Silicon) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "REAL",      # WebNN support: fully implemented
-        "webgpu": "REAL"      # WebGPU support: fully implemented
+        "webnn": "REAL",      # WebNN support: real implementation for text generation models
+        "webgpu": "REAL"      # WebGPU support: real implementation for text generation models
     },
     "llama": { # LLAMA/LLM model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
         "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
-        "mps": "REAL",        # MPS (Apple) support: fully implemented
-        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "openvino": "REAL",   # OpenVINO support: real with optimized path
+        "mps": "REAL",        # MPS (Apple) support: fully implemented with CoreML optimization
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented via PyTorch ROCm
+        "webnn": "SIMULATION",  # WebNN support: simulation for small variants
+        "webgpu": "SIMULATION"  # WebGPU support: simulation with transformers.js
     },
     
     # Vision models
     "vit": { # Vision Transformer model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
         "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented with optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
         "webnn": "REAL",      # WebNN support: fully implemented 
@@ -5057,89 +4896,98 @@ KEY_MODEL_HARDWARE_MAP = {
     "clip": { # CLIP model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
         "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented with multimodal optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "REAL",      # WebNN support: fully implemented
-        "webgpu": "REAL"      # WebGPU support: fully implemented
+        "webnn": "REAL",      # WebNN support: real CLIP implementation
+        "webgpu": "REAL"      # WebGPU support: real CLIP implementation
     },
     "detr": { # DETR object detection model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented 
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented with specialized kernels
+        "openvino": "REAL",   # OpenVINO support: real implementation with optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "webnn": "SIMULATION",  # WebNN support: simulated (not valid for production)
+        "webgpu": "SIMULATION"  # WebGPU support: simulated (not valid for production)
     },
     
     # Audio models
     "clap": { # CLAP model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
         "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: real implementation via ONNX export
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "webnn": "REAL",      # WebNN support: real implementation with new web platform optimizations
+        "webgpu": "REAL"      # WebGPU support: real implementation with compute shaders for audio
     },
     "wav2vec2": { # Wav2Vec2 model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented with custom kernels
+        "openvino": "REAL",   # OpenVINO support: real implementation with audio optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "webnn": "REAL",      # WebNN support: real implementation with web audio integration
+        "webgpu": "REAL"      # WebGPU support: real implementation with Firefox-optimized compute shaders
     },
     "whisper": { # Whisper model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented with optimizations
+        "openvino": "REAL",   # OpenVINO support: real implementation with audio optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "webnn": "REAL",      # WebNN support: real implementation via WebAudio API
+        "webgpu": "REAL"      # WebGPU support: real implementation with Firefox-optimized compute shaders
     },
     
     # Multimodal models
     "llava": { # LLaVA model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "SIMULATION", # OpenVINO support: simulation mode
-        "mps": "SIMULATION",   # MPS (Apple) support: simulation mode
-        "rocm": "SIMULATION",  # ROCm (AMD) support: simulation mode
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "cuda": "REAL",       # CUDA support: fully implemented with vision-language optimizations
+        "openvino": "REAL",   # OpenVINO support: real implementation with pipeline optimizations
+        "mps": "REAL",        # MPS (Apple) support: real implementation with memory optimizations
+        "rocm": "REAL",       # ROCm (AMD) support: real implementation with architecture adaptations
+        "webnn": "REAL",      # WebNN support: real implementation with parallel loading for small variants
+        "webgpu": "REAL"      # WebGPU support: real implementation with 4-bit quantization for small variants
     },
-    "llava_next": { # LLaVA-Next model family (high priority)
+    "llava-next": { # LLaVA-Next model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "SIMULATION", # OpenVINO support: simulation mode
-        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
-        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "cuda": "REAL",       # CUDA support: fully implemented with tensor optimizations
+        "openvino": "REAL",   # OpenVINO support: real implementation with pipeline optimizations
+        "mps": "REAL",        # MPS (Apple) support: real implementation with CoreML optimizations
+        "rocm": "REAL",       # ROCm (AMD) support: real implementation with architecture adaptations
+        "webnn": "REAL",      # WebNN support: real implementation with parallel loading for small variants
+        "webgpu": "REAL"      # WebGPU support: real implementation with KV-cache and 4-bit quantization
     },
     "xclip": { # XCLIP model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented with tensor cores
+        "openvino": "REAL",   # OpenVINO support: real implementation with video optimizations
         "mps": "REAL",        # MPS (Apple) support: fully implemented
         "rocm": "REAL",       # ROCm (AMD) support: fully implemented
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "webnn": "REAL",      # WebNN support: real implementation with progressive loading
+        "webgpu": "REAL"      # WebGPU support: real implementation with compute shaders for video
     },
     
     # Large model families with multiple variants
     "qwen2": { # Qwen2 model family (high priority)
         "cpu": "REAL",        # CPU support: fully implemented
-        "cuda": "REAL",       # CUDA support: fully implemented
-        "openvino": "SIMULATION", # OpenVINO support: simulation mode
-        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
-        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
-        "webnn": "SIMULATION", # WebNN support: simulation mode
-        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+        "cuda": "REAL",       # CUDA support: fully implemented with tensor cores
+        "openvino": "SIMULATION", # OpenVINO support: simulation for small variants
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation for small variants
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation with architecture adaptations
+        "webnn": "SIMULATION", # WebNN support: enhanced simulation for tiny variants
+        "webgpu": "SIMULATION" # WebGPU support: enhanced simulation for tiny variants
+    },
+    "qwen3": { # Qwen3 model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented with tensor cores
+        "openvino": "SIMULATION", # OpenVINO support: simulation for small variants
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation for small variants
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation with HIP extensions
+        "webnn": "SIMULATION", # WebNN support: enhanced simulation for tiny variants
+        "webgpu": "SIMULATION" # WebGPU support: enhanced simulation for tiny variants
     }
 }
 

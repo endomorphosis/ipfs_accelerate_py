@@ -38,173 +38,205 @@ sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
 from ipfs_accelerate_py.worker.skillset.hf_clap import hf_clap
 
 # Add missing handler functions to the class
-def create_cpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, cpu_label):
-    def handler(audio_input=None, text=None):
-        # Return mock embedding results
-        result = {}
-        if audio_input is not None:
-            result["audio_embedding"] = torch.randn(1, 512)
-        if text is not None:
-            result["text_embedding"] = torch.randn(1, 512)
-        if audio_input is not None and text is not None:
-            result["similarity"] = torch.tensor([[0.8]])
-        return result
-    return handler
-
-def create_cuda_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, cuda_label):
-    def handler(audio_input=None, text=None):
-        # Check if CUDA is available for better mock results
-        cuda_available = torch.cuda.is_available()
-        device_str = cuda_label if cuda_available else "cpu"
-        
-        # Process input path - handle None values by using a default string
-        if audio_input is None:
-            audio_input_to_use = None
-        elif isinstance(audio_input, str):
-            audio_input_to_use = audio_input
-        else:
-            # For any other type (like Tensor), just pass it through
-            audio_input_to_use = audio_input
-        
-        # Return mock embedding results with CUDA information
-        result = {}
-        if audio_input_to_use is not None:
-            # Create tensor on appropriate device
-            if cuda_available:
-                try:
-                    # Try to create on CUDA device to test actual availability
-                    device = torch.device(device_str)
-                    result["audio_embedding"] = torch.randn(1, 512, device=device)
-                    result["implementation_type"] = "REAL"  # Mark as real if we successfully used CUDA
-                except Exception:
-                    # Fall back to CPU with implementation type marker
-                    result["audio_embedding"] = torch.randn(1, 512)
-                    result["implementation_type"] = "MOCK"
-            else:
-                result["audio_embedding"] = torch.randn(1, 512)
-                result["implementation_type"] = "MOCK"
-        
-        if text is not None:
-            # Create tensor on appropriate device
-            if cuda_available:
-                try:
-                    # Try to create on CUDA device
-                    device = torch.device(device_str)
-                    result["text_embedding"] = torch.randn(1, 512, device=device)
-                    result["implementation_type"] = "REAL"  # Mark as real if we successfully used CUDA
-                except Exception:
-                    # Fall back to CPU
-                    result["text_embedding"] = torch.randn(1, 512)
-                    result["implementation_type"] = "MOCK"
-            else:
-                result["text_embedding"] = torch.randn(1, 512)
-                result["implementation_type"] = "MOCK"
-        
-        if audio_input_to_use is not None and text is not None:
-            if cuda_available:
-                try:
-                    # Try to create on CUDA device
-                    device = torch.device(device_str)
-                    result["similarity"] = torch.tensor([[0.8]], device=device)
-                except Exception:
-                    # Fall back to CPU
-                    result["similarity"] = torch.tensor([[0.8]])
-            else:
-                result["similarity"] = torch.tensor([[0.8]])
-            
-        # Add CUDA device information if available
-        if cuda_available:
-            result["device"] = device_str
-            result["cuda_memory_allocated_mb"] = torch.cuda.memory_allocated() / (1024**2)
-            result["cuda_memory_reserved_mb"] = torch.cuda.memory_reserved() / (1024**2)
-            
-        return result
-    return handler
-
-def create_openvino_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, openvino_label):
-    def handler(audio_input=None, text=None):
-        # Return mock embedding results
-        result = {}
-        if audio_input is not None:
-            result["audio_embedding"] = torch.randn(1, 512)
-        if text is not None:
-            result["text_embedding"] = torch.randn(1, 512)
-        if audio_input is not None and text is not None:
-            result["similarity"] = torch.tensor([[0.8]])
-        return result
-    return handler
-
-def create_apple_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, apple_label):
-    def handler(audio_input=None, text=None):
-        # Return mock embedding results
-        result = {}
-        if audio_input is not None:
-            result["audio_embedding"] = torch.randn(1, 512)
-        if text is not None:
-            result["text_embedding"] = torch.randn(1, 512)
-        if audio_input is not None and text is not None:
-            result["similarity"] = torch.tensor([[0.8]])
-        return result
-    return handler
-
-def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, qualcomm_label):
-    def handler(audio_input=None, text=None):
-        # Return mock embedding results
-        result = {}
-        if audio_input is not None:
-            result["audio_embedding"] = torch.randn(1, 512)
-        if text is not None:
-            result["text_embedding"] = torch.randn(1, 512)
-        if audio_input is not None and text is not None:
-            result["similarity"] = torch.tensor([[0.8]])
-        return result
-    return handler
-
-# Add methods to the class
-hf_clap.create_cpu_audio_embedding_endpoint_handler = create_cpu_audio_embedding_endpoint_handler
-hf_clap.create_cuda_audio_embedding_endpoint_handler = create_cuda_audio_embedding_endpoint_handler
-hf_clap.create_openvino_audio_embedding_endpoint_handler = create_openvino_audio_embedding_endpoint_handler
-hf_clap.create_apple_audio_embedding_endpoint_handler = create_apple_audio_embedding_endpoint_handler
-hf_clap.create_qualcomm_audio_embedding_endpoint_handler = create_qualcomm_audio_embedding_endpoint_handler
-
-# Patch the module and make utility functions available in the module
-sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio = load_audio
-sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio_tensor = load_audio_tensor
-
-# Try importing transformers for real
-try:
-    import transformers
-    transformers_available = True
-    print("Successfully imported transformers module")
-except ImportError:
-    transformers_available = False
-    print("Could not import transformers module, will use mock implementation")
-
-# Try importing soundfile for real
-try:
-    import soundfile as sf
-    soundfile_available = True
-    print("Successfully imported soundfile module")
-except ImportError:
-    soundfile_available = False
-    print("Could not import soundfile module, will use mock implementation")
-
-
 class MockHandler:
-def create_cpu_handler(self):
+    def create_cpu_handler(self):
     """Create handler for CPU platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
 
-def create_cuda_handler(self):
+    def init_webgpu(self, model_name=None):
+        """Initialize audio model for WebGPU inference using transformers.js simulation."""
+        try:
+            print("Initializing WebGPU for audio model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebGPU support
+            webgpu_support = False
+            try:
+                # In browser environments, check for WebGPU API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'gpu'):
+                    webgpu_support = True
+                    print("WebGPU API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webgpu_support:
+                # Create a WebGPU simulation using CPU implementation for audio models
+                print("Using WebGPU/transformers.js simulation for audio model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebGPU/transformers.js
+    def webgpu_handler(audio_input, sampling_rate=16000, **kwargs):
+                    try:
+                        # Process audio input
+                        if isinstance(audio_input, str):
+                            # Load audio file
+                            try:
+                                import librosa
+                                array, sr = librosa.load(audio_input, sr=sampling_rate)
+                            except ImportError:
+                                # Mock audio data if librosa isn't available
+                                array = torch.zeros((sampling_rate * 3,))  # 3 seconds of silence
+                                sr = sampling_rate
+                        else:
+                            array = audio_input
+                            sr = sampling_rate
+                            
+                        # Process with processor
+                        inputs = processor(array, sampling_rate=sr, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebGPU-specific metadata to match transformers.js
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBGPU_TRANSFORMERS_JS",
+                            "model": model_name,
+                            "backend": "webgpu-simulation",
+                            "device": "webgpu",
+                            "transformers_js": {
+                                "version": "2.9.0",  # Simulated version
+                                "quantized": False,
+                                "format": "float32",
+                                "backend": "webgpu"
+                            }
+                        }
+                    except Exception as e:
+                        print(f"Error in WebGPU simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webgpu_handler, queue, batch_size
+            else:
+                # Use actual WebGPU implementation when available
+                # (This would use transformers.js in browser environments with WebAudio)
+                print("Using native WebGPU implementation with transformers.js")
+                
+                # Since WebGPU API access depends on browser environment,
+                # implementation details would involve JS interop via WebAudio
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x, sampling_rate=16000: {"output": "Native WebGPU output", "implementation_type": "WEBGPU_TRANSFORMERS_JS"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebGPU: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
+
+    def init_webnn(self, model_name=None):
+        """Initialize audio model for WebNN inference."""
+        try:
+            print("Initializing WebNN for audio model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebNN support
+            webnn_support = False
+            try:
+                # In browser environments, check for WebNN API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
+                    webnn_support = True
+                    print("WebNN API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webnn_support:
+                # Create a WebNN simulation using CPU implementation for audio models
+                print("Using WebNN simulation for audio model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebNN
+    def webnn_handler(audio_input, sampling_rate=16000, **kwargs):
+                    try:
+                        # Process audio input
+                        if isinstance(audio_input, str):
+                            # Load audio file
+                            try:
+                                import librosa
+                                array, sr = librosa.load(audio_input, sr=sampling_rate)
+                            except ImportError:
+                                # Mock audio data if librosa isn't available
+                                array = torch.zeros((sampling_rate * 3,))  # 3 seconds of silence
+                                sr = sampling_rate
+                        else:
+                            array = audio_input
+                            sr = sampling_rate
+                            
+                        # Process with processor
+                        inputs = processor(array, sampling_rate=sr, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebNN-specific metadata
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBNN",
+                            "model": model_name,
+                            "backend": "webnn-simulation",
+                            "device": "cpu"
+                        }
+                    except Exception as e:
+                        print(f"Error in WebNN simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webnn_handler, queue, batch_size
+            else:
+                # Use actual WebNN implementation when available
+                # (This would use the WebNN API in browser environments)
+                print("Using native WebNN implementation")
+                
+                # Since WebNN API access depends on browser environment,
+                # implementation details would involve JS interop via WebAudio API
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x, sampling_rate=16000: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebNN: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
+
+    def create_cuda_handler(self):
     """Create handler for CUDA platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_openvino_handler(self):
+    def create_openvino_handler(self):
     """Create handler for OPENVINO platform."""
     model_path = self.get_model_path_or_name()
         from openvino.runtime import Core
@@ -214,18 +246,18 @@ def create_openvino_handler(self):
         handler = lambda input_audio: compiled_model(np.array(input_audio))[0]
     return handler
 
-def create_mps_handler(self):
+    def create_mps_handler(self):
     """Create handler for MPS platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_rocm_handler(self):
+    def create_rocm_handler(self):
     """Create handler for ROCM platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForAudioClassification.from_pretrained(model_path).to(self.device_name)
     return handler
-def init_cpu(self):
+    def init_cpu(self):
     """Initialize for CPU platform."""
     
     self.platform = "CPU"
@@ -236,7 +268,7 @@ def init_cpu(self):
     """Mock handler for platforms that don't have real implementations."""
     
     
-def init_cuda(self):
+    def init_cuda(self):
     """Initialize for CUDA platform."""
     import torch
     self.platform = "CUDA"
@@ -244,7 +276,7 @@ def init_cuda(self):
     self.device_name = "cuda" if torch.cuda.is_available() else "cpu"
     return True
 
-def init_openvino(self):
+    def init_openvino(self):
     """Initialize for OPENVINO platform."""
     import openvino
     self.platform = "OPENVINO"
@@ -252,7 +284,7 @@ def init_openvino(self):
     self.device_name = "openvino"
     return True
 
-def init_mps(self):
+    def init_mps(self):
     """Initialize for MPS platform."""
     import torch
     self.platform = "MPS"
@@ -260,7 +292,7 @@ def init_mps(self):
     self.device_name = "mps" if torch.backends.mps.is_available() else "cpu"
     return True
 
-def init_rocm(self):
+    def init_rocm(self):
     """Initialize for ROCM platform."""
     import torch
     self.platform = "ROCM"
@@ -271,6 +303,166 @@ def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")
+
+    def create_apple_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, apple_label):
+        def handler(audio_input=None, text=None):
+            # Return mock embedding results
+            result = {}
+            if audio_input is not None:
+                result["audio_embedding"] = torch.randn(1, 512)
+            if text is not None:
+                result["text_embedding"] = torch.randn(1, 512)
+            if audio_input is not None and text is not None:
+                result["similarity"] = torch.tensor([[0.8]])
+            return result
+        return handler
+    
+    
+    def create_cpu_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, cpu_label):
+        def handler(audio_input=None, text=None):
+            # Return mock embedding results
+            result = {}
+            if audio_input is not None:
+                result["audio_embedding"] = torch.randn(1, 512)
+            if text is not None:
+                result["text_embedding"] = torch.randn(1, 512)
+            if audio_input is not None and text is not None:
+                result["similarity"] = torch.tensor([[0.8]])
+            return result
+        return handler
+    
+    
+    def create_cuda_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, cuda_label):
+        def handler(audio_input=None, text=None):
+            # Check if CUDA is available for better mock results
+            cuda_available = torch.cuda.is_available()
+            device_str = cuda_label if cuda_available else "cpu"
+            
+            # Process input path - handle None values by using a default string
+            if audio_input is None:
+                audio_input_to_use = None
+            elif isinstance(audio_input, str):
+                audio_input_to_use = audio_input
+            else:
+                # For any other type (like Tensor), just pass it through
+                audio_input_to_use = audio_input
+            
+            # Return mock embedding results with CUDA information
+            result = {}
+            if audio_input_to_use is not None:
+                # Create tensor on appropriate device
+                if cuda_available:
+                    try:
+                        # Try to create on CUDA device to test actual availability
+                        device = torch.device(device_str)
+                        result["audio_embedding"] = torch.randn(1, 512, device=device)
+                        result["implementation_type"] = "REAL"  # Mark as real if we successfully used CUDA
+                    except Exception:
+                        # Fall back to CPU with implementation type marker
+                        result["audio_embedding"] = torch.randn(1, 512)
+                        result["implementation_type"] = "MOCK"
+                else:
+                    result["audio_embedding"] = torch.randn(1, 512)
+                    result["implementation_type"] = "MOCK"
+            
+            if text is not None:
+                # Create tensor on appropriate device
+                if cuda_available:
+                    try:
+                        # Try to create on CUDA device
+                        device = torch.device(device_str)
+                        result["text_embedding"] = torch.randn(1, 512, device=device)
+                        result["implementation_type"] = "REAL"  # Mark as real if we successfully used CUDA
+                    except Exception:
+                        # Fall back to CPU
+                        result["text_embedding"] = torch.randn(1, 512)
+                        result["implementation_type"] = "MOCK"
+                else:
+                    result["text_embedding"] = torch.randn(1, 512)
+                    result["implementation_type"] = "MOCK"
+            
+            if audio_input_to_use is not None and text is not None:
+                if cuda_available:
+                    try:
+                        # Try to create on CUDA device
+                        device = torch.device(device_str)
+                        result["similarity"] = torch.tensor([[0.8]], device=device)
+                    except Exception:
+                        # Fall back to CPU
+                        result["similarity"] = torch.tensor([[0.8]])
+                else:
+                    result["similarity"] = torch.tensor([[0.8]])
+                
+            # Add CUDA device information if available
+            if cuda_available:
+                result["device"] = device_str
+                result["cuda_memory_allocated_mb"] = torch.cuda.memory_allocated() / (1024**2)
+                result["cuda_memory_reserved_mb"] = torch.cuda.memory_reserved() / (1024**2)
+                
+            return result
+        return handler
+    
+    
+    def create_openvino_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, openvino_label):
+        def handler(audio_input=None, text=None):
+            # Return mock embedding results
+            result = {}
+            if audio_input is not None:
+                result["audio_embedding"] = torch.randn(1, 512)
+            if text is not None:
+                result["text_embedding"] = torch.randn(1, 512)
+            if audio_input is not None and text is not None:
+                result["similarity"] = torch.tensor([[0.8]])
+            return result
+        return handler
+    
+    
+    def create_qualcomm_audio_embedding_endpoint_handler(self, endpoint, tokenizer, model_name, qualcomm_label):
+        def handler(audio_input=None, text=None):
+            # Return mock embedding results
+            result = {}
+            if audio_input is not None:
+                result["audio_embedding"] = torch.randn(1, 512)
+            if text is not None:
+                result["text_embedding"] = torch.randn(1, 512)
+            if audio_input is not None and text is not None:
+                result["similarity"] = torch.tensor([[0.8]])
+            return result
+        return handler
+    
+    # Add methods to the class
+    hf_clap.create_cpu_audio_embedding_endpoint_handler = create_cpu_audio_embedding_endpoint_handler
+    hf_clap.create_cuda_audio_embedding_endpoint_handler = create_cuda_audio_embedding_endpoint_handler
+    hf_clap.create_openvino_audio_embedding_endpoint_handler = create_openvino_audio_embedding_endpoint_handler
+    hf_clap.create_apple_audio_embedding_endpoint_handler = create_apple_audio_embedding_endpoint_handler
+    hf_clap.create_qualcomm_audio_embedding_endpoint_handler = create_qualcomm_audio_embedding_endpoint_handler
+    
+    # Patch the module and make utility functions available in the module
+    sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio = load_audio
+    sys.modules['ipfs_accelerate_py.worker.skillset.hf_clap'].load_audio_tensor = load_audio_tensor
+    
+    # Try importing transformers for real
+    try:
+        import transformers
+        transformers_available = True
+        print("Successfully imported transformers module")
+    except ImportError:
+        transformers_available = False
+        print("Could not import transformers module, will use mock implementation")
+    
+    # Try importing soundfile for real
+    try:
+        import soundfile as sf
+        soundfile_available = True
+        print("Successfully imported soundfile module")
+    except ImportError:
+        soundfile_available = False
+        print("Could not import soundfile module, will use mock implementation")
+    
+    
+    
+
+
     
     def __call__(self, *args, **kwargs):
         """Return mock output."""
@@ -1016,7 +1208,7 @@ class test_hf_clap:
                         mock_processor.is_real_simulation = True
                         
                         # Create handler that returns CUDA tensors
-                        def enhanced_cuda_handler(audio_input=None, text=None):
+                def enhanced_cuda_handler(audio_input=None, text=None):
                             result = {}
                             
                             # Check if CUDA is available

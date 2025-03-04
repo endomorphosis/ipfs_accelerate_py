@@ -69,6 +69,36 @@ import traceback
 import concurrent.futures
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
+
+# Hardware platforms to support
+HARDWARE_PLATFORMS = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
+
+# Model categories
+MODEL_CATEGORIES = {
+    "bert": "text_embedding",
+    "clap": "audio",
+    "clip": "vision",
+    "detr": "vision",
+    "llama": "text_generation",
+    "llava": "vision_language",
+    "llava_next": "vision_language",
+    "qwen2": "text_generation",
+    "t5": "text_generation",
+    "vit": "vision",
+    "wav2vec2": "audio",
+    "whisper": "audio",
+    "xclip": "video"
+}
+
+# Hardware-specific modifiers for detection
+HARDWARE_DETECTION = {
+    "cuda": "if torch.cuda.is_available()",
+    "mps": "if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()",
+    "rocm": "if torch.cuda.is_available() and hasattr(torch.version, 'hip')",
+    "openvino": "try:\n    import openvino\n    OPENVINO_AVAILABLE = True\nexcept ImportError:\n    OPENVINO_AVAILABLE = False\n",
+    "webnn": "# WebNN detection would depend on browser environment",
+    "webgpu": "# WebGPU detection would depend on browser environment"
+}
 # Hardware-aware templates
 template_database = {}
 
@@ -5594,7 +5624,11 @@ def parse_args():
     hardware_group.add_argument("--webnn-mode", type=str, choices=["real", "simulation", "mock"], 
                                default="real", help="WebNN/WebGPU implementation mode")
     
-    return parser.parse_args()
+    
+    # Hardware platform options
+    parser.add_argument("--platform", choices=["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu", "all"],
+                      default="all", help="Hardware platform to target (default: all)")
+return parser.parse_args()
 
 def main():
     """Main function"""
@@ -5735,7 +5769,7 @@ def main():
         success, message = generate_test_file(
             model_info,
             existing_tests,
-            list(MODEL_REGISTRY.keys()),
+            list(MODEL_REGISTRY.keys(, platform=args.platform)),
             args.output_dir or "skills",
             platform=args.platform
         )
@@ -5799,7 +5833,7 @@ def main():
                 success, message = generate_test_file(
                     model_info,
                     existing_tests,
-                    list(MODEL_REGISTRY.keys()),
+                    list(MODEL_REGISTRY.keys(, platform=args.platform)),
                     args.output_dir or "skills",
                     platform=args.platform
                 )

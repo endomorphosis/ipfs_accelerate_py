@@ -34,7 +34,7 @@ except ImportError:
 
 
 class MockHandler:
-def init_mps(self):
+    def init_mps(self):
     """Initialize for MPS platform."""
     import torch
     self.platform = "MPS"
@@ -43,7 +43,7 @@ def init_mps(self):
     return True
 
 
-def init_rocm(self):
+    def init_rocm(self):
     """Initialize for ROCM platform."""
     import torch
     self.platform = "ROCM"
@@ -51,7 +51,7 @@ def init_rocm(self):
     self.device_name = "cuda" if torch.cuda.is_available() and torch.version.hip is not None else "cpu"
     return True
 
-def init_webnn(self):
+    def init_webnn(self):
     """Initialize for WEBNN platform."""
     # WebNN specific imports would be added at runtime
     self.platform = "WEBNN"
@@ -59,14 +59,14 @@ def init_webnn(self):
     self.device_name = "webnn"
     return True
 
-def init_webgpu(self):
+    def init_webgpu(self):
     """Initialize for WEBGPU platform."""
     # WebGPU specific imports would be added at runtime
     self.platform = "WEBGPU"
     self.device = "webgpu"
     self.device_name = "webgpu"
     return True
-def create_cpu_handler(self):
+    def create_cpu_handler(self):
     """Create handler for CPU platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForImageClassification.from_pretrained(model_path).to(self.device_name)
@@ -75,13 +75,13 @@ def create_cpu_handler(self):
     """Mock handler for platforms that don't have real implementations."""
     
     
-def create_cuda_handler(self):
+    def create_cuda_handler(self):
     """Create handler for CUDA platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForImageClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_openvino_handler(self):
+    def create_openvino_handler(self):
     """Create handler for OPENVINO platform."""
     model_path = self.get_model_path_or_name()
         from openvino.runtime import Core
@@ -91,25 +91,25 @@ def create_openvino_handler(self):
         handler = lambda input_image: compiled_model(np.array(input_image))[0]
     return handler
 
-def create_mps_handler(self):
+    def create_mps_handler(self):
     """Create handler for MPS platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForImageClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_rocm_handler(self):
+    def create_rocm_handler(self):
     """Create handler for ROCM platform."""
     model_path = self.get_model_path_or_name()
         handler = AutoModelForImageClassification.from_pretrained(model_path).to(self.device_name)
     return handler
 
-def create_webnn_handler(self):
+    def create_webnn_handler(self):
     """Create handler for WEBNN platform."""
     # This is a mock handler for webnn
         handler = MockHandler(self.model_path, platform="webnn")
     return handler
 
-def create_webgpu_handler(self):
+    def create_webgpu_handler(self):
     """Create handler for WEBGPU platform."""
     # This is a mock handler for webgpu
         handler = MockHandler(self.model_path, platform="webgpu")

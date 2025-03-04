@@ -24,6 +24,7 @@ from datetime import datetime
 PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEST_DIR = PROJECT_ROOT / "test"
 GENERATOR_FILE = TEST_DIR / "merged_test_generator.py"
+FIXED_GENERATOR_FILE = TEST_DIR / "fixed_merged_test_generator.py"
 TEMPLATE_DIR = TEST_DIR / "hardware_test_templates"
 TEMPLATE_DB_FILE = TEMPLATE_DIR / "template_database.json"
 
@@ -90,7 +91,7 @@ def update_generator(template_db):
                 # Add template selection function
                 template_func = """
 def select_hardware_template(model_name, category=None, platform="all"):
-    """
+    \"\"\"
     Select an appropriate template based on model name, category, and target hardware platform.
     
     Args:
@@ -100,7 +101,7 @@ def select_hardware_template(model_name, category=None, platform="all"):
         
     Returns:
         str: Template content
-    """
+    \"\"\"
     # Try model-specific template first
     template_key = model_name
     if template_key in template_database:
@@ -220,6 +221,22 @@ def main():
     
     if success:
         print("Generator update completed successfully!")
+        
+        # If fixed_merged_test_generator.py exists, update it too
+        if FIXED_GENERATOR_FILE.exists():
+            print(f"Updating fixed generator file: {FIXED_GENERATOR_FILE}")
+            
+            # Create a backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fixed_backup_file = FIXED_GENERATOR_FILE.with_suffix(f".py.bak_{timestamp}")
+            shutil.copy2(FIXED_GENERATOR_FILE, fixed_backup_file)
+            print(f"Created backup of {FIXED_GENERATOR_FILE} at {fixed_backup_file}")
+            
+            # Copy the updated merged_test_generator.py to fixed_merged_test_generator.py
+            shutil.copy2(GENERATOR_FILE, FIXED_GENERATOR_FILE)
+            print(f"Updated {FIXED_GENERATOR_FILE} with hardware-aware templates")
+        else:
+            print(f"Fixed generator file not found: {FIXED_GENERATOR_FILE}")
     else:
         print(f"Generator update failed. Original file restored from {backup_file}")
         shutil.copy2(backup_file, GENERATOR_FILE)

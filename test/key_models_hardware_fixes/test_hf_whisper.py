@@ -247,6 +247,206 @@ class test_hf_whisper:
         
         return test_results
 
+
+                def init_webgpu(self, model_name=None):
+        """Initialize audio model for WebGPU inference using transformers.js simulation."""
+        try:
+            print("Initializing WebGPU for audio model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebGPU support
+            webgpu_support = False
+            try:
+                # In browser environments, check for WebGPU API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'gpu'):
+                    webgpu_support = True
+                    print("WebGPU API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webgpu_support:
+                # Create a WebGPU simulation using CPU implementation for audio models
+                print("Using WebGPU/transformers.js simulation for audio model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebGPU/transformers.js
+                def webgpu_handler(audio_input, sampling_rate=16000, **kwargs):
+                    try:
+                        # Process audio input
+                        if isinstance(audio_input, str):
+                            # Load audio file
+                            try:
+                                import librosa
+                                array, sr = librosa.load(audio_input, sr=sampling_rate)
+                            except ImportError:
+                                # Mock audio data if librosa isn't available
+                                array = torch.zeros((sampling_rate * 3,))  # 3 seconds of silence
+                                sr = sampling_rate
+                        else:
+                            array = audio_input
+                            sr = sampling_rate
+                            
+                        # Process with processor
+                        inputs = processor(array, sampling_rate=sr, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebGPU-specific metadata to match transformers.js
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBGPU_TRANSFORMERS_JS",
+                            "model": model_name,
+                            "backend": "webgpu-simulation",
+                            "device": "webgpu",
+                            "transformers_js": {
+                                "version": "2.9.0",  # Simulated version
+                                "quantized": False,
+                                "format": "float32",
+                                "backend": "webgpu"
+                            }
+                        }
+                    except Exception as e:
+                        print(f"Error in WebGPU simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webgpu_handler, queue, batch_size
+            else:
+                # Use actual WebGPU implementation when available
+                # (This would use transformers.js in browser environments with WebAudio)
+                print("Using native WebGPU implementation with transformers.js")
+                
+                # Since WebGPU API access depends on browser environment,
+                # implementation details would involve JS interop via WebAudio
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x, sampling_rate=16000: {"output": "Native WebGPU output", "implementation_type": "WEBGPU_TRANSFORMERS_JS"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebGPU: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebGPU output", "implementation_type": "MOCK_WEBGPU"}, queue, 1
+
+                def init_webnn(self, model_name=None):
+        """Initialize audio model for WebNN inference."""
+        try:
+            print("Initializing WebNN for audio model")
+            model_name = model_name or self.model_name
+            
+            # Check for WebNN support
+            webnn_support = False
+            try:
+                # In browser environments, check for WebNN API
+                import js
+                if hasattr(js, 'navigator') and hasattr(js.navigator, 'ml'):
+                    webnn_support = True
+                    print("WebNN API detected in browser environment")
+            except ImportError:
+                # Not in a browser environment
+                pass
+                
+            # Create queue for inference requests
+            import asyncio
+            queue = asyncio.Queue(16)
+            
+            if not webnn_support:
+                # Create a WebNN simulation using CPU implementation for audio models
+                print("Using WebNN simulation for audio model")
+                
+                # Initialize with CPU for simulation
+                endpoint, processor, _, _, batch_size = self.init_cpu(model_name=model_name)
+                
+                # Wrap the CPU function to simulate WebNN
+                def webnn_handler(audio_input, sampling_rate=16000, **kwargs):
+                    try:
+                        # Process audio input
+                        if isinstance(audio_input, str):
+                            # Load audio file
+                            try:
+                                import librosa
+                                array, sr = librosa.load(audio_input, sr=sampling_rate)
+                            except ImportError:
+                                # Mock audio data if librosa isn't available
+                                array = torch.zeros((sampling_rate * 3,))  # 3 seconds of silence
+                                sr = sampling_rate
+                        else:
+                            array = audio_input
+                            sr = sampling_rate
+                            
+                        # Process with processor
+                        inputs = processor(array, sampling_rate=sr, return_tensors="pt")
+                        
+                        # Run inference
+                        with torch.no_grad():
+                            outputs = endpoint(**inputs)
+                        
+                        # Add WebNN-specific metadata
+                        return {
+                            "output": outputs,
+                            "implementation_type": "SIMULATION_WEBNN",
+                            "model": model_name,
+                            "backend": "webnn-simulation",
+                            "device": "cpu"
+                        }
+                    except Exception as e:
+                        print(f"Error in WebNN simulation handler: {e}")
+                        return {
+                            "output": f"Error: {str(e)}",
+                            "implementation_type": "ERROR",
+                            "error": str(e),
+                            "model": model_name
+                        }
+                
+                return endpoint, processor, webnn_handler, queue, batch_size
+            else:
+                # Use actual WebNN implementation when available
+                # (This would use the WebNN API in browser environments)
+                print("Using native WebNN implementation")
+                
+                # Since WebNN API access depends on browser environment,
+                # implementation details would involve JS interop via WebAudio API
+                
+                # Create mock implementation for now (replace with real implementation)
+                return None, None, lambda x, sampling_rate=16000: {"output": "Native WebNN output", "implementation_type": "WEBNN"}, queue, 1
+                
+        except Exception as e:
+            print(f"Error initializing WebNN: {e}")
+            # Fallback to a minimal mock
+            import asyncio
+            queue = asyncio.Queue(16)
+            return None, None, lambda x, sampling_rate=16000: {"output": "Mock WebNN output", "implementation_type": "MOCK_WEBNN"}, queue, 1
+
+                def init_rocm(self, model_name, model_type, device_label="rocm:0", **kwargs):
+                    print(f"Loading {model_name} for ROCm inference...")
+                    mock_handler = lambda x: {"output": f"Mock ROCm output for {model_name}", 
+                                         "implementation_type": "MOCK"}
+                    return None, None, mock_handler, None, 1
+                
+                
+
+                def init_mps(self, model_name, model_type, device_label="mps:0", **kwargs):
+                    print(f"Loading {model_name} for MPS inference...")
+                    mock_handler = lambda x: {"output": f"Mock MPS output for {model_name}", 
+                                         "implementation_type": "MOCK"}
+                    return None, None, mock_handler, None, 1
+                
+                
 if __name__ == "__main__":
     try:
         print(f"Starting whisper test...")

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Update the merged_test_generator.py to integrate the WebNN and WebGPU platform fixes.
+Update the merged_test_generator.py to integrate the WebNN and WebGPU platform fixes
+and ensure all hardware templates are correctly integrated.
 
 This script:
 1. Makes a backup of the original merged_test_generator.py
 2. Adds the import for the fixed_web_platform package
 3. Updates the test_platform method to properly handle WebNN and WebGPU
 4. Replaces the init_webnn and init_webgpu functions with the fixed versions
-5. Verifies the changes work by running a simple test
+5. Fixes template syntax issues in the generator
+6. Loads hardware templates from the hardware_test_templates directory
+7. Verifies the changes work by running a simple test
 
 Usage:
   python update_merged_generator.py
@@ -20,12 +23,31 @@ import shutil
 import importlib
 from pathlib import Path
 from datetime import datetime
+import glob
 
 # Set up paths
 CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 GENERATOR_FILE = CURRENT_DIR / "merged_test_generator.py"
 BACKUP_DIR = CURRENT_DIR / "backups"
 BACKUP_FILE = BACKUP_DIR / f"merged_test_generator.py.bak_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+TEMPLATES_DIR = CURRENT_DIR / "hardware_test_templates"
+
+# Model categories mapping
+MODEL_CATEGORIES = {
+    "bert": "text_embedding",
+    "clap": "audio",
+    "clip": "vision",
+    "detr": "vision",
+    "llama": "text_generation",
+    "llava": "vision_language",
+    "llava_next": "vision_language",
+    "qwen2": "text_generation",
+    "t5": "text_generation",
+    "vit": "vision",
+    "wav2vec2": "audio",
+    "whisper": "audio",
+    "xclip": "video"
+}
 
 # Ensure backup directory exists
 BACKUP_DIR.mkdir(exist_ok=True)
@@ -38,6 +60,33 @@ def backup_generator():
         return True
     except Exception as e:
         print(f"Error creating backup: {e}")
+        return False
+
+def fix_template_syntax():
+    """Fix syntax issues in the template strings."""
+    try:
+        # Read the current file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Fix template string syntax errors
+        content = re.sub(r'template_database\["[^"]+"\] = """"""', 
+                         lambda m: m.group(0).replace('""""""', '"""'), 
+                         content)
+        
+        # Fix truncated strings
+        content = re.sub(r'\.\.\."\s+#\s+Truncated for readability', 
+                         '..." # Truncated for readability', 
+                         content)
+        
+        # Write the updated content
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(content)
+            
+        print("Fixed template syntax issues")
+        return True
+    except Exception as e:
+        print(f"Error fixing templates: {e}")
         return False
 
 def update_imports():
@@ -213,8 +262,8 @@ def update_init_methods():
             return True
             
         # Create the improved init_webnn method (this is just a wrapper around the fixed version)
-        improved_init_webnn = """    def init_webnn(self, model_name=None, model_path=None, model_type=None, device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
-        \"\"\"
+        improved_init_webnn = '''    def init_webnn(self, model_name=None, model_path=None, model_type=None, device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
+        """
         Initialize the model for WebNN inference.
         
         Using the fixed version from fixed_web_platform.
@@ -229,14 +278,14 @@ def update_init_methods():
             
         Returns:
             Dictionary with endpoint, processor, etc.
-        \"\"\""""
+        """
         # Pass through to the fixed implementation
         kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
-        return init_webnn(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)"""
+        return init_webnn(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)'''
         
         # Create the improved init_webgpu method (this is just a wrapper around the fixed version)
-        improved_init_webgpu = """    def init_webgpu(self, model_name=None, model_path=None, model_type=None, device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
-        \"\"\"
+        improved_init_webgpu = '''    def init_webgpu(self, model_name=None, model_path=None, model_type=None, device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
+        """
         Initialize the model for WebGPU inference.
         
         Using the fixed version from fixed_web_platform.
@@ -251,10 +300,10 @@ def update_init_methods():
             
         Returns:
             Dictionary with endpoint, processor, etc.
-        \"\"\""""
+        """
         # Pass through to the fixed implementation
         kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
-        return init_webgpu(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)"""
+        return init_webgpu(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)'''
         
         # Replace the methods in the content
         content = content.replace(current_init_webnn, improved_init_webnn)
@@ -361,6 +410,70 @@ def verify_changes():
         print(f"Error verifying changes: {e}")
         return False
 
+def integrate_hardware_templates():
+    """Load hardware templates from template_*.py files and integrate them into the generator."""
+    try:
+        # Read the current generator file
+        with open(GENERATOR_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Find the template database section
+        template_db_start = content.find("# Hardware-aware templates")
+        if template_db_start == -1:
+            print("Error: Could not find template database section")
+            return False
+        
+        # Find the end of the template database section
+        template_db_end = content.find("# Begin generator code", template_db_start)
+        if template_db_end == -1:
+            # Try another marker
+            template_db_end = content.find("class TestGenerator", template_db_start)
+            if template_db_end == -1:
+                print("Error: Could not find end of template database section")
+                return False
+        
+        # Create a new template database section
+        new_template_section = "# Hardware-aware templates\ntemplate_database = {}\n\n"
+        
+        # Get all template files
+        template_files = list(TEMPLATES_DIR.glob("template_*.py"))
+        if not template_files:
+            print(f"No template files found in {TEMPLATES_DIR}")
+            return False
+        
+        # Process each template file
+        added_categories = set()
+        for template_file in template_files:
+            model_name = template_file.stem.replace("template_", "")
+            category = MODEL_CATEGORIES.get(model_name)
+            
+            if category and category not in added_categories:
+                # Read the template file
+                with open(template_file, 'r', encoding='utf-8') as f:
+                    template_content = f.read()
+                
+                # Extract the docstring
+                docstring_match = re.search(r'"""(.*?)"""', template_content, re.DOTALL)
+                if docstring_match:
+                    docstring = docstring_match.group(1).strip()
+                    # Add template to the database
+                    new_template_section += f'template_database["{category}"] = """\n{docstring}\n"""\n\n'
+                    added_categories.add(category)
+                    print(f"Added template for category: {category}")
+        
+        # Replace the template database section
+        updated_content = content[:template_db_start] + new_template_section + content[template_db_end:]
+        
+        # Write the updated content
+        with open(GENERATOR_FILE, 'w', encoding='utf-8') as f:
+            f.write(updated_content)
+        
+        print("Successfully integrated hardware templates")
+        return True
+    except Exception as e:
+        print(f"Error integrating hardware templates: {e}")
+        return False
+
 def main():
     """Run the update process."""
     print("Updating merged_test_generator.py with WebNN and WebGPU platform fixes...")
@@ -372,6 +485,8 @@ def main():
         
     # Apply the updates
     success = True
+    success = fix_template_syntax() and success
+    success = integrate_hardware_templates() and success
     success = update_imports() and success
     success = update_test_platform_method() and success
     success = update_init_methods() and success

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Test implementation for llava'''
+'''Test implementation for whisper'''
 
 import os
 import sys
@@ -34,31 +34,9 @@ except ImportError:
 
 
 class MockHandler:
-    def create_cpu_handler(self):
-    """Create handler for CPU platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-
     """Mock handler for platforms that don't have real implementations."""
     
-    
-    def create_cuda_handler(self):
-    """Create handler for CUDA platform."""
-    model_path = self.get_model_path_or_name()
-        handler = AutoModel.from_pretrained(model_path).to(self.device_name)
-    return handler
-
-    def create_openvino_handler(self):
-    """Create handler for OPENVINO platform."""
-    model_path = self.get_model_path_or_name()
-        from openvino.runtime import Core
-        import numpy as np
-        ie = Core()
-        compiled_model = ie.compile_model(model_path, "CPU")
-        handler = lambda input_data: compiled_model(np.array(input_data))[0]
-    return handler
-def __init__(self, model_path, platform="cpu"):
+    def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")
@@ -67,8 +45,8 @@ def __init__(self, model_path, platform="cpu"):
         """Return mock output."""
         print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
         return {"mock_output": f"Mock output for {self.platform}"}
-class test_hf_llava:
-    '''Test class for llava'''
+class test_hf_whisper:
+    '''Test class for whisper'''
     
     def __init__(self, resources=None, metadata=None):
         # Initialize test class
@@ -85,17 +63,17 @@ class test_hf_llava:
             "transformers": TRANSFORMERS_AVAILABLE,
             "numpy": True
         }
-        print(f"llava initialization status: {self.dependency_status}")
+        print(f"whisper initialization status: {self.dependency_status}")
         
         # Try to import the real implementation
         real_implementation = False
         try:
-            from ipfs_accelerate_py.worker.skillset.hf_llava import hf_llava
-            self.model = hf_llava(resources=self.resources, metadata=self.metadata)
+            from ipfs_accelerate_py.worker.skillset.hf_whisper import hf_whisper
+            self.model = hf_whisper(resources=self.resources, metadata=self.metadata)
             real_implementation = True
         except ImportError:
             # Create mock model class
-            class hf_llava:
+            class hf_whisper:
                 def __init__(self, resources=None, metadata=None):
                     self.resources = resources or {}
                     self.metadata = metadata or {}
@@ -119,27 +97,39 @@ class test_hf_llava:
                                          "implementation_type": "MOCK"}
                     return None, None, mock_handler, None, 1
             
-            self.model = hf_llava(resources=self.resources, metadata=self.metadata)
-            print(f"Warning: hf_llava module not found, using mock implementation")
+            self.model = hf_whisper(resources=self.resources, metadata=self.metadata)
+            print(f"Warning: hf_whisper module not found, using mock implementation")
         
         # Check for specific model handler methods
         if real_implementation:
             handler_methods = dir(self.model)
-            print(f"Creating minimal llava model for testing")
+            print(f"Creating minimal whisper model for testing")
         
         # Define test model and input based on task
-        if "feature-extraction" == "text-generation":
-            self.model_name = "bert-base-uncased"
+        self.model_name = "openai/whisper-tiny"
+        
+        # Select appropriate test input based on task
+        if "automatic-speech-recognition" == "text-generation" or "automatic-speech-recognition" == "text2text-generation":
             self.test_input = "The quick brown fox jumps over the lazy dog"
-        elif "feature-extraction" == "image-classification":
-            self.model_name = "bert-base-uncased"
+        elif "automatic-speech-recognition" == "feature-extraction" or "automatic-speech-recognition" == "fill-mask":
+            self.test_input = "The quick brown fox jumps over the lazy dog"
+        elif "automatic-speech-recognition" == "image-classification" or "automatic-speech-recognition" == "object-detection" or "automatic-speech-recognition" == "image-segmentation":
             self.test_input = "test.jpg"  # Path to test image
-        elif "feature-extraction" == "automatic-speech-recognition":
-            self.model_name = "bert-base-uncased"
+        elif "automatic-speech-recognition" == "automatic-speech-recognition" or "automatic-speech-recognition" == "audio-classification":
             self.test_input = "test.mp3"  # Path to test audio file
+        elif "automatic-speech-recognition" == "image-to-text" or "automatic-speech-recognition" == "visual-question-answering":
+            self.test_input = {"image": "test.jpg", "prompt": "Describe this image."}
+        elif "automatic-speech-recognition" == "document-question-answering":
+            self.test_input = {"image": "test.jpg", "question": "What is the title of this document?"}
+        elif "automatic-speech-recognition" == "time-series-prediction":
+            self.test_input = {"past_values": [100, 120, 140, 160, 180],
+                              "past_time_features": [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
+                              "future_time_features": [[5, 0], [6, 0], [7, 0]]}
         else:
-            self.model_name = "bert-base-uncased"
-            self.test_input = "Test input for llava"
+            self.test_input = "Test input for whisper"
+            
+        # Report model and task selection
+        print(f"Using model {self.model_name} for automatic-speech-recognition task")
         
         # Initialize collection arrays for examples and status
         self.examples = []
@@ -156,7 +146,7 @@ class test_hf_llava:
         try:
             # Initialize for CPU
             endpoint, processor, handler, queue, batch_size = self.model.init_cpu(
-                self.model_name, "feature-extraction", "cpu"
+                self.model_name, "automatic-speech-recognition", "cpu"
             )
             
             results["cpu_init"] = "Success" if endpoint is not None or processor is not None or handler is not None else "Failed initialization"
@@ -201,7 +191,7 @@ class test_hf_llava:
             "examples": self.examples,
             "metadata": {
                 "model_name": self.model_name,
-                "model_type": "llava",
+                "model_type": "whisper",
                 "test_timestamp": datetime.datetime.now().isoformat()
             }
         }
@@ -248,7 +238,7 @@ class test_hf_llava:
         
         # Save results
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(collected_dir, f'hf_llava_test_results.json')
+        results_file = os.path.join(collected_dir, f'hf_whisper_test_results.json')
         try:
             with open(results_file, 'w') as f:
                 json.dump(safe_test_results, f, indent=2)
@@ -259,10 +249,10 @@ class test_hf_llava:
 
 if __name__ == "__main__":
     try:
-        print(f"Starting llava test...")
-        test_instance = test_hf_llava()
+        print(f"Starting whisper test...")
+        test_instance = test_hf_whisper()
         results = test_instance.__test__()
-        print(f"llava test completed")
+        print(f"whisper test completed")
         
         # Extract implementation status
         status_dict = results.get("status", {})
