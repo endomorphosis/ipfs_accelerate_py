@@ -134,7 +134,17 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
    - Document findings in comprehensive benchmark timing report (PLANNED - May 5, 2025)
    - Priority: HIGH (Target completion: May 5, 2025)
 
-9. **Distributed Testing Framework**
+9. **Execute Comprehensive Benchmarks and Publish Timing Data**
+   - Run benchmarks for all 13 model types across all 8 hardware endpoints (PLANNED - April 16, 2025)
+   - Collect detailed timing metrics including latency, throughput, and memory usage (PLANNED - April 17, 2025)
+   - Store all results in the benchmark database with proper metadata (PLANNED - April 18, 2025)
+   - Generate raw timing data tables showing seconds per inference for each model-hardware combination (PLANNED - April 19, 2025)
+   - Create performance ranking of hardware platforms for each model type (PLANNED - April 20, 2025)
+   - Identify and document performance bottlenecks for specific model-hardware combinations (PLANNED - April 22, 2025)
+   - Publish detailed timing results as reference data for hardware selection decisions (PLANNED - April 25, 2025)
+   - Priority: HIGH (Target completion: April 25, 2025)
+
+10. **Distributed Testing Framework**
    - Design high-performance distributed test execution system (PLANNED - May 8, 2025)
    - Create secure worker node registration and management system (PLANNED - May 15, 2025)
    - Implement intelligent result aggregation and analysis pipeline (PLANNED - May 22, 2025)
@@ -144,7 +154,7 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
    - Design comprehensive monitoring dashboard for distributed tests (PLANNED - June 19, 2025)
    - Priority: MEDIUM (Target completion: June 20, 2025)
 
-10. **Predictive Performance System**
+11. **Predictive Performance System**
    - Design ML architecture for performance prediction on untested configurations (PLANNED - May 10, 2025)
    - Develop comprehensive dataset from existing performance data (PLANNED - May 17, 2025)
    - Train initial models with cross-validation for accuracy assessment (PLANNED - May 24, 2025)
@@ -154,7 +164,7 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
    - Create detailed documentation and usage examples (PLANNED - June 22, 2025)
    - Priority: MEDIUM (Target completion: June 25, 2025)
 
-11. **Advanced Visualization System**
+12. **Advanced Visualization System**
     - Design interactive 3D visualization components for multi-dimensional data (PLANNED - June 1, 2025)
     - Create dynamic hardware comparison heatmaps by model families (PLANNED - June 8, 2025)
     - Implement power efficiency visualization tools with interactive filters (PLANNED - June 15, 2025)
@@ -696,6 +706,7 @@ This expanded scope will ensure the IPFS Accelerate Python Framework becomes the
 | | | |
 | **Q2 2025 Initiatives** | | |
 | Comprehensive Benchmark Timing Report | 📅 PLANNED | Target: May 5, 2025 |
+| Execute Comprehensive Benchmarks and Publish Timing Data | 📅 PLANNED | Target: April 25, 2025 |
 | Distributed Testing Framework | 📅 PLANNED | Target: June 20, 2025 |
 | Predictive Performance System | 📅 PLANNED | Target: June 25, 2025 |
 | Advanced Visualization System | 📅 PLANNED | Target: July 15, 2025 |
