@@ -11,6 +11,17 @@ import traceback
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path for imports
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Third-party imports

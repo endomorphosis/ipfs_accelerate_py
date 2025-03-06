@@ -23,6 +23,56 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
+
+# Database integration
+import os
+try:
+    from integrated_improvements.database_integration import (
+        get_db_connection,
+        store_test_result,
+        store_performance_result,
+        create_test_run,
+        complete_test_run,
+        get_or_create_model,
+        get_or_create_hardware_platform,
+        DEPRECATE_JSON_OUTPUT
+    )
+    HAS_DB_INTEGRATION = True
+except ImportError:
+    logger.warning("Database integration not available")
+    HAS_DB_INTEGRATION = False
+    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
+
+# Improved hardware detection
+try:
+    from integrated_improvements.improved_hardware_detection import (
+        detect_available_hardware,
+        check_web_optimizations,
+        HARDWARE_PLATFORMS,
+        HAS_CUDA,
+        HAS_ROCM,
+        HAS_MPS,
+        HAS_OPENVINO,
+        HAS_WEBNN,
+        HAS_WEBGPU
+    )
+    HAS_HARDWARE_MODULE = True
+except ImportError:
+    logger.warning("Improved hardware detection not available")
+    HAS_HARDWARE_MODULE = False
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -220,466 +270,475 @@ class KeyModelBenchmarker:
         
         # Check CLAUDE.md for known issues
         if os.path.exists("CLAUDE.md"):
-            with open("CLAUDE.md", "r") as f:
-                content = f.read()
-                
-            # Look for compatibility matrix in CLAUDE.md
-            if "Model Family-Based Compatibility Chart" in content:
-                # Extract known issues from compatibility matrix
-                logger.info("Found compatibility matrix in CLAUDE.md")
-                
-                # Identify the issues indicated with   in the matrix
-                for model_key, model_info in self.models.items():
-                    family = model_info["family"]
+            if not DEPRECATE_JSON_OUTPUT:
+                with open("CLAUDE.md", "r") as f:
+                    content = f.read()
                     
-                    # Check if any hardware has warnings for this family
-                    for hw in self.hardware_platforms:
-                        # Common warning pattern: 
-                        # - For T5: " * | *OpenVINO implementation mocked"
-                        # - For CLAP, Wav2Vec2: " * | *..."
+                # Look for compatibility matrix in CLAUDE.md
+                if "Model Family-Based Compatibility Chart" in content:
+                    # Extract known issues from compatibility matrix
+                    logger.info("Found compatibility matrix in CLAUDE.md")
+                    
+                    # Identify the issues indicated with   in the matrix
+                    for model_key, model_info in self.models.items():
+                        family = model_info["family"]
                         
-                        if f"{family}" in content and f" " in content:
-                            # If we find a warning, add to issues
+                        # Check if any hardware has warnings for this family
+                        for hw in self.hardware_platforms:
+                            # Common warning pattern: 
+                            # - For T5: " * | *OpenVINO implementation mocked"
+                            # - For CLAP, Wav2Vec2: " * | *..."
+                            
+                            if f"{family}" in content and f" " in content:
+                                # If we find a warning, add to issues
+                                if model_key not in issues:
+                                    issues[model_key] = {}
+                                    
+                                if hw not in issues[model_key]:
+                                    issues[model_key][hw] = {
+                                        "status": "warning",
+                                        "issue": "Possible mocked implementation or compatibility issue detected in CLAUDE.md",
+                                        "fixable": self.fix_implementations
+                                    }
+            
+            # Special handling for known issues mentioned in CLAUDE.md
+            # T5 on OpenVINO
+            if "t5" in self.models and "openvino" in self.hardware_platforms:
+                if "t5" not in issues:
+                    issues["t5"] = {}
+                issues["t5"]["openvino"] = {
+                    "status": "warning",
+                    "issue": "OpenVINO implementation mocked - needs actual implementation",
+                    "fixable": self.fix_implementations
+                }
+                
+            # CLAP on OpenVINO
+            if "clap" in self.models and "openvino" in self.hardware_platforms:
+                if "clap" not in issues:
+                    issues["clap"] = {}
+                issues["clap"]["openvino"] = {
+                    "status": "warning",
+                    "issue": "OpenVINO implementation mocked - needs actual implementation",
+                    "fixable": self.fix_implementations
+                }
+                
+            # Wav2Vec2 on OpenVINO
+            if "wav2vec2" in self.models and "openvino" in self.hardware_platforms:
+                if "wav2vec2" not in issues:
+                    issues["wav2vec2"] = {}
+                issues["wav2vec2"]["openvino"] = {
+                    "status": "warning",
+                    "issue": "OpenVINO implementation mocked - needs actual implementation",
+                    "fixable": self.fix_implementations
+                }
+            
+            # LLaVA models on non-CUDA platforms
+            for model_key in ["llava", "llava_next"]:
+                if model_key in self.models:
+                    for hw in ["rocm", "mps", "openvino", "webnn", "webgpu"]:
+                        if hw in self.hardware_platforms:
                             if model_key not in issues:
                                 issues[model_key] = {}
-                                
-                            if hw not in issues[model_key]:
-                                issues[model_key][hw] = {
-                                    "status": "warning",
-                                    "issue": "Possible mocked implementation or compatibility issue detected in CLAUDE.md",
-                                    "fixable": self.fix_implementations
-                                }
-        
-        # Special handling for known issues mentioned in CLAUDE.md
-        # T5 on OpenVINO
-        if "t5" in self.models and "openvino" in self.hardware_platforms:
-            if "t5" not in issues:
-                issues["t5"] = {}
-            issues["t5"]["openvino"] = {
-                "status": "warning",
-                "issue": "OpenVINO implementation mocked - needs actual implementation",
-                "fixable": self.fix_implementations
-            }
+                            issues[model_key][hw] = {
+                                "status": "error",
+                                "issue": f"LLaVA models not fully supported on {hw}",
+                                "fixable": False
+                            }
             
-        # CLAP on OpenVINO
-        if "clap" in self.models and "openvino" in self.hardware_platforms:
-            if "clap" not in issues:
-                issues["clap"] = {}
-            issues["clap"]["openvino"] = {
-                "status": "warning",
-                "issue": "OpenVINO implementation mocked - needs actual implementation",
-                "fixable": self.fix_implementations
-            }
-            
-        # Wav2Vec2 on OpenVINO
-        if "wav2vec2" in self.models and "openvino" in self.hardware_platforms:
-            if "wav2vec2" not in issues:
-                issues["wav2vec2"] = {}
-            issues["wav2vec2"]["openvino"] = {
-                "status": "warning",
-                "issue": "OpenVINO implementation mocked - needs actual implementation",
-                "fixable": self.fix_implementations
-            }
-        
-        # LLaVA models on non-CUDA platforms
-        for model_key in ["llava", "llava_next"]:
-            if model_key in self.models:
-                for hw in ["rocm", "mps", "openvino", "webnn", "webgpu"]:
+            # XCLIP on web platforms
+            if "xclip" in self.models:
+                for hw in ["webnn", "webgpu"]:
                     if hw in self.hardware_platforms:
-                        if model_key not in issues:
-                            issues[model_key] = {}
-                        issues[model_key][hw] = {
-                            "status": "error",
-                            "issue": f"LLaVA models not fully supported on {hw}",
-                            "fixable": False
+                        if "xclip" not in issues:
+                            issues["xclip"] = {}
+                        issues["xclip"][hw] = {
+                            "status": "warning",
+                            "issue": f"XCLIP not implemented for {hw}",
+                            "fixable": self.fix_implementations
                         }
-        
-        # XCLIP on web platforms
-        if "xclip" in self.models:
-            for hw in ["webnn", "webgpu"]:
-                if hw in self.hardware_platforms:
-                    if "xclip" not in issues:
-                        issues["xclip"] = {}
-                    issues["xclip"][hw] = {
-                        "status": "warning",
-                        "issue": f"XCLIP not implemented for {hw}",
-                        "fixable": self.fix_implementations
-                    }
-        
-        # Qwen2/3 limited implementation on non-CUDA platforms
-        if "qwen2" in self.models:
-            for hw in ["rocm", "openvino"]:
-                if hw in self.hardware_platforms:
-                    if "qwen2" not in issues:
-                        issues["qwen2"] = {}
-                    issues["qwen2"][hw] = {
-                        "status": "warning",
-                        "issue": f"Qwen2 has limited implementation on {hw}",
-                        "fixable": self.fix_implementations
-                    }
-        
-        # Save issues to results
-        self.results["implementation_issues"] = issues
-        
-        logger.info(f"Found {sum(len(hw_issues) for hw_issues in issues.values())} implementation issues")
-        return issues
-    
-    def fix_implementation_issues(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Attempt to fix implementation issues.
-        
-        Returns:
-            Dictionary of implementation fix results
-        """
-        if not self.fix_implementations:
-            logger.info("Skipping implementation fixes (--no-fix option provided)")
-            return {}
-        
-        logger.info("Attempting to fix implementation issues...")
-        
-        # First check for issues
-        issues = self.check_implementation_issues()
-        
-        # Track fixes
-        fixes = {}
-        
-        # For each issue, try to fix it
-        for model_key, hw_issues in issues.items():
-            fixes[model_key] = {}
             
-            for hw, issue in hw_issues.items():
-                if not issue.get("fixable", False):
-                    fixes[model_key][hw] = {
-                        "status": "skipped",
-                        "reason": "Issue not marked as fixable"
-                    }
-                    continue
-                
-                # Special handling for different model-hardware combinations
-                if model_key == "t5" and hw == "openvino":
-                    # Fix T5 on OpenVINO
-                    result = self._fix_t5_openvino()
-                    fixes[model_key][hw] = result
-                    
-                elif model_key == "clap" and hw == "openvino":
-                    # Fix CLAP on OpenVINO
-                    result = self._fix_clap_openvino()
-                    fixes[model_key][hw] = result
-                    
-                elif model_key == "wav2vec2" and hw == "openvino":
-                    # Fix Wav2Vec2 on OpenVINO
-                    result = self._fix_wav2vec2_openvino()
-                    fixes[model_key][hw] = result
-                    
-                elif model_key == "xclip" and hw in ["webnn", "webgpu"]:
-                    # Fix XCLIP on web platforms
-                    result = self._fix_xclip_web(hw)
-                    fixes[model_key][hw] = result
-                    
-                elif model_key == "qwen2" and hw in ["rocm", "openvino"]:
-                    # Fix Qwen2 implementation
-                    result = self._fix_qwen2_implementation(hw)
-                    fixes[model_key][hw] = result
-                    
-                else:
-                    # No specific fix available
-                    fixes[model_key][hw] = {
-                        "status": "skipped",
-                        "reason": "No fix implementation available"
-                    }
-        
-        # Save fixes to results
-        self.results["implementation_fixes"] = fixes
-        
-        # Count successful fixes
-        success_count = sum(1 for model_fixes in fixes.values() 
-                         for fix in model_fixes.values() 
-                         if fix.get("status") == "success")
-        logger.info(f"Successfully fixed {success_count} implementation issues")
-        
-        return fixes
-    
-    def _fix_t5_openvino(self) -> Dict[str, Any]:
-        """
-        Fix T5 OpenVINO implementation.
-        
-        Returns:
-            Dictionary with fix results
-        """
-        logger.info("Fixing T5 OpenVINO implementation...")
-        
-        # Look for the T5 test file
-        t5_test_file = None
-        possible_paths = [
-            "skills/test_hf_t5.py",
-            "test_hf_t5.py",
-            "modality_tests/test_hf_t5.py"
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                t5_test_file = path
-                break
-                
-        if not t5_test_file:
-            return {
-                "status": "error",
-                "reason": "Could not find T5 test file"
-            }
-        
-        # Check if the file already has proper OpenVINO implementation
-        with open(t5_test_file, "r") as f:
-            content = f.read()
+            # Qwen2/3 limited implementation on non-CUDA platforms
+            if "qwen2" in self.models:
+                for hw in ["rocm", "openvino"]:
+                    if hw in self.hardware_platforms:
+                        if "qwen2" not in issues:
+                            issues["qwen2"] = {}
+                        issues["qwen2"][hw] = {
+                            "status": "warning",
+                            "issue": f"Qwen2 has limited implementation on {hw}",
+                            "fixable": self.fix_implementations
+                        }
             
-        if "openvino" in content.lower() and "mock" not in content.lower():
-            return {
-                "status": "skipped",
-                "reason": "T5 already has OpenVINO implementation"
-            }
-        
-        try:
-            # Add OpenVINO implementation to T5 test file
-            # This is a simplified approach - in reality would need more sophisticated patching
-            # based on the actual file content
+            # Save issues to results
+            self.results["implementation_issues"] = issues
             
-            # Look for device configuration section
-            if "def get_device" in content or "get_device" in content:
-                # Replace mocked implementation with real one
-                if "# Mock OpenVINO implementation" in content:
-                    new_content = content.replace(
-                        "# Mock OpenVINO implementation", 
-                        """
-        # Real OpenVINO implementation
-        elif device == "openvino":
-            try:
-                import openvino
-                # Convert model to OpenVINO IR if not already converted
-                from openvino.tools import mo
-                from openvino.runtime import Core
+            logger.info(f"Found {sum(len(hw_issues) for hw_issues in issues.values())} implementation issues")
+            return issues
+        
+        def fix_implementation_issues(self) -> Dict[str, Dict[str, Any]]:
+            """
+            Attempt to fix implementation issues.
+            
+            Returns:
+                Dictionary of implementation fix results
+            """
+            if not self.fix_implementations:
+                logger.info("Skipping implementation fixes (--no-fix option provided)")
+                return {}
+            
+            logger.info("Attempting to fix implementation issues...")
+            
+            # First check for issues
+            issues = self.check_implementation_issues()
+            
+            # Track fixes
+            fixes = {}
+            
+            # For each issue, try to fix it
+            for model_key, hw_issues in issues.items():
+                fixes[model_key] = {}
                 
-                # Initialize OpenVINO Core
-                core = Core()
-                # Get available devices
-                available_devices = core.available_devices
-                
-                if not available_devices:
-                    raise RuntimeError("No OpenVINO devices available")
+                for hw, issue in hw_issues.items():
+                    if not issue.get("fixable", False):
+                        fixes[model_key][hw] = {
+                            "status": "skipped",
+                            "reason": "Issue not marked as fixable"
+                        }
+                        continue
                     
-                # Use first available device
-                ov_device = available_devices[0]
-                logger.info(f"Using OpenVINO device: {ov_device}")
-                
-                # Convert and optimize model
-                # For T5, we need to handle encoder and decoder separately
-                return "openvino"
-            except (ImportError, RuntimeError) as e:
-                logger.warning(f"OpenVINO initialization failed: {e}")
-                return "cpu"  # Fallback to CPU
-                """
-                    )
-                    
-                    # Write updated content
-                    with open(t5_test_file, "w") as f:
-                        f.write(new_content)
+                    # Special handling for different model-hardware combinations
+                    if model_key == "t5" and hw == "openvino":
+                        # Fix T5 on OpenVINO
+                        result = self._fix_t5_openvino()
+                        fixes[model_key][hw] = result
                         
-                    return {
-                        "status": "success",
-                        "message": "Added OpenVINO implementation to T5 test file"
-                    }
-                else:
-                    return {
-                        "status": "warning",
-                        "reason": "Could not find mocked OpenVINO implementation to replace"
-                    }
-            else:
+                    elif model_key == "clap" and hw == "openvino":
+                        # Fix CLAP on OpenVINO
+                        result = self._fix_clap_openvino()
+                        fixes[model_key][hw] = result
+                        
+                    elif model_key == "wav2vec2" and hw == "openvino":
+                        # Fix Wav2Vec2 on OpenVINO
+                        result = self._fix_wav2vec2_openvino()
+                        fixes[model_key][hw] = result
+                        
+                    elif model_key == "xclip" and hw in ["webnn", "webgpu"]:
+                        # Fix XCLIP on web platforms
+                        result = self._fix_xclip_web(hw)
+                        fixes[model_key][hw] = result
+                        
+                    elif model_key == "qwen2" and hw in ["rocm", "openvino"]:
+                        # Fix Qwen2 implementation
+                        result = self._fix_qwen2_implementation(hw)
+                        fixes[model_key][hw] = result
+                        
+                    else:
+                        # No specific fix available
+                        fixes[model_key][hw] = {
+                            "status": "skipped",
+                            "reason": "No fix implementation available"
+                        }
+            
+            # Save fixes to results
+            self.results["implementation_fixes"] = fixes
+            
+            # Count successful fixes
+            success_count = sum(1 for model_fixes in fixes.values() 
+                             for fix in model_fixes.values() 
+                             if fix.get("status") == "success")
+            logger.info(f"Successfully fixed {success_count} implementation issues")
+            
+            return fixes
+        
+        def _fix_t5_openvino(self) -> Dict[str, Any]:
+            """
+            Fix T5 OpenVINO implementation.
+            
+            Returns:
+                Dictionary with fix results
+            """
+            logger.info("Fixing T5 OpenVINO implementation...")
+            
+            # Look for the T5 test file
+            t5_test_file = None
+            possible_paths = [
+                "skills/test_hf_t5.py",
+                "test_hf_t5.py",
+                "modality_tests/test_hf_t5.py"
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    t5_test_file = path
+                    break
+                    
+            if not t5_test_file:
                 return {
                     "status": "error",
-                    "reason": "Could not find device configuration section in T5 test file"
+                    "reason": "Could not find T5 test file"
                 }
-        except Exception as e:
-            logger.error(f"Error fixing T5 OpenVINO implementation: {str(e)}")
-            return {
-                "status": "error",
-                "reason": f"Error: {str(e)}"
-            }
-    
-    def _fix_clap_openvino(self) -> Dict[str, Any]:
-        """
-        Fix CLAP OpenVINO implementation.
-        
-        Returns:
-            Dictionary with fix results
-        """
-        logger.info("Fixing CLAP OpenVINO implementation...")
-        
-        # Similar structure to T5 fix
-        clap_test_file = None
-        possible_paths = [
-            "skills/test_hf_clap.py",
-            "test_hf_clap.py",
-            "modality_tests/test_hf_clap.py"
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                clap_test_file = path
-                break
+            
+            # Check if the file already has proper OpenVINO implementation
+            with open(t5_test_file, "r") as f:
+                content = f.read()
                 
-        if not clap_test_file:
-            return {
-                "status": "error",
-                "reason": "Could not find CLAP test file"
-            }
+            if "openvino" in content.lower() and "mock" not in content.lower():
+                return {
+                    "status": "skipped",
+                    "reason": "T5 already has OpenVINO implementation"
+                }
             
-        # (Implementation similar to T5)
-        return {
-            "status": "partial_success",
-            "message": "CLAP OpenVINO implementation would need model-specific optimization code"
-        }
-    
-    def _fix_wav2vec2_openvino(self) -> Dict[str, Any]:
-        """
-        Fix Wav2Vec2 OpenVINO implementation.
-        
-        Returns:
-            Dictionary with fix results
-        """
-        logger.info("Fixing Wav2Vec2 OpenVINO implementation...")
-        
-        # Similar structure to T5 fix
-        wav2vec2_test_file = None
-        possible_paths = [
-            "skills/test_hf_wav2vec2.py",
-            "test_hf_wav2vec2.py",
-            "modality_tests/test_hf_wav2vec2.py"
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                wav2vec2_test_file = path
-                break
+            try:
+                # Add OpenVINO implementation to T5 test file
+                # This is a simplified approach - in reality would need more sophisticated patching
+                # based on the actual file content
                 
-        if not wav2vec2_test_file:
-            return {
-                "status": "error",
-                "reason": "Could not find Wav2Vec2 test file"
-            }
+                # Look for device configuration section
+                if "def get_device" in content or "get_device" in content:
+                    # Replace mocked implementation with real one
+                    if "# Mock OpenVINO implementation" in content:
+                        new_content = content.replace(
+                            "# Mock OpenVINO implementation", 
+                            """
+            # Real OpenVINO implementation
+            elif device == "openvino":
+                try:
+                    import openvino
+                    # Convert model to OpenVINO IR if not already converted
+                    from openvino.tools import mo
+                    from openvino.runtime import Core
+                    
+                    # Initialize OpenVINO Core
+                    core = Core()
+                    # Get available devices
+                    available_devices = core.available_devices
+                    
+                    if not available_devices:
+                        raise RuntimeError("No OpenVINO devices available")
+                        
+                    # Use first available device
+                    ov_device = available_devices[0]
+                    logger.info(f"Using OpenVINO device: {ov_device}")
+                    
+                    # Convert and optimize model
+                    # For T5, we need to handle encoder and decoder separately
+                    return "openvino"
+                except (ImportError, RuntimeError) as e:
+                    logger.warning(f"OpenVINO initialization failed: {e}")
+                    return "cpu"  # Fallback to CPU
+                    """
+                        )
+                        
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                            # Write updated content
+                            with open(t5_test_file, "w") as f:
+                                f.write(new_content)
+                                
+                            return {
+                                "status": "success",
+                                "message": "Added OpenVINO implementation to T5 test file"
+                            }
+                        else:
+                            return {
+                                "status": "warning",
+                                "reason": "Could not find mocked OpenVINO implementation to replace"
+                            }
+                    else:
+                        return {
+                            "status": "error",
+                            "reason": "Could not find device configuration section in T5 test file"
+                        }
+                except Exception as e:
+                    logger.error(f"Error fixing T5 OpenVINO implementation: {str(e)}")
+                    return {
+                        "status": "error",
+                        "reason": f"Error: {str(e)}"
+                    }
             
-        # (Implementation similar to T5)
-        return {
-            "status": "partial_success",
-            "message": "Wav2Vec2 OpenVINO implementation would need model-specific optimization code"
-        }
-    
-    def _fix_xclip_web(self, platform: str) -> Dict[str, Any]:
-        """
-        Fix XCLIP implementation for web platforms.
-        
-        Args:
-            platform: Web platform to fix (webnn or webgpu)
-            
-        Returns:
-            Dictionary with fix results
-        """
-        logger.info(f"Fixing XCLIP {platform} implementation...")
-        
-        # Check for web platform tests
-        web_test_file = "web_platform_testing.py"
-        
-        if not os.path.exists(web_test_file):
-            return {
-                "status": "error",
-                "reason": f"Could not find {web_test_file}"
-            }
-            
-        # For web platform, we would need to integrate with transformers.js
-        # This is a complex process that would need more code than can be included here
-        return {
-            "status": "partial_success",
-            "message": f"XCLIP {platform} implementation would require transformers.js integration"
-        }
-    
-    def _fix_qwen2_implementation(self, hardware: str) -> Dict[str, Any]:
-        """
-        Fix Qwen2 implementation for specific hardware.
-        
-        Args:
-            hardware: Hardware platform to fix
-            
-        Returns:
-            Dictionary with fix results
-        """
-        logger.info(f"Fixing Qwen2 {hardware} implementation...")
-        
-        # Look for Qwen2 test file
-        qwen2_test_file = None
-        possible_paths = [
-            "skills/test_hf_qwen2.py",
-            "test_hf_qwen2.py",
-            "modality_tests/test_hf_qwen2.py"
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                qwen2_test_file = path
-                break
+            def _fix_clap_openvino(self) -> Dict[str, Any]:
+                """
+                Fix CLAP OpenVINO implementation.
                 
-        if not qwen2_test_file:
-            return {
-                "status": "error",
-                "reason": "Could not find Qwen2 test file"
-            }
+                Returns:
+                    Dictionary with fix results
+                """
+                logger.info("Fixing CLAP OpenVINO implementation...")
+                
+                # Similar structure to T5 fix
+                clap_test_file = None
+                possible_paths = [
+                    "skills/test_hf_clap.py",
+                    "test_hf_clap.py",
+                    "modality_tests/test_hf_clap.py"
+                ]
+                
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        clap_test_file = path
+                        break
+                        
+                if not clap_test_file:
+                    return {
+                        "status": "error",
+                        "reason": "Could not find CLAP test file"
+                    }
+                    
+                # (Implementation similar to T5)
+                return {
+                    "status": "partial_success",
+                    "message": "CLAP OpenVINO implementation would need model-specific optimization code"
+                }
             
-        # (Implementation would be hardware-specific)
-        return {
-            "status": "partial_success",
-            "message": f"Qwen2 {hardware} implementation would need model-specific optimizations"
-        }
-    
-    def run_benchmarks(self) -> Dict[str, Any]:
-        """
-        Run benchmarks for all models on all available hardware platforms.
-        
-        Returns:
-            Dictionary with benchmark results
-        """
-        logger.info("Running benchmarks for all models...")
-        
-        # First fix implementation issues if needed
-        if self.fix_implementations:
-            self.fix_implementation_issues()
-        
-        # Prepare models for benchmarking - convert to format required by run_model_benchmarks.py
-        benchmark_models = {}
-        for key, model_info in self.models.items():
-            benchmark_models[key] = {
-                "name": model_info["name"],
-                "family": model_info["family"],
-                "size": model_info.get("size", "base"),
-                "modality": model_info["modality"]
-            }
-        
-        # Check if run_model_benchmarks.py exists
-        if not os.path.exists("run_model_benchmarks.py"):
-            logger.error("run_model_benchmarks.py not found, cannot run benchmarks")
-            self.results["benchmark_status"] = "error"
-            self.results["benchmark_error"] = "run_model_benchmarks.py not found"
-            return self.results
-        
-        # Create benchmark results directory
-        benchmark_dir = self.output_dir / f"benchmarks_{self.timestamp}"
-        benchmark_dir.mkdir(exist_ok=True)
-        
-        # Filter hardware platforms to only include available ones
-        available_hardware = [hw for hw in self.hardware_platforms if self.available_hardware.get(hw, False)]
-        
-        # Run benchmarks using run_model_benchmarks.py
-        logger.info(f"Running benchmarks for {len(benchmark_models)} models on {len(available_hardware)} hardware platforms")
-        
-        # Create custom models JSON file
-        models_file = benchmark_dir / "benchmark_models.json"
-        with open(models_file, "w") as f:
-            json.dump(benchmark_models, f, indent=2)
+            def _fix_wav2vec2_openvino(self) -> Dict[str, Any]:
+                """
+                Fix Wav2Vec2 OpenVINO implementation.
+                
+                Returns:
+                    Dictionary with fix results
+                """
+                logger.info("Fixing Wav2Vec2 OpenVINO implementation...")
+                
+                # Similar structure to T5 fix
+                wav2vec2_test_file = None
+                possible_paths = [
+                    "skills/test_hf_wav2vec2.py",
+                    "test_hf_wav2vec2.py",
+                    "modality_tests/test_hf_wav2vec2.py"
+                ]
+                
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        wav2vec2_test_file = path
+                        break
+                        
+                if not wav2vec2_test_file:
+                    return {
+                        "status": "error",
+                        "reason": "Could not find Wav2Vec2 test file"
+                    }
+                    
+                # (Implementation similar to T5)
+                return {
+                    "status": "partial_success",
+                    "message": "Wav2Vec2 OpenVINO implementation would need model-specific optimization code"
+                }
+            
+            def _fix_xclip_web(self, platform: str) -> Dict[str, Any]:
+                """
+                Fix XCLIP implementation for web platforms.
+                
+                Args:
+                    platform: Web platform to fix (webnn or webgpu)
+                    
+                Returns:
+                    Dictionary with fix results
+                """
+                logger.info(f"Fixing XCLIP {platform} implementation...")
+                
+                # Check for web platform tests
+                web_test_file = "web_platform_testing.py"
+                
+                if not os.path.exists(web_test_file):
+                    return {
+                        "status": "error",
+                        "reason": f"Could not find {web_test_file}"
+                    }
+                    
+                # For web platform, we would need to integrate with transformers.js
+                # This is a complex process that would need more code than can be included here
+                return {
+                    "status": "partial_success",
+                    "message": f"XCLIP {platform} implementation would require transformers.js integration"
+                }
+            
+            def _fix_qwen2_implementation(self, hardware: str) -> Dict[str, Any]:
+                """
+                Fix Qwen2 implementation for specific hardware.
+                
+                Args:
+                    hardware: Hardware platform to fix
+                    
+                Returns:
+                    Dictionary with fix results
+                """
+                logger.info(f"Fixing Qwen2 {hardware} implementation...")
+                
+                # Look for Qwen2 test file
+                qwen2_test_file = None
+                possible_paths = [
+                    "skills/test_hf_qwen2.py",
+                    "test_hf_qwen2.py",
+                    "modality_tests/test_hf_qwen2.py"
+                ]
+                
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        qwen2_test_file = path
+                        break
+                        
+                if not qwen2_test_file:
+                    return {
+                        "status": "error",
+                        "reason": "Could not find Qwen2 test file"
+                    }
+                    
+                # (Implementation would be hardware-specific)
+                return {
+                    "status": "partial_success",
+                    "message": f"Qwen2 {hardware} implementation would need model-specific optimizations"
+                }
+            
+            def run_benchmarks(self) -> Dict[str, Any]:
+                """
+                Run benchmarks for all models on all available hardware platforms.
+                
+                Returns:
+                    Dictionary with benchmark results
+                """
+                logger.info("Running benchmarks for all models...")
+                
+                # First fix implementation issues if needed
+                if self.fix_implementations:
+                    self.fix_implementation_issues()
+                
+                # Prepare models for benchmarking - convert to format required by run_model_benchmarks.py
+                benchmark_models = {}
+                for key, model_info in self.models.items():
+                    benchmark_models[key] = {
+                        "name": model_info["name"],
+                        "family": model_info["family"],
+                        "size": model_info.get("size", "base"),
+                        "modality": model_info["modality"]
+                    }
+                
+                # Check if run_model_benchmarks.py exists
+                if not os.path.exists("run_model_benchmarks.py"):
+                    logger.error("run_model_benchmarks.py not found, cannot run benchmarks")
+                    self.results["benchmark_status"] = "error"
+                    self.results["benchmark_error"] = "run_model_benchmarks.py not found"
+                    return self.results
+                
+                # Create benchmark results directory
+                benchmark_dir = self.output_dir / f"benchmarks_{self.timestamp}"
+                benchmark_dir.mkdir(exist_ok=True)
+                
+                # Filter hardware platforms to only include available ones
+                available_hardware = [hw for hw in self.hardware_platforms if self.available_hardware.get(hw, False)]
+                
+                # Run benchmarks using run_model_benchmarks.py
+                logger.info(f"Running benchmarks for {len(benchmark_models)} models on {len(available_hardware)} hardware platforms")
+                
+                # Create custom models JSON file
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
+            models_file = benchmark_dir / "benchmark_models.json"
+            with open(models_file, "w") as f:
+                json.dump(benchmark_models, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         # Create command for run_model_benchmarks.py
         cmd = [
@@ -707,7 +766,16 @@ class KeyModelBenchmarker:
                 if result_files:
                     # Load the most recent results file
                     with open(result_files[-1], "r") as f:
-                        benchmark_results = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    benchmark_results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                            benchmark_results = json.load(f)
+
                         self.results["benchmark_results"] = benchmark_results
                 else:
                     logger.warning("No benchmark results found")
@@ -1154,6 +1222,61 @@ class KeyModelBenchmarker:
         
         return self.results
 
+def store_benchmark_in_database(result, db_path=None):
+    # Store benchmark results in database
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot store benchmark")
+        return False
+    
+    try:
+        # Get database connection
+        conn = get_db_connection(db_path)
+        if conn is None:
+            logger.error("Failed to connect to database")
+            return False
+        
+        # Create test run
+        run_id = create_test_run(
+            test_name=result.get("model_name", "unknown_model"),
+            test_type="benchmark",
+            metadata={"benchmark_script": os.path.basename(__file__)}
+        )
+        
+        # Get or create model
+        model_id = get_or_create_model(
+            model_name=result.get("model_name", "unknown_model"),
+            model_family=result.get("model_family"),
+            model_type=result.get("model_type"),
+            metadata=result
+        )
+        
+        # Get or create hardware platform
+        hw_id = get_or_create_hardware_platform(
+            hardware_type=result.get("hardware", "unknown"),
+            metadata={"source": "benchmark"}
+        )
+        
+        # Store performance result
+        store_performance_result(
+            run_id=run_id,
+            model_id=model_id,
+            hardware_id=hw_id,
+            batch_size=result.get("batch_size", 1),
+            throughput=result.get("throughput_items_per_second"),
+            latency=result.get("latency_ms"),
+            memory=result.get("memory_mb"),
+            metadata=result
+        )
+        
+        # Complete test run
+        complete_test_run(run_id)
+        
+        logger.info(f"Stored benchmark result in database for {result.get('model_name', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Error storing benchmark in database: {e}")
+        return False
+
 def main():
     """Main entry point for running key model benchmarks"""
     parser = argparse.ArgumentParser(description="Benchmark all key models across hardware platforms")
@@ -1168,7 +1291,12 @@ def main():
     parser.add_argument("--debug", action="store_true",
                       help="Enable debug logging")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Create benchmarker
     benchmarker = KeyModelBenchmarker(

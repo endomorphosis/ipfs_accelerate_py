@@ -9,6 +9,17 @@ import logging
 from pathlib import Path
 
 # Configure logging
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 

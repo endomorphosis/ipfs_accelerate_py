@@ -29,6 +29,9 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Set, Optional
 
+# Check for JSON output deprecation flag
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "0") == "1"
+
 # Define hardware platforms to check
 HARDWARE_PLATFORMS = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
 
@@ -1604,11 +1607,35 @@ def main():
                         for issue in file_result["integration_issues"]:
                             print(f"    - {issue}")
         
-        # Save results to JSON if requested
-        if args.output_json:
+        # Save results to JSON if requested and not deprecated
+        if args.output_json and not DEPRECATE_JSON_OUTPUT:
             with open(args.output_json, 'w') as f:
                 json.dump(results, f, indent=2)
             print(f"\nAnalysis results saved to {args.output_json}")
+        elif args.output_json and DEPRECATE_JSON_OUTPUT:
+            try:
+                import duckdb
+                # Connect to or create a database
+                db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                conn = duckdb.connect(db_path)
+                
+                # Check if hardware_analysis table exists, create if not
+                conn.execute("CREATE TABLE IF NOT EXISTS hardware_analysis (timestamp TIMESTAMP, model_name VARCHAR, issue_count INTEGER, data JSON)")
+                
+                # Insert the analysis results
+                timestamp = duckdb.sql("SELECT now()").fetchone()[0]
+                conn.execute(
+                    "INSERT INTO hardware_analysis VALUES (?, ?, ?, ?)",
+                    [timestamp, "multiple", results["total_issues"], json.dumps(results)]
+                )
+                conn.commit()
+                conn.close()
+                print(f"\nAnalysis results saved to database ({db_path})")
+            except Exception as e:
+                print(f"\nFailed to save to database, falling back to JSON: {e}")
+                with open(args.output_json, 'w') as f:
+                    json.dump(results, f, indent=2)
+                print(f"\nAnalysis results saved to {args.output_json} (database save failed)")
         
         return 0
     
@@ -1634,11 +1661,35 @@ def main():
                 for issue in file_result["fixed_issues"]:
                     print(f"    - {issue}")
     
-    # Save results to JSON if requested
-    if args.output_json:
+    # Save results to JSON if requested and not deprecated
+    if args.output_json and not DEPRECATE_JSON_OUTPUT:
         with open(args.output_json, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"\nFix results saved to {args.output_json}")
+    elif args.output_json and DEPRECATE_JSON_OUTPUT:
+        try:
+            import duckdb
+            # Connect to or create a database
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            conn = duckdb.connect(db_path)
+            
+            # Check if hardware_fixes table exists, create if not
+            conn.execute("CREATE TABLE IF NOT EXISTS hardware_fixes (timestamp TIMESTAMP, files_fixed INTEGER, issues_fixed INTEGER, data JSON)")
+            
+            # Insert the fix results
+            timestamp = duckdb.sql("SELECT now()").fetchone()[0]
+            conn.execute(
+                "INSERT INTO hardware_fixes VALUES (?, ?, ?, ?)",
+                [timestamp, files_fixed, issues_fixed, json.dumps(results)]
+            )
+            conn.commit()
+            conn.close()
+            print(f"\nFix results saved to database ({db_path})")
+        except Exception as e:
+            print(f"\nFailed to save to database, falling back to JSON: {e}")
+            with open(args.output_json, 'w') as f:
+                json.dump(results, f, indent=2)
+            print(f"\nFix results saved to {args.output_json} (database save failed)")
     
     return 0
 

@@ -1,8 +1,10 @@
-# Template Inheritance System Guide
+# Template Inheritance System Guide (Updated March 2025)
 
 ## Overview
 
 The Template Inheritance System provides a powerful way to create specialized model templates that share common functionality while allowing for customization. This guide explains how to use and extend the template system for creating model implementations.
+
+> **Update March 2025**: The template system has been enhanced with comprehensive validation capabilities, including hardware platform compatibility checks, generator compatibility validation, and template variable verification. See the [Template Validation Guide](TEMPLATE_VALIDATION_GUIDE.md) for detailed information on the new validation features.
 
 ## Key Components
 

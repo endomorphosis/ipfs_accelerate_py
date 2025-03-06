@@ -59,6 +59,45 @@ The project has successfully completed 16 phases of implementation, focusing on 
 - ✅ Set DEPRECATE_JSON_OUTPUT=1 as default in all benchmark scripts (COMPLETED - March 5, 2025)
 - ✅ Archive all legacy JSON files and complete migration to DuckDB (COMPLETED - March 5, 2025)
 - ✅ JSON output fully deprecated in favor of database storage for all benchmarks (COMPLETED - March 5, 2025)
+- ✅ Integrate test_ipfs_accelerate.py with DuckDB for all test results (COMPLETED - March 6, 2025)
+- ✅ Add advanced visualizations for hardware performance comparisons (COMPLETED - March 6, 2025)
+- ✅ Add power efficiency and thermal metrics for mobile/edge hardware (COMPLETED - March 6, 2025)
+
+## Time-Series Performance Tracking (COMPLETED - March 25, 2025)
+
+The framework now includes a comprehensive time-series performance tracking system with these features:
+
+- Versioned test results with git commit and environment information
+- Regression detection based on configurable thresholds
+- Trend analysis with statistical methods
+- Visualization capabilities for performance metrics
+- Reporting in Markdown and HTML formats
+- Notification system for detected regressions 
+
+```bash
+# Run a quick test of the time-series performance tracker
+python test/run_time_series_performance.py --quick-test
+
+# Run the full test suite
+python test/run_time_series_performance.py --full-test
+
+# Record a performance result
+python test/time_series_performance.py record --model-id 1 --hardware-id 1 --batch-size 4 --throughput 125.7 --latency 8.2 --memory 1024 --power 180
+
+# Set baselines for all model-hardware combinations
+python test/time_series_performance.py baseline --all --days 7 --min-samples 3
+
+# Detect regressions
+python test/time_series_performance.py regression --days 14 --notify
+
+# Analyze trends
+python test/time_series_performance.py trend --metric throughput --days 30 --visualize
+
+# Generate a performance report
+python test/time_series_performance.py report --days 30 --format markdown --output performance_report.md
+```
+
+For detailed documentation, see [Time-Series Performance Tracking Guide](TIME_SERIES_PERFORMANCE_GUIDE.md).
 
 ## Hardware Compatibility Matrix
 
@@ -71,6 +110,49 @@ The project has successfully completed 16 phases of implementation, focusing on 
 | Vision (ViT, CLIP, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
 | Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
 | Multimodal (LLaVA, etc.) | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
+
+### IPFS Acceleration Testing Features (Updated March 2025)
+
+The framework now includes comprehensive IPFS acceleration testing with enhanced DuckDB integration and WebGPU support:
+
+1. **Database-First Storage**: Complete integration with DuckDB for efficient and reliable test results storage:
+   ```bash
+   # Store results only in database (no JSON files)
+   python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+   
+   # Use custom database path
+   python test_ipfs_accelerate.py --db-path ./custom_benchmark.duckdb --models "bert-base-uncased"
+   ```
+
+2. **WebGPU Support and Analysis**: Test and analyze browser-based GPU acceleration:
+   ```bash
+   # Test with WebGPU acceleration
+   python test_ipfs_accelerate.py --webgpu --models "bert-base-uncased"
+   
+   # Generate WebGPU analysis report with shader metrics
+   python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics
+   ```
+
+3. **Real-Time Database Integration**: Test results stored in database as they're generated:
+   ```bash
+   # Test multiple platforms with real-time database integration
+   python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --webnn --webgpu --db-only
+   ```
+
+4. **Enhanced Visualization and Reporting**:
+   - Interactive Plotly charts for performance comparisons
+   - WebGPU shader compilation metrics visualization
+   - Browser-specific WebGPU performance analysis
+   - Model-specific optimization recommendations
+   - Hardware compatibility heatmaps
+
+5. **Comprehensive Reporting Options**:
+   - General report: `--report`
+   - IPFS acceleration report: `--ipfs-acceleration-report`
+   - Acceleration comparison report: `--comparison-report` 
+   - WebGPU analysis report: `--webgpu-analysis` (NEW!)
+
+For detailed documentation on these features, see [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md).
 
 To generate an updated compatibility matrix with actual benchmark data, run:
 ```bash
@@ -108,6 +190,36 @@ Key features:
 - Generators retrieve templates from the database and instantiate them for specific models
 - Cross-platform hardware compatibility is built into templates
 - Each generator creates tests/skills/benchmarks on demand rather than storing static files
+
+### MARCH 2025 UPDATE: Simplified Template System
+
+A new simplified template system has been implemented that makes it easier to generate hardware-aware tests:
+
+```bash
+# Create a simple template database
+python test/create_simple_template_db.py
+
+# Validate templates in the database
+python test/simple_template_validator.py --validate-db
+
+# Generate a test with database templates
+python test/simple_test_generator.py -g bert -t
+
+# Generate a test with specific hardware platforms
+python test/simple_test_generator.py -g vit -p cuda,qualcomm,webgpu -t
+
+# Generate a test with Qualcomm AI Engine support
+python test/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
+
+# Check all template system components
+python test/run_template_system_check.py
+
+# List all templates in the database
+python test/simple_test_generator.py --list-templates
+
+# Detect available hardware platforms
+python test/simple_test_generator.py --detect-hardware
+```
 
 ```bash
 # Generate tests with database templates and cross-platform hardware compatibility
@@ -369,7 +481,7 @@ python test/test_web_platform_optimizations.py --all-optimizations
 ./run_web_platform_tests.sh --compare-browsers --model whisper
 ```
 
-### Qualcomm AI Engine Support (March 2025)
+### Qualcomm AI Engine Support and Advanced Quantization (March 2025)
 ```bash
 # Generate tests for Qualcomm hardware
 python test/qualified_test_generator.py -g bert-base-uncased -p qualcomm -o test_bert_qualcomm.py
@@ -377,11 +489,136 @@ python test/qualified_test_generator.py -g bert-base-uncased -p qualcomm -o test
 # Run tests on Qualcomm hardware
 python test_bert_qualcomm.py
 
+# Run comprehensive Qualcomm integration test suite (stores results in DuckDB)
+python test/test_qualcomm_integration.py --db-path ./benchmark_db.duckdb
+
+# Run test suite with specific models
+python test/test_qualcomm_integration.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny
+
+# Run test suite with comprehensive model set
+python test/test_qualcomm_integration.py --models all
+
+# Generate Qualcomm performance visualizations from test data
+python test/visualize_qualcomm_performance.py --db-path ./benchmark_db.duckdb --output ./reports
+
 # Automated hardware selection including Qualcomm
 python test/automated_hardware_selection.py --model bert-base-uncased --include-qualcomm
 
-# Benchmark with Qualcomm
+# Benchmark with Qualcomm hardware
 python test/benchmark_all_key_models.py --hardware qualcomm
+
+# Test power efficiency metrics for mobile/edge devices (Qualcomm)
+python test/test_hardware_backend.py --backend qualcomm --model bert-tiny --power-metrics
+
+# Compare Qualcomm vs other hardware platforms using DuckDB data
+python test/scripts/benchmark_db_query.py --report qualcomm_comparison --format html --output qualcomm_report.html
+
+# Extract device and SDK information for Qualcomm
+python test/test_qualcomm_integration.py --device-info-only
+
+# Basic Quantization Usage
+# ========================
+
+# Quantize a model for Qualcomm hardware
+python test/qualcomm_quantization_support.py quantize \
+  --model-path models/bert-base-uncased.onnx \
+  --output-path models/bert-base-uncased.qnn \
+  --method int8 \
+  --model-type text
+
+# Compare different quantization methods
+python test/qualcomm_quantization_support.py compare \
+  --model-path models/bert-base-uncased.onnx \
+  --output-dir ./quantized_models \
+  --model-type text \
+  --report-path ./reports/quantization_comparison.md
+
+# List available quantization methods for Qualcomm
+python test/qualcomm_quantization_support.py list
+
+# Run a complete quantization example
+python test/test_examples/qualcomm_quantization_example.py \
+  --model-path models/bert-base-uncased.onnx \
+  --model-type text \
+  --mock
+
+# Advanced Quantization Methods (March 2025)
+# =========================================
+
+# Weight Clustering Quantization
+python test/qualcomm_advanced_quantization.py cluster \
+  --model-path models/bert-base-uncased.onnx \
+  --output-path models/bert-base-uncased-clustered.qnn \
+  --clusters 16 \
+  --model-type text \
+  --optimize-for hexagon
+
+# Hybrid/Mixed Precision Quantization
+python test/qualcomm_advanced_quantization.py hybrid \
+  --model-path models/llama-7b.onnx \
+  --output-path models/llama-7b-hybrid.qnn \
+  --attention-precision int8 \
+  --feedforward-precision int4 \
+  --model-type text_generation \
+  --optimize-for mobile
+
+# Per-Channel Quantization
+python test/qualcomm_advanced_quantization.py per-channel \
+  --model-path models/clip-vit.onnx \
+  --output-path models/clip-vit-perchannel.qnn \
+  --model-type vision
+
+# Learned Quantization Parameters (QAT)
+python test/qualcomm_advanced_quantization.py qat \
+  --model-path models/bert-base-uncased.onnx \
+  --output-path models/bert-base-uncased-qat.qnn \
+  --train-dataset glue/mrpc \
+  --epochs 3 \
+  --learning-rate 5e-5 \
+  --model-type text
+
+# Sparse Quantization with Pruning
+python test/qualcomm_advanced_quantization.py sparse \
+  --model-path models/whisper-small.onnx \
+  --output-path models/whisper-small-sparse.qnn \
+  --sparsity 0.5 \
+  --pruning-method magnitude \
+  --model-type audio
+
+# Method Comparison Framework
+python test/quantization_comparison_tools.py compare-all \
+  --model-path models/bert-base-uncased.onnx \
+  --output-dir ./comparison_results \
+  --methods int8,int4,cluster,hybrid,sparse \
+  --metrics accuracy,latency,power,size \
+  --model-type text
+
+# Generate Quantization Impact Visualization
+python test/quantization_comparison_tools.py visualize \
+  --results-path ./comparison_results/bert-base-uncased-comparison.json \
+  --output-path ./visualization/bert-quantization-impact.html \
+  --plot-type radar
+
+# Hardware-Specific Optimizations for Quantized Models
+python test/qualcomm_hardware_optimizations.py optimize \
+  --model-path models/bert-base-uncased-int8.qnn \
+  --output-path models/bert-base-uncased-int8-optimized.qnn \
+  --device sm8550 \
+  --optimize memory,power,latency
+
+# Memory Bandwidth Optimization
+python test/qualcomm_hardware_optimizations.py memory-optimize \
+  --model-path models/llama-7b-int4.qnn \
+  --output-path models/llama-7b-int4-memopt.qnn \
+  --cache-config aggressive \
+  --tiling-strategy optimal
+
+# Power State Management Integration
+python test/qualcomm_hardware_optimizations.py power-optimize \
+  --model-path models/whisper-small-int8.qnn \
+  --output-path models/whisper-small-int8-poweropt.qnn \
+  --battery-mode efficient \
+  --dynamic-scaling enabled
 ```
 
 ### Distributed Training Configuration
@@ -528,6 +765,119 @@ python test/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardwa
 
 # Run CI/CD benchmark workflow manually via GitHub CLI
 gh workflow run benchmark_db_ci.yml --ref main -f test_model=bert-base-uncased -f hardware=cpu -f batch_size=1,2,4,8
+
+# Run test_ipfs_accelerate.py with database integration
+python test/test_ipfs_accelerate.py --db-path ./benchmark_db.duckdb
+
+# Generate a test report from the DuckDB database
+python test/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+```
+
+#### DuckDB Test Results Schema
+
+Our DuckDB database schema has been enhanced to store detailed test results and hardware metrics:
+
+```sql
+-- Main test results table
+CREATE TABLE IF NOT EXISTS test_results (
+    id INTEGER PRIMARY KEY,
+    timestamp TIMESTAMP,
+    test_date VARCHAR,
+    status VARCHAR,
+    test_type VARCHAR,
+    model_name VARCHAR,
+    endpoint_type VARCHAR,
+    hardware_type VARCHAR,
+    success BOOLEAN,
+    error_message VARCHAR,
+    execution_time FLOAT,
+    memory_usage FLOAT,
+    power_consumption FLOAT,       -- Added for mobile/edge devices
+    temperature FLOAT,             -- Added for thermal monitoring
+    qnn_version VARCHAR,           -- Qualcomm Neural Network SDK version
+    sdk_type VARCHAR,              -- QNN or QTI SDK type
+    details JSON
+);
+
+-- Hardware capability tracking
+CREATE TABLE IF NOT EXISTS hardware_capabilities (
+    id INTEGER PRIMARY KEY,
+    hardware_type VARCHAR,
+    device_name VARCHAR,
+    compute_units INTEGER,
+    memory_capacity FLOAT,
+    driver_version VARCHAR,
+    supported_precisions JSON,     -- FP32, FP16, INT8, INT4 support
+    max_batch_size INTEGER,
+    throughput_benchmark FLOAT,
+    latency_benchmark FLOAT,
+    power_efficiency FLOAT,        -- Important for mobile/edge
+    detected_at TIMESTAMP
+);
+
+-- Model conversion metrics
+CREATE TABLE IF NOT EXISTS model_conversion_metrics (
+    id INTEGER PRIMARY KEY,
+    model_name VARCHAR,
+    source_format VARCHAR,
+    target_format VARCHAR,
+    hardware_target VARCHAR,
+    conversion_success BOOLEAN,
+    conversion_time FLOAT,
+    file_size_before FLOAT,
+    file_size_after FLOAT,
+    precision VARCHAR,
+    optimization_level INTEGER,
+    error_message VARCHAR,
+    timestamp TIMESTAMP
+);
+
+-- Performance comparison 
+CREATE TABLE IF NOT EXISTS performance_comparison (
+    id INTEGER PRIMARY KEY,
+    model_name VARCHAR,
+    test_id INTEGER,
+    test_date TIMESTAMP,
+    hardware_type VARCHAR,
+    batch_size INTEGER,
+    sequence_length INTEGER,
+    latency_ms FLOAT,
+    throughput_items_per_sec FLOAT,
+    memory_mb FLOAT,
+    power_watts FLOAT,            -- Added for mobile/edge
+    energy_efficiency_items_per_joule FLOAT,
+    performance_score FLOAT        -- Composite metric
+);
+
+-- Cross-platform compatibility matrix
+CREATE TABLE IF NOT EXISTS cross_platform_compatibility (
+    id INTEGER PRIMARY KEY,
+    model_name VARCHAR,
+    model_type VARCHAR,
+    model_size VARCHAR,
+    cuda_support BOOLEAN,
+    rocm_support BOOLEAN,
+    mps_support BOOLEAN,
+    openvino_support BOOLEAN,
+    qualcomm_support BOOLEAN,     -- Qualcomm support
+    webnn_support BOOLEAN,
+    webgpu_support BOOLEAN,
+    recommended_platform VARCHAR, 
+    last_updated TIMESTAMP
+);
+```
+
+For working with the schema:
+
+```bash
+# Query hardware capabilities
+python test/scripts/benchmark_db_query.py --sql "SELECT * FROM hardware_capabilities" --format html --output capabilities.html
+
+# Check cross-platform compatibility by model type
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as total, SUM(CASE WHEN qualcomm_support THEN 1 ELSE 0 END) as qualcomm_compatible, ROUND(SUM(CASE WHEN qualcomm_support THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as compatibility_rate FROM cross_platform_compatibility GROUP BY model_type ORDER BY compatibility_rate DESC" --format markdown
+
+# Compare power efficiency across hardware platforms
+python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency FROM performance_comparison GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output power_efficiency.png
 ```
 
 ## Performance Benchmarks
@@ -548,6 +898,37 @@ Legacy documentation (being migrated to database):
 - Web platform audio tests: `test/WEB_PLATFORM_AUDIO_TESTING_GUIDE.md`
 - Hardware selection system: `test/HARDWARE_SELECTION_GUIDE.md`
 - Web platform support: `test/README_WEB_PLATFORM_SUPPORT.md`
+- Qualcomm implementation: `test/QUALCOMM_IMPLEMENTATION_SUMMARY.md`
+
+### Qualcomm AI Engine Performance
+
+The Qualcomm AI Engine integration (March 2025) provides specialized support for Snapdragon SoCs and mobile/edge devices:
+
+| Model Type | Model Size | Qualcomm vs CPU | Power Efficiency | Key Metric |
+|------------|------------|----------------|------------------|------------|
+| Embedding | Small | 2.5-3.8x faster | 4.0-5.5x better | 78% lower power consumption |
+| Text Generation | Tiny (<1B) | 1.8-2.2x faster | 3.0-4.0x better | Optimal for battery life |
+| Vision | Small-Medium | 3.0-5.0x faster | 3.5-4.5x better | Great for mobile vision |
+| Audio | Tiny | 2.0-3.0x faster | 3.0-4.0x better | Suitable for voice assistants |
+| Multimodal | Tiny-Small | 1.5-2.0x faster | 2.5-3.5x better | Limited by memory |
+
+Performance varies by hardware generation and specific Snapdragon model. Benchmarks were conducted on Snapdragon 8 Gen 3 hardware with the latest Qualcomm AI SDK (QNN 2.10).
+
+**Qualcomm Implementation Features:**
+- Model conversion pipeline (PyTorch → ONNX → QNN format)
+- Support for both QNN and QTI SDKs
+- Power and thermal measurement capabilities
+- Mobile-optimized inference settings
+- Edge-aware batching and memory management
+- Fallback mechanisms for unsupported operations
+- Mock implementations for testing without physical hardware
+
+For detailed Qualcomm performance testing and reports, run:
+```bash
+# Run comprehensive Qualcomm test suite and generate reports
+python test/test_qualcomm_integration.py --models all
+python test/visualize_qualcomm_performance.py --output ./reports
+```
 
 ### Web Platform Performance Results
 
@@ -744,6 +1125,31 @@ The database also stores all benchmark results and test outputs:
   - `benchmark_db_performance.py`: Performance testing
   - `run_benchmark_with_db.py`: Example integration
   - `cleanup_test_results.py`: Automated migration utility
+  - `generate_compatibility_matrix.py`: Creates comprehensive model compatibility matrix
+
+#### Model Compatibility Matrix
+The database enables automatic generation of a comprehensive compatibility matrix for all 300+ HuggingFace model classes:
+
+- **Matrix Generation**:
+  ```bash
+  # Generate the complete compatibility matrix
+  python test/generate_compatibility_matrix.py
+  
+  # Generate matrix with specific filters
+  python test/generate_compatibility_matrix.py --filter vision --hardware cuda,qualcomm,webgpu
+  
+  # Custom output formats
+  python test/generate_compatibility_matrix.py --format markdown --output custom_matrix.md
+  ```
+
+- **Matrix Features**:
+  - Cross-platform compatibility status for all models
+  - Visual indicators for compatibility levels
+  - Hardware-specific performance metrics
+  - Advanced quantization support indicators
+  - Automatic updates via CI/CD pipeline
+  - Filtering by model type and hardware platform
+  - Custom output formats (markdown, HTML)
 
 Documentation and guides:
 - [Benchmark Database Guide](BENCHMARK_DATABASE_GUIDE.md)
@@ -752,6 +1158,7 @@ Documentation and guides:
 - [Web Platform Support](README_WEB_PLATFORM_SUPPORT.md)
 - [Web Platform Integration Guide](web_platform_integration_guide.md)
 - [Template Database Guide](TEMPLATE_INHERITANCE_GUIDE.md)
+- [Comprehensive Model Compatibility Matrix](COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md)
 
 ### Hardware Selection and Performance Prediction System
 

@@ -25,6 +25,19 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -336,8 +349,13 @@ class FullHardwareBenchmark:
         
         # Save benchmark results
         results_file = self.run_dir / "benchmark_results.json"
-        with open(results_file, "w") as f:
-            json.dump(self.results, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+            with open(results_file, "w") as f:
+                json.dump(self.results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         logger.info(f"Benchmarks completed. Results saved to {results_file}")
         logger.info(f"Report available at: {report_file}")
@@ -794,9 +812,14 @@ class FullHardwareBenchmark:
         # Save to file
         matrix_file = self.run_dir / "hardware_compatibility_matrix.json"
         with open(matrix_file, "w") as f:
-            json.dump(matrix, f, indent=2)
-        
-        # Also save as main compatibility matrix
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                json.dump(matrix, f, indent=2)
+            
+            # Also save as main compatibility matrix
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         main_matrix_file = self.output_dir / "hardware_compatibility_matrix.json"
         with open(main_matrix_file, "w") as f:
             json.dump(matrix, f, indent=2)
@@ -1287,7 +1310,12 @@ def main():
     parser.add_argument("--debug", action="store_true",
                       help="Enable debug mode with simulated results")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Configure logging
     if args.debug:
@@ -1304,7 +1332,10 @@ def main():
     
     # Create benchmark runner
     benchmark = FullHardwareBenchmark(
-        db_path=args.db_path,
+        db_path = args.db_path
+    if db_path is None:
+        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        logger.info(f"Using database path from environment: {db_path}"),
         output_dir=args.output_dir,
         models=models,
         hardware_platforms=args.hardware,

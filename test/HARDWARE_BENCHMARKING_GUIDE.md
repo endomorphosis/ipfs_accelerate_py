@@ -19,7 +19,7 @@ The `hardware_benchmark_runner.py` script provides the core benchmarking functio
 
 ### Features
 
-- **Comprehensive Hardware Support**: Tests across CPU, CUDA, MPS (Apple Silicon), ROCm (AMD), OpenVINO, WebNN, and WebGPU
+- **Comprehensive Hardware Support**: Tests across CPU, CUDA, MPS (Apple Silicon), ROCm (AMD), OpenVINO, Qualcomm AI Engine, WebNN, and WebGPU
 - **Model Family Coverage**: Supports embedding, text generation, vision, audio, and multimodal models
 - **Flexible Configuration**: Configurable batch sizes, sequence lengths, and iteration counts
 - **Detailed Metrics**: Measures latency, throughput, memory usage, and hardware-specific statistics
@@ -35,7 +35,7 @@ The `hardware_benchmark_runner.py` script provides the core benchmarking functio
 python hardware_benchmark_runner.py
 
 # Benchmark specific model families on specific hardware
-python hardware_benchmark_runner.py --model-families embedding text_generation --hardware cuda cpu
+python hardware_benchmark_runner.py --model-families embedding text_generation --hardware cuda cpu qualcomm
 
 # Customize batch sizes and iterations
 python hardware_benchmark_runner.py --batch-sizes 1 4 16 --warmup 10 --iterations 50
@@ -53,7 +53,7 @@ python hardware_benchmark_runner.py --output-dir ./my_benchmark_results
 ### Key Parameters
 
 - `--model-families`: List of model families to benchmark (embedding, text_generation, vision, audio, multimodal)
-- `--hardware`: List of hardware types to benchmark (cpu, cuda, mps, openvino, etc.)
+- `--hardware`: List of hardware types to benchmark (cpu, cuda, mps, openvino, qualcomm, webnn, webgpu, etc.)
 - `--batch-sizes`: List of batch sizes to test
 - `--warmup`: Number of warmup iterations before timing
 - `--iterations`: Number of benchmark iterations for timing
@@ -250,7 +250,7 @@ The benchmark system automatically updates the hardware compatibility matrix wit
 ```json
 {
   "timestamp": "2025-03-02T12:34:56.789Z",
-  "hardware_types": ["cpu", "cuda", "mps", "openvino", "webnn", "webgpu"],
+  "hardware_types": ["cpu", "cuda", "mps", "openvino", "qualcomm", "webnn", "webgpu"],
   "model_families": {
     "embedding": {
       "hardware_compatibility": {
@@ -274,6 +274,18 @@ The benchmark system automatically updates the hardware compatibility matrix wit
               "timestamp": "2025-03-02T12:34:56.789Z",
               "model_name": "bert-base-uncased",
               "mean_latency": 0.0023,
+              "mean_throughput": 434.78
+            }
+          ]
+        },
+        "qualcomm": {
+          "compatible": true,
+          "performance_rating": "medium-high",
+          "benchmark_results": [
+            {
+              "timestamp": "2025-03-02T12:34:56.789Z",
+              "model_name": "bert-base-uncased",
+              "mean_latency": 0.0078,
               "mean_throughput": 434.78
             }
           ]
@@ -425,6 +437,32 @@ python hardware_benchmark_runner.py --model-families embedding
 python run_benchmark_suite.py --check
 ```
 
+### Qualcomm AI Engine Benchmarking
+
+The framework now includes full support for benchmarking on Qualcomm AI Engine and Hexagon DSP hardware:
+
+```bash
+# Run benchmarks on Qualcomm hardware only
+python hardware_benchmark_runner.py --hardware qualcomm
+
+# Compare Qualcomm performance with other hardware platforms
+python hardware_benchmark_runner.py --hardware cuda cpu qualcomm --model-families embedding vision
+
+# Benchmark small models on Qualcomm
+python hardware_benchmark_runner.py --hardware qualcomm --small-models-only
+
+# Benchmark on Qualcomm with environment variable configuration
+QUALCOMM_SDK=/path/to/sdk QUALCOMM_DEBUG=1 python hardware_benchmark_runner.py --hardware qualcomm
+```
+
+The Qualcomm benchmark process:
+1. Detects available Qualcomm AI Engine SDKs (QNN or QTI)
+2. Converts models to Qualcomm formats via ONNX
+3. Runs inference on Qualcomm hardware
+4. Collects and reports performance metrics
+
+Results are integrated into the hardware compatibility matrix and used by the hardware selection system to make intelligent recommendations.
+
 ## Advanced Usage
 
 ### Custom Model Benchmarking
@@ -462,8 +500,121 @@ python run_benchmark_suite.py --aggregate-results ./benchmark_results/run1 ./ben
 python run_benchmark_suite.py --plot-comparison ./benchmark_results/before ./benchmark_results/after
 ```
 
+## Comprehensive HuggingFace Model Benchmarking
+
+The hardware benchmarking system has been extended to support testing all 300+ HuggingFace model architectures across all hardware platforms.
+
+### Using test_comprehensive_hardware_coverage.py
+
+The `test_comprehensive_hardware_coverage.py` tool provides comprehensive benchmarking capabilities:
+
+```bash
+# Benchmark all HuggingFace models across available hardware
+python test/test_comprehensive_hardware_coverage.py --benchmark-all --db-path ./benchmark_db.duckdb
+
+# Benchmark specific model categories
+python test/test_comprehensive_hardware_coverage.py --benchmark-category "text_encoders" --hardware all --db-path ./benchmark_db.duckdb
+
+# Generate optimization recommendations from benchmark results
+python test/test_comprehensive_hardware_coverage.py --generate-optimization-report --db-path ./benchmark_db.duckdb
+
+# Run detailed performance profiling for specific models
+python test/test_comprehensive_hardware_coverage.py --profile-detailed --model bert --hardware all --db-path ./benchmark_db.duckdb
+
+# Generate comprehensive benchmark report
+python test/test_comprehensive_hardware_coverage.py --comparative-report --all-models --hardware all --db-path ./benchmark_db.duckdb
+```
+
+### Comprehensive Benchmark Categories
+
+The comprehensive benchmarking system covers all HuggingFace model architectures, grouped into categories:
+
+1. **Text Encoders** (45 architectures): BERT, RoBERTa, ALBERT, DistilBERT, etc.
+2. **Text Decoders** (30 architectures): GPT, GPT-2, GPT-J, OPT, BLOOM, etc.
+3. **Encoder-Decoders** (15 architectures): T5, BART, Pegasus, etc.
+4. **Vision Models** (38 architectures): ViT, DeiT, BEiT, ConvNeXT, Swin, etc.
+5. **Audio Models** (18 architectures): Whisper, Wav2Vec2, HuBERT, etc.
+6. **Vision-Language Models** (25 architectures): CLIP, BLIP, GIT, etc.
+7. **Multimodal Models** (12 architectures): LLaVA, Flamingo, BLIP-2, etc.
+8. **Video Models** (8 architectures): VideoMAE, XCLIP, etc.
+9. **Speech-Text Models** (10 architectures): Speech-T5, SpeechToText, etc.
+10. **Diffusion Models** (12 architectures): Stable Diffusion, etc.
+
+Each category is tested across all available hardware platforms, with benchmarking adapted to the specific characteristics of each model architecture.
+
+### Database Integration
+
+All benchmark results are stored in the DuckDB database:
+
+```bash
+# Query comprehensive benchmark results from database
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --report comprehensive-benchmarks --format html --output comprehensive_benchmark_report.html
+
+# Compare performance of model architectures across hardware platforms
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --architecture-performance-comparison --format html --output architecture_comparison.html
+
+# Analyze optimal hardware for each model architecture
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --optimal-hardware-analysis --output optimal_hardware.md
+```
+
+The database schema includes specialized tables for comprehensive benchmark results:
+
+```sql
+-- Sample schema for comprehensive benchmarks
+CREATE TABLE comprehensive_benchmarks (
+    benchmark_id INTEGER PRIMARY KEY,
+    architecture_id INTEGER,
+    hardware_id INTEGER,
+    batch_size INTEGER,
+    throughput FLOAT,
+    latency_avg FLOAT,
+    latency_std FLOAT,
+    memory_peak_mb FLOAT,
+    test_timestamp TIMESTAMP,
+    FOREIGN KEY (architecture_id) REFERENCES model_architecture_coverage(architecture_id),
+    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(id)
+);
+```
+
+### Benchmark Visualization
+
+The comprehensive benchmarking system includes specialized visualizations:
+
+1. **Architecture Performance Matrix**: Heat map showing performance of each architecture across hardware platforms
+2. **Category Comparison**: Bar charts comparing performance across model categories
+3. **Hardware Efficiency**: Charts showing efficiency of each hardware platform by model type
+4. **Memory Scaling**: Visualization of memory usage across architectures and batch sizes
+5. **Optimization Opportunities**: Highlighting potential optimization targets based on performance gaps
+
+```bash
+# Generate comprehensive visualization dashboard
+python test/test_comprehensive_hardware_coverage.py --generate-dashboard --db-path ./benchmark_db.duckdb --output dashboard/
+
+# Generate hardware efficiency chart
+python test/test_comprehensive_hardware_coverage.py --hardware-efficiency-chart --db-path ./benchmark_db.duckdb --output charts/efficiency.html
+
+# Generate memory scaling visualization
+python test/test_comprehensive_hardware_coverage.py --memory-scaling-chart --db-path ./benchmark_db.duckdb --output charts/memory.html
+```
+
+### Continuous Benchmarking Integration
+
+The comprehensive benchmarking system integrates with continuous benchmarking:
+
+```bash
+# Schedule comprehensive benchmarks
+python test/test_comprehensive_hardware_coverage.py --schedule-benchmarks --frequency weekly --db-path ./benchmark_db.duckdb
+
+# Run incremental benchmarks based on database history
+python test/test_comprehensive_hardware_coverage.py --incremental-benchmarks --db-path ./benchmark_db.duckdb
+
+# Update only benchmarks older than a certain threshold
+python test/test_comprehensive_hardware_coverage.py --update-benchmarks --older-than 30 --db-path ./benchmark_db.duckdb
+```
+
 ## Further Resources
 
+- [HF_COMPREHENSIVE_TESTING_GUIDE.md](HF_COMPREHENSIVE_TESTING_GUIDE.md): Details on comprehensive HuggingFace model testing
 - [ResourcePool Guide](RESOURCE_POOL_GUIDE.md): Details on the ResourcePool for model caching
 - [Hardware Detection Guide](HARDWARE_DETECTION_GUIDE.md): Information on the hardware detection system
 - [Model Family Classifier Guide](MODEL_FAMILY_CLASSIFIER_GUIDE.md): Details on model family classification
@@ -471,6 +622,8 @@ python run_benchmark_suite.py --plot-comparison ./benchmark_results/before ./ben
 - [Hardware Platform Test Guide](HARDWARE_PLATFORM_TEST_GUIDE.md): Guide to hardware platform testing
 - [Hardware Model Validation Guide](HARDWARE_MODEL_VALIDATION_GUIDE.md): Guide to model validation
 - [Hardware Model Integration Guide](HARDWARE_MODEL_INTEGRATION_GUIDE.md): Guide to hardware-model integration
+- [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md): Guide to the benchmark database system
+- [CROSS_PLATFORM_TEST_COVERAGE.md](CROSS_PLATFORM_TEST_COVERAGE.md): Cross-platform test coverage status
 
 ---
 

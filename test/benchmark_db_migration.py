@@ -31,6 +31,10 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Set
 from pathlib import Path
 from collections import defaultdict
 
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -797,658 +801,672 @@ class BenchmarkDBMigration:
                 f"migration_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.path.basename(file_path)}.json"
             )
             with open(log_file, 'w') as f:
-                json.dump(summary, f, indent=2)
-            
-            return counts
-            
-        except Exception as e:
-            logger.error(f"Error migrating file {file_path}: {e}")
-            return {'error': 1}
-    
-    def migrate_directory(self, directory: str, recursive: bool = True, 
-                        incremental: bool = True) -> Dict[str, int]:
-        """
-        Migrate all JSON files in a directory to the database.
-        
-        Args:
-            directory: Directory containing JSON files
-            recursive: If True, search subdirectories
-            incremental: If True, only migrate files that haven't been processed before
-            
-        Returns:
-            Dictionary with counts of migrated items by type
-        """
-        # Find all JSON files
-        pattern = os.path.join(directory, "**/*.json") if recursive else os.path.join(directory, "*.json")
-        json_files = glob.glob(pattern, recursive=recursive)
-        
-        logger.info(f"Found {len(json_files)} JSON files in {directory}")
-        
-        # Process each file
-        total_counts = defaultdict(int)
-        for file_path in json_files:
-            counts = self.migrate_file(file_path, incremental)
-            for key, count in counts.items():
-                total_counts[key] += count
-        
-        # Log the result
-        log_message = f"Migrated directory {directory}: "
-        log_message += ", ".join([f"{count} {item}" for item, count in total_counts.items()])
-        logger.info(log_message)
-        
-        return dict(total_counts)
-    
-    def cleanup_json_files(self, older_than_days: int = None, move_to: str = None, 
-                         delete: bool = False) -> int:
-        """
-        Clean up JSON files that have been migrated.
-        
-        Args:
-            older_than_days: Only process files older than this many days
-            move_to: Directory to move files to (None to leave in place)
-            delete: If True, delete files instead of moving them
-            
-        Returns:
-            Number of files processed
-        """
-        if not self.processed_files:
-            logger.info("No files have been migrated yet")
-            return 0
-        
-        # Calculate cutoff date if needed
-        cutoff_date = None
-        if older_than_days is not None:
-            cutoff_date = datetime.datetime.now() - datetime.timedelta(days=older_than_days)
-        
-        count = 0
-        for file_path in self.processed_files:
-            # Skip files that don't exist
-            if not os.path.exists(file_path):
-                continue
-            
-            # Check age if needed
-            if cutoff_date is not None:
-                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
-                if mtime > cutoff_date:
-                    continue
-            
-            # Process the file
-            if delete:
-                try:
-                    os.remove(file_path)
-                    logger.debug(f"Deleted migrated file: {file_path}")
-                    count += 1
-                except Exception as e:
-                    logger.error(f"Error deleting file {file_path}: {e}")
-            elif move_to:
-                try:
-                    # Create target directory if it doesn't exist
-                    os.makedirs(move_to, exist_ok=True)
-                    
-                    # Determine target path
-                    rel_path = os.path.basename(file_path)
-                    target_path = os.path.join(move_to, rel_path)
-                    
-                    # Move the file
-                    shutil.move(file_path, target_path)
-                    logger.debug(f"Moved migrated file: {file_path} -> {target_path}")
-                    count += 1
-                except Exception as e:
-                    logger.error(f"Error moving file {file_path}: {e}")
-        
-        if delete:
-            logger.info(f"Deleted {count} migrated files")
-        elif move_to:
-            logger.info(f"Moved {count} migrated files to {move_to}")
-        else:
-            logger.info(f"Found {count} files that could be processed")
-        
-        return count
-    
-    def reindex_models(self) -> Dict[str, int]:
-        """
-        Reindex models by analyzing compatible names and families.
-        
-        Returns:
-            Dictionary with counts of updated items
-        """
-        # Get all models
-        models_df = self.conn.execute("""
-        SELECT model_id, model_name, model_family, modality FROM models
-        """).fetchdf()
-        
-        updates = 0
-        family_updates = 0
-        modality_updates = 0
-        
-        # Update model families and modalities
-        for _, row in models_df.iterrows():
-            model_id = row['model_id']
-            model_name = row['model_name']
-            current_family = row['model_family']
-            current_modality = row['modality']
-            
-            # Infer model family if not set
-            if not current_family or current_family == 'unknown':
-                new_family = self._infer_model_family(model_name)
-                if new_family and new_family != 'unknown':
-                    self.conn.execute("""
-                    UPDATE models SET model_family = ? WHERE model_id = ?
-                    """, [new_family, model_id])
-                    family_updates += 1
-            
-            # Infer modality if not set
-            if not current_modality or current_modality == 'unknown':
-                new_modality = self._infer_modality(model_name, current_family or self._infer_model_family(model_name))
-                if new_modality and new_modality != 'unknown':
-                    self.conn.execute("""
-                    UPDATE models SET modality = ? WHERE model_id = ?
-                    """, [new_modality, model_id])
-                    modality_updates += 1
-        
-        # Handle special cases for popular model families
-        family_mapping = {
-            'bert': ['bert-base', 'bert-large', 'distilbert', 'roberta'],
-            't5': ['t5-small', 't5-base', 't5-large', 't5-efficient'],
-            'llama': ['llama', 'llama2', 'llama3', 'opt'],
-            'gpt': ['gpt2', 'gpt-neo', 'gpt-j'],
-            'clip': ['clip', 'chinese-clip'],
-            'vit': ['vit', 'deit'],
-            'whisper': ['whisper'],
-            'wav2vec2': ['wav2vec2']
-        }
-        
-        # Update models whose family can be inferred from name patterns
-        for family, patterns in family_mapping.items():
-            for pattern in patterns:
-                self.conn.execute("""
-                UPDATE models SET model_family = ? 
-                WHERE model_family != ? AND model_name LIKE ?
-                """, [family, family, f'%{pattern}%'])
-            
-            # Get number of updates
-            count = self.conn.execute("""
-            SELECT COUNT(*) FROM models WHERE model_family = ?
-            """, [family]).fetchone()[0]
-            
-            logger.debug(f"Model family '{family}': {count} models")
-            updates += count
-        
-        return {
-            'total_models': len(models_df),
-            'family_updates': family_updates,
-            'modality_updates': modality_updates,
-            'total_updates': updates
-        }
-    
-    def _detect_file_type(self, data: Dict, file_path: str) -> str:
-        """
-        Detect the type of a JSON file based on its content and filename.
-        
-        Args:
-            data: The loaded JSON data
-            file_path: Path to the JSON file
-            
-        Returns:
-            File type ('performance', 'hardware', 'compatibility', 'integration', or 'unknown')
-        """
-        filename = os.path.basename(file_path).lower()
-        
-        # Check for performance data
-        if ('throughput' in data or 'latency' in data or 'performance' in data or 'benchmark' in data or
-            'throughput_items_per_second' in data):
-            return 'performance'
-        elif any(x in filename for x in ['performance', 'benchmark', 'throughput', 'latency']):
-            return 'performance'
-        
-        # Check for hardware data
-        if any(k in data for k in ['cuda', 'rocm', 'mps', 'openvino', 'hardware_detection']):
-            return 'hardware'
-        elif any(x in filename for x in ['hardware', 'device', 'platform']):
-            return 'hardware'
-        
-        # Check for compatibility data
-        if any(k in data for k in ['compatibility', 'is_compatible']):
-            return 'compatibility'
-        elif any(x in filename for x in ['compatibility', 'matrix']):
-            return 'compatibility'
-        
-        # Check for integration test data
-        if any(k in data for k in ['test_results', 'assertions', 'tests']):
-            return 'integration'
-        elif any(x in filename for x in ['test', 'integration']):
-            return 'integration'
-        
-        # Default to unknown
-        return 'unknown'
-    
-    def _migrate_performance_data(self, data: Dict, file_path: str) -> Dict[str, int]:
-        """
-        Migrate performance benchmark data to the database.
-        
-        Args:
-            data: The loaded JSON data
-            file_path: Path to the source file
-            
-        Returns:
-            Dictionary with counts of migrated items
-        """
-        test_name = os.path.basename(file_path).replace('.json', '')
-        timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
-        
-        # Create a test run
-        run_data = {
-            'test_name': test_name,
-            'test_type': 'performance',
-            'started_at': timestamp,
-            'completed_at': timestamp,
-            'success': True,
-            'metadata': {'source_file': file_path}
-        }
-        run_id = self.add_test_run(run_data)
-        
-        # Process results
-        results_count = 0
-        
-        # Handle different file formats
-        if 'results' in data and isinstance(data['results'], list):
-            # Multiple results format
-            for result in data['results']:
-                self._add_performance_result(result, data, run_id, file_path)
-                results_count += 1
-        else:
-            # Single result format
-            self._add_performance_result(data, {}, run_id, file_path)
-            results_count += 1
-        
-        return {'run': 1, 'results': results_count}
-    
-    def _add_performance_result(self, result: Dict, parent_data: Dict, run_id: int, file_path: str) -> None:
-        """
-        Add a single performance result to the database.
-        
-        Args:
-            result: The result data
-            parent_data: Parent data for defaults
-            run_id: The test run ID
-            file_path: Path to the source file
-        """
-        # Extract model and hardware info
-        model_name = result.get('model', parent_data.get('model', 'unknown'))
-        hardware_type = result.get('hardware', parent_data.get('hardware', 'cpu'))
-        device_name = result.get('device', parent_data.get('device', self._default_device_name(hardware_type)))
-        
-        # Get or add model and hardware
-        model_id = self.get_or_add_model(model_name)
-        hardware_id = self.get_or_add_hardware(hardware_type, device_name)
-        
-        # Extract metrics
-        test_case = result.get('test_case', parent_data.get('test_case', self._infer_test_case(model_name)))
-        batch_size = int(result.get('batch_size', parent_data.get('batch_size', 1)))
-        precision = result.get('precision', parent_data.get('precision', 'fp32'))
-        
-        # Extract performance metrics
-        total_time_seconds = float(result.get('total_time', parent_data.get('total_time', 0.0)))
-        avg_latency = float(result.get('latency_avg', result.get('latency', parent_data.get('latency', 0.0))))
-        throughput = float(result.get('throughput', parent_data.get('throughput', 0.0)))
-        memory_peak = float(result.get('memory_peak', result.get('memory', parent_data.get('memory', 0.0))))
-        iterations = int(result.get('iterations', parent_data.get('iterations', 0)))
-        warmup_iterations = int(result.get('warmup_iterations', parent_data.get('warmup_iterations', 0)))
-        
-        # Extract additional metrics
-        metrics = {}
-        for k, v in result.items():
-            if k not in ['model', 'hardware', 'device', 'test_case', 'batch_size', 'precision',
-                        'total_time', 'latency_avg', 'latency', 'throughput', 'memory_peak',
-                        'memory', 'iterations', 'warmup_iterations']:
-                metrics[k] = v
-        
-        # Add metrics from parent data if not in result
-        for k, v in parent_data.items():
-            if k not in result and k not in ['model', 'hardware', 'device', 'test_case', 
-                                            'batch_size', 'precision', 'total_time', 
-                                            'latency_avg', 'latency', 'throughput', 
-                                            'memory_peak', 'memory', 'iterations', 
-                                            'warmup_iterations', 'results', 'timestamp']:
-                metrics[k] = v
-        
-        # Insert performance result
-        try:
-            result_id = self.conn.execute("""
-            SELECT MAX(result_id) FROM performance_results
-            """).fetchone()[0]
-            result_id = result_id + 1 if result_id is not None else 1
-            
-            self.conn.execute("""
-            INSERT INTO performance_results 
-            (result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
-             total_time_seconds, average_latency_ms, throughput_items_per_second,
-             memory_peak_mb, iterations, warmup_iterations, metrics)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
-                 total_time_seconds, avg_latency, throughput, memory_peak, iterations,
-                 warmup_iterations, json.dumps(metrics)])
-            
-        except Exception as e:
-            logger.error(f"Error adding performance result: {e}")
-    
-    def _migrate_hardware_data(self, data: Dict, file_path: str) -> Dict[str, int]:
-        """
-        Migrate hardware detection data to the database.
-        
-        Args:
-            data: The loaded JSON data
-            file_path: Path to the source file
-            
-        Returns:
-            Dictionary with counts of migrated items
-        """
-        test_name = os.path.basename(file_path).replace('.json', '')
-        timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
-        
-        # Create a test run
-        run_data = {
-            'test_name': test_name,
-            'test_type': 'hardware',
-            'started_at': timestamp,
-            'completed_at': timestamp,
-            'success': True,
-            'metadata': {'source_file': file_path}
-        }
-        run_id = self.add_test_run(run_data)
-        
-        # Add hardware platforms
-        hardware_count = 0
-        
-        # Process hardware data
-        self._add_hardware_from_data(data, run_id, file_path)
-        hardware_count += 1
-        
-        return {'run': 1, 'hardware': hardware_count}
-    
-    def _add_hardware_from_data(self, data: Dict, run_id: int, file_path: str) -> None:
-        """
-        Add hardware platforms from detection data.
-        
-        Args:
-            data: The hardware detection data
-            run_id: The test run ID
-            file_path: Path to the source file
-        """
-        # Extract system info
-        system_info = data.get('system', {})
-        platform = system_info.get('platform', 'unknown')
-        
-        # Add CPU
-        cpu_info = system_info.get('cpu_info', 'Unknown CPU')
-        memory_total = float(system_info.get('memory_total', 0.0))
-        memory_free = float(system_info.get('memory_free', 0.0))
-        
-        # Create hardware platform entry for CPU
-        cpu_data = {
-            'hardware_type': 'cpu',
-            'device_name': cpu_info,
-            'platform': platform,
-            'driver_version': 'n/a',
-            'memory_gb': memory_total / 1024 if memory_total > 1024 else memory_total,
-            'compute_units': system_info.get('cpu_count', 0),
-            'metadata': {
-                'memory_free_gb': memory_free / 1024 if memory_free > 1024 else memory_free,
-                'architecture': system_info.get('architecture', ''),
-                'machine': system_info.get('machine', '')
-            }
-        }
-        self.add_hardware_platform(cpu_data)
-        
-        # Add CUDA devices
-        if 'cuda' in data and data['cuda'] is True and 'cuda_devices' in data:
-            for device in data['cuda_devices']:
-                device_name = device.get('name', 'Unknown CUDA Device')
-                total_memory = float(device.get('total_memory', 0.0))
-                free_memory = float(device.get('free_memory', 0.0))
+# JSON output deprecated in favor of database storage
+# JSON output deprecated in favor of database storage
+logger.info("Storing results in database")
+# Store results directly in the database
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    db_api.store_benchmark_results(results)
+    logger.info("Successfully stored results in database")
+except Exception as e:
+    logger.error(f"Error storing results in database: {e}")
+
                 
-                cuda_data = {
-                    'hardware_type': 'cuda',
-                    'device_name': device_name,
-                    'platform': platform,
-                    'driver_version': data.get('cuda_driver_version', 'unknown'),
-                    'memory_gb': total_memory / 1024 if total_memory > 1024 else total_memory,
-                    'compute_units': 0,  # Not directly available
-                    'metadata': {
-                        'compute_capability': device.get('compute_capability', ''),
-                        'memory_free_gb': free_memory / 1024 if free_memory > 1024 else free_memory,
-                        'cuda_version': data.get('cuda_version', '')
-                    }
-                }
-                self.add_hardware_platform(cuda_data)
-        
-        # Add ROCm devices
-        if 'rocm' in data and data['rocm'] is True and 'rocm_devices' in data:
-            for device in data['rocm_devices']:
-                device_name = device.get('name', 'Unknown ROCm Device')
-                total_memory = float(device.get('total_memory', 0.0))
-                free_memory = float(device.get('free_memory', 0.0))
+                return counts
                 
-                rocm_data = {
-                    'hardware_type': 'rocm',
-                    'device_name': device_name,
-                    'platform': platform,
-                    'driver_version': data.get('rocm_version', 'unknown'),
-                    'memory_gb': total_memory / 1024 if total_memory > 1024 else total_memory,
-                    'compute_units': 0,  # Not directly available
-                    'metadata': {
-                        'compute_capability': device.get('compute_capability', ''),
-                        'memory_free_gb': free_memory / 1024 if free_memory > 1024 else free_memory,
-                        'rocm_version': data.get('rocm_version', '')
-                    }
-                }
-                self.add_hardware_platform(rocm_data)
-        
-        # Add MPS
-        if 'mps' in data and data['mps'] is True:
-            mps_data = {
-                'hardware_type': 'mps',
-                'device_name': 'Apple Silicon',
-                'platform': platform,
-                'driver_version': 'n/a',
-                'memory_gb': 0.0,  # Not directly available
-                'compute_units': 0,  # Not directly available
-                'metadata': {
-                    'mps_version': data.get('mps_version', 'unknown')
-                }
-            }
-            self.add_hardware_platform(mps_data)
-        
-        # Add OpenVINO
-        if 'openvino' in data and data['openvino'] is True:
-            openvino_data = {
-                'hardware_type': 'openvino',
-                'device_name': 'OpenVINO',
-                'platform': platform,
-                'driver_version': data.get('openvino_version', 'unknown'),
-                'memory_gb': 0.0,  # Not directly available
-                'compute_units': 0,  # Not directly available
-                'metadata': {
-                    'openvino_version': data.get('openvino_version', 'unknown')
-                }
-            }
-            self.add_hardware_platform(openvino_data)
-        
-        # Add WebNN
-        if 'webnn' in data and data['webnn'] is True:
-            webnn_data = {
-                'hardware_type': 'webnn',
-                'device_name': 'WebNN',
-                'platform': platform,
-                'driver_version': 'n/a',
-                'memory_gb': 0.0,  # Not directly available
-                'compute_units': 0,  # Not directly available
-                'metadata': {
-                    'browser': data.get('webnn_browser', 'unknown'),
-                    'user_agent': data.get('webnn_user_agent', '')
-                }
-            }
-            self.add_hardware_platform(webnn_data)
-        
-        # Add WebGPU
-        if 'webgpu' in data and data['webgpu'] is True:
-            webgpu_data = {
-                'hardware_type': 'webgpu',
-                'device_name': 'WebGPU',
-                'platform': platform,
-                'driver_version': 'n/a',
-                'memory_gb': 0.0,  # Not directly available
-                'compute_units': 0,  # Not directly available
-                'metadata': {
-                    'browser': data.get('webgpu_browser', 'unknown'),
-                    'user_agent': data.get('webgpu_user_agent', '')
-                }
-            }
-            self.add_hardware_platform(webgpu_data)
-    
-    def _migrate_compatibility_data(self, data: Dict, file_path: str) -> Dict[str, int]:
-        """
-        Migrate hardware compatibility data to the database.
-        
-        Args:
-            data: The loaded JSON data
-            file_path: Path to the source file
-            
-        Returns:
-            Dictionary with counts of migrated items
-        """
-        test_name = os.path.basename(file_path).replace('.json', '')
-        timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
-        
-        # Create a test run
-        run_data = {
-            'test_name': test_name,
-            'test_type': 'compatibility',
-            'started_at': timestamp,
-            'completed_at': timestamp,
-            'success': True,
-            'metadata': {'source_file': file_path}
-        }
-        run_id = self.add_test_run(run_data)
-        
-        # Process compatibility data
-        compat_count = 0
-        
-        # Handle different file formats
-        if 'tests' in data and isinstance(data['tests'], list):
-            # Multiple tests format
-            for test in data['tests']:
-                compat_count += self._add_compatibility_results(test, run_id, file_path)
-        elif 'compatibility' in data and isinstance(data['compatibility'], dict):
-            # Single model with multiple hardware compatibility
-            compat_count += self._add_compatibility_results(data, run_id, file_path)
-        else:
-            # Try to extract compatibility from structure
-            compat_count += self._add_compatibility_results(data, run_id, file_path)
-        
-        return {'run': 1, 'compatibility': compat_count}
-    
-    def _add_compatibility_results(self, data: Dict, run_id: int, file_path: str) -> int:
-        """
-        Add hardware compatibility results to the database.
-        
-        Args:
-            data: The compatibility data
-            run_id: The test run ID
-            file_path: Path to the source file
-            
-        Returns:
-            Number of compatibility records added
-        """
-        model_name = data.get('model', os.path.basename(file_path).split('_')[0])
-        model_id = self.get_or_add_model(model_name)
-        
-        count = 0
-        
-        # Get compatibility data
-        compat_data = data.get('compatibility', {})
-        if not compat_data and 'hardware_types' in data:
-            # Convert list of hardware types to compatibility dict
-            compat_data = {}
-            for hw_type in data.get('hardware_types', []):
-                is_compatible = data.get(hw_type, False)
-                error = data.get(f"{hw_type}_error", '')
-                compat_data[hw_type] = {
-                    'is_compatible': is_compatible,
-                    'error': error
-                }
-        
-        # Process each hardware type
-        for hw_type, hw_data in compat_data.items():
-            # Skip if not a dict
-            if not isinstance(hw_data, dict):
-                continue
-            
-            # Get hardware ID
-            device_name = hw_data.get('device_name', self._default_device_name(hw_type))
-            hardware_id = self.get_or_add_hardware(hw_type, device_name)
-            
-            # Extract compatibility info
-            is_compatible = hw_data.get('is_compatible', hw_data.get('compatible', False))
-            detection_success = hw_data.get('detection_success', True)
-            initialization_success = hw_data.get('initialization_success', is_compatible)
-            error_message = hw_data.get('error', hw_data.get('error_message', ''))
-            error_type = hw_data.get('error_type', '')
-            suggested_fix = hw_data.get('suggested_fix', hw_data.get('fix', ''))
-            workaround_available = hw_data.get('workaround_available', False)
-            compatibility_score = hw_data.get('compatibility_score', 1.0 if is_compatible else 0.0)
-            
-            # Collect additional metadata
-            metadata = {}
-            for k, v in hw_data.items():
-                if k not in ['is_compatible', 'compatible', 'detection_success', 'initialization_success',
-                           'error', 'error_message', 'error_type', 'suggested_fix', 'fix',
-                           'workaround_available', 'compatibility_score', 'device_name']:
-                    metadata[k] = v
-            
-            # Add compatibility record
-            try:
-                compat_id = self.conn.execute("""
-                SELECT MAX(compatibility_id) FROM hardware_compatibility
-                """).fetchone()[0]
-                compat_id = compat_id + 1 if compat_id is not None else 1
-                
-                self.conn.execute("""
-                INSERT INTO hardware_compatibility
-                (compatibility_id, run_id, model_id, hardware_id, is_compatible, detection_success,
-                 initialization_success, error_message, error_type, suggested_fix,
-                 workaround_available, compatibility_score, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [compat_id, run_id, model_id, hardware_id, is_compatible, detection_success,
-                      initialization_success, error_message, error_type, suggested_fix,
-                      workaround_available, compatibility_score, json.dumps(metadata)])
-                
-                count += 1
             except Exception as e:
-                logger.error(f"Error adding compatibility record: {e}")
+                logger.error(f"Error migrating file {file_path}: {e}")
+                return {'error': 1}
         
-        return count
-    
-    def _migrate_integration_data(self, data: Dict, file_path: str) -> Dict[str, int]:
-        """
-        Migrate integration test data to the database.
-        
-        Args:
-            data: The loaded JSON data
-            file_path: Path to the source file
+        def migrate_directory(self, directory: str, recursive: bool = True, 
+                            incremental: bool = True) -> Dict[str, int]:
+            """
+            Migrate all JSON files in a directory to the database.
             
-        Returns:
-            Dictionary with counts of migrated items
-        """
-        # This is a placeholder for future integration test migration
-        # Currently, we don't have a specific structure for integration test results
-        return {'skipped_integration': 1}
-    
-    def _save_processed_files(self) -> None:
-        """Save the list of processed files to disk"""
-        try:
-            with open(self.migrated_files_log, 'w') as f:
-                json.dump(list(self.processed_files), f)
+            Args:
+                directory: Directory containing JSON files
+                recursive: If True, search subdirectories
+                incremental: If True, only migrate files that haven't been processed before
+                
+            Returns:
+                Dictionary with counts of migrated items by type
+            """
+            # Find all JSON files
+            pattern = os.path.join(directory, "**/*.json") if recursive else os.path.join(directory, "*.json")
+            json_files = glob.glob(pattern, recursive=recursive)
+            
+            logger.info(f"Found {len(json_files)} JSON files in {directory}")
+            
+            # Process each file
+            total_counts = defaultdict(int)
+            for file_path in json_files:
+                counts = self.migrate_file(file_path, incremental)
+                for key, count in counts.items():
+                    total_counts[key] += count
+            
+            # Log the result
+            log_message = f"Migrated directory {directory}: "
+            log_message += ", ".join([f"{count} {item}" for item, count in total_counts.items()])
+            logger.info(log_message)
+            
+            return dict(total_counts)
+        
+        def cleanup_json_files(self, older_than_days: int = None, move_to: str = None, 
+                             delete: bool = False) -> int:
+            """
+            Clean up JSON files that have been migrated.
+            
+            Args:
+                older_than_days: Only process files older than this many days
+                move_to: Directory to move files to (None to leave in place)
+                delete: If True, delete files instead of moving them
+                
+            Returns:
+                Number of files processed
+            """
+            if not self.processed_files:
+                logger.info("No files have been migrated yet")
+                return 0
+            
+            # Calculate cutoff date if needed
+            cutoff_date = None
+            if older_than_days is not None:
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=older_than_days)
+            
+            count = 0
+            for file_path in self.processed_files:
+                # Skip files that don't exist
+                if not os.path.exists(file_path):
+                    continue
+                
+                # Check age if needed
+                if cutoff_date is not None:
+                    mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+                    if mtime > cutoff_date:
+                        continue
+                
+                # Process the file
+                if delete:
+                    try:
+                        os.remove(file_path)
+                        logger.debug(f"Deleted migrated file: {file_path}")
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"Error deleting file {file_path}: {e}")
+                elif move_to:
+                    try:
+                        # Create target directory if it doesn't exist
+                        os.makedirs(move_to, exist_ok=True)
+                        
+                        # Determine target path
+                        rel_path = os.path.basename(file_path)
+                        target_path = os.path.join(move_to, rel_path)
+                        
+                        # Move the file
+                        shutil.move(file_path, target_path)
+                        logger.debug(f"Moved migrated file: {file_path} -> {target_path}")
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"Error moving file {file_path}: {e}")
+            
+            if delete:
+                logger.info(f"Deleted {count} migrated files")
+            elif move_to:
+                logger.info(f"Moved {count} migrated files to {move_to}")
+            else:
+                logger.info(f"Found {count} files that could be processed")
+            
+            return count
+        
+        def reindex_models(self) -> Dict[str, int]:
+            """
+            Reindex models by analyzing compatible names and families.
+            
+            Returns:
+                Dictionary with counts of updated items
+            """
+            # Get all models
+            models_df = self.conn.execute("""
+            SELECT model_id, model_name, model_family, modality FROM models
+            """).fetchdf()
+            
+            updates = 0
+            family_updates = 0
+            modality_updates = 0
+            
+            # Update model families and modalities
+            for _, row in models_df.iterrows():
+                model_id = row['model_id']
+                model_name = row['model_name']
+                current_family = row['model_family']
+                current_modality = row['modality']
+                
+                # Infer model family if not set
+                if not current_family or current_family == 'unknown':
+                    new_family = self._infer_model_family(model_name)
+                    if new_family and new_family != 'unknown':
+                        self.conn.execute("""
+                        UPDATE models SET model_family = ? WHERE model_id = ?
+                        """, [new_family, model_id])
+                        family_updates += 1
+                
+                # Infer modality if not set
+                if not current_modality or current_modality == 'unknown':
+                    new_modality = self._infer_modality(model_name, current_family or self._infer_model_family(model_name))
+                    if new_modality and new_modality != 'unknown':
+                        self.conn.execute("""
+                        UPDATE models SET modality = ? WHERE model_id = ?
+                        """, [new_modality, model_id])
+                        modality_updates += 1
+            
+            # Handle special cases for popular model families
+            family_mapping = {
+                'bert': ['bert-base', 'bert-large', 'distilbert', 'roberta'],
+                't5': ['t5-small', 't5-base', 't5-large', 't5-efficient'],
+                'llama': ['llama', 'llama2', 'llama3', 'opt'],
+                'gpt': ['gpt2', 'gpt-neo', 'gpt-j'],
+                'clip': ['clip', 'chinese-clip'],
+                'vit': ['vit', 'deit'],
+                'whisper': ['whisper'],
+                'wav2vec2': ['wav2vec2']
+            }
+            
+            # Update models whose family can be inferred from name patterns
+            for family, patterns in family_mapping.items():
+                for pattern in patterns:
+                    self.conn.execute("""
+                    UPDATE models SET model_family = ? 
+                    WHERE model_family != ? AND model_name LIKE ?
+                    """, [family, family, f'%{pattern}%'])
+                
+                # Get number of updates
+                count = self.conn.execute("""
+                SELECT COUNT(*) FROM models WHERE model_family = ?
+                """, [family]).fetchone()[0]
+                
+                logger.debug(f"Model family '{family}': {count} models")
+                updates += count
+            
+            return {
+                'total_models': len(models_df),
+                'family_updates': family_updates,
+                'modality_updates': modality_updates,
+                'total_updates': updates
+            }
+        
+        def _detect_file_type(self, data: Dict, file_path: str) -> str:
+            """
+            Detect the type of a JSON file based on its content and filename.
+            
+            Args:
+                data: The loaded JSON data
+                file_path: Path to the JSON file
+                
+            Returns:
+                File type ('performance', 'hardware', 'compatibility', 'integration', or 'unknown')
+            """
+            filename = os.path.basename(file_path).lower()
+            
+            # Check for performance data
+            if ('throughput' in data or 'latency' in data or 'performance' in data or 'benchmark' in data or
+                'throughput_items_per_second' in data):
+                return 'performance'
+            elif any(x in filename for x in ['performance', 'benchmark', 'throughput', 'latency']):
+                return 'performance'
+            
+            # Check for hardware data
+            if any(k in data for k in ['cuda', 'rocm', 'mps', 'openvino', 'hardware_detection']):
+                return 'hardware'
+            elif any(x in filename for x in ['hardware', 'device', 'platform']):
+                return 'hardware'
+            
+            # Check for compatibility data
+            if any(k in data for k in ['compatibility', 'is_compatible']):
+                return 'compatibility'
+            elif any(x in filename for x in ['compatibility', 'matrix']):
+                return 'compatibility'
+            
+            # Check for integration test data
+            if any(k in data for k in ['test_results', 'assertions', 'tests']):
+                return 'integration'
+            elif any(x in filename for x in ['test', 'integration']):
+                return 'integration'
+            
+            # Default to unknown
+            return 'unknown'
+        
+        def _migrate_performance_data(self, data: Dict, file_path: str) -> Dict[str, int]:
+            """
+            Migrate performance benchmark data to the database.
+            
+            Args:
+                data: The loaded JSON data
+                file_path: Path to the source file
+                
+            Returns:
+                Dictionary with counts of migrated items
+            """
+            test_name = os.path.basename(file_path).replace('.json', '')
+            timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
+            
+            # Create a test run
+            run_data = {
+                'test_name': test_name,
+                'test_type': 'performance',
+                'started_at': timestamp,
+                'completed_at': timestamp,
+                'success': True,
+                'metadata': {'source_file': file_path}
+            }
+            run_id = self.add_test_run(run_data)
+            
+            # Process results
+            results_count = 0
+            
+            # Handle different file formats
+            if 'results' in data and isinstance(data['results'], list):
+                # Multiple results format
+                for result in data['results']:
+                    self._add_performance_result(result, data, run_id, file_path)
+                    results_count += 1
+            else:
+                # Single result format
+                self._add_performance_result(data, {}, run_id, file_path)
+                results_count += 1
+            
+            return {'run': 1, 'results': results_count}
+        
+        def _add_performance_result(self, result: Dict, parent_data: Dict, run_id: int, file_path: str) -> None:
+            """
+            Add a single performance result to the database.
+            
+            Args:
+                result: The result data
+                parent_data: Parent data for defaults
+                run_id: The test run ID
+                file_path: Path to the source file
+            """
+            # Extract model and hardware info
+            model_name = result.get('model', parent_data.get('model', 'unknown'))
+            hardware_type = result.get('hardware', parent_data.get('hardware', 'cpu'))
+            device_name = result.get('device', parent_data.get('device', self._default_device_name(hardware_type)))
+            
+            # Get or add model and hardware
+            model_id = self.get_or_add_model(model_name)
+            hardware_id = self.get_or_add_hardware(hardware_type, device_name)
+            
+            # Extract metrics
+            test_case = result.get('test_case', parent_data.get('test_case', self._infer_test_case(model_name)))
+            batch_size = int(result.get('batch_size', parent_data.get('batch_size', 1)))
+            precision = result.get('precision', parent_data.get('precision', 'fp32'))
+            
+            # Extract performance metrics
+            total_time_seconds = float(result.get('total_time', parent_data.get('total_time', 0.0)))
+            avg_latency = float(result.get('latency_avg', result.get('latency', parent_data.get('latency', 0.0))))
+            throughput = float(result.get('throughput', parent_data.get('throughput', 0.0)))
+            memory_peak = float(result.get('memory_peak', result.get('memory', parent_data.get('memory', 0.0))))
+            iterations = int(result.get('iterations', parent_data.get('iterations', 0)))
+            warmup_iterations = int(result.get('warmup_iterations', parent_data.get('warmup_iterations', 0)))
+            
+            # Extract additional metrics
+            metrics = {}
+            for k, v in result.items():
+                if k not in ['model', 'hardware', 'device', 'test_case', 'batch_size', 'precision',
+                            'total_time', 'latency_avg', 'latency', 'throughput', 'memory_peak',
+                            'memory', 'iterations', 'warmup_iterations']:
+                    metrics[k] = v
+            
+            # Add metrics from parent data if not in result
+            for k, v in parent_data.items():
+                if k not in result and k not in ['model', 'hardware', 'device', 'test_case', 
+                                                'batch_size', 'precision', 'total_time', 
+                                                'latency_avg', 'latency', 'throughput', 
+                                                'memory_peak', 'memory', 'iterations', 
+                                                'warmup_iterations', 'results', 'timestamp']:
+                    metrics[k] = v
+            
+            # Insert performance result
+            try:
+                result_id = self.conn.execute("""
+                SELECT MAX(result_id) FROM performance_results
+                """).fetchone()[0]
+                result_id = result_id + 1 if result_id is not None else 1
+                
+                self.conn.execute("""
+                INSERT INTO performance_results 
+                (result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
+                 total_time_seconds, average_latency_ms, throughput_items_per_second,
+                 memory_peak_mb, iterations, warmup_iterations, metrics)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, [result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
+                     total_time_seconds, avg_latency, throughput, memory_peak, iterations,
+                     warmup_iterations, json.dumps(metrics)])
+                
+            except Exception as e:
+                logger.error(f"Error adding performance result: {e}")
+        
+        def _migrate_hardware_data(self, data: Dict, file_path: str) -> Dict[str, int]:
+            """
+            Migrate hardware detection data to the database.
+            
+            Args:
+                data: The loaded JSON data
+                file_path: Path to the source file
+                
+            Returns:
+                Dictionary with counts of migrated items
+            """
+            test_name = os.path.basename(file_path).replace('.json', '')
+            timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
+            
+            # Create a test run
+            run_data = {
+                'test_name': test_name,
+                'test_type': 'hardware',
+                'started_at': timestamp,
+                'completed_at': timestamp,
+                'success': True,
+                'metadata': {'source_file': file_path}
+            }
+            run_id = self.add_test_run(run_data)
+            
+            # Add hardware platforms
+            hardware_count = 0
+            
+            # Process hardware data
+            self._add_hardware_from_data(data, run_id, file_path)
+            hardware_count += 1
+            
+            return {'run': 1, 'hardware': hardware_count}
+        
+        def _add_hardware_from_data(self, data: Dict, run_id: int, file_path: str) -> None:
+            """
+            Add hardware platforms from detection data.
+            
+            Args:
+                data: The hardware detection data
+                run_id: The test run ID
+                file_path: Path to the source file
+            """
+            # Extract system info
+            system_info = data.get('system', {})
+            platform = system_info.get('platform', 'unknown')
+            
+            # Add CPU
+            cpu_info = system_info.get('cpu_info', 'Unknown CPU')
+            memory_total = float(system_info.get('memory_total', 0.0))
+            memory_free = float(system_info.get('memory_free', 0.0))
+            
+            # Create hardware platform entry for CPU
+            cpu_data = {
+                'hardware_type': 'cpu',
+                'device_name': cpu_info,
+                'platform': platform,
+                'driver_version': 'n/a',
+                'memory_gb': memory_total / 1024 if memory_total > 1024 else memory_total,
+                'compute_units': system_info.get('cpu_count', 0),
+                'metadata': {
+                    'memory_free_gb': memory_free / 1024 if memory_free > 1024 else memory_free,
+                    'architecture': system_info.get('architecture', ''),
+                    'machine': system_info.get('machine', '')
+                }
+            }
+            self.add_hardware_platform(cpu_data)
+            
+            # Add CUDA devices
+            if 'cuda' in data and data['cuda'] is True and 'cuda_devices' in data:
+                for device in data['cuda_devices']:
+                    device_name = device.get('name', 'Unknown CUDA Device')
+                    total_memory = float(device.get('total_memory', 0.0))
+                    free_memory = float(device.get('free_memory', 0.0))
+                    
+                    cuda_data = {
+                        'hardware_type': 'cuda',
+                        'device_name': device_name,
+                        'platform': platform,
+                        'driver_version': data.get('cuda_driver_version', 'unknown'),
+                        'memory_gb': total_memory / 1024 if total_memory > 1024 else total_memory,
+                        'compute_units': 0,  # Not directly available
+                        'metadata': {
+                            'compute_capability': device.get('compute_capability', ''),
+                            'memory_free_gb': free_memory / 1024 if free_memory > 1024 else free_memory,
+                            'cuda_version': data.get('cuda_version', '')
+                        }
+                    }
+                    self.add_hardware_platform(cuda_data)
+            
+            # Add ROCm devices
+            if 'rocm' in data and data['rocm'] is True and 'rocm_devices' in data:
+                for device in data['rocm_devices']:
+                    device_name = device.get('name', 'Unknown ROCm Device')
+                    total_memory = float(device.get('total_memory', 0.0))
+                    free_memory = float(device.get('free_memory', 0.0))
+                    
+                    rocm_data = {
+                        'hardware_type': 'rocm',
+                        'device_name': device_name,
+                        'platform': platform,
+                        'driver_version': data.get('rocm_version', 'unknown'),
+                        'memory_gb': total_memory / 1024 if total_memory > 1024 else total_memory,
+                        'compute_units': 0,  # Not directly available
+                        'metadata': {
+                            'compute_capability': device.get('compute_capability', ''),
+                            'memory_free_gb': free_memory / 1024 if free_memory > 1024 else free_memory,
+                            'rocm_version': data.get('rocm_version', '')
+                        }
+                    }
+                    self.add_hardware_platform(rocm_data)
+            
+            # Add MPS
+            if 'mps' in data and data['mps'] is True:
+                mps_data = {
+                    'hardware_type': 'mps',
+                    'device_name': 'Apple Silicon',
+                    'platform': platform,
+                    'driver_version': 'n/a',
+                    'memory_gb': 0.0,  # Not directly available
+                    'compute_units': 0,  # Not directly available
+                    'metadata': {
+                        'mps_version': data.get('mps_version', 'unknown')
+                    }
+                }
+                self.add_hardware_platform(mps_data)
+            
+            # Add OpenVINO
+            if 'openvino' in data and data['openvino'] is True:
+                openvino_data = {
+                    'hardware_type': 'openvino',
+                    'device_name': 'OpenVINO',
+                    'platform': platform,
+                    'driver_version': data.get('openvino_version', 'unknown'),
+                    'memory_gb': 0.0,  # Not directly available
+                    'compute_units': 0,  # Not directly available
+                    'metadata': {
+                        'openvino_version': data.get('openvino_version', 'unknown')
+                    }
+                }
+                self.add_hardware_platform(openvino_data)
+            
+            # Add WebNN
+            if 'webnn' in data and data['webnn'] is True:
+                webnn_data = {
+                    'hardware_type': 'webnn',
+                    'device_name': 'WebNN',
+                    'platform': platform,
+                    'driver_version': 'n/a',
+                    'memory_gb': 0.0,  # Not directly available
+                    'compute_units': 0,  # Not directly available
+                    'metadata': {
+                        'browser': data.get('webnn_browser', 'unknown'),
+                        'user_agent': data.get('webnn_user_agent', '')
+                    }
+                }
+                self.add_hardware_platform(webnn_data)
+            
+            # Add WebGPU
+            if 'webgpu' in data and data['webgpu'] is True:
+                webgpu_data = {
+                    'hardware_type': 'webgpu',
+                    'device_name': 'WebGPU',
+                    'platform': platform,
+                    'driver_version': 'n/a',
+                    'memory_gb': 0.0,  # Not directly available
+                    'compute_units': 0,  # Not directly available
+                    'metadata': {
+                        'browser': data.get('webgpu_browser', 'unknown'),
+                        'user_agent': data.get('webgpu_user_agent', '')
+                    }
+                }
+                self.add_hardware_platform(webgpu_data)
+        
+        def _migrate_compatibility_data(self, data: Dict, file_path: str) -> Dict[str, int]:
+            """
+            Migrate hardware compatibility data to the database.
+            
+            Args:
+                data: The loaded JSON data
+                file_path: Path to the source file
+                
+            Returns:
+                Dictionary with counts of migrated items
+            """
+            test_name = os.path.basename(file_path).replace('.json', '')
+            timestamp = data.get('timestamp', self._extract_timestamp_from_filename(file_path))
+            
+            # Create a test run
+            run_data = {
+                'test_name': test_name,
+                'test_type': 'compatibility',
+                'started_at': timestamp,
+                'completed_at': timestamp,
+                'success': True,
+                'metadata': {'source_file': file_path}
+            }
+            run_id = self.add_test_run(run_data)
+            
+            # Process compatibility data
+            compat_count = 0
+            
+            # Handle different file formats
+            if 'tests' in data and isinstance(data['tests'], list):
+                # Multiple tests format
+                for test in data['tests']:
+                    compat_count += self._add_compatibility_results(test, run_id, file_path)
+            elif 'compatibility' in data and isinstance(data['compatibility'], dict):
+                # Single model with multiple hardware compatibility
+                compat_count += self._add_compatibility_results(data, run_id, file_path)
+            else:
+                # Try to extract compatibility from structure
+                compat_count += self._add_compatibility_results(data, run_id, file_path)
+            
+            return {'run': 1, 'compatibility': compat_count}
+        
+        def _add_compatibility_results(self, data: Dict, run_id: int, file_path: str) -> int:
+            """
+            Add hardware compatibility results to the database.
+            
+            Args:
+                data: The compatibility data
+                run_id: The test run ID
+                file_path: Path to the source file
+                
+            Returns:
+                Number of compatibility records added
+            """
+            model_name = data.get('model', os.path.basename(file_path).split('_')[0])
+            model_id = self.get_or_add_model(model_name)
+            
+            count = 0
+            
+            # Get compatibility data
+            compat_data = data.get('compatibility', {})
+            if not compat_data and 'hardware_types' in data:
+                # Convert list of hardware types to compatibility dict
+                compat_data = {}
+                for hw_type in data.get('hardware_types', []):
+                    is_compatible = data.get(hw_type, False)
+                    error = data.get(f"{hw_type}_error", '')
+                    compat_data[hw_type] = {
+                        'is_compatible': is_compatible,
+                        'error': error
+                    }
+            
+            # Process each hardware type
+            for hw_type, hw_data in compat_data.items():
+                # Skip if not a dict
+                if not isinstance(hw_data, dict):
+                    continue
+                
+                # Get hardware ID
+                device_name = hw_data.get('device_name', self._default_device_name(hw_type))
+                hardware_id = self.get_or_add_hardware(hw_type, device_name)
+                
+                # Extract compatibility info
+                is_compatible = hw_data.get('is_compatible', hw_data.get('compatible', False))
+                detection_success = hw_data.get('detection_success', True)
+                initialization_success = hw_data.get('initialization_success', is_compatible)
+                error_message = hw_data.get('error', hw_data.get('error_message', ''))
+                error_type = hw_data.get('error_type', '')
+                suggested_fix = hw_data.get('suggested_fix', hw_data.get('fix', ''))
+                workaround_available = hw_data.get('workaround_available', False)
+                compatibility_score = hw_data.get('compatibility_score', 1.0 if is_compatible else 0.0)
+                
+                # Collect additional metadata
+                metadata = {}
+                for k, v in hw_data.items():
+                    if k not in ['is_compatible', 'compatible', 'detection_success', 'initialization_success',
+                               'error', 'error_message', 'error_type', 'suggested_fix', 'fix',
+                               'workaround_available', 'compatibility_score', 'device_name']:
+                        metadata[k] = v
+                
+                # Add compatibility record
+                try:
+                    compat_id = self.conn.execute("""
+                    SELECT MAX(compatibility_id) FROM hardware_compatibility
+                    """).fetchone()[0]
+                    compat_id = compat_id + 1 if compat_id is not None else 1
+                    
+                    self.conn.execute("""
+                    INSERT INTO hardware_compatibility
+                    (compatibility_id, run_id, model_id, hardware_id, is_compatible, detection_success,
+                     initialization_success, error_message, error_type, suggested_fix,
+                     workaround_available, compatibility_score, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, [compat_id, run_id, model_id, hardware_id, is_compatible, detection_success,
+                          initialization_success, error_message, error_type, suggested_fix,
+                          workaround_available, compatibility_score, json.dumps(metadata)])
+                    
+                    count += 1
+                except Exception as e:
+                    logger.error(f"Error adding compatibility record: {e}")
+            
+            return count
+        
+        def _migrate_integration_data(self, data: Dict, file_path: str) -> Dict[str, int]:
+            """
+            Migrate integration test data to the database.
+            
+            Args:
+                data: The loaded JSON data
+                file_path: Path to the source file
+                
+            Returns:
+                Dictionary with counts of migrated items
+            """
+            # This is a placeholder for future integration test migration
+            # Currently, we don't have a specific structure for integration test results
+            return {'skipped_integration': 1}
+        
+        def _save_processed_files(self) -> None:
+            """Save the list of processed files to disk"""
+            try:
+                with open(self.migrated_files_log, 'w') as f:
+                    json.dump(list(self.processed_files), f)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         except Exception as e:
             logger.warning(f"Error saving processed files: {e}")
     

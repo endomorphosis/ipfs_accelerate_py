@@ -177,8 +177,8 @@ This ensures that the hardware selection system makes optimal recommendations ba
 
 With the core CI/CD integration complete, future enhancements could include:
 
-1. **Advanced Regression Analysis**: More sophisticated detection of performance regressions with ML-based anomaly detection
-2. **Automated Issue Creation**: Creating GitHub issues for detected regressions
+1. ✅ **Advanced Regression Analysis**: Time-series performance tracking with regression detection (Implemented March 7, 2025)
+2. ✅ **Automated Issue Creation**: GitHub issue creation for detected performance regressions (Implemented March 7, 2025)
 3. **Scheduled Benchmarks**: Regular benchmark runs on a schedule (e.g., weekly or monthly)
 4. **Cross-Branch Comparison**: Comparing performance between different branches
 5. **Pull Request Comments**: Automatically commenting on PRs with benchmark results

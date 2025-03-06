@@ -1,0 +1,41 @@
+{
+  "timestamp": "20250305_215053",
+  "system_info": {
+    "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+    "cpu": "x86_64",
+    "cuda_available": true,
+    "mps_available": false,
+    "openvino_available": true
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "openvino"
+  ],
+  "model_families": {
+    "vision": {
+      "models_tested": [
+        "google/vit-base-patch16-224",
+        "microsoft/resnet-50",
+        "facebook/convnext-tiny-224"
+      ],
+      "hardware_results": {
+        "cpu": {
+          "latency_ms": [
+            1811.35098139445,
+            385.21639704704285,
+            498.87803196907043
+          ],
+          "throughput": [
+            3.1014325759804486,
+            10.86860073447444,
+            9.032548783056955
+          ]
+        }
+      }
+    }
+  },
+  "performance_comparison": {
+    "vision": {}
+  }
+}

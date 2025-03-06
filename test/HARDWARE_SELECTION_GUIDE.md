@@ -1,8 +1,12 @@
-# Hardware Selection System Guide
+# Hardware Selection and Benchmarking System Guide
 
 ## Overview
 
-The Hardware Selection System is a key component of the IPFS Accelerate Python Framework's Phase 16 implementation, providing intelligent hardware recommendations for models based on comprehensive benchmark data, model characteristics, and task requirements. This guide explains how to use the hardware selection system to optimize model deployment across various hardware platforms.
+The Hardware Selection System is a key component of the IPFS Accelerate Python Framework's Phase 16 implementation, providing intelligent hardware recommendations for models based on comprehensive benchmark data, model characteristics, and task requirements. This guide explains how to use the enhanced hardware selection and benchmarking system to optimize model deployment across various hardware platforms.
+
+> **March 2025 Update**: This guide includes information about the latest enhancements to the hardware selection system, including improved reliability, robust fallback mechanisms, and the new Enhanced Hardware Benchmark Runner.
+
+> **Qualcomm Integration Update (March 2025)**: Full Qualcomm AI Engine/Hexagon DSP support has been integrated into the hardware selection and benchmarking system. All templates have been updated to support Qualcomm hardware acceleration. See the [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md) for details.
 
 ## Key Features
 
@@ -13,6 +17,10 @@ The Hardware Selection System is a key component of the IPFS Accelerate Python F
 - **Model Size Consideration**: Account for model size in hardware selection
 - **Fallback Recommendations**: Provide robust fallback options when primary hardware is unavailable
 - **Compatibility Checking**: Ensure hardware compatibility based on model family
+- **Enhanced Reliability**: Robust error handling and fallback mechanisms
+- **Automated Benchmarking**: Integrated benchmark runner with hardware auto-selection
+- **Database Integration**: Direct storage of benchmark results in DuckDB database
+- **Comprehensive Hardware Support**: Support for CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, and WebGPU
 
 ## Installation
 
@@ -283,6 +291,117 @@ benchmark_results/
 └── prediction_models/     # Trained prediction models
 ```
 
+## Enhanced Hardware Benchmark Runner
+
+The Enhanced Hardware Benchmark Runner is a new addition to the framework that provides automated benchmarking with built-in hardware selection.
+
+### Key Features
+
+- **Automated Hardware Selection**: Automatically selects optimal hardware for benchmarking
+- **Multiple Model Support**: Run benchmarks for multiple models in a single command
+- **Distributed Training Integration**: Automated configuration for distributed training benchmarks
+- **Database Integration**: Direct storage of results in the benchmark database
+- **Result Aggregation**: Combines results from multiple batch sizes and creates aggregate metrics
+- **Performance Reporting**: Generates comprehensive performance reports
+
+### Basic Usage
+
+```python
+from enhanced_hardware_benchmark_runner import EnhancedHardwareBenchmarkRunner
+
+# Initialize benchmark runner
+runner = EnhancedHardwareBenchmarkRunner()
+
+# Run benchmark with automatic hardware selection
+result = runner.run_benchmark(
+    model_name="bert-base-uncased",
+    model_family="embedding"
+)
+```
+
+### Command-Line Interface
+
+```bash
+# Run benchmark with automatic hardware selection
+python enhanced_hardware_benchmark_runner.py --model bert-base-uncased
+
+# Specify model family, hardware, and batch sizes
+python enhanced_hardware_benchmark_runner.py --model gpt2 --model-family text_generation --hardware cuda --batch-sizes 1,4,8
+
+# Run in training mode
+python enhanced_hardware_benchmark_runner.py --model bert-base-uncased --mode training
+```
+
+### Running Multiple Models
+
+```bash
+# Run benchmarks for multiple models and create report
+python enhanced_hardware_benchmark_runner.py --multiple-models --model-families embedding,vision --create-report
+```
+
+### Distributed Training Benchmarks
+
+```bash
+# Run distributed training benchmark
+python enhanced_hardware_benchmark_runner.py --model gpt2 --distributed --gpu-count 4 --max-memory-gb 16
+```
+
+### Database Integration
+
+```bash
+# Run benchmark and store results in database
+python enhanced_hardware_benchmark_runner.py --model bert-base-uncased --database-path ./benchmark_db.duckdb
+
+# Disable database storage
+python enhanced_hardware_benchmark_runner.py --model bert-base-uncased --no-database
+```
+
+## Fallback and Error Handling
+
+The system includes robust fallback mechanisms for handling various error scenarios:
+
+### Prediction Model Fallbacks
+
+When prediction models cannot be trained due to insufficient data:
+
+```python
+# Initialize selector with debug logging to see fallback behavior
+import logging
+logging.getLogger("hardware_selector").setLevel(logging.DEBUG)
+
+selector = HardwareSelector()
+
+# This will use fallback rules if no training data is available
+result = selector.select_hardware(
+    model_family="multimodal",  # May have limited training data
+    model_name="clip-vit-base-patch32",
+    batch_size=1,
+    mode="inference"
+)
+```
+
+### Hardware Unavailability
+
+When recommended hardware is not available:
+
+```python
+# Specify available hardware options
+available_hardware = ["cpu", "openvino"]  # No GPU available
+
+# Get recommendation for available hardware only
+result = selector.select_hardware(
+    model_family="text_generation",
+    model_name="gpt2",
+    batch_size=1,
+    mode="inference",
+    available_hardware=available_hardware
+)
+```
+
+### scikit-learn Unavailability
+
+The system works even when scikit-learn is not available, using rule-based fallbacks for hardware selection.
+
 ## Best Practices
 
 ### When to Use Each Hardware Type
@@ -397,13 +516,27 @@ To implement custom selection logic:
 
 ## Conclusion
 
-The Hardware Selection System provides a powerful, data-driven approach to choosing optimal hardware for model deployment. By leveraging benchmark data, model characteristics, and task requirements, it enables efficient use of available hardware resources.
+The Enhanced Hardware Selection and Benchmarking System provides a powerful, data-driven approach to choosing optimal hardware for model deployment and automating performance benchmarks. By leveraging benchmark data, model characteristics, and task requirements, it enables efficient use of available hardware resources.
+
+The March 2025 enhancements significantly improve the reliability and robustness of the system, ensuring consistent performance even in challenging environments or when dependencies are missing.
+
+Key improvements include:
+- Robust transaction handling in the benchmark database
+- Comprehensive fallback mechanisms for prediction models
+- Enhanced error handling throughout the system
+- New components like the Enhanced Hardware Benchmark Runner
+- Extensive test coverage for all critical components
+
+These enhancements ensure that the system can operate reliably in diverse computing environments with different hardware configurations, providing optimal performance recommendations even in edge cases.
 
 ---
 
 For more information, see related documentation:
-- [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md) - **NEW** Unified hardware selection and prediction system
-- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md)
-- [Web Platform Audio Testing Guide](WEB_PLATFORM_AUDIO_TESTING_GUIDE.md)
-- [Training Benchmark System](HARDWARE_MODEL_INTEGRATION_GUIDE.md)
-- [Phase 16 Implementation Update](PHASE16_IMPLEMENTATION_UPDATE.md)
+- [Phase 16 Improvements](PHASE16_IMPROVEMENTS.md) - Details about the recent reliability enhancements
+- [Hardware Model Predictor Guide](HARDWARE_MODEL_PREDICTOR_GUIDE.md) - Unified hardware selection and prediction system
+- [Hardware Benchmarking Guide](HARDWARE_BENCHMARKING_GUIDE.md) - Guide to benchmarking models on different hardware
+- [Web Platform Audio Testing Guide](WEB_PLATFORM_AUDIO_TESTING_GUIDE.md) - Specialized audio model testing for web platforms
+- [Training Benchmark System](HARDWARE_MODEL_INTEGRATION_GUIDE.md) - Guide to training benchmarks
+- [Phase 16 Implementation Summary](PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md) - Complete summary of Phase 16 implementation
+
+*Last updated: March 5, 2025*

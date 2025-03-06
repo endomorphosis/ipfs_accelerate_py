@@ -31,6 +31,19 @@ import traceback
 import gc
 import random
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -822,7 +835,12 @@ def main():
     parser.add_argument("--vision-input", action="store_true", help="Force vision input type")
     parser.add_argument("--multimodal-input", action="store_true", help="Force multimodal input type")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Run benchmark
     results = run_benchmark(args)
@@ -847,8 +865,13 @@ def main():
     # Save results to file
     if args.output:
         os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-        with open(args.output, 'w') as f:
-            json.dump(results, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+            with open(args.output, 'w') as f:
+                json.dump(results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         print(f"Results saved to {args.output}")
 
 if __name__ == "__main__":

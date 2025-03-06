@@ -7,6 +7,7 @@ This template includes support for all hardware platforms:
 - OpenVINO: Intel hardware acceleration
 - MPS: Apple Silicon GPU implementation
 - ROCm: AMD GPU implementation
+- Qualcomm: Qualcomm AI Engine/Hexagon DSP implementation
 - WebNN: Web Neural Network API (browser)
 - WebGPU: Web GPU API (browser)
 """
@@ -28,7 +29,7 @@ class MockHandler:
         print(f"Created mock handler for {platform}")
     
     def __call__(self, *args, **kwargs):
-        """Return mock output."""
+"""Return mock output."""
         print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
         return {"mock_output": f"Mock output for {self.platform}"}
 
@@ -36,7 +37,7 @@ class TestLlamaModel:
     """Test class for text_generation models."""
     
     def __init__(self, model_path=None):
-        """Initialize the test class."""
+"""Initialize the test class."""
         self.model_path = model_path or "model/path/here"
         self.device = "cpu"  # Default device
         self.platform = "CPU"  # Default platform
@@ -82,11 +83,11 @@ class TestLlamaModel:
         ]
     
     def get_model_path_or_name(self):
-        """Get the model path or name."""
+    # Get the model path or name.
         return self.model_path
 
 def init_cpu(self):
-    """Initialize for CPU platform."""
+"""Initialize for CPU platform."""
     
     self.platform = "CPU"
     self.device = "cpu"
@@ -94,7 +95,7 @@ def init_cpu(self):
     return True
 
 def init_cuda(self):
-    """Initialize for CUDA platform."""
+    # Initialize for CUDA platform.
     import torch
     self.platform = "CUDA"
     self.device = "cuda"
@@ -102,7 +103,7 @@ def init_cuda(self):
     return True
 
 def init_openvino(self):
-    """Initialize for OPENVINO platform."""
+"""Initialize for OPENVINO platform."""
     import openvino
     self.platform = "OPENVINO"
     self.device = "openvino"
@@ -110,7 +111,7 @@ def init_openvino(self):
     return True
 
 def init_mps(self):
-    """Initialize for MPS platform."""
+    # Initialize for MPS platform.
     import torch
     self.platform = "MPS"
     self.device = "mps"
@@ -118,7 +119,7 @@ def init_mps(self):
     return True
 
 def init_rocm(self):
-    """Initialize for ROCM platform."""
+"""Initialize for ROCM platform."""
     import torch
     self.platform = "ROCM"
     self.device = "rocm"
@@ -126,7 +127,7 @@ def init_rocm(self):
     return True
 
 def init_webgpu(self):
-    """Initialize for WEBGPU platform."""
+    # Initialize for WEBGPU platform.
     # WebGPU specific imports would be added at runtime
     self.platform = "WEBGPU"
     self.device = "webgpu"
@@ -134,49 +135,49 @@ def init_webgpu(self):
     return True
 
 def create_cpu_handler(self):
-    """Create handler for CPU platform."""
+"""Create handler for CPU platform."""
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
 def create_cuda_handler(self):
-    """Create handler for CUDA platform."""
+    # Create handler for CUDA platform.
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
 def create_openvino_handler(self):
-    """Create handler for OPENVINO platform."""
+"""Create handler for OPENVINO platform."""
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
 def create_mps_handler(self):
-    """Create handler for MPS platform."""
+    # Create handler for MPS platform.
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
 def create_rocm_handler(self):
-    """Create handler for ROCM platform."""
+"""Create handler for ROCM platform."""
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
 def create_webgpu_handler(self):
-    """Create handler for WEBGPU platform."""
+    # Create handler for WEBGPU platform.
     # Generic handler for unknown category
         model_path = self.get_model_path_or_name()
         handler = AutoModel.from_pretrained(model_path)
     return handler
 
     def run(self, platform="CPU"):
-        """Run the test on the specified platform."""
+"""Run the test on the specified platform."""
         platform = platform.lower()
         init_method = getattr(self, f"init_{platform}", None)
         
@@ -200,7 +201,7 @@ def create_webgpu_handler(self):
         return True
 
 def main():
-    """Run the test."""
+    # Run the test.
     import argparse
     parser = argparse.ArgumentParser(description="Test {category} models")
     parser.add_argument("--model", help="Model path or name")

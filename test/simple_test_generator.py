@@ -1,1061 +1,464 @@
 #!/usr/bin/env python3
 """
-Simple Test Generator
+Enhanced Test Generator with Hardware Support and Template Integration
 
-This is a simplified test generator that creates basic test files for Hugging Face models.
+This generator creates test files for Hugging Face models with comprehensive
+hardware platform support, including CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm,
+WebNN, and WebGPU.
+
+Usage:
+  python simple_test_generator.py -g bert -p all
+  python simple_test_generator.py -g vit -p cpu,cuda,webgpu -o test_vit_web.py
+  python simple_test_generator.py -g llama -p cpu,cuda --use-template
 """
 
 import os
 import sys
-import json
-import time
 import argparse
-import datetime
+import importlib.util
+import logging
 from pathlib import Path
-from typing import Dict, List, Any, Optional
 
-# Configure paths
-PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TEST_DIR = PROJECT_ROOT / "test"
-SKILLS_DIR = TEST_DIR / "skills"
-SAMPLE_DIR = TEST_DIR / "sample_tests"
-WORKER_SKILLSET = PROJECT_ROOT / "ipfs_accelerate_py" / "worker" / "skillset"
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("test_generator")
 
-# Template for generating tests
-def generate_test_file(model_type, output_dir=SAMPLE_DIR, force=False):
-    """Generate a test file for the specified model type with enhanced model registry."""
-    
-    # Normalize the model name
-    normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
-    
-    # Create the output file path
-    output_file = output_dir / f"test_hf_{normalized_name}.py"
-    
-    # Check if the file already exists and we're not forcing overwrite
-    if output_file.exists() and not force:
-        print(f"Test file already exists for {model_type}, use --force to overwrite")
-        return False
-    
-    # Check if we have a reference implementation in worker/skillset
-    reference_file = WORKER_SKILLSET / f"hf_{normalized_name}.py"
-    reference_exists = reference_file.exists()
-    
-    if reference_exists:
-        print(f"Found reference implementation at {reference_file}")
-    else:
-        print(f"No reference implementation found, using template")
-    
-    # Define template variables
-    template_vars = {
-        "model_type": model_type,
-        "normalized_name": normalized_name,
-        "camel_case_name": ''.join(word.capitalize() for word in normalized_name.split('_')),
-        "class_name": f"hf_{normalized_name}",
-        "timestamp": datetime.datetime.now().isoformat(),
-        "year": datetime.datetime.now().year,
-        "primary_task": "text-generation",  # Default task
-        "tasks": ["text-generation"],  # Default tasks
-        "hardware_backends": ["cpu", "cuda", "openvino", "apple", "qualcomm"],
-        # Default tensor types
-        "input_tensor_type": "int64",  # Default for token IDs
-        "output_tensor_type": "float32",  # Default for embeddings/logits
-        "uses_attention_mask": True,
-        "uses_position_ids": False,
-        "token_sequence_length": 512,  # Default sequence length
-        "embedding_dim": 768,  # Default embedding dimension
-        "model_precision": "float32",  # Default model precision
-        "supports_half_precision": True,  # Default support for FP16
-        "batch_processing": True,  # Whether model supports batched inputs
-        "helper_functions": ["tokenization", "device_management"]  # Default helpers
+# Check for DuckDB availability for template database
+HAS_DUCKDB = importlib.util.find_spec("duckdb") is not None
+if HAS_DUCKDB:
+    try:
+        import duckdb
+        logger.info("DuckDB available for template database integration")
+    except ImportError:
+        HAS_DUCKDB = False
+        logger.warning("Failed to import DuckDB")
+
+# Define constants
+DEFAULT_TEMPLATE_DB = "template_db.duckdb"
+
+def detect_hardware():
+    """Detect available hardware platforms."""
+    hardware = {
+        "cpu": True,  # CPU is always available
+        "cuda": False,
+        "rocm": False,
+        "mps": False,
+        "openvino": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
     }
     
-    # Update with model-specific task info if available
-    model_types_file = TEST_DIR / "huggingface_model_pipeline_map.json"
-    if model_types_file.exists():
-        try:
-            with open(model_types_file, 'r') as f:
-                pipeline_map = json.load(f)
-                if model_type in pipeline_map:
-                    template_vars["tasks"] = pipeline_map[model_type]
-                    template_vars["primary_task"] = pipeline_map[model_type][0] if pipeline_map[model_type] else "text-generation"
-                    
-                    # Update template variables based on task type
-                    primary_task = template_vars["primary_task"]
-                    
-                    # Image models
-                    if primary_task in ["image-classification", "object-detection", "image-segmentation", 
-                                      "depth-estimation", "feature-extraction"] and "image" in primary_task:
-                        template_vars["input_tensor_type"] = "float32"  # Image pixels as float32
-                        template_vars["uses_attention_mask"] = False
-                        template_vars["uses_position_ids"] = False
-                        template_vars["helper_functions"].append("image_processing")
-                        template_vars["embedding_dim"] = 1024  # Typical for vision models
-                        
-                    # Text generation models
-                    elif primary_task in ["text-generation", "summarization", "translation_XX_to_YY"]:
-                        template_vars["input_tensor_type"] = "int64"  # Token IDs
-                        template_vars["uses_attention_mask"] = True
-                        template_vars["helper_functions"].append("tokenization")
-                        template_vars["helper_functions"].append("generation_config")
-                        
-                    # Multimodal models
-                    elif primary_task in ["image-to-text", "visual-question-answering"]:
-                        template_vars["input_tensor_type"] = "mixed"  # Both image and text inputs
-                        template_vars["uses_attention_mask"] = True
-                        template_vars["helper_functions"].append("image_processing")
-                        template_vars["helper_functions"].append("tokenization")
-                        template_vars["helper_functions"].append("multimodal_inputs")
-                        
-                    # Audio models
-                    elif primary_task in ["automatic-speech-recognition", "audio-classification", "text-to-audio"]:
-                        template_vars["input_tensor_type"] = "float32"  # Audio features
-                        template_vars["uses_attention_mask"] = True
-                        template_vars["helper_functions"].append("audio_processing")
-                        template_vars["token_sequence_length"] = 16000  # 1s of audio at 16kHz
-                        
-                    # Embedding models
-                    elif primary_task in ["feature-extraction"]:
-                        if "image" in " ".join(template_vars["tasks"]):
-                            template_vars["input_tensor_type"] = "float32"  # Image pixels
-                            template_vars["helper_functions"].append("image_processing")
-                        else:
-                            template_vars["input_tensor_type"] = "int64"  # Token IDs
-                            template_vars["helper_functions"].append("tokenization")
-                        
-                    # Ensure unique helper functions
-                    template_vars["helper_functions"] = list(set(template_vars["helper_functions"]))
-                    
-        except Exception as e:
-            print(f"Error loading pipeline map: {e}")
+    # Check for PyTorch
+    try:
+        import torch
+        
+        # CUDA detection
+        hardware["cuda"] = torch.cuda.is_available()
+        
+        # ROCm detection
+        if hasattr(torch, "_C") and hasattr(torch._C, "_rocm_version"):
+            hardware["rocm"] = True
+        elif "ROCM_HOME" in os.environ:
+            hardware["rocm"] = True
+            
+        # MPS (Apple Silicon) detection
+        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+            hardware["mps"] = torch.mps.is_available()
+        
+        logger.info(f"PyTorch detected with CUDA: {hardware['cuda']}, ROCm: {hardware['rocm']}, MPS: {hardware['mps']}")
+    except ImportError:
+        logger.warning("PyTorch not available, hardware detection limited")
     
-    # Generate the test file content
-    # This template is based on the current structure of ipfs_accelerate_py worker/skillset modules
-    template = f"""#!/usr/bin/env python3
-\"\"\"
-Test implementation for {model_type}
-
-This file provides a standardized test interface for {model_type} models
-across different hardware backends (CPU, CUDA, OpenVINO, Apple, Qualcomm).
-
-Generated by template_test_generator.py - {template_vars['timestamp']}
-\"\"\"
-
-import os
-import sys
-import json
-import time
-import datetime
-import traceback
-from unittest.mock import patch, MagicMock
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Third-party imports
-import numpy as np
-
-# Try/except pattern for optional dependencies
-try:
-    import torch
-    TORCH_AVAILABLE = True
-except ImportError:
-    torch = MagicMock()
-    TORCH_AVAILABLE = False
-    print("Warning: torch not available, using mock implementation")
-
-try:
-    import transformers
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    transformers = MagicMock()
-    TRANSFORMERS_AVAILABLE = False
-    print("Warning: transformers not available, using mock implementation")
-
-# Model type: {model_type}
-# Primary task: {template_vars['primary_task']}
-# All tasks: {', '.join(template_vars['tasks'])}
-# Input tensor type: {template_vars['input_tensor_type']}
-# Output tensor type: {template_vars['output_tensor_type']}
-# Uses attention mask: {template_vars['uses_attention_mask']}
-# Helper functions: {', '.join(template_vars['helper_functions'])}
-
-# Model Registry - Contains metadata about available models for this type
-MODEL_REGISTRY = {{
-    # Default/small model configuration
-    "{model_type}": {{
-        "description": "Default {model_type} model",
-        "embedding_dim": {template_vars['embedding_dim']},
-        "sequence_length": {template_vars['token_sequence_length']},
-        "model_precision": "{template_vars['model_precision']}", 
-        "supports_half_precision": {template_vars['supports_half_precision']},
-        "supports_cpu": True,
-        "supports_cuda": True,
-        "supports_openvino": True,
-        "default_batch_size": 1
-    }},
-    # Add more model variants as needed
-}}
-
-class {template_vars['class_name']}:
-    \"\"\"
-    {model_type.capitalize()} implementation.
+    # OpenVINO detection
+    hardware["openvino"] = importlib.util.find_spec("openvino") is not None
     
-    This class provides standardized interfaces for working with {model_type} models
-    across different hardware backends (CPU, CUDA, OpenVINO, Apple, Qualcomm).
-    \"\"\"
+    # Qualcomm detection
+    hardware["qualcomm"] = (
+        importlib.util.find_spec("qnn_wrapper") is not None or
+        importlib.util.find_spec("qti") is not None or
+        "QUALCOMM_SDK" in os.environ
+    )
     
-    def __init__(self, resources=None, metadata=None):
-        \"\"\"Initialize the {model_type} model.
+    # WebNN detection
+    hardware["webnn"] = (
+        importlib.util.find_spec("webnn") is not None or
+        "WEBNN_AVAILABLE" in os.environ or
+        "WEBNN_SIMULATION" in os.environ
+    )
+    
+    # WebGPU detection
+    hardware["webgpu"] = (
+        importlib.util.find_spec("webgpu") is not None or
+        importlib.util.find_spec("wgpu") is not None or
+        "WEBGPU_AVAILABLE" in os.environ or
+        "WEBGPU_SIMULATION" in os.environ
+    )
+    
+    # Log detected hardware
+    available_hw = [hw for hw, available in hardware.items() if available]
+    logger.info(f"Detected hardware: {', '.join(available_hw)}")
+    
+    return hardware
+
+def get_template_from_db(model_type, template_type="test", platform=None, db_path=None):
+    """
+    Get a template from the template database.
+    
+    Args:
+        model_type: Type of model (bert, t5, etc.)
+        template_type: Type of template (test, base, etc.)
+        platform: Optional platform specific template
+        db_path: Path to template database
         
-        Args:
-            resources (dict): Dictionary of shared resources (torch, transformers, etc.)
-            metadata (dict): Configuration metadata
-        \"\"\"
-        self.resources = resources or {{
-            "torch": torch,
-            "numpy": np,
-            "transformers": transformers
-        }}
-        self.metadata = metadata or {{}}
-        
-        # Handler creation methods
-        self.create_cpu_text_embedding_endpoint_handler = self.create_cpu_text_embedding_endpoint_handler
-        self.create_cuda_text_embedding_endpoint_handler = self.create_cuda_text_embedding_endpoint_handler
-        self.create_openvino_text_embedding_endpoint_handler = self.create_openvino_text_embedding_endpoint_handler
-        self.create_apple_text_embedding_endpoint_handler = self.create_apple_text_embedding_endpoint_handler
-        self.create_qualcomm_text_embedding_endpoint_handler = self.create_qualcomm_text_embedding_endpoint_handler
-        
-        # Initialization methods
-        self.init = self.init_cpu  # Default to CPU
-        self.init_cpu = self.init_cpu
-        self.init_cuda = self.init_cuda
-        self.init_openvino = self.init_openvino
-        self.init_apple = self.init_apple
-        self.init_qualcomm = self.init_qualcomm
-        
-        # Test methods
-        self.__test__ = self.__test__
-        
-        # Hardware-specific utilities
-        self.snpe_utils = None  # Qualcomm SNPE utils
-        
-        # Set up model registry and hardware detection
-        self.model_registry = MODEL_REGISTRY
-        self.hardware_capabilities = self._detect_hardware()
-        
-        # Set up tensor type information
-        self.tensor_types = {{
-            "input": "{template_vars['input_tensor_type']}",
-            "output": "{template_vars['output_tensor_type']}",
-            "uses_attention_mask": {template_vars['uses_attention_mask']},
-            "uses_position_ids": {template_vars['uses_position_ids']},
-            "embedding_dim": {template_vars['embedding_dim']},
-            "default_sequence_length": {template_vars['token_sequence_length']}
-        }}
+    Returns:
+        Template string or None if not found
+    """
+    if not HAS_DUCKDB:
+        logger.warning("DuckDB not available, cannot use template database")
         return None
     
-    def _detect_hardware(self):
-        """Detect available hardware and return capabilities dictionary."""
-        capabilities = {{
-            "cpu": True,
-            "cuda": False,
-            "cuda_version": None,
-            "cuda_devices": 0,
-            "mps": False,
-            "openvino": False,
-            "qualcomm": False
-        }}
-        
-        # Check CUDA
-        if TORCH_AVAILABLE:
-            capabilities["cuda"] = torch.cuda.is_available()
-            if capabilities["cuda"]:
-                capabilities["cuda_devices"] = torch.cuda.device_count()
-                if hasattr(torch.version, "cuda"):
-                    capabilities["cuda_version"] = torch.version.cuda
-        
-        # Check MPS (Apple Silicon)
-        if TORCH_AVAILABLE and hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
-            capabilities["mps"] = torch.mps.is_available()
-        
-        # Check OpenVINO
-        try:
-            import openvino
-            capabilities["openvino"] = True
-        except ImportError:
-            pass
-            
-        # Check for Qualcomm AI Engine Direct SDK
-        try:
-            import qti.aisw.dlc_utils
-            capabilities["qualcomm"] = True
-        except ImportError:
-            pass
-            
-        return capabilities
+    db_path = db_path or DEFAULT_TEMPLATE_DB
+    if not os.path.exists(db_path):
+        logger.warning(f"Template database not found at {db_path}")
+        return None
     
-    def _get_model_tensor_types(self, model_id=None):
-        """Get tensor type information for a specific model."""
-        model_id = model_id or "{model_type}"
-        if model_id in self.model_registry:
-            config = self.model_registry[model_id]
-            return {{
-                "embedding_dim": config.get("embedding_dim", {template_vars['embedding_dim']}),
-                "sequence_length": config.get("sequence_length", {template_vars['token_sequence_length']}),
-                "precision": config.get("model_precision", "{template_vars['model_precision']}"),
-                "supports_half": config.get("supports_half_precision", {template_vars['supports_half_precision']})
-            }}
-        return self.tensor_types
-    
-    # Model-specific processing helpers based on task type
-    
-    def _process_text_input(self, text, tokenizer=None, max_length=None):
-        """Process text input for text-based models."""
-        if tokenizer is None:
-            tokenizer = self._create_mock_processor()
-            
-        max_length = max_length or self.tensor_types["default_sequence_length"]
+    try:
+        conn = duckdb.connect(db_path)
         
-        # Tokenize input
-        if isinstance(text, str):
-            inputs = tokenizer(text, return_tensors="pt", padding="max_length", 
-                             truncation=True, max_length=max_length)
+        # Query for the template
+        if platform:
+            query = """
+            SELECT template FROM templates 
+            WHERE model_type = ? AND template_type = ? AND platform = ?
+            ORDER BY id DESC LIMIT 1
+            """
+            result = conn.execute(query, [model_type, template_type, platform]).fetchone()
         else:
-            inputs = tokenizer(list(text), return_tensors="pt", padding="max_length", 
-                             truncation=True, max_length=max_length)
-            
-        return inputs
+            query = """
+            SELECT template FROM templates 
+            WHERE model_type = ? AND template_type = ? AND platform IS NULL
+            ORDER BY id DESC LIMIT 1
+            """
+            result = conn.execute(query, [model_type, template_type]).fetchone()
         
-    def _process_image_input(self, image_input, processor=None):
-        """Process image input for vision-based models."""
-        if processor is None:
-            # Create a simple mock image processor
-            from unittest.mock import MagicMock
-            processor = MagicMock()
-            processor.return_value = {{"pixel_values": torch.rand((1, 3, 224, 224))}}
-            
-        # Handle file paths, URLs, PIL images, etc.
-        if isinstance(image_input, str):
-            # Mock image processing
-            return {{"pixel_values": torch.rand((1, 3, 224, 224))}}
-        elif isinstance(image_input, list):
-            # Batch of images
-            batch_size = len(image_input)
-            return {{"pixel_values": torch.rand((batch_size, 3, 224, 224))}}
+        conn.close()
+        
+        if result and result[0]:
+            logger.info(f"Found template for {model_type} ({template_type})")
+            return result[0]
         else:
-            # Assume direct tensor input
-            return {{"pixel_values": image_input}}
+            logger.warning(f"No template found for {model_type} ({template_type})")
+            return None
             
-    def _process_audio_input(self, audio_input, processor=None, sampling_rate=16000):
-        """Process audio input for audio-based models."""
-        if processor is None:
-            # Create a simple mock audio processor
-            from unittest.mock import MagicMock
-            processor = MagicMock()
+    except Exception as e:
+        logger.error(f"Error retrieving template from database: {e}")
+        return None
+
+def detect_model_category(model_name):
+    """
+    Detect the category of a model based on its name.
+    
+    Args:
+        model_name: Name of the model
+        
+    Returns:
+        Category string: text, vision, audio, multimodal, or video
+    """
+    model_lower = model_name.lower()
+    
+    # Text models
+    if any(name in model_lower for name in ["bert", "gpt", "t5", "llama", "roberta", "mistral"]):
+        return "text"
+    
+    # Vision models
+    if any(name in model_lower for name in ["vit", "resnet", "deit", "detr"]):
+        return "vision"
+    
+    # Audio models
+    if any(name in model_lower for name in ["wav2vec", "whisper", "clap", "hubert"]):
+        return "audio"
+    
+    # Multimodal models
+    if any(name in model_lower for name in ["clip", "blip", "llava", "fuyu"]):
+        return "multimodal"
+    
+    # Video models
+    if any(name in model_lower for name in ["videomae", "xclip", "vivit"]):
+        return "video"
+    
+    # Default to text
+    return "text"
+
+def generate_test(model, platform="all", output_file=None, use_template=False, template_db=None):
+    """
+    Generate a test file for the given model and platform.
+    
+    Args:
+        model: Model name to generate test for
+        platform: Hardware platform(s) to include (comma-separated or 'all')
+        output_file: Optional output file path
+        use_template: Whether to use templates from the database
+        template_db: Optional path to template database
+        
+    Returns:
+        Path to the generated file
+    """
+    # Set output file path
+    if output_file:
+        file_name = output_file
+    else:
+        file_name = f"test_hf_{model.replace('-', '_')}.py"
+    
+    # Determine platforms to include
+    all_platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
+    platforms = all_platforms if platform == "all" else [p.strip() for p in platform.split(",")]
+    
+    # Detect model category
+    model_category = detect_model_category(model)
+    logger.info(f"Detected model category: {model_category}")
+    
+    # Check if we should use a template
+    model_base = model.split("-")[0].lower()
+    template = None
+    if use_template:
+        template = get_template_from_db(model_base, "test", None, template_db)
+        if not template:
+            # Try using category template as fallback
+            template = get_template_from_db(model_category, "test", None, template_db)
+            if template:
+                logger.info(f"Using category template for {model_category}")
+    
+    # Generate the test file
+    with open(file_name, "w") as f:
+        if template:
+            # Replace placeholders in the template
+            filled_template = template.replace("{{model_name}}", model)
+            filled_template = filled_template.replace("{{model_category}}", model_category)
             
-        # Mock audio processing
-        if isinstance(audio_input, str):
-            # Assuming audio_input is a file path
-            return {{"input_features": torch.rand((1, 80, 3000))}}
-        elif isinstance(audio_input, list):
-            # Batch of audio inputs
-            batch_size = len(audio_input)
-            return {{"input_features": torch.rand((batch_size, 80, 3000))}}
+            # Fix the class name placeholder if it exists
+            class_name_placeholder = "{{model_name.replace(\"-\", \"\").capitalize()}}"
+            if class_name_placeholder in filled_template:
+                # Get properly capitalized class name
+                class_name = model.replace("-", "").capitalize()
+                filled_template = filled_template.replace(class_name_placeholder, class_name)
+            
+            # Write the filled template
+            f.write(filled_template)
+            logger.info(f"Generated test file using template from database")
         else:
-            # Assume direct tensor input
-            return {{"input_features": audio_input}}
-    
-    def _create_mock_processor(self):
-        \"\"\"Create a mock processor/tokenizer for testing.\"\"\"
-        class MockProcessor:
-            def __init__(self):
-                self.vocab_size = 30000
-                
-            def __call__(self, text, **kwargs):
-                # Handle both single strings and batches
-                if isinstance(text, str):
-                    batch_size = 1
-                else:
-                    batch_size = len(text)
-                    
-                return {{
-                    "input_ids": torch.ones((batch_size, 10), dtype=torch.long),
-                    "attention_mask": torch.ones((batch_size, 10), dtype=torch.long)
-                }}
-                
-            def decode(self, token_ids, **kwargs):
-                return "Decoded text from mock processor"
-        
-        return MockProcessor()
-
-    def _create_mock_endpoint(self):
-        \"\"\"Create a mock endpoint/model for testing.\"\"\"
-        class MockEndpoint:
-            def __init__(self):
-                self.config = type('obj', (object,), {{
-                    'hidden_size': 768,
-                    'max_position_embeddings': 512
-                }})
-                
-            def eval(self):
-                return self
-                
-            def to(self, device):
-                return self
-                
-            def __call__(self, **kwargs):
-                # Handle inputs
-                batch_size = kwargs.get("input_ids").shape[0]
-                seq_len = kwargs.get("input_ids").shape[1]
-                
-                # Create mock output
-                output = type('obj', (object,), {{}})
-                output.last_hidden_state = torch.rand((batch_size, seq_len, 768))
-                
-                return output
-        
-        return MockEndpoint()
-
-    def init_cpu(self, model_name, model_type, device="cpu", **kwargs):
-        \"\"\"Initialize model for CPU inference.
-        
-        Args:
-            model_name (str): Model identifier
-            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
-            device (str): CPU identifier ('cpu')
+            # Use the standard built-in template
+            logger.info(f"Using built-in template (no database template found)")
             
-        Returns:
-            Tuple of (endpoint, processor, handler, queue, batch_size)
-        \"\"\"
-        try:
-            import asyncio
-            
-            # Create processor and endpoint
-            processor = self._create_mock_processor()
-            endpoint = self._create_mock_endpoint()
-            
-            # Create handler
-            handler = self.create_cpu_text_embedding_endpoint_handler(
-                endpoint_model=model_name,
-                device=device,
-                hardware_label="cpu",
-                endpoint=endpoint,
-                tokenizer=processor
-            )
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = 1
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing CPU model: {{e}}")
-            traceback.print_exc()
-            
-            # Return mock components on error
-            import asyncio
-            handler = lambda x: {{"output": "Mock CPU output", "input": x, "implementation_type": "MOCK"}}
-            return None, None, handler, asyncio.Queue(32), 1
-
-    def init_cuda(self, model_name, model_type, device_label="cuda:0", **kwargs):
-        \"\"\"Initialize model for CUDA inference.
-        
-        Args:
-            model_name (str): Model identifier
-            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
-            device_label (str): GPU device ('cuda:0', 'cuda:1', etc.)
-            
-        Returns:
-            Tuple of (endpoint, processor, handler, queue, batch_size)
-        \"\"\"
-        try:
-            import asyncio
-            
-            # Create processor and endpoint
-            processor = self._create_mock_processor()
-            endpoint = self._create_mock_endpoint()
-            
-            # Move to CUDA
-            endpoint = endpoint.to(device_label)
-            
-            # Create handler
-            handler = self.create_cuda_text_embedding_endpoint_handler(
-                endpoint_model=model_name,
-                device=device_label,
-                hardware_label=device_label,
-                endpoint=endpoint,
-                tokenizer=processor,
-                is_real_impl=True,
-                batch_size=4
-            )
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = 4  # Default to larger batch size for CUDA
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing CUDA model: {{e}}")
-            traceback.print_exc()
-            
-            # Return mock components on error
-            import asyncio
-            handler = lambda x: {{"output": "Mock CUDA output", "input": x, "implementation_type": "MOCK"}}
-            return None, None, handler, asyncio.Queue(32), 2
-
-    def init_openvino(self, model_name, model_type, device="CPU", **kwargs):
-        \"\"\"Initialize model for OpenVINO inference.
-        
-        Args:
-            model_name (str): Model identifier
-            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
-            device (str): OpenVINO device ('CPU', 'GPU', etc.)
-            
-        Returns:
-            Tuple of (endpoint, processor, handler, queue, batch_size)
-        \"\"\"
-        try:
-            import asyncio
-            import numpy as np
-            
-            # Create processor and endpoint (OpenVINO-specific)
-            processor = self._create_mock_processor()
-            
-            # Create OpenVINO-style endpoint
-            class MockOpenVINOModel:
-                def infer(self, inputs):
-                    batch_size = 1
-                    seq_len = 10
-                    if isinstance(inputs, dict) and 'input_ids' in inputs:
-                        if hasattr(inputs['input_ids'], 'shape'):
-                            batch_size = inputs['input_ids'].shape[0]
-                            if len(inputs['input_ids'].shape) > 1:
-                                seq_len = inputs['input_ids'].shape[1]
-                    
-                    # Return OpenVINO-style output
-                    return {{"last_hidden_state": np.random.rand(batch_size, seq_len, 768).astype(np.float32)}}
-            
-            endpoint = MockOpenVINOModel()
-            
-            # Create handler
-            handler = self.create_openvino_text_embedding_endpoint_handler(
-                endpoint_model=model_name,
-                tokenizer=processor,
-                openvino_label=device,
-                endpoint=endpoint
-            )
-            
-            # Create queue
-            queue = asyncio.Queue(64)
-            batch_size = 1
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing OpenVINO model: {{e}}")
-            traceback.print_exc()
-            
-            # Return mock components on error
-            import asyncio
-            handler = lambda x: {{"output": "Mock OpenVINO output", "input": x, "implementation_type": "MOCK"}}
-            return None, None, handler, asyncio.Queue(64), 1
-
-    def init_apple(self, model_name, model_type, device="mps", **kwargs):
-        \"\"\"Initialize model for Apple Silicon (M1/M2/M3) inference.
-        
-        Args:
-            model_name (str): Model identifier
-            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
-            device (str): Device identifier ('mps')
-            
-        Returns:
-            Tuple of (endpoint, processor, handler, queue, batch_size)
-        \"\"\"
-        try:
-            import asyncio
-            
-            # Create processor and endpoint
-            processor = self._create_mock_processor()
-            endpoint = self._create_mock_endpoint()
-            
-            # Move to MPS
-            if TORCH_AVAILABLE and hasattr(torch, 'mps') and hasattr(torch.mps, 'is_available') and torch.mps.is_available():
-                endpoint = endpoint.to('mps')
-            
-            # Create handler
-            handler = self.create_apple_text_embedding_endpoint_handler(
-                endpoint_model=model_name,
-                apple_label=device,
-                endpoint=endpoint,
-                tokenizer=processor
-            )
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = 2
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing Apple Silicon model: {{e}}")
-            traceback.print_exc()
-            
-            # Return mock components on error
-            import asyncio
-            handler = lambda x: {{"output": "Mock Apple Silicon output", "input": x, "implementation_type": "MOCK"}}
-            return None, None, handler, asyncio.Queue(32), 2
-
-    def init_qualcomm(self, model_name, model_type, device="qualcomm", **kwargs):
-        \"\"\"Initialize model for Qualcomm AI inference.
-        
-        Args:
-            model_name (str): Model identifier
-            model_type (str): Type of model ('{template_vars['primary_task']}', etc.)
-            device (str): Device identifier ('qualcomm')
-            
-        Returns:
-            Tuple of (endpoint, processor, handler, queue, batch_size)
-        \"\"\"
-        try:
-            import asyncio
-            import numpy as np
-            
-            # Create processor
-            processor = self._create_mock_processor()
-            
-            # Create Qualcomm-style endpoint
-            class MockQualcommModel:
-                def execute(self, inputs):
-                    batch_size = 1
-                    seq_len = 10
-                    if isinstance(inputs, dict) and 'input_ids' in inputs:
-                        if hasattr(inputs['input_ids'], 'shape'):
-                            batch_size = inputs['input_ids'].shape[0]
-                            if len(inputs['input_ids'].shape) > 1:
-                                seq_len = inputs['input_ids'].shape[1]
-                    
-                    # Return Qualcomm-style output
-                    return {{"output": np.random.rand(batch_size, seq_len, 768).astype(np.float32)}}
-            
-            endpoint = MockQualcommModel()
-            
-            # Create handler
-            handler = self.create_qualcomm_text_embedding_endpoint_handler(
-                endpoint_model=model_name,
-                qualcomm_label=device,
-                endpoint=endpoint,
-                tokenizer=processor
-            )
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = 1
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing Qualcomm model: {{e}}")
-            traceback.print_exc()
-            
-            # Return mock components on error
-            import asyncio
-            handler = lambda x: {{"output": "Mock Qualcomm output", "input": x, "implementation_type": "MOCK"}}
-            return None, None, handler, asyncio.Queue(32), 1
-
-    # Handler creation methods
-    def create_cpu_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None):
-        \"\"\"Create a handler function for CPU inference.
-        
-        Args:
-            endpoint_model: Model name
-            device: Device to run on ('cpu')
-            hardware_label: Label for the endpoint
-            endpoint: Model endpoint
-            tokenizer: Tokenizer for the model
-            
-        Returns:
-            A handler function that accepts text input and returns embeddings
-        \"\"\"
-        # Create a handler that works with the endpoint and tokenizer
-        def handler(text_input):
-            try:
-                # This should match how the actual handler would process data
-                import torch
-                
-                # Create mock output with appropriate structure
-                batch_size = 1 if isinstance(text_input, str) else len(text_input)
-                tensor_output = torch.rand((batch_size, 768))  # Standard embedding size
-                
-                # Return dictionary with tensor and metadata instead of adding attributes to tensor
-                return {{
-                    "tensor": tensor_output,
-                    "implementation_type": "MOCK",
-                    "device": "cpu",
-                    "model": endpoint_model
-                }}
-            except Exception as e:
-                print(f"Error in CPU handler: {{e}}")
-                # Return a simple dict on error
-                return {{"output": "Error in CPU handler", "implementation_type": "MOCK"}}
-                
-        return handler
-
-    def create_cuda_text_embedding_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, tokenizer=None, is_real_impl=False, batch_size=1):
-        \"\"\"Create a handler function for CUDA inference.
-        
-        Args:
-            endpoint_model: Model name
-            device: Device to run on ('cuda:0', etc.)
-            hardware_label: Label for the endpoint
-            endpoint: Model endpoint
-            tokenizer: Tokenizer for the model
-            is_real_impl: Whether this is a real implementation
-            batch_size: Batch size for processing
-            
-        Returns:
-            A handler function that accepts text input and returns embeddings
-        \"\"\"
-        # Create a handler that works with the endpoint and tokenizer
-        def handler(text_input):
-            try:
-                # This should match how the actual handler would process data
-                import torch
-                
-                # Create mock output with appropriate structure
-                batch_size = 1 if isinstance(text_input, str) else len(text_input)
-                tensor_output = torch.rand((batch_size, 768))  # Standard embedding size
-                
-                # Return dictionary with tensor and metadata instead of adding attributes to tensor
-                return {{
-                    "tensor": tensor_output,
-                    "implementation_type": "MOCK",
-                    "device": device,
-                    "model": endpoint_model,
-                    "is_cuda": True
-                }}
-            except Exception as e:
-                print(f"Error in CUDA handler: {{e}}")
-                # Return a simple dict on error
-                return {{"output": "Error in CUDA handler", "implementation_type": "MOCK"}}
-                
-        return handler
-
-    def create_openvino_text_embedding_endpoint_handler(self, endpoint_model, tokenizer, openvino_label, endpoint=None):
-        \"\"\"Create a handler function for OpenVINO inference.
-        
-        Args:
-            endpoint_model: Model name
-            tokenizer: Tokenizer for the model
-            openvino_label: Label for the endpoint
-            endpoint: OpenVINO model endpoint
-            
-        Returns:
-            A handler function that accepts text input and returns embeddings
-        \"\"\"
-        # Create a handler that works with the endpoint and tokenizer
-        def handler(text_input):
-            try:
-                # This should match how the actual handler would process data
-                import torch
-                
-                # Create mock output with appropriate structure
-                batch_size = 1 if isinstance(text_input, str) else len(text_input)
-                tensor_output = torch.rand((batch_size, 768))  # Standard embedding size
-                
-                # Return dictionary with tensor and metadata instead of adding attributes to tensor
-                return {{
-                    "tensor": tensor_output,
-                    "implementation_type": "MOCK",
-                    "device": "OpenVINO",
-                    "model": endpoint_model,
-                    "is_openvino": True
-                }}
-            except Exception as e:
-                print(f"Error in OpenVINO handler: {{e}}")
-                # Return a simple dict on error
-                return {{"output": "Error in OpenVINO handler", "implementation_type": "MOCK"}}
-                
-        return handler
-
-    def create_apple_text_embedding_endpoint_handler(self, endpoint_model, apple_label, endpoint=None, tokenizer=None):
-        \"\"\"Create a handler function for Apple Silicon inference.
-        
-        Args:
-            endpoint_model: Model name
-            apple_label: Label for the endpoint
-            endpoint: Model endpoint
-            tokenizer: Tokenizer for the model
-            
-        Returns:
-            A handler function that accepts text input and returns embeddings
-        \"\"\"
-        # Create a handler that works with the endpoint and tokenizer
-        def handler(text_input):
-            try:
-                # This should match how the actual handler would process data
-                import torch
-                
-                # Create mock output with appropriate structure
-                batch_size = 1 if isinstance(text_input, str) else len(text_input)
-                tensor_output = torch.rand((batch_size, 768))  # Standard embedding size
-                
-                # Return dictionary with tensor and metadata instead of adding attributes to tensor
-                return {{
-                    "tensor": tensor_output,
-                    "implementation_type": "MOCK",
-                    "device": "MPS",
-                    "model": endpoint_model,
-                    "is_mps": True
-                }}
-            except Exception as e:
-                print(f"Error in Apple Silicon handler: {{e}}")
-                # Return a simple dict on error
-                return {{"output": "Error in Apple Silicon handler", "implementation_type": "MOCK"}}
-                
-        return handler
-
-    def create_qualcomm_text_embedding_endpoint_handler(self, endpoint_model, qualcomm_label, endpoint=None, tokenizer=None):
-        \"\"\"Create a handler function for Qualcomm AI inference.
-        
-        Args:
-            endpoint_model: Model name
-            qualcomm_label: Label for the endpoint
-            endpoint: Model endpoint
-            tokenizer: Tokenizer for the model
-            
-        Returns:
-            A handler function that accepts text input and returns embeddings
-        \"\"\"
-        # Create a handler that works with the endpoint and tokenizer
-        def handler(text_input):
-            try:
-                # This should match how the actual handler would process data
-                import torch
-                
-                # Create mock output with appropriate structure
-                batch_size = 1 if isinstance(text_input, str) else len(text_input)
-                tensor_output = torch.rand((batch_size, 768))  # Standard embedding size
-                
-                # Return dictionary with tensor and metadata instead of adding attributes to tensor
-                return {{
-                    "tensor": tensor_output,
-                    "implementation_type": "MOCK",
-                    "device": "Qualcomm",
-                    "model": endpoint_model,
-                    "is_qualcomm": True
-                }}
-            except Exception as e:
-                print(f"Error in Qualcomm handler: {{e}}")
-                # Return a simple dict on error
-                return {{"output": "Error in Qualcomm handler", "implementation_type": "MOCK"}}
-                
-        return handler
-
-    def __test__(self):
-        \"\"\"Run tests for this model implementation.\"\"\"
-        results = {{}}
-        examples = []
-        
-        # Test on CPU
-        try:
-            print("Testing {model_type} on CPU...")
-            endpoint, processor, handler, queue, batch_size = self.init_cpu(
-                model_name="test-{model_type}-model",
-                model_type="{template_vars['primary_task']}"
-            )
-            
-            # Test with simple input
-            input_text = "This is a test input for {model_type}"
-            output = handler(input_text)
-            
-            # Process with model-specific helpers
-            processed_input = None
-            primary_task = "{template_vars['primary_task']}"
-            
-            if "image" in primary_task:
-                processed_input = self._process_image_input(input_text)
-            elif "audio" in primary_task:
-                processed_input = self._process_audio_input(input_text)
-            else:
-                processed_input = self._process_text_input(input_text)
-                
-            # Get model tensor type info
-            tensor_types = self._get_model_tensor_types()
-            
-            # Record results
-            examples.append({{
-                "platform": "CPU",
-                "input": input_text,
-                "output_type": f"container: {{str(type(output))}}, tensor: {{str(type(output.get('tensor', output)))}}",
-                "implementation_type": output.get("implementation_type", "UNKNOWN"),
-                "tensor_types": tensor_types,
-                "hardware": self.hardware_capabilities
-            }})
-            
-            results["cpu_test"] = "Success"
-        except Exception as e:
-            print(f"Error testing on CPU: {{e}}")
-            traceback.print_exc()
-            results["cpu_test"] = f"Error: {{str(e)}}"
-        
-        # Test on CUDA if available
-        if TORCH_AVAILABLE and hasattr(torch, 'cuda') and torch.cuda.is_available():
-            try:
-                print("Testing {model_type} on CUDA...")
-                endpoint, processor, handler, queue, batch_size = self.init_cuda(
-                    model_name="test-{model_type}-model",
-                    model_type="{template_vars['primary_task']}"
-                )
-                
-                # Test with simple input
-                input_text = "This is a test input for {model_type} on CUDA"
-                output = handler(input_text)
-                
-                # Process with model-specific helpers
-                processed_input = None
-                primary_task = "{template_vars['primary_task']}"
-                
-                if "image" in primary_task:
-                    processed_input = self._process_image_input(input_text)
-                elif "audio" in primary_task:
-                    processed_input = self._process_audio_input(input_text)
-                else:
-                    processed_input = self._process_text_input(input_text)
-                
-                # Get model tensor type info
-                tensor_types = self._get_model_tensor_types()
-                
-                # Record results
-                examples.append({{
-                    "platform": "CUDA",
-                    "input": input_text,
-                    "output_type": f"container: {{str(type(output))}}, tensor: {{str(type(output.get('tensor', output)))}}",
-                    "implementation_type": output.get("implementation_type", "UNKNOWN"),
-                    "tensor_types": tensor_types,
-                    "hardware": self.hardware_capabilities
-                }})
-                
-                results["cuda_test"] = "Success"
-            except Exception as e:
-                print(f"Error testing on CUDA: {{e}}")
-                traceback.print_exc()
-                results["cuda_test"] = f"Error: {{str(e)}}"
-        else:
-            results["cuda_test"] = "CUDA not available"
-        
-        # Return test results
-        return {{
-            "results": results,
-            "examples": examples,
-            "timestamp": datetime.datetime.now().isoformat()
-        }}
-
-# Helper function to run the test
-def run_test():
-    \"\"\"Run a simple test of the {model_type} implementation.\"\"\"
-    print(f"Testing {model_type} implementation...")
-    
-    # Create instance
-    model = {template_vars['class_name']}()
-    
-    # Run test
-    test_results = model.__test__()
-    
-    # Print results
-    print("\\nTest Results:")
-    for platform, result in test_results["results"].items():
-        print(f"- {{platform}}: {{result}}")
-    
-    print("\\nExamples:")
-    for example in test_results["examples"]:
-        print(f"- Platform: {{example['platform']}}")
-        print(f"  Input: {{example['input']}}")
-        print(f"  Output Type: {{example['output_type']}}")
-        print(f"  Implementation: {{example['implementation_type']}}")
-        
-        # Print tensor type information
-        if 'tensor_types' in example:
-            print(f"  Tensor Types:")
-            for k, v in example['tensor_types'].items():
-                print(f"    {k}: {v}")
-                
-        # Print hardware capabilities
-        if 'hardware' in example:
-            print(f"  Hardware Capabilities:")
-            for k, v in example['hardware'].items():
-                if v is not None and v is not False:
-                    print(f"    {k}: {v}")
-        print("")
-    
-    return test_results
-
-if __name__ == "__main__":
-    run_test()
+            # Write file header and imports
+            f.write(f'''#!/usr/bin/env python3
 """
-    
-    # Write the test file
-    with open(output_file, 'w') as f:
-        f.write(template)
-    
-    print(f"Generated test file: {output_file}")
-    return True
-
-def main():
-    """Simple test generator main function."""
-    if len(sys.argv) < 2:
-        print("Usage: python simple_test_generator.py MODEL_NAME [OUTPUT_DIR]")
-        return 1
-        
-    model_name = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else str(SAMPLE_DIR)
-    
-    # Create output directory
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate a simple test file
-    print(f"Generating test file for {model_name}...")
-    
-    # Basic template for a test file - simplified version
-    template = f"""#!/usr/bin/env python3
-\"\"\"Simple test for {model_name}\"\"\"
+Test file for {model} with cross-platform hardware support
+"""
 
 import os
 import sys
+import unittest
+import importlib.util
+import logging
 import torch
-import numpy as np
 from transformers import AutoModel, AutoTokenizer
 
-# Test {model_name}
-def test_{model_name.replace('-', '_')}():
-    print(f"Testing {model_name}")
-    
-    # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("{model_name}")
-    model = AutoModel.from_pretrained("{model_name}")
-    
-    # Test with a simple input
-    text = "This is a test input for {model_name}"
-    inputs = tokenizer(text, return_tensors="pt")
-    
-    # Run model
-    with torch.no_grad():
-        outputs = model(**inputs)
-    
-    # Print results
-    print(f"Input: {{text}}")
-    print(f"Output shape: {{outputs.last_hidden_state.shape}}")
-    
-    return True
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
+# Hardware detection
+HAS_CUDA = torch.cuda.is_available() if hasattr(torch, "cuda") else False
+HAS_MPS = hasattr(torch, "mps") and torch.mps.is_available() if hasattr(torch, "mps") else False
+HAS_ROCM = (hasattr(torch, "_C") and hasattr(torch._C, "_rocm_version")) if hasattr(torch, "_C") else False
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or 
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+class Test{model.replace("-", "").capitalize()}(unittest.TestCase):
+    """Test {model} model with hardware platform support."""
+    
+    def setUp(self):
+        """Set up the test environment."""
+        self.model_name = "{model}"
+        self.tokenizer = None
+        self.model = None
+''')
+            
+            # Add test methods for each platform
+            for p in platforms:
+                skip_checks = []
+                device_setup = []
+                
+                # Add platform-specific checks
+                if p == "cuda":
+                    skip_checks.append('if not HAS_CUDA: self.skipTest("CUDA not available")')
+                    device_setup.append('device = "cuda"')
+                elif p == "rocm":
+                    skip_checks.append('if not HAS_ROCM: self.skipTest("ROCm not available")')
+                    device_setup.append('device = "cuda"  # ROCm uses CUDA API')
+                elif p == "mps":
+                    skip_checks.append('if not HAS_MPS: self.skipTest("MPS not available")')
+                    device_setup.append('device = "mps"')
+                elif p == "openvino":
+                    skip_checks.append('if not HAS_OPENVINO: self.skipTest("OpenVINO not available")')
+                    device_setup.append('device = "cpu"  # OpenVINO uses CPU for PyTorch API')
+                elif p == "qualcomm":
+                    skip_checks.append('if not HAS_QUALCOMM: self.skipTest("Qualcomm AI Engine not available")')
+                    device_setup.append('device = "cpu"  # Qualcomm uses CPU for PyTorch API')
+                elif p == "webnn":
+                    skip_checks.append('if not HAS_WEBNN: self.skipTest("WebNN not available")')
+                    device_setup.append('device = "cpu"  # WebNN uses CPU for PyTorch API')
+                elif p == "webgpu":
+                    skip_checks.append('if not HAS_WEBGPU: self.skipTest("WebGPU not available")')
+                    device_setup.append('device = "cpu"  # WebGPU uses CPU for PyTorch API')
+                else:
+                    # Default to CPU
+                    device_setup.append('device = "cpu"')
+                
+                # Create skip checks string
+                skip_checks_str = "\n        ".join(skip_checks)
+                
+                # Create device setup string
+                device_setup_str = "\n        ".join(device_setup)
+                
+                # Add the test method
+                f.write(f'''
+    def test_{p}(self):
+        """Test {model} on {p} platform."""
+        # Skip if hardware not available
+        {skip_checks_str}
+        
+        # Set up device
+        {device_setup_str}
+        
+        try:
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            
+            # Load model
+            self.model = AutoModel.from_pretrained(self.model_name)
+            
+            # Move model to device if needed
+            if device != "cpu":
+                self.model = self.model.to(device)
+            
+            # Test basic functionality
+            inputs = self.tokenizer("Hello, world!", return_tensors="pt")
+            
+            # Move inputs to device if needed
+            if device != "cpu":
+                inputs = {{k: v.to(device) for k, v in inputs.items()}}
+            
+            # Run inference
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            
+            # Verify outputs
+            self.assertIsNotNone(outputs)
+            
+            # Log success
+            logger.info(f"Successfully tested {{self.model_name}} on {p}")
+            
+        except Exception as e:
+            logger.error(f"Error testing {{self.model_name}} on {p}: {{str(e)}}")
+            raise
+''')
+            
+            # Add main section
+            f.write('''
 if __name__ == "__main__":
-    test_{model_name.replace('-', '_')}()
-"""
+    unittest.main()
+''')
     
-    # Write to output file
-    output_file = output_dir / f"test_{model_name.replace('-', '_')}.py"
-    with open(output_file, 'w') as f:
-        f.write(template)
+    logger.info(f"Generated test file: {file_name}")
+    return file_name
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Enhanced test generator with hardware support")
+    parser.add_argument("-g", "--generate", type=str, help="Model to generate test for")
+    parser.add_argument("-p", "--platform", type=str, default="all", 
+                      help="Platform(s) to test on (comma-separated or 'all')")
+    parser.add_argument("-o", "--output", type=str, help="Output file path (default: test_<model>.py)")
+    parser.add_argument("-t", "--use-template", action="store_true", 
+                      help="Use template from database if available")
+    parser.add_argument("-d", "--template-db", type=str, default=DEFAULT_TEMPLATE_DB,
+                      help=f"Path to template database (default: {DEFAULT_TEMPLATE_DB})")
+    parser.add_argument("--detect-hardware", action="store_true",
+                      help="Detect available hardware platforms and exit")
+    parser.add_argument("--list-templates", action="store_true",
+                      help="List available templates in the database")
     
-    print(f"Generated test file: {output_file}")
-    return 0
+    args = parser.parse_args()
+    
+    # Check if we should detect hardware
+    if args.detect_hardware:
+        detect_hardware()
+        return 0
+    
+    # Check if we should list templates
+    if args.list_templates:
+        if not HAS_DUCKDB:
+            logger.error("DuckDB not available, cannot list templates")
+            return 1
+        
+        if not os.path.exists(args.template_db):
+            logger.error(f"Template database not found at {args.template_db}")
+            return 1
+        
+        try:
+            conn = duckdb.connect(args.template_db)
+            templates = conn.execute("""
+                SELECT model_type, template_type, platform, id, created_at
+                FROM templates
+                ORDER BY model_type, template_type, platform
+            """).fetchall()
+            
+            if templates:
+                print(f"Found {len(templates)} templates in {args.template_db}:")
+                for t in templates:
+                    platform_str = f", platform={t[2]}" if t[2] else ""
+                    print(f"  - {t[0]} (type={t[1]}{platform_str}, id={t[3]})")
+            else:
+                print(f"No templates found in {args.template_db}")
+                
+            conn.close()
+            return 0
+        except Exception as e:
+            logger.error(f"Error listing templates: {e}")
+            return 1
+    
+    # Generate test file if model is specified
+    if args.generate:
+        output_file = generate_test(
+            model=args.generate, 
+            platform=args.platform, 
+            output_file=args.output,
+            use_template=args.use_template,
+            template_db=args.template_db
+        )
+        print(f"Generated test file: {output_file}")
+        return 0
+    else:
+        parser.print_help()
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

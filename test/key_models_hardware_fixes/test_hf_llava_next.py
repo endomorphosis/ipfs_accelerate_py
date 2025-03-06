@@ -643,10 +643,10 @@ class test_hf_llava_next:
                 with patch('coremltools.convert') as mock_convert:
                     mock_convert.return_value = MagicMock()
                     
-                    endpoint, processor, handler, queue, batch_size = self.llava.init_apple(
+                    endpoint, processor, handler, queue, batch_size = self.llava.init_mps(
                         self.model_name,
                         "mps",
-                        "apple:0"
+                        "mps"
                     )
                     
                     valid_init = handler is not None

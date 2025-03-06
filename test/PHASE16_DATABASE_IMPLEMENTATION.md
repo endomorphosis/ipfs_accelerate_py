@@ -323,6 +323,26 @@ Recent additions to the database implementation include:
 
 See [PHASE16_WEB_DATABASE_INTEGRATION.md](PHASE16_WEB_DATABASE_INTEGRATION.md) for details on these enhancements.
 
+## Current Implementation Status: Dual Output Approach
+
+It's important to note the current implementation status regarding JSON file generation:
+
+1. **Dual Output System**: All benchmark tools currently implement a dual-output strategy, where results are stored in:
+   - Traditional JSON files (for backward compatibility)
+   - The new DuckDB database (for advanced analytics and efficient storage)
+
+2. **Transition Period**: We are in a transition period where both storage methods are active simultaneously:
+   - JSON files remain the primary output format for many tools
+   - Database storage happens in parallel for tools that have been updated
+   - Environment variable `DEPRECATE_JSON_OUTPUT=1` is available but not enabled by default
+
+3. **Backward Compatibility**: The dual approach ensures compatibility with:
+   - Legacy tools that expect JSON files
+   - Existing processes and visualization tools
+   - Historical analysis workflows
+
+As shown in recent benchmark output, JSON files continue to be generated alongside database entries.
+
 ## Future Enhancements
 
 Now that the database implementation is complete, future enhancements could include:
@@ -332,7 +352,7 @@ Now that the database implementation is complete, future enhancements could incl
 3. **Real-time Dashboard**: Create a dynamic web dashboard for real-time monitoring of benchmarks
 4. **Cloud Integration**: Extend database capabilities to support cloud storage and multi-user access
 5. **Advanced Regression Analysis**: Develop more sophisticated regression detection algorithms with root cause analysis
-6. **Complete JSON Deprecation**: Set `DEPRECATE_JSON_OUTPUT=1` as the default in the next release
+6. **Complete JSON Deprecation**: Set `DEPRECATE_JSON_OUTPUT=1` as the default in a future release after ensuring all tools are fully compatible with database-only operation
 7. **Database Schema Versioning**: Add version tracking to schema for future migrations
 
 ## Documentation

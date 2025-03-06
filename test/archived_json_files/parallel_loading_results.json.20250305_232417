@@ -1,0 +1,244 @@
+{
+  "multimodal": {
+    "model_type": "multimodal",
+    "model_name": "openai/clip-vit-base-patch32",
+    "with_parallel": {
+      "success": true,
+      "model_type": "multimodal",
+      "model_name": "openai/clip-vit-base-patch32",
+      "implementation_type": "REAL_WEBGPU",
+      "parallel_loading_enabled": true,
+      "initialization_time_ms": 394.93513107299805,
+      "first_inference_time_ms": 82.17382431030273,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 2.514171600341797,
+        "min_inference_time_ms": 2.4862289428710938,
+        "max_inference_time_ms": 2.555370330810547,
+        "std_dev_ms": 0.024566787369861544
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 125.0,
+        "shader_compilation_stats": {
+          "total_compilation_time_ms": 206.08956147664742,
+          "cached_shaders_used": 123,
+          "new_shaders_compiled": 40,
+          "peak_memory_bytes": 288207,
+          "shader_count": 25,
+          "cache_hit_rate": 0.754601226993865
+        },
+        "parallel_loading_enabled": true,
+        "parallel_loading_stats": {
+          "total_load_time_ms": 269.03414726257324,
+          "sequential_load_time_ms": 474.3364616827906,
+          "parallel_load_time_ms": 269.03414726257324,
+          "time_saved_ms": 205.3023144202174,
+          "percent_improvement": 43.28200149148812,
+          "components_loaded": 3,
+          "load_complete": true
+        },
+        "percent_loading_improvement": 43.28200149148812,
+        "model_optimization_level": "maximum"
+      }
+    },
+    "without_parallel": {
+      "success": true,
+      "model_type": "multimodal",
+      "model_name": "openai/clip-vit-base-patch32",
+      "implementation_type": "REAL_WEBGPU",
+      "parallel_loading_enabled": false,
+      "initialization_time_ms": 121.19555473327637,
+      "first_inference_time_ms": 80.80387115478516,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 2.496957778930664,
+        "min_inference_time_ms": 2.4216175079345703,
+        "max_inference_time_ms": 2.574443817138672,
+        "std_dev_ms": 0.05053866547858638
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 120.0,
+        "shader_compilation_stats": {
+          "total_compilation_time_ms": 199.54902238063318,
+          "cached_shaders_used": 123,
+          "new_shaders_compiled": 39,
+          "peak_memory_bytes": 305663,
+          "shader_count": 24,
+          "cache_hit_rate": 0.7592592592592593
+        },
+        "parallel_loading_enabled": false,
+        "parallel_loading_stats": {
+          "total_load_time_ms": 524.3717638500856,
+          "sequential_load_time_ms": 524.3717638500856,
+          "parallel_load_time_ms": 524.3717638500856,
+          "time_saved_ms": 0.0,
+          "percent_improvement": 0.0,
+          "components_loaded": 3,
+          "load_complete": true
+        },
+        "percent_loading_improvement": 0.0,
+        "model_optimization_level": "maximum"
+      }
+    },
+    "improvements": {
+      "initialization_time_percent": -225.86602036861808,
+      "first_inference_percent": -1.6954053511784632,
+      "load_time_percent": 0
+    }
+  },
+  "vision-language": {
+    "model_type": "vision-language",
+    "model_name": "llava-hf/llava-1.5-7b-hf",
+    "with_parallel": {
+      "success": true,
+      "model_type": "vision-language",
+      "model_name": "llava-hf/llava-1.5-7b-hf",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": true,
+      "initialization_time_ms": 116.27197265625,
+      "first_inference_time_ms": 4.700183868408203,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.008249282836914062,
+        "min_inference_time_ms": 0.005245208740234375,
+        "max_inference_time_ms": 0.014543533325195312,
+        "std_dev_ms": 0.003440504838475694
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 115.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "without_parallel": {
+      "success": true,
+      "model_type": "vision-language",
+      "model_name": "llava-hf/llava-1.5-7b-hf",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": false,
+      "initialization_time_ms": 130.45120239257812,
+      "first_inference_time_ms": 0.025510787963867188,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.010013580322265625,
+        "min_inference_time_ms": 0.0064373016357421875,
+        "max_inference_time_ms": 0.019550323486328125,
+        "std_dev_ms": 0.00503283493116713
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 130.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "improvements": {
+      "initialization_time_percent": 10.86937450653566,
+      "first_inference_percent": -18324.29906542056,
+      "load_time_percent": 0
+    }
+  },
+  "multi-task": {
+    "model_type": "multi-task",
+    "model_name": "facebook/bart-large-mnli",
+    "with_parallel": {
+      "success": true,
+      "model_type": "multi-task",
+      "model_name": "facebook/bart-large-mnli",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": true,
+      "initialization_time_ms": 115.75913429260254,
+      "first_inference_time_ms": 0.05817413330078125,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.028562545776367188,
+        "min_inference_time_ms": 0.021219253540039062,
+        "max_inference_time_ms": 0.05125999450683594,
+        "std_dev_ms": 0.011439521194726542
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 115.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "without_parallel": {
+      "success": true,
+      "model_type": "multi-task",
+      "model_name": "facebook/bart-large-mnli",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": false,
+      "initialization_time_ms": 115.98610877990723,
+      "first_inference_time_ms": 0.05817413330078125,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.030946731567382812,
+        "min_inference_time_ms": 0.021219253540039062,
+        "max_inference_time_ms": 0.051975250244140625,
+        "std_dev_ms": 0.011556195504352976
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 115.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "improvements": {
+      "initialization_time_percent": 0.19569109584958097,
+      "first_inference_percent": 0.0,
+      "load_time_percent": 0
+    }
+  },
+  "multi-encoder": {
+    "model_type": "multi-encoder",
+    "model_name": "microsoft/resnet-50",
+    "with_parallel": {
+      "success": true,
+      "model_type": "multi-encoder",
+      "model_name": "microsoft/resnet-50",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": true,
+      "initialization_time_ms": 135.89811325073242,
+      "first_inference_time_ms": 0.05888938903808594,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.027036666870117188,
+        "min_inference_time_ms": 0.020503997802734375,
+        "max_inference_time_ms": 0.04601478576660156,
+        "std_dev_ms": 0.009601610825544477
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 135.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "without_parallel": {
+      "success": true,
+      "model_type": "multi-encoder",
+      "model_name": "microsoft/resnet-50",
+      "implementation_type": "SIMULATION",
+      "parallel_loading_enabled": false,
+      "initialization_time_ms": 100.97455978393555,
+      "first_inference_time_ms": 0.06866455078125,
+      "parallel_load_time_ms": 0,
+      "performance": {
+        "iterations": 5,
+        "avg_inference_time_ms": 0.028467178344726562,
+        "min_inference_time_ms": 0.021696090698242188,
+        "max_inference_time_ms": 0.05054473876953125,
+        "std_dev_ms": 0.01107412595138152
+      },
+      "performance_metrics": {
+        "shader_compilation_ms": 100.0,
+        "model_optimization_level": "medium"
+      }
+    },
+    "improvements": {
+      "initialization_time_percent": -34.5864874692457,
+      "first_inference_percent": 14.23611111111111,
+      "load_time_percent": 0
+    }
+  }
+}

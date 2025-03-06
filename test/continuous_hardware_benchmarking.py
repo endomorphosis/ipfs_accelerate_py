@@ -11,6 +11,19 @@ from pathlib import Path
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple, Union
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -114,34 +127,48 @@ class HardwareBenchmark:
         """Load the benchmark database or create a new one if it doesn't exist"""
         if self.database_path.exists():
             try:
-                with open(self.database_path, 'r') as f:
-                    database = json.load(f)
-                logger.info(f"Loaded benchmark database with {len(database.get('results', []))} entries")
-                return database
-            except Exception as e:
-                logger.warning(f"Error loading database: {e}. Creating new one.")
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(self.database_path, 'r') as f:
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    database = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                            database = json.load(f)
+
+                    logger.info(f"Loaded benchmark database with {len(database.get('results', []))} entries")
+                    return database
+                except Exception as e:
+                    logger.warning(f"Error loading database: {e}. Creating new one.")
+            
+            # Create new database structure
+            database = {
+                "schema_version": "1.0",
+                "created_at": datetime.now().isoformat(),
+                "last_updated": datetime.now().isoformat(),
+                "results": [],
+                "compatibility_matrix": {},
+                "hardware_profiles": {},
+                "model_profiles": {}
+            }
+            
+            return database
         
-        # Create new database structure
-        database = {
-            "schema_version": "1.0",
-            "created_at": datetime.now().isoformat(),
-            "last_updated": datetime.now().isoformat(),
-            "results": [],
-            "compatibility_matrix": {},
-            "hardware_profiles": {},
-            "model_profiles": {}
-        }
-        
-        return database
-    
-    def _save_database(self):
-        """Save the benchmark database to disk"""
-        # Update last modified timestamp
-        self.database["last_updated"] = datetime.now().isoformat()
-        
-        # Save to file
-        with open(self.database_path, 'w') as f:
-            json.dump(self.database, f, indent=2)
+        def _save_database(self):
+            """Save the benchmark database to disk"""
+            # Update last modified timestamp
+            self.database["last_updated"] = datetime.now().isoformat()
+            
+            # Save to file
+            with open(self.database_path, 'w') as f:
+                json.dump(self.database, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         logger.info(f"Benchmark database saved to {self.database_path}")
     
@@ -1022,41 +1049,46 @@ class HardwareBenchmark:
                     batch_str = str(batch_size)
                     latency = result["latency"].get(batch_str, 0)
                     throughput = result["throughput"].get(batch_str, 0)
-                    memory = result["memory_usage"].get(batch_str, 0)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        memory = result["memory_usage"].get(batch_str, 0)
+                        
+                        report_content.append(f"| {batch_size} | {latency:.2f} | {throughput:.2f} | {memory:.2f} |")
                     
-                    report_content.append(f"| {batch_size} | {latency:.2f} | {throughput:.2f} | {memory:.2f} |")
-                
-                report_content.append("")
-        
-        # Write report to file
-        with open(report_path, 'w') as f:
-            f.write("\n".join(report_content))
-        
-        logger.info(f"Benchmark report generated: {report_path}")
-        return str(report_path)
-    
-    def get_compatibility_matrix(self) -> Dict:
-        """
-        Get the current hardware compatibility matrix
-        
-        Returns:
-            Dictionary with compatibility information by model family and hardware
-        """
-        return self.database.get("compatibility_matrix", {})
-    
-    def export_compatibility_matrix(self, filename: str = None) -> str:
-        """
-        Export the hardware compatibility matrix to a file
-        
-        Args:
-            filename: Optional filename, if None a timestamped name will be generated
+                    report_content.append("")
             
-        Returns:
-            Path to the saved file
-        """
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"hardware_compatibility_matrix_{timestamp}.json"
+            # Write report to file
+            with open(report_path, 'w') as f:
+                f.write("\n".join(report_content))
+            
+            logger.info(f"Benchmark report generated: {report_path}")
+            return str(report_path)
+        
+        def get_compatibility_matrix(self) -> Dict:
+            """
+            Get the current hardware compatibility matrix
+            
+            Returns:
+                Dictionary with compatibility information by model family and hardware
+            """
+            return self.database.get("compatibility_matrix", {})
+        
+        def export_compatibility_matrix(self, filename: str = None) -> str:
+            """
+            Export the hardware compatibility matrix to a file
+            
+            Args:
+                filename: Optional filename, if None a timestamped name will be generated
+                
+            Returns:
+                Path to the saved file
+            """
+            if filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"hardware_compatibility_matrix_{timestamp}.json"
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         # Make sure it's a full path
         filepath = self.output_dir / filename
@@ -1423,7 +1455,12 @@ def main():
     parser.add_argument('--update_pool', action='store_true', help='Update ResourcePool with benchmark results')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Set debug logging if requested
     if args.debug:

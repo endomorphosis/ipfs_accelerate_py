@@ -1,0 +1,1596 @@
+"""
+Improved test generator for HuggingFace models with hardware-aware templates.
+
+This generator creates test files for HuggingFace models with support for
+various hardware platforms:
+- CPU
+- CUDA (NVIDIA GPU)
+- ROCm (AMD GPU)
+- MPS (Apple Silicon)
+- OpenVINO
+- Qualcomm AI Engine
+- WebNN (browser)
+- WebGPU (browser)
+
+It uses a modular approach with hardware-specific templates.
+"""
+
+import os
+import sys
+import argparse
+import logging
+import importlib.util
+import re
+import time
+from pathlib import Path
+from datetime import datetime
+
+# Add DuckDB database support for templates
+try:
+    import duckdb
+    HAS_DUCKDB = True
+    TEMPLATE_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template_db.duckdb")
+except ImportError:
+    HAS_DUCKDB = False
+    logger.warning("duckdb not available, using in-memory templates")
+
+# Hardware Detection with Complete Platform Support
+import os
+import sys
+import importlib.util
+import logging
+from typing import Dict, Any, List
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("hardware_detection")
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API or simulation)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_ENABLED" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API or simulation)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_ENABLED" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Web platform optimizations
+HAS_WEBGPU_COMPUTE_SHADERS = (
+    "WEBGPU_COMPUTE_SHADERS_ENABLED" in os.environ or
+    "WEBGPU_COMPUTE_SHADERS" in os.environ
+)
+
+HAS_PARALLEL_LOADING = (
+    "WEB_PARALLEL_LOADING_ENABLED" in os.environ or
+    "PARALLEL_LOADING_ENABLED" in os.environ
+)
+
+HAS_SHADER_PRECOMPILE = (
+    "WEBGPU_SHADER_PRECOMPILE_ENABLED" in os.environ or
+    "WEBGPU_SHADER_PRECOMPILE" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def detect_all_hardware():
+    """Detect available hardware platforms on the current system."""
+    capabilities = {
+        "cpu": {
+            "detected": True,
+            "version": None,
+            "count": os.cpu_count()
+        },
+        "cuda": {
+            "detected": False,
+            "version": None,
+            "device_count": 0,
+            "devices": []
+        },
+        "mps": {
+            "detected": False,
+            "device": None
+        },
+        "openvino": {
+            "detected": False,
+            "version": None,
+            "devices": []
+        },
+        "qualcomm": {
+            "detected": False,
+            "version": None,
+            "device": None
+        },
+        "rocm": {
+            "detected": False,
+            "version": None,
+            "device_count": 0
+        },
+        "webnn": {
+            "detected": False,
+            "simulation": True
+        },
+        "webgpu": {
+            "detected": False,
+            "simulation": True,
+            "compute_shaders": HAS_WEBGPU_COMPUTE_SHADERS,
+            "parallel_loading": HAS_PARALLEL_LOADING,
+            "shader_precompile": HAS_SHADER_PRECOMPILE
+        }
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"]["detected"] = True
+        capabilities["cuda"]["device_count"] = torch.cuda.device_count()
+        capabilities["cuda"]["version"] = torch.version.cuda if hasattr(torch.version, "cuda") else None
+        
+        # Get device info
+        for i in range(torch.cuda.device_count()):
+            capabilities["cuda"]["devices"].append({
+                "id": i,
+                "name": torch.cuda.get_device_name(i),
+                "total_memory_mb": torch.cuda.get_device_properties(i).total_memory / (1024 * 1024)
+            })
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"]["detected"] = HAS_MPS
+    if HAS_MPS:
+        import platform
+        capabilities["mps"]["device"] = platform.processor()
+    
+    # OpenVINO capabilities
+    capabilities["openvino"]["detected"] = HAS_OPENVINO
+    if HAS_OPENVINO:
+        try:
+            import openvino
+            capabilities["openvino"]["version"] = openvino.__version__ if hasattr(openvino, "__version__") else "Unknown"
+            
+            # Get available devices
+            try:
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except ImportError:
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                core = Core()
+                devices = core.available_devices
+                capabilities["openvino"]["devices"] = devices
+            except:
+                pass
+        except ImportError:
+            pass
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"]["detected"] = HAS_QUALCOMM
+    if HAS_QUALCOMM:
+        try:
+            if importlib.util.find_spec("qnn_wrapper") is not None:
+                import qnn_wrapper
+                capabilities["qualcomm"]["version"] = qnn_wrapper.__version__ if hasattr(qnn_wrapper, "__version__") else "Unknown"
+                capabilities["qualcomm"]["device"] = "QNN"
+            elif importlib.util.find_spec("qti") is not None:
+                import qti
+                capabilities["qualcomm"]["version"] = qti.__version__ if hasattr(qti, "__version__") else "Unknown"
+                capabilities["qualcomm"]["device"] = "QTI"
+            elif "QUALCOMM_SDK" in os.environ:
+                capabilities["qualcomm"]["version"] = os.environ.get("QUALCOMM_SDK_VERSION", "Unknown")
+                capabilities["qualcomm"]["device"] = os.environ.get("QUALCOMM_DEVICE", "Unknown")
+        except ImportError:
+            pass
+    
+    # ROCm capabilities
+    capabilities["rocm"]["detected"] = HAS_ROCM
+    if HAS_ROCM:
+        capabilities["rocm"]["device_count"] = torch.cuda.device_count() if HAS_CUDA else 0
+        if hasattr(torch, "version") and hasattr(torch.version, "hip"):
+            capabilities["rocm"]["version"] = torch.version.hip
+    
+    # WebNN capabilities
+    capabilities["webnn"]["detected"] = HAS_WEBNN
+    capabilities["webnn"]["simulation"] = not (
+        importlib.util.find_spec("webnn") is not None or 
+        "WEBNN_AVAILABLE" in os.environ
+    )
+    
+    # WebGPU capabilities
+    capabilities["webgpu"]["detected"] = HAS_WEBGPU
+    capabilities["webgpu"]["simulation"] = not (
+        importlib.util.find_spec("webgpu") is not None or 
+        importlib.util.find_spec("wgpu") is not None or 
+        "WEBGPU_AVAILABLE" in os.environ
+    )
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = detect_all_hardware()
+
+# For convenience in conditional code
+HAS_HARDWARE_DETECTION = True
+
+# Model categories for proper hardware support
+MODEL_CATEGORIES = {
+    "text": ["bert", "gpt2", "t5", "roberta", "distilbert", "bart", "llama", "mistral", "phi", 
+             "mixtral", "gemma", "qwen2", "deepseek", "falcon", "mpt", "chatglm", "bloom", 
+             "command-r", "orca", "olmo", "starcoder", "codellama"],
+    "vision": ["vit", "deit", "swin", "convnext", "resnet", "dinov2", "detr", "sam", "segformer", 
+               "mask2former", "conditional_detr", "dino", "zoedepth", "depth-anything", "yolos"],
+    "audio": ["wav2vec2", "whisper", "hubert", "clap", "audioldm2", "musicgen", "bark", 
+              "encodec", "univnet", "speecht5", "qwen-audio"],
+    "multimodal": ["clip", "llava", "blip", "flava", "owlvit", "git", "pali", "idefics",
+                   "llava-next", "flamingo", "blip2", "kosmos", "siglip", "chinese-clip", 
+                   "instructblip", "qwen-vl", "cogvlm", "vilt", "imagebind"],
+    "video": ["xclip", "videomae", "vivit", "movinet", "videobert", "videogpt"]
+}
+
+# Web Platform Optimizations - March 2025
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+# Hardware support matrix for key models
+KEY_MODEL_HARDWARE_CONFIG = {'bert': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 't5': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'llama': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'vit': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'clip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'detr': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'clap': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'wav2vec2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'whisper': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'llava': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'llava_next': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'xclip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'qwen2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'qualcomm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}}
+
+def load_template_from_db(model_type, template_type='base', platform=None):
+    """Load template from the DuckDB template database.
+    
+    Args:
+        model_type: The model type (bert, vit, etc.)
+        template_type: The template type (base, hardware_platform, etc.)
+        platform: Optional platform name for hardware platform templates
+        
+    Returns:
+        Template string or None if not found
+    """
+    if not HAS_DUCKDB or not os.path.exists(TEMPLATE_DB_PATH):
+        return None
+    
+    try:
+        conn = duckdb.connect(TEMPLATE_DB_PATH)
+        
+        # Build query based on parameters
+        query = "SELECT template FROM templates WHERE model_type = ? AND template_type = ?"
+        params = [model_type, template_type]
+        
+        if platform:
+            query += " AND platform = ?"
+            params.append(platform)
+        
+        # Try exact match first
+        result = conn.execute(query, params).fetchone()
+        
+        if not result:
+            # Try fallback to similar models within same category
+            for category, models in MODEL_CATEGORIES.items():
+                if model_type in models:
+                    # Try another model in the same category
+                    category_query = f"SELECT template FROM templates WHERE model_type IN ({','.join(['?'] * len(models))}) AND template_type = ?"
+                    category_params = models + [template_type]
+                    
+                    if platform:
+                        category_query += " AND platform = ?"
+                        category_params.append(platform)
+                    
+                    category_result = conn.execute(category_query, category_params).fetchone()
+                    if category_result:
+                        logger.debug(f"Using template from same category for {model_type}")
+                        return category_result[0]
+        
+        conn.close()
+        
+        if result:
+            return result[0]
+        return None
+    
+    except Exception as e:
+        logger.error(f"Error loading template from database: {e}")
+        return None
+
+def get_hardware_map_for_model(model_name):
+    """Get hardware support map for a specific model."""
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct lookup in key models
+    if model_base in KEY_MODEL_HARDWARE_CONFIG:
+        return KEY_MODEL_HARDWARE_CONFIG[model_base]
+    
+    # Check which category this model belongs to
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_name.lower() for model in models):
+            # Create default map based on category
+            if category == "text" or category == "vision":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"
+                }
+            elif category == "audio":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"  # Now REAL with March 2025 optimization
+                }
+            elif category == "multimodal":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+            elif category == "video":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+    
+    # Default to text configuration if unknown
+    return {
+        "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+        "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+        "webnn": "REAL", "webgpu": "REAL"
+    }
+
+def detect_model_category(model_name):
+    """Detect model category based on model name."""
+    model_lower = model_name.lower()
+    
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_lower
+    
+    # Check by model family name patterns
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_lower for model in models):
+            return category
+    
+    # Default to text if unknown
+    return "text"
+
+# Creates mock handlers for platforms that aren't available
+class MockHandler:
+    """Mock handler for platforms that aren't available."""
+    
+    def __init__(self, platform):
+        """Initialize a mock handler for a platform."""
+        self.platform = platform
+        print(f"Created mock handler for {platform}")
+    
+    def __call__(self, *args, **kwargs):
+        """Return mock output."""
+        print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
+        return {"output": "MOCK OUTPUT", "implementation_type": f"MOCK_{self.platform.upper()}"}
+
+# Template databases 
+template_database = {} 
+
+# Hardware Support Functions
+
+def init_hardware_for_model(self, model_name, hardware_type, **kwargs):
+    """Initialize hardware for the given model and hardware type."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(hardware_type.lower(), "REAL")
+    
+    # Choose appropriate initialization based on hardware type and support level
+    if hardware_type.lower() == "cpu":
+        return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.init_cuda(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "openvino" and HAS_OPENVINO:
+        if support_level == "REAL":
+            return self.init_openvino(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for OpenVINO")
+            return self.init_openvino(model_name=model_name, device="CPU", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "mps" and HAS_MPS:
+        if support_level == "REAL":
+            return self.init_mps(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for MPS")
+            return self.init_mps(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "rocm" and HAS_ROCM:
+        if support_level == "REAL":
+            return self.init_rocm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for ROCm")
+            return self.init_rocm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level == "REAL":
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for Qualcomm")
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "webnn" and HAS_WEBNN:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        if support_level == "REAL":
+            return self.init_webnn(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebNN")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, using mock mode")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    elif hardware_type.lower() == "webgpu" and HAS_WEBGPU:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level == "REAL":
+            return self.init_webgpu(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebGPU")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, using mock mode")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    else:
+        # Default to CPU
+        logger.warning(f"Hardware {hardware_type} not available or not supported for {model_name}, using CPU")
+        return self.init_cpu(model_name=model_name, **kwargs)
+
+def test_platform_for_model(self, model_name, platform, input_data):
+    """Test the specified platform for a given model."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(platform.lower(), "REAL")
+    
+    # Get model category for web platform optimizations
+    model_category = detect_model_category(model_name)
+    
+    # Choose appropriate test based on platform and support level
+    if platform.lower() == "cpu":
+        return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.test_platform(input_data, "cuda")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "openvino" and HAS_OPENVINO:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "openvino")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "mps" and HAS_MPS:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "mps")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "rocm" and HAS_ROCM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "rocm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "qualcomm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webnn" and HAS_WEBNN:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebNN")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webnn")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webgpu" and HAS_WEBGPU:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webgpu")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    else:
+        # Default to CPU
+        logger.warning(f"Platform {platform} not available or not supported for {model_name}, using CPU")
+        return self.test_platform(input_data, "cpu")
+
+class TestGenerator:
+    """Test generator for HuggingFace models with hardware support."""
+    
+    def __init__(self):
+        """Initialize the test generator."""
+        self.model_type = None
+        self.output_file = None
+        self.platform = None
+        self.import_torch = False
+        self.import_numpy = False
+        self.has_custom_imports = False
+        self.custom_imports = []
+        self.test_input = {}
+        self.endpoint_cpu = None
+        self.endpoint_cuda = None
+        self.endpoint_openvino = None
+        self.endpoint_mps = None
+        self.endpoint_rocm = None
+        self.endpoint_qualcomm = None
+        self.endpoint_webnn = None
+        self.endpoint_webgpu = None
+        self.processor = None
+        self.tokenizer = None
+        self.feature_extractor = None
+        
+        # Detect available hardware
+        self.hardware_detected = detect_all_hardware()
+        
+        # Initialize template database
+        self.templates = template_database
+    
+    def generate_test_file(self, model=None, output_path=None, template=None, platforms=None):
+        """Generate a test file for a HuggingFace model."""
+        self.model_type = model
+        self.output_file = output_path
+        
+        # Set default output path if none provided
+        if not self.output_file:
+            self.output_file = f"test_hf_{model}.py"
+        
+        # Parse platforms
+        self.platforms = []
+        if platforms:
+            for p in platforms.split(","):
+                p = p.strip().lower()
+                if p:
+                    self.platforms.append(p)
+            
+            if not self.platforms:
+                self.platforms = ["cpu"]  # Default to CPU if no platforms specified
+        else:
+            self.platforms = ["cpu"]  # Default to CPU if no platforms
+        
+        # Generate the test file
+        self._generate_test_file(template)
+        return self.output_file
+    
+    def _generate_test_file(self, template=None):
+        """Generate a test file using a template."""
+        # Get template from database first if possible
+        db_template = load_template_from_db(self.model_type)
+        if db_template:
+            template = db_template
+        
+        # Use provided template, or load default
+        if not template:
+            template = self._get_default_template()
+        
+        # Prepare the test code
+        code = self._prepare_test(template)
+        
+        # Write the test file
+        with open(self.output_file, "w") as f:
+            f.write(code)
+        
+        print(f"Generated test file: {self.output_file}")
+    
+    def _get_default_template(self):
+        """Get the default template for a model."""
+        model_category = detect_model_category(self.model_type)
+        
+        # Check if we have a template for this category
+        if model_category in self.templates:
+            return self.templates[model_category]
+        
+        # Default text template
+        return """
+import torch
+import numpy as np
+from transformers import AutoModel, AutoTokenizer
+
+def test_{{model_name}}():
+    # Load model and tokenizer
+    model_name = "{{model_name}}"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(model_name)
+    
+    # Prepare input
+    text = "This is a test input for {{model_name}}"
+    inputs = tokenizer(text, return_tensors="pt")
+    
+    # Run inference
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    # Check output
+    assert outputs.last_hidden_state is not None
+    print(f"Model {model_name} successfully loaded and ran")
+    return outputs
+"""
+    
+    def _prepare_test(self, template):
+        """Prepare the test code with hardware-specific adjustments."""
+        code = template
+        
+        # Start with necessary imports
+        imports = """#!/usr/bin/env python3
+\"\"\"
+Test {{model_name}} on various hardware platforms.
+
+This test checks the model on these platforms:
+"""
+        
+        # Add platform documentation
+        for platform in self.platforms:
+            imports += f"- {platform.upper()}\n"
+        
+        imports += """
+Generated by fixed_merged_test_generator.py
+\"\"\"
+
+import os
+import sys
+import logging
+import time
+import argparse
+from typing import Dict, Any, List
+import numpy as np
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+"""
+        
+        # Add CUDA import if needed
+        if "cuda" in self.platforms or "rocm" in self.platforms or "mps" in self.platforms:
+            imports += """
+# Try to import torch (needed for GPU backends)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+    logger.warning("PyTorch not available")
+
+"""
+        
+        # Add OpenVINO import if needed
+        if "openvino" in self.platforms:
+            imports += """
+# Try to import OpenVINO
+try:
+    import openvino
+    HAS_OPENVINO = True
+except ImportError:
+    HAS_OPENVINO = False
+    logger.warning("OpenVINO not available")
+
+"""
+
+        # Add Qualcomm import if needed
+        if "qualcomm" in self.platforms:
+            imports += """
+# Try to import Qualcomm AI Engine
+try:
+    import qnn_wrapper
+    HAS_QUALCOMM = True
+except ImportError:
+    try:
+        import qti
+        HAS_QUALCOMM = True
+    except ImportError:
+        HAS_QUALCOMM = "QUALCOMM_SDK" in os.environ
+        logger.warning("Qualcomm AI Engine not available")
+
+"""
+
+        # Add WebNN/WebGPU imports if needed
+        if "webnn" in self.platforms or "webgpu" in self.platforms:
+            imports += """
+# Try to import web backends
+try:
+    from fixed_web_platform import process_for_web, init_webnn, init_webgpu
+    HAS_WEB_PLATFORM = True
+except ImportError:
+    HAS_WEB_PLATFORM = False
+    logger.warning("Web platform support not available")
+
+"""
+        
+        # Add transformers import
+        imports += """
+# Import transformers
+try:
+    import transformers
+    from transformers import AutoModel, AutoTokenizer, AutoConfig
+    HAS_TRANSFORMERS = True
+except ImportError:
+    HAS_TRANSFORMERS = False
+    logger.warning("Transformers not available")
+
+"""
+        
+        # Add hardware detection
+        hardware_detection = """
+# Hardware detection
+def detect_hardware():
+    \"\"\"Detect available hardware.\"\"\"
+    hardware = {
+        "cpu": True,
+        "cuda": False,
+        "rocm": False,
+        "mps": False,
+        "openvino": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # Check PyTorch hardware
+    if HAS_TORCH:
+        # CUDA detection
+        hardware["cuda"] = torch.cuda.is_available()
+        
+        # ROCm detection (AMD GPU)
+        if hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+            hardware["rocm"] = True
+        elif hardware["cuda"] and "rocm" in torch.__version__.lower():
+            hardware["rocm"] = True
+        elif os.environ.get("ROCM_HOME") is not None:
+            hardware["rocm"] = True
+        
+        # MPS detection (Apple Silicon)
+        if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+            hardware["mps"] = torch.mps.is_available()
+    
+    # OpenVINO detection
+    hardware["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm detection
+    hardware["qualcomm"] = HAS_QUALCOMM
+    
+    # Web platform detection
+    if HAS_WEB_PLATFORM:
+        hardware["webnn"] = True
+        hardware["webgpu"] = True
+    
+    return hardware
+
+# Get hardware capabilities
+HW_CAPABILITIES = detect_hardware()
+
+"""
+        
+        # Combine everything
+        code = imports + hardware_detection + code
+        
+        # Add TestModel class with hardware support
+        hardware_support = self._generate_hardware_support()
+        
+        # Replace template variables
+        code = code.replace("{{model_name}}", self.model_type)
+        
+        # Add test class and hardware support
+        code += hardware_support
+        
+        # Add main function
+        code += self._generate_main_function()
+        
+        return code
+    
+    def _generate_hardware_support(self):
+        """Generate the hardware support code."""
+        # Detect model category
+        model_category = detect_model_category(self.model_type)
+        
+        hardware_support = f"""
+class Test{self.model_type.replace('-', '_').title()}:
+    \"\"\"Test class for {self.model_type} with hardware support.\"\"\"
+    
+    def __init__(self):
+        \"\"\"Initialize the test.\"\"\"
+        self.model_name = "{self.model_type}"
+        self.model_type = "{model_category}"
+        self.platforms = []
+        
+        # Endpoints
+        self.endpoint_cpu = None
+        self.endpoint_cuda = None
+        self.endpoint_rocm = None
+        self.endpoint_mps = None
+        self.endpoint_openvino = None
+        self.endpoint_qualcomm = None
+        self.endpoint_webnn = None
+        self.endpoint_webgpu = None
+    
+    def init_hardware(self, platform):
+        \"\"\"Initialize hardware for testing.\"\"\"
+        platform = platform.lower()
+        
+        if platform == "cpu":
+            return self.init_cpu()
+        elif platform == "cuda" and HW_CAPABILITIES["cuda"]:
+            return self.init_cuda()
+        elif platform == "rocm" and HW_CAPABILITIES["rocm"]:
+            return self.init_rocm()
+        elif platform == "mps" and HW_CAPABILITIES["mps"]:
+            return self.init_mps()
+        elif platform == "openvino" and HW_CAPABILITIES["openvino"]:
+            return self.init_openvino()
+        elif platform == "qualcomm" and HW_CAPABILITIES["qualcomm"]:
+            return self.init_qualcomm()
+        elif platform == "webnn" and HW_CAPABILITIES["webnn"]:
+            return self.init_webnn()
+        elif platform == "webgpu" and HW_CAPABILITIES["webgpu"]:
+            return self.init_webgpu()
+        else:
+            logger.warning(f"Platform {platform} not available, falling back to CPU")
+            return self.init_cpu()
+    
+    def init_cpu(self, model_name=None, model_path=None, **kwargs):
+        \"\"\"Initialize CPU testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on CPU")
+        
+        try:
+            # Load tokenizer and model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+            model.eval()
+            
+            self.endpoint_cpu = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": "cpu"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on CPU: {e}")
+            return None
+    
+    def init_cuda(self, model_name=None, model_path=None, **kwargs):
+        \"\"\"Initialize CUDA (NVIDIA GPU) testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on CUDA")
+        
+        if not HW_CAPABILITIES["cuda"]:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name, model_path, **kwargs)
+        
+        try:
+            # Load tokenizer and model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+            model.to("cuda")
+            model.eval()
+            
+            self.endpoint_cuda = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": "cuda"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on CUDA: {e}")
+            return self.init_cpu(model_name, model_path, **kwargs)
+    
+    def init_rocm(self, model_name=None, model_path=None, **kwargs):
+        \"\"\"Initialize ROCm (AMD GPU) testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on ROCm")
+        
+        if not HW_CAPABILITIES["rocm"]:
+            logger.warning("ROCm not available, falling back to CPU")
+            return self.init_cpu(model_name, model_path, **kwargs)
+        
+        try:
+            # Load tokenizer and model (ROCm uses CUDA API in PyTorch)
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+            model.to("cuda")  # ROCm uses CUDA device in PyTorch
+            model.eval()
+            
+            self.endpoint_rocm = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": "cuda"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on ROCm: {e}")
+            return self.init_cpu(model_name, model_path, **kwargs)
+    
+    def init_mps(self, model_name=None, model_path=None, **kwargs):
+        \"\"\"Initialize MPS (Apple Silicon) testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on MPS")
+        
+        if not HW_CAPABILITIES["mps"]:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name, model_path, **kwargs)
+        
+        try:
+            # Load tokenizer and model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModel.from_pretrained(model_name)
+            model.to("mps")
+            model.eval()
+            
+            self.endpoint_mps = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": "mps"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on MPS: {e}")
+            return self.init_cpu(model_name, model_path, **kwargs)
+    
+    def init_openvino(self, model_name=None, model_path=None, device="CPU", **kwargs):
+        \"\"\"Initialize OpenVINO testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on OpenVINO ({device})")
+        
+        if not HW_CAPABILITIES["openvino"]:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name, model_path, **kwargs)
+        
+        try:
+            from optimum.intel import OVModelForFeatureExtraction
+            
+            # Load tokenizer and model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            
+            # Load model with OpenVINO backend
+            model = OVModelForFeatureExtraction.from_pretrained(
+                model_name,
+                device=device,
+                from_transformers=True
+            )
+            model.eval()
+            
+            self.endpoint_openvino = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": f"openvino_{device.lower()}"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on OpenVINO: {e}")
+            return self.init_cpu(model_name, model_path, **kwargs)
+    
+    def init_qualcomm(self, model_name=None, model_path=None, **kwargs):
+        \"\"\"Initialize Qualcomm AI Engine testing.\"\"\"
+        model_name = model_name or self.model_name
+        logger.info(f"Initializing {model_name} on Qualcomm AI Engine")
+        
+        if not HW_CAPABILITIES["qualcomm"]:
+            logger.warning("Qualcomm AI Engine not available, falling back to CPU")
+            return self.init_cpu(model_name, model_path, **kwargs)
+        
+        try:
+            # This is a simplified implementation as Qualcomm integration varies
+            # Real implementation would use Qualcomm's SDK
+            
+            # For now, we use a mock handler for testing
+            from unittest.mock import MagicMock
+            model = MagicMock()
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            
+            self.endpoint_qualcomm = model
+            self.tokenizer = tokenizer
+            
+            return {{"model": model, "tokenizer": tokenizer, "device": "qualcomm"}}
+        except Exception as e:
+            logger.error(f"Error initializing {model_name} on Qualcomm: {e}")
+            return self.init_cpu(model_name, model_path, **kwargs)
+    
+    def init_webnn(self, model_name=None, model_path=None, model_type=None, device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
+        \"\"\"
+        Initialize the model for WebNN inference.
+        
+        Using the fixed version from fixed_web_platform.
+        
+        Args:
+            model_name: Name of the model to load
+            model_path: Path to the model files 
+            model_type: Type of model (text, vision, audio, etc.)
+            device: Device to use ('webnn')
+            web_api_mode: Mode for web API ('real', 'simulation', 'mock')
+            tokenizer: Optional tokenizer for text models
+            
+        Returns:
+            Dictionary with endpoint, processor, etc.
+        """
+        # Pass through to the fixed implementation
+        kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
+        return init_webnn(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)
+    
+    def init_webgpu(self, model_name=None, model_path=None, model_type=None, device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
+        \"\"\"
+        Initialize the model for WebGPU inference.
+        
+        Using the fixed version from fixed_web_platform.
+        
+        Args:
+            model_name: Name of the model to load
+            model_path: Path to the model files 
+            model_type: Type of model (text, vision, audio, etc.)
+            device: Device to use ('webgpu')
+            web_api_mode: Mode for web API ('simulation', 'mock')
+            tokenizer: Optional tokenizer for text models
+            
+        Returns:
+            Dictionary with endpoint, processor, etc.
+        """
+        # Pass through to the fixed implementation
+        kwargs["create_mock_processor"] = getattr(self, "_create_mock_processor", None)
+        return init_webgpu(self, model_name, model_path, model_type, device, web_api_mode, tokenizer, **kwargs)
+    
+    def _create_mock_processor(self, platform, model_type=None):
+        \"\"\"Create a mock processor for testing.\"\"\"
+        class MockProcessor:
+            def __init__(self, platform, model_type):
+                self.platform = platform
+                self.model_type = model_type
+                print(f"Created mock processor for {platform} ({model_type})")
+            
+            def __call__(self, *args, **kwargs):
+                print(f"Mock {self.platform} processor called with {len(args)} args and {len(kwargs)} kwargs")
+                return {{"input_ids": [1, 2, 3, 4, 5], "attention_mask": [1, 1, 1, 1, 1]}}
+        
+        return MockProcessor(platform, model_type)
+    
+    def prepare_input(self, platform="cpu"):
+        \"\"\"Prepare input for the specified platform.\"\"\"
+        platform = platform.lower()
+        
+        if platform == "cpu":
+            # Prepare input for CPU
+            self.init_cpu()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+        
+        elif platform == "cuda" and HW_CAPABILITIES["cuda"]:
+            # Prepare input for CUDA
+            self.init_cuda()
+            text = "This is a test input for {self.model_name}"
+            inputs = self.tokenizer(text, return_tensors="pt")
+            return {{k: v.to("cuda") for k, v in inputs.items()}}
+        
+        elif platform == "rocm" and HW_CAPABILITIES["rocm"]:
+            # Prepare input for ROCm (same as CUDA in PyTorch)
+            self.init_rocm()
+            text = "This is a test input for {self.model_name}"
+            inputs = self.tokenizer(text, return_tensors="pt")
+            return {{k: v.to("cuda") for k, v in inputs.items()}}
+        
+        elif platform == "mps" and HW_CAPABILITIES["mps"]:
+            # Prepare input for MPS
+            self.init_mps()
+            text = "This is a test input for {self.model_name}"
+            inputs = self.tokenizer(text, return_tensors="pt")
+            return {{k: v.to("mps") for k, v in inputs.items()}}
+        
+        elif platform == "openvino" and HW_CAPABILITIES["openvino"]:
+            # Prepare input for OpenVINO
+            self.init_openvino()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+        
+        elif platform == "qualcomm" and HW_CAPABILITIES["qualcomm"]:
+            # Prepare input for Qualcomm
+            self.init_qualcomm()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+        
+        elif platform == "webnn" and HW_CAPABILITIES["webnn"]:
+            # Prepare input for WebNN
+            self.init_webnn()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+        
+        elif platform == "webgpu" and HW_CAPABILITIES["webgpu"]:
+            # Prepare input for WebGPU
+            self.init_webgpu()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+        
+        else:
+            # Default to CPU
+            self.init_cpu()
+            text = "This is a test input for {self.model_name}"
+            return self.tokenizer(text, return_tensors="pt")
+    
+    def test_platform(self, input_data, platform):
+        \"\"\"Test the model on a specific platform.\"\"\"
+        platform = platform.lower()
+        
+        try:
+            if platform == "cpu":
+                self.init_cpu()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_cpu(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "cuda" and HW_CAPABILITIES["cuda"]:
+                self.init_cuda()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_cuda(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "rocm" and HW_CAPABILITIES["rocm"]:
+                self.init_rocm()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_rocm(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "mps" and HW_CAPABILITIES["mps"]:
+                self.init_mps()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_mps(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "openvino" and HW_CAPABILITIES["openvino"]:
+                self.init_openvino()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_openvino(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "qualcomm" and HW_CAPABILITIES["qualcomm"]:
+                self.init_qualcomm()
+                start_time = time.time()
+                outputs = self.endpoint_qualcomm(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+            
+            elif platform == "webnn" and HW_CAPABILITIES["webnn"]:
+                if hasattr(self, "endpoint_webnn"):
+                    start_time = time.time()
+                    
+                    # Determine if batch operations are supported for this model type
+                    web_batch_supported = True
+                    if self.model_type == "text":
+                        web_batch_supported = True  # Text models usually support batching
+                    elif self.model_type == "vision":
+                        web_batch_supported = True  # Vision models usually support batching
+                    elif self.model_type == "audio":
+                        web_batch_supported = False  # Audio models may not support batching in WebNN
+                    elif self.model_type == "multimodal":
+                        web_batch_supported = False  # Multimodal often doesn't batch well on web
+                    
+                    # Process the input using the fixed web platform handler
+                    inputs = process_for_web(self.model_type, input_data, web_batch_supported)
+                    
+                    # Execute WebNN model
+                    _ = self.endpoint_webnn(inputs)
+                    elapsed = time.time() - start_time
+                    return elapsed
+                else:
+                    print("WebNN endpoint not available")
+                    return None
+            
+            elif platform == "webgpu" and HW_CAPABILITIES["webgpu"]:
+                if hasattr(self, "endpoint_webgpu"):
+                    start_time = time.time()
+                    
+                    # Determine if batch operations are supported for this model type
+                    web_batch_supported = True
+                    if self.model_type == "text":
+                        web_batch_supported = True  # Text models usually support batching
+                    elif self.model_type == "vision":
+                        web_batch_supported = True  # Vision models usually support batching
+                    elif self.model_type == "audio":
+                        web_batch_supported = False  # Audio models may not support batching in WebGPU
+                    elif self.model_type == "multimodal":
+                        web_batch_supported = False  # Multimodal often doesn't batch well on web
+                    
+                    # Process the input using the fixed web platform handler
+                    inputs = process_for_web(self.model_type, input_data, web_batch_supported)
+                    
+                    # Execute WebGPU model
+                    _ = self.endpoint_webgpu(inputs)
+                    elapsed = time.time() - start_time
+                    return elapsed
+                else:
+                    print("WebGPU endpoint not available")
+                    return None
+            
+            else:
+                # Default to CPU
+                logger.warning(f"Platform {platform} not available, falling back to CPU")
+                self.init_cpu()
+                start_time = time.time()
+                with torch.no_grad():
+                    outputs = self.endpoint_cpu(**input_data)
+                elapsed = time.time() - start_time
+                return elapsed
+        
+        except Exception as e:
+            logger.error(f"Error testing on {platform}: {e}")
+            return None
+    
+    def run_tests(self, platforms=None):
+        \"\"\"Run tests on specified platforms.\"\"\"
+        if platforms is None:
+            platforms = ["cpu"]  # Default to CPU if no platforms specified
+        
+        results = {}
+        
+        for platform in platforms:
+            platform = platform.lower()
+            
+            if platform == "cpu" or (platform in HW_CAPABILITIES and HW_CAPABILITIES[platform]):
+                logger.info(f"Testing {self.model_name} on {platform.upper()}")
+                
+                try:
+                    # Prepare input
+                    input_data = self.prepare_input(platform)
+                    
+                    # Run test
+                    elapsed = self.test_platform(input_data, platform)
+                    
+                    if elapsed is not None:
+                        results[platform] = {{
+                            "status": "success",
+                            "elapsed": elapsed
+                        }}
+                        logger.info(f"Test successful on {platform.upper()}, elapsed time: {elapsed:.4f}s")
+                    else:
+                        results[platform] = {{
+                            "status": "error",
+                            "elapsed": None
+                        }}
+                        logger.error(f"Test failed on {platform.upper()}")
+                
+                except Exception as e:
+                    results[platform] = {{
+                        "status": "error",
+                        "error": str(e)
+                    }}
+                    logger.error(f"Error testing on {platform.upper()}: {e}")
+            else:
+                results[platform] = {{
+                    "status": "skipped",
+                    "reason": f"{platform.upper()} not available"
+                }}
+                logger.warning(f"Skipping test on {platform.upper()}: not available")
+        
+        return results
+"""
+        
+        return hardware_support
+    
+    def _generate_main_function(self):
+        """Generate the main function."""
+        platforms_str = ", ".join([f"'{p}'" for p in self.platforms])
+        
+        main_function = f"""
+def main():
+    \"\"\"Run tests on specified platforms.\"\"\"
+    parser = argparse.ArgumentParser(description="Test {self.model_type} on various hardware platforms")
+    parser.add_argument("--platforms", type=str, default="{','.join(self.platforms)}", 
+                        help="Comma-separated list of platforms to test on")
+    args = parser.parse_args()
+    
+    # Parse platforms
+    platforms = [p.strip().lower() for p in args.platforms.split(",") if p.strip()]
+    if not platforms:
+        platforms = ["cpu"]  # Default to CPU if no platforms specified
+    
+    # Print hardware capabilities
+    logger.info("Hardware capabilities:")
+    for platform, available in HW_CAPABILITIES.items():
+        if isinstance(available, dict):
+            logger.info(f"  {platform.upper()}: {available['detected']}")
+        else:
+            logger.info(f"  {platform.upper()}: {available}")
+    
+    # Initialize test
+    test = Test{self.model_type.replace('-', '_').title()}()
+    
+    # Run tests
+    results = test.run_tests(platforms)
+    
+    # Print results
+    logger.info("Test results:")
+    for platform, result in results.items():
+        if result["status"] == "success":
+            logger.info(f"  {platform.upper()}: Success, elapsed time: {result['elapsed']:.4f}s")
+        elif result["status"] == "error":
+            logger.error(f"  {platform.upper()}: Error - {result.get('error', 'Unknown error')}")
+        else:
+            logger.warning(f"  {platform.upper()}: Skipped - {result.get('reason', 'Unknown reason')}")
+    
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+        
+        return main_function
+
+# Import fixed web platform if available
+try:
+    from fixed_web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors
+except ImportError:
+    # Create mock implementations if not available
+    def process_for_web(model_type, input_data, batch_supported=True):
+        """Process input data for web platforms."""
+        return input_data
+    
+    def init_webnn(self, model_name=None, model_path=None, model_type=None, 
+                  device="webnn", web_api_mode="simulation", tokenizer=None, **kwargs):
+        """Initialize WebNN model."""
+        print(f"Initializing {model_name} on WebNN (Simulation Mode)")
+        
+        # Create mock handler
+        handler = MockHandler("webnn")
+        
+        self.endpoint_webnn = handler
+        
+        return {
+            "endpoint": handler,
+            "device": device,
+            "implementation_type": "WEBNN_SIMULATION"
+        }
+    
+    def init_webgpu(self, model_name=None, model_path=None, model_type=None, 
+                   device="webgpu", web_api_mode="simulation", tokenizer=None, **kwargs):
+        """Initialize WebGPU model."""
+        print(f"Initializing {model_name} on WebGPU (Simulation Mode)")
+        
+        # Create mock handler
+        handler = MockHandler("webgpu")
+        
+        self.endpoint_webgpu = handler
+        
+        return {
+            "endpoint": handler,
+            "device": device,
+            "implementation_type": "WEBGPU_SIMULATION"
+        }
+    
+    def create_mock_processors(self):
+        """Create mock processors for web platforms."""
+        return {}
+
+def main():
+    """Main function to generate a test file."""
+    parser = argparse.ArgumentParser(description="Generate test files for HuggingFace models")
+    parser.add_argument("-g", "--generate", dest="model", help="Model to generate a test for")
+    parser.add_argument("-o", "--output", dest="output", help="Output file path")
+    parser.add_argument("-t", "--template", dest="template", help="Template to use")
+    parser.add_argument("-p", "--platform", dest="platform", 
+                        help="Comma-separated list of platforms to test on (cpu,cuda,openvino,mps,rocm,qualcomm,webnn,webgpu)")
+    parser.add_argument("--webnn-mode", choices=["real", "simulation", "mock"], 
+                      default="simulation", help="WebNN implementation mode")
+    parser.add_argument("--webgpu-mode", choices=["simulation", "mock"], 
+                      default="simulation", help="WebGPU implementation mode")
+    args = parser.parse_args()
+    
+    if not args.model:
+        parser.print_help()
+        return 1
+    
+    # Initialize generator
+    generator = TestGenerator()
+    
+    # Generate test file
+    output_file = generator.generate_test_file(
+        model=args.model,
+        output_path=args.output,
+        template=args.template,
+        platforms=args.platform
+    )
+    
+    print(f"Generated test file: {output_file}")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -7,6 +7,7 @@ This template includes support for all hardware platforms:
 - OpenVINO: Intel hardware acceleration
 - MPS: Apple Silicon GPU implementation
 - ROCm: AMD GPU implementation
+- Qualcomm: Qualcomm AI Engine/Hexagon DSP implementation
 - WebNN: Web Neural Network API (browser)
 - WebGPU: Web GPU API (browser)
 """

@@ -1,1060 +1,1205 @@
 #!/usr/bin/env python3
 """
-Quick fix for the merged test generator to enable hardware-aware template generation.
+Fix Generator Hardware Support
 
-This script modifies fixed_merged_test_generator.py to add proper hardware platform 
-support to ensure tests work across all required hardware backends.
+This script updates all test generators to have consistent hardware support code.
+It applies the latest hardware detection templates to all generators:
+- merged_test_generator.py
+- fixed_merged_test_generator.py
+- integrated_skillset_generator.py
+- implementation_generator.py
+
+This enhanced version includes:
+1. Full WebNN and WebGPU support integration
+2. Proper hardware detection for all 6 platforms (CPU, CUDA, OpenVINO, MPS, ROCm, WebNN, WebGPU)
+3. Consistent hardware initialization methods across all generators
+4. Comprehensive platform-specific handling for all 13 key model types
+5. Support for the March 2025 optimizations:
+   - WebGPU Compute Shader optimization for audio models
+   - Parallel Model Loading for multimodal models
+   - Shader Precompilation for faster startup
+
+Usage:
+  python fix_generator_hardware_support.py [--force]
 """
 
 import os
 import sys
+import shutil
+import re
+import argparse
+from datetime import datetime
 from pathlib import Path
 
-# Key models with enhanced hardware support
-KEY_MODELS = [
-    "bert", "clap", "clip", "detr", "llama", "llava", "llava_next", 
-    "qwen2", "t5", "vit", "wav2vec2", "whisper", "xclip"
+# Import template generator if available
+try:
+    from template_hardware_detection import (
+        generate_hardware_detection_code,
+        generate_hardware_init_methods,
+        generate_creation_methods
+    )
+    HAS_HARDWARE_TEMPLATE = True
+except ImportError:
+    HAS_HARDWARE_TEMPLATE = False
+    print("Warning: template_hardware_detection.py not found. Creating minimal implementation.")
+
+# Paths
+PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TEST_DIR = PROJECT_ROOT / "test"
+GENERATOR_FILES = [
+    TEST_DIR / "merged_test_generator.py",
+    TEST_DIR / "fixed_merged_test_generator.py",
+    TEST_DIR / "integrated_skillset_generator.py",
+    TEST_DIR / "implementation_generator.py"
 ]
 
-# Hardware platforms to support
-HARDWARE_PLATFORMS = [
-    "cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"
+# Additional files for 2025 web platform support
+WEB_PLATFORM_FILES = [
+    TEST_DIR / "fixed_web_platform/unified_framework/platform_detector.py",
+    TEST_DIR / "fixed_web_platform/webgpu_streaming_inference.py",
+    TEST_DIR / "fixed_web_platform/unified_web_framework.py"
 ]
 
-# Category mapping
-MODEL_CATEGORIES = {
-    "bert": "text_embedding",
-    "clap": "audio",
-    "clip": "vision",
-    "detr": "vision",
-    "llama": "text_generation",
-    "llava": "vision_language",
-    "llava_next": "vision_language",
-    "qwen2": "text_generation",
-    "t5": "text_generation",
-    "vit": "vision",
-    "wav2vec2": "audio",
-    "whisper": "audio",
-    "xclip": "video"
-}
-
-# Hardware compatibility mapping
-KEY_MODEL_HARDWARE_MAP = {
-    "t5": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+# Key model configuration with hardware support levels
+KEY_MODEL_HARDWARE_CONFIG = {
+    # Text models
+    "bert": { # BERT model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple Silicon) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
     },
-    "clap": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL", 
-        "webgpu": "REAL"
+    "t5": { # T5 model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple Silicon) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
     },
-    "wav2vec2": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL", 
-        "webgpu": "REAL" 
+    "llama": { # LLAMA/LLM model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "whisper": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    
+    # Vision models
+    "vit": { # Vision Transformer model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented 
+        "webgpu": "REAL"      # WebGPU support: fully implemented
     },
-    "llava": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "clip": { # CLIP model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
     },
-    "llava_next": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "detr": { # DETR object detection model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented 
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "qwen2": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    
+    # Audio models
+    "clap": { # CLAP model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "xclip": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "wav2vec2": { # Wav2Vec2 model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "detr": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "whisper": { # Whisper model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "bert": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    
+    # Multimodal models
+    "llava": { # LLaVA model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",   # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION",  # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "clip": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "llava_next": { # LLaVA-Next model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "vit": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
+    "xclip": { # XCLIP model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     },
-    "llama": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "ENHANCED",
-        "webgpu": "ENHANCED"
+    
+    # Large model families with multiple variants
+    "qwen2": { # Qwen2 model family (high priority)
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
     }
 }
 
-def update_generator():
-    """Update the generator to support all hardware platforms."""
-    # Path to the generator file
-    file_path = "/home/barberb/ipfs_accelerate_py/test/fixed_merged_test_generator.py"
-    
-    # Read the file
-    with open(file_path, 'r') as f:
-        content = f.read()
-    
-    # Add hardware platform constants
-    hardware_platforms_code = """
-# Hardware platforms to support
-HARDWARE_PLATFORMS = [
-    "cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"
-]
-
-# Key model hardware compatibility mapping
-KEY_MODEL_HARDWARE_MAP = {
-    "t5": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "clap": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL", 
-        "webgpu": "REAL"
-    },
-    "wav2vec2": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL", 
-        "webgpu": "REAL" 
-    },
-    "whisper": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "llava": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "llava_next": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "qwen2": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "xclip": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "detr": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "bert": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "clip": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "vit": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "REAL",
-        "webgpu": "REAL"
-    },
-    "llama": {
-        "cpu": "REAL",
-        "cuda": "REAL",
-        "openvino": "REAL",
-        "mps": "REAL",
-        "rocm": "REAL",
-        "webnn": "ENHANCED",
-        "webgpu": "ENHANCED"
-    }
+# MODALITY_TYPES for proper hardware support mapping
+MODALITY_TYPES = {
+    "text": ["bert", "gpt2", "t5", "roberta", "distilbert", "bart", "llama", "mistral", "phi", 
+             "mixtral", "gemma", "qwen2", "deepseek", "falcon", "mpt", "chatglm", "bloom", 
+             "command-r", "orca3", "olmo", "starcoder", "codellama"],
+    "vision": ["vit", "deit", "swin", "convnext", "resnet", "dinov2", "detr", "sam", "segformer", 
+               "mask2former", "conditional_detr", "dino", "zoedepth", "depth-anything", "yolos"],
+    "audio": ["wav2vec2", "whisper", "hubert", "clap", "audioldm2", "musicgen", "bark", 
+              "encodec", "univnet", "speecht5", "qwen2-audio"],
+    "multimodal": ["clip", "llava", "blip", "flava", "owlvit", "git", "pali-gemma", "idefics",
+                   "llava-next", "flamingo", "blip2", "kosmos-2", "siglip", "chinese-clip", 
+                   "instructblip", "qwen2-vl", "cogvlm2", "vilt", "imagebind"],
+    "video": ["xclip", "videomae", "vivit", "movinet", "videobert", "videogpt"]
 }
-"""
-    
-    # Add the constants after importing typing
-    if "from typing import" in content:
-        import_pos = content.find("from typing import")
-        import_end = content.find("\n", import_pos) + 1
-        content = content[:import_end] + hardware_platforms_code + content[import_end:]
-    
-    # Add hardware-aware template selection function
-    hardware_template_func = """
-def generate_modality_specific_template(model_type: str, modality: str, platform="all", 
-                                        enhance_hardware_support: bool = True, hardware_map: Dict = None) -> str:
-    \"\"\"
-    Generate a template specific to the model's modality with enhanced hardware support.
-    
-    Args:
-        model_type (str): The model type/family name
-        modality (str): The modality ("text", "vision", "audio", "multimodal", or "specialized")
-        platform (str): Hardware platform to target (default: all)
-        enhance_hardware_support (bool): Whether to include enhanced hardware-specific optimizations
-        hardware_map (Dict): Optional mapping of hardware platforms to implementation types
-        
-    Returns:
-        str: Template code specific to the modality
-    \"\"\"
-    # Check if we need to apply special hardware optimizations for this model
-    model_base = model_type.split("-")[0].lower() if "-" in model_type else model_type.lower()
-    has_hardware_map = hardware_map is not None or (model_base in KEY_MODEL_HARDWARE_MAP)
-    
-    # Get the hardware map to use
-    if hardware_map is None and has_hardware_map:
-        hardware_map = KEY_MODEL_HARDWARE_MAP.get(model_base, {})
-    
-    # Normalize the model name for class naming
-    normalized_name = model_type.replace('-', '_').replace('.', '_')
-    class_name = ''.join(word.capitalize() for word in normalized_name.split('_'))
-    
-    # Generate template with hardware support for all platforms
-    template = f'''#!/usr/bin/env python3
-"""
-Test implementation for {model_type} models with cross-platform hardware support.
 
-This test file supports the following hardware platforms:
-- CPU: Standard CPU implementation
-- CUDA: NVIDIA GPU implementation
-- OpenVINO: Intel hardware acceleration
-- MPS: Apple Silicon GPU implementation
-- ROCm: AMD GPU implementation
-- WebNN: Web Neural Network API (browser)
-- WebGPU: Web GPU API (browser)
-"""
+# Create backup of a file
+def backup_file(file_path):
+    """Create a backup of a file."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = file_path.with_suffix(f".py.bak_{timestamp}")
+    shutil.copy2(file_path, backup_path)
+    print(f"Created backup of {file_path} at {backup_path}")
+    return backup_path
 
+# Enhanced hardware detection code if template_hardware_detection.py is not available
+def enhanced_hardware_detection_code():
+    """Return an enhanced hardware detection code block."""
+    return """
+# Hardware Detection with Web Platform Support
 import os
 import sys
-import json
-import time
-import torch
-import numpy as np
-import asyncio
-from typing import Dict, List, Any, Optional, Union, Tuple
+import importlib.util
+import logging
+from typing import Dict, Any, List
 
-try:
-    import transformers
-except ImportError:
-    transformers = None
-    print("Warning: transformers library not found")
-'''
-    
-    # Add modality-specific imports and test input preparation
-    if modality == "vision":
-        template += '''
-try:
-    from PIL import Image
-except ImportError:
-    Image = None
-    print("Warning: PIL library not found")
-'''
-    elif modality == "audio":
-        template += '''
-try:
-    import librosa
-except ImportError:
-    librosa = None
-    print("Warning: librosa library not found")
-'''
-    elif modality == "multimodal" or modality == "vision_language":
-        template += '''
-try:
-    from PIL import Image
-except ImportError:
-    Image = None
-    print("Warning: PIL library not found")
-'''
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("hardware_detection")
 
-    # Add mock handler class for fallback implementation
-    template += '''
-class MockHandler:
-    """Mock handler for platforms that don't have real implementations."""
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
     
-    def __init__(self, model_name, platform="cpu"):
-        self.model_name = model_name
-        self.platform = platform
-        print(f"Created mock handler for {platform}")
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
     
-    def __call__(self, *args, **kwargs):
-        """Return mock output."""
-        print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-        return {
-            "output": f"Mock output for {self.platform}",
-            "implementation_type": f"MOCK_{self.platform.upper()}"
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API or simulation)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_ENABLED" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API or simulation)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_ENABLED" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Web platform optimizations
+HAS_WEBGPU_COMPUTE_SHADERS = (
+    "WEBGPU_COMPUTE_SHADERS_ENABLED" in os.environ or
+    "WEBGPU_COMPUTE_SHADERS" in os.environ
+)
+
+HAS_PARALLEL_LOADING = (
+    "WEB_PARALLEL_LOADING_ENABLED" in os.environ or
+    "PARALLEL_LOADING_ENABLED" in os.environ
+)
+
+HAS_SHADER_PRECOMPILE = (
+    "WEBGPU_SHADER_PRECOMPILE_ENABLED" in os.environ or
+    "WEBGPU_SHADER_PRECOMPILE" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def detect_all_hardware():
+    \"\"\"Detect available hardware platforms on the current system.\"\"\"
+    capabilities = {
+        "cpu": {
+            "detected": True,
+            "version": None,
+            "count": os.cpu_count()
+        },
+        "cuda": {
+            "detected": False,
+            "version": None,
+            "device_count": 0,
+            "devices": []
+        },
+        "mps": {
+            "detected": False,
+            "device": None
+        },
+        "openvino": {
+            "detected": False,
+            "version": None,
+            "devices": []
+        },
+        "qualcomm": {
+            "detected": False,
+            "version": None,
+            "device": None
+        },
+        "rocm": {
+            "detected": False,
+            "version": None,
+            "device_count": 0
+        },
+        "webnn": {
+            "detected": False,
+            "simulation": True
+        },
+        "webgpu": {
+            "detected": False,
+            "simulation": True,
+            "compute_shaders": HAS_WEBGPU_COMPUTE_SHADERS,
+            "parallel_loading": HAS_PARALLEL_LOADING,
+            "shader_precompile": HAS_SHADER_PRECOMPILE
         }
-'''
-
-    # Add the test class
-    template += f'''
-class TestHF{class_name}:
-    """
-    Test implementation for {model_type} models.
+    }
     
-    This class provides functionality for testing {modality} models across
-    multiple hardware platforms (CPU, CUDA, OpenVINO, MPS, ROCm, WebNN, WebGPU).
-    """
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"]["detected"] = True
+        capabilities["cuda"]["device_count"] = torch.cuda.device_count()
+        capabilities["cuda"]["version"] = torch.version.cuda if hasattr(torch.version, "cuda") else None
+        
+        # Get device info
+        for i in range(torch.cuda.device_count()):
+            capabilities["cuda"]["devices"].append({
+                "id": i,
+                "name": torch.cuda.get_device_name(i),
+                "total_memory_mb": torch.cuda.get_device_properties(i).total_memory / (1024 * 1024)
+            })
     
-    def __init__(self, resources=None, metadata=None):
-        """Initialize the model."""
-        self.resources = resources if resources else {{
-            "transformers": transformers,
-            "torch": torch,
-            "numpy": np,
-        }}
-        self.metadata = metadata if metadata else {{}}
-        
-        # Model parameters
-        self.model_name = "MODEL_PLACEHOLDER"
-        
-        # Test data
-'''
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"]["detected"] = HAS_MPS
+    if HAS_MPS:
+        import platform
+        capabilities["mps"]["device"] = platform.processor()
     
-    # Add modality-specific test data initialization
-    if modality == "text":
-        template += '''
-        # Text-specific test data
-        self.test_text = "The quick brown fox jumps over the lazy dog."
-        self.test_texts = ["The quick brown fox jumps over the lazy dog.", "Hello world!"]
-        self.batch_size = 4
-'''
-    elif modality == "vision":
-        template += '''
-        # Vision-specific test data
-        self.test_image = "test.jpg"  # Path to a test image
-        self.test_images = ["test.jpg", "test.jpg"]  # Multiple test images
-        self.batch_size = 2
-        
-        # Ensure test image exists
-        self._ensure_test_image()
-        
-    def _ensure_test_image(self):
-        """Ensure test image exists, create if it doesn't"""
-        if not os.path.exists(self.test_image):
-            try:
-                # Create a simple test image if PIL is available
-                if self.resources.get("Image"):
-                    img = self.resources["Image"].new('RGB', (224, 224), color='white')
-                    img.save(self.test_image)
-                    print(f"Created test image: {self.test_image}")
-            except Exception as e:
-                print(f"Warning: Could not create test image: {e}")
-'''
-    elif modality == "audio":
-        template += '''
-        # Audio-specific test data
-        self.test_audio = "test.mp3"  # Path to a test audio file
-        self.test_audios = ["test.mp3", "test.mp3"]  # Multiple test audio files
-        self.batch_size = 1
-        self.sampling_rate = 16000
-        
-        # Ensure test audio exists
-        self._ensure_test_audio()
-        
-    def _ensure_test_audio(self):
-        """Ensure test audio exists, create if it doesn't"""
-        if not os.path.exists(self.test_audio):
-            try:
-                # Create a simple silence audio file if not available
-                librosa_lib = self.resources.get("librosa")
-                np_lib = self.resources.get("numpy")
-                if np_lib and librosa_lib:
-                    silence = np_lib.zeros(self.sampling_rate * 3)  # 3 seconds of silence
-                    try:
-                        librosa_lib.output.write_wav(self.test_audio, silence, self.sampling_rate)
-                    except AttributeError:
-                        # For newer librosa versions
-                        import soundfile as sf
-                        sf.write(self.test_audio, silence, self.sampling_rate)
-                    print(f"Created test audio: {self.test_audio}")
-            except Exception as e:
-                print(f"Warning: Could not create test audio: {e}")
-'''
-    elif modality == "multimodal" or modality == "vision_language":
-        template += '''
-        # Multimodal-specific test data
-        self.test_image = "test.jpg"
-        self.test_text = "What's in this image?"
-        self.test_multimodal_input = {"image": "test.jpg", "text": "What's in this image?"}
-        self.batch_size = 1
-        
-        # Ensure test image exists
-        self._ensure_test_image()
-        
-    def _ensure_test_image(self):
-        """Ensure test image exists, create if it doesn't"""
-        if not os.path.exists(self.test_image):
-            try:
-                # Create a simple test image if PIL is available
-                if self.resources.get("Image"):
-                    img = self.resources["Image"].new('RGB', (224, 224), color='white')
-                    img.save(self.test_image)
-                    print(f"Created test image: {self.test_image}")
-            except Exception as e:
-                print(f"Warning: Could not create test image: {e}")
-'''
-
-    # Now add all the hardware-specific initialization methods
-    # CPU init
-    template += '''
-    def init_cpu(self, model_name=None):
-        """Initialize model for CPU inference."""
+    # OpenVINO capabilities
+    capabilities["openvino"]["detected"] = HAS_OPENVINO
+    if HAS_OPENVINO:
         try:
-            model_name = model_name or self.model_name
+            import openvino
+            capabilities["openvino"]["version"] = openvino.__version__ if hasattr(openvino, "__version__") else "Unknown"
             
-            # Initialize processor/tokenizer
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # Initialize model
-            model = self.resources["transformers"].AutoModel.from_pretrained(model_name)
-            model.eval()
-            
-            # Create handler function
-            def handler(input_data, **kwargs):
+            # Get available devices
+            try:
+                # Try new API first (recommended since 2025.0)
                 try:
-                    # Process input
-                    inputs = processor(input_data, return_tensors="pt")
-                    
-                    # Run inference
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    return {
-                        "output": outputs,
-                        "implementation_type": "REAL_CPU",
-                        "model": model_name
-                    }
-                except Exception as e:
-                    print(f"Error in CPU handler: {e}")
-                    return {
-                        "output": f"Error: {str(e)}",
-                        "implementation_type": "ERROR",
-                        "error": str(e),
-                        "model": model_name
-                    }
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = self.batch_size
-            
-            endpoint = model
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on CPU: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create mock implementation
-            handler = MockHandler(model_name, platform="cpu")
-            return None, None, handler, asyncio.Queue(32), 1
-'''
-    
-    # CUDA init
-    template += '''
-    def init_cuda(self, model_name=None, device="cuda:0"):
-        """Initialize model for CUDA inference."""
-        try:
-            if not torch.cuda.is_available():
-                raise RuntimeError("CUDA is not available")
+                    from openvino import Core
+                except ImportError:
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
                 
-            model_name = model_name or self.model_name
-            
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # Initialize model on CUDA
-            model = self.resources["transformers"].AutoModel.from_pretrained(model_name)
-            model.to(device)
-            model.eval()
-            
-            # Create handler function - adapted for CUDA
-            def handler(input_data, **kwargs):
-                try:
-                    # Process input
-                    inputs = processor(input_data, return_tensors="pt")
-                    
-                    # Move inputs to CUDA
-                    inputs = {key: val.to(device) for key, val in inputs.items()}
-                    
-                    # Run inference
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    return {
-                        "output": outputs,
-                        "implementation_type": "REAL_CUDA",
-                        "model": model_name,
-                        "device": device
-                    }
-                except Exception as e:
-                    print(f"Error in CUDA handler: {e}")
-                    return {
-                        "output": f"Error: {str(e)}",
-                        "implementation_type": "ERROR",
-                        "error": str(e),
-                        "model": model_name,
-                        "device": device
-                    }
-            
-            # Create queue with larger batch size for GPU
-            queue = asyncio.Queue(64)
-            batch_size = self.batch_size * 2  # Larger batch size for GPU
-            
-            endpoint = model
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on CUDA: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create simple mock implementation for CUDA
-            handler = MockHandler(model_name, platform="cuda")
-            return None, None, handler, asyncio.Queue(32), self.batch_size
-'''
+                core = Core()
+                devices = core.available_devices
+                capabilities["openvino"]["devices"] = devices
+            except:
+                pass
+        except ImportError:
+            pass
     
-    # Add the remaining hardware platform implementations
-    template += '''
-    def init_openvino(self, model_name=None, device="CPU"):
-        """Initialize model for OpenVINO inference."""
+    # Qualcomm capabilities
+    capabilities["qualcomm"]["detected"] = HAS_QUALCOMM
+    if HAS_QUALCOMM:
         try:
-            # Check if OpenVINO is available
-            import openvino as ov
+            if importlib.util.find_spec("qnn_wrapper") is not None:
+                import qnn_wrapper
+                capabilities["qualcomm"]["version"] = qnn_wrapper.__version__ if hasattr(qnn_wrapper, "__version__") else "Unknown"
+                capabilities["qualcomm"]["device"] = "QNN"
+            elif importlib.util.find_spec("qti") is not None:
+                import qti
+                capabilities["qualcomm"]["version"] = qti.__version__ if hasattr(qti, "__version__") else "Unknown"
+                capabilities["qualcomm"]["device"] = "QTI"
+            elif "QUALCOMM_SDK" in os.environ:
+                capabilities["qualcomm"]["version"] = os.environ.get("QUALCOMM_SDK_VERSION", "Unknown")
+                capabilities["qualcomm"]["device"] = os.environ.get("QUALCOMM_DEVICE", "Unknown")
+        except ImportError:
+            pass
+    
+    # ROCm capabilities
+    capabilities["rocm"]["detected"] = HAS_ROCM
+    if HAS_ROCM:
+        capabilities["rocm"]["device_count"] = torch.cuda.device_count() if HAS_CUDA else 0
+        if hasattr(torch, "version") and hasattr(torch.version, "hip"):
+            capabilities["rocm"]["version"] = torch.version.hip
+    
+    # WebNN capabilities
+    capabilities["webnn"]["detected"] = HAS_WEBNN
+    capabilities["webnn"]["simulation"] = not (
+        importlib.util.find_spec("webnn") is not None or 
+        "WEBNN_AVAILABLE" in os.environ
+    )
+    
+    # WebGPU capabilities
+    capabilities["webgpu"]["detected"] = HAS_WEBGPU
+    capabilities["webgpu"]["simulation"] = not (
+        importlib.util.find_spec("webgpu") is not None or 
+        importlib.util.find_spec("wgpu") is not None or 
+        "WEBGPU_AVAILABLE" in os.environ
+    )
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = detect_all_hardware()
+
+# For convenience in conditional code
+HAS_HARDWARE_DETECTION = True
+"""
+    
+def create_hardware_template_integration(file_path, text, vision, audio, multimodal, video):
+    """Create a specific hardware template for each modality."""
+    modality_template = f"""
+# Enhanced Hardware Templates - Auto-generated with fix_generator_hardware_support.py
+
+# Text Model Template (BERT, T5, LLAMA, etc.)
+text_hardware_template = \"\"\"
+{text[:200]}
+...
+\"\"\"
+
+# Vision Model Template (ViT, CLIP, DETR, etc.)
+vision_hardware_template = \"\"\"
+{vision[:200]}
+...
+\"\"\"
+
+# Audio Model Template (Whisper, WAV2VEC2, CLAP, etc.)
+audio_hardware_template = \"\"\"
+{audio[:200]}
+...
+\"\"\"
+
+# Multimodal Model Template (LLAVA, LLAVA-Next, etc.)
+multimodal_hardware_template = \"\"\"
+{multimodal[:200]}
+...
+\"\"\"
+
+# Video Model Template (XCLIP, etc.)
+video_hardware_template = \"\"\"
+{video[:200]}
+...
+\"\"\"
+
+# Map model categories to templates
+hardware_template_map = {{
+    "text": text_hardware_template,
+    "vision": vision_hardware_template,
+    "audio": audio_hardware_template,
+    "multimodal": multimodal_hardware_template,
+    "video": video_hardware_template
+}}
+
+# Key Models Map - Maps key model prefixes to proper categories
+key_models_mapping = {{
+    "bert": "text", 
+    "gpt2": "text",
+    "t5": "text",
+    "llama": "text",
+    "vit": "vision",
+    "clip": "vision",
+    "whisper": "audio",
+    "wav2vec2": "audio",
+    "clap": "audio",
+    "detr": "vision",
+    "llava": "multimodal",
+    "llava_next": "multimodal",
+    "qwen2": "text",
+    "xclip": "video"
+}}
+
+# Hardware support matrix for key models
+KEY_MODEL_HARDWARE_MAP = {{
+    # Text models
+    "bert": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple Silicon) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
+    }},
+    "t5": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple Silicon) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
+    }},
+    "llama": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "vit": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented 
+        "webgpu": "REAL"      # WebGPU support: fully implemented
+    }},
+    "clip": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "REAL",      # WebNN support: fully implemented
+        "webgpu": "REAL"      # WebGPU support: fully implemented
+    }},
+    "detr": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented 
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "clap": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "wav2vec2": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "whisper": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "llava": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",   # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION",  # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "llava_next": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "xclip": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "REAL",   # OpenVINO support: fully implemented
+        "mps": "REAL",        # MPS (Apple) support: fully implemented
+        "rocm": "REAL",       # ROCm (AMD) support: fully implemented
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }},
+    "qwen2": {{ 
+        "cpu": "REAL",        # CPU support: fully implemented
+        "cuda": "REAL",       # CUDA support: fully implemented
+        "openvino": "SIMULATION", # OpenVINO support: simulation mode
+        "mps": "SIMULATION",  # MPS (Apple) support: simulation mode
+        "rocm": "SIMULATION", # ROCm (AMD) support: simulation mode
+        "webnn": "SIMULATION", # WebNN support: simulation mode
+        "webgpu": "SIMULATION" # WebGPU support: simulation mode
+    }}
+}}
+
+# Function to detect modality from model name
+def detect_model_modality(model_name):
+    \"\"\"Detect which modality a model belongs to based on its name.\"\"\"
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct mapping from key models
+    if model_base in key_models_mapping:
+        return key_models_mapping[model_base]
+    
+    # Check for common patterns in model names
+    model_lower = model_name.lower()
+    
+    # Text models
+    if any(text_model in model_lower for text_model in {text_models}):
+        return "text"
+    
+    # Vision models
+    if any(vision_model in model_lower for vision_model in {vision_models}):
+        return "vision"
+    
+    # Audio models
+    if any(audio_model in model_lower for audio_model in {audio_models}):
+        return "audio"
+    
+    # Multimodal models
+    if any(mm_model in model_lower for mm_model in {multimodal_models}):
+        return "multimodal"
+    
+    # Video models
+    if any(video_model in model_lower for video_model in {video_models}):
+        return "video"
+    
+    # Default to text as fallback
+    return "text"
+
+# Function to get hardware template for a model
+def get_hardware_template_for_model(model_name):
+    \"\"\"Get the appropriate hardware template for a model.\"\"\"
+    modality = detect_model_modality(model_name)
+    return hardware_template_map.get(modality, text_hardware_template)
+
+# Function to get hardware map for a model
+def get_hardware_map_for_model(model_name):
+    \"\"\"Get the appropriate hardware map for a model.\"\"\"
+    # Check if this is a known key model
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct mapping from key models
+    if model_base in KEY_MODEL_HARDWARE_MAP:
+        return KEY_MODEL_HARDWARE_MAP[model_base]
+    
+    # If not a key model, use modality to create default map
+    modality = detect_model_modality(model_name)
+    
+    # Default hardware map based on modality
+    default_map = {
+        "text": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "REAL", "webgpu": "REAL"
+        },
+        "vision": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "REAL", "webgpu": "REAL"
+        },
+        "audio": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        },
+        "multimodal": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "SIMULATION", 
+            "mps": "SIMULATION", "rocm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        },
+        "video": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        }
+    }
+    
+    return default_map.get(modality, default_map["text"])
+"""
+
+    # Create template lists for different modalities
+    text_models = str([m.lower() for m in MODALITY_TYPES["text"][:8]])
+    vision_models = str([m.lower() for m in MODALITY_TYPES["vision"][:8]])
+    audio_models = str([m.lower() for m in MODALITY_TYPES["audio"][:8]])
+    multimodal_models = str([m.lower() for m in MODALITY_TYPES["multimodal"][:8]])
+    video_models = str([m.lower() for m in MODALITY_TYPES["video"][:5]])
+    
+    # Format the template with model lists
+    formatted_template = modality_template.format(
+        text_models=text_models,
+        vision_models=vision_models,
+        audio_models=audio_models,
+        multimodal_models=multimodal_models,
+        video_models=video_models
+    )
+    
+    # Write to file
+    template_file = TEST_DIR / "hardware_template_integration.py"
+    with open(template_file, 'w') as f:
+        f.write(formatted_template)
+    
+    print(f"Created hardware template integration file at {template_file}")
+    return template_file
+
+# Generate web platform optimization code
+def generate_web_platform_optimization_code():
+    """Generate code for the March 2025 web platform optimizations."""
+    optimization_code = """
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    \"\"\"
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    \"\"\"
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    \"\"\"
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    \"\"\"
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
             
-            model_name = model_name or self.model_name
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+"""
+    return optimization_code
+
+# Apply hardware support to a generator file
+def update_generator_hardware_support(file_path, force=False):
+    """Update a generator file with proper hardware support."""
+    if not file_path.exists():
+        print(f"File not found: {file_path}")
+        return False
+    
+    # Create backup
+    backup_path = backup_file(file_path)
+    
+    try:
+        # Read content
+        with open(file_path, 'r') as f:
+            content = f.read()
+        
+        # Check if hardware detection is already present and we're not forcing update
+        if not force and "HAS_HARDWARE_DETECTION" in content and "HAS_WEBGPU" in content:
+            print(f"Hardware detection already present in {file_path} (use --force to update anyway)")
+            return True
+        
+        # Get hardware detection code
+        if HAS_HARDWARE_TEMPLATE:
+            hardware_detection = generate_hardware_detection_code()
+        else:
+            hardware_detection = enhanced_hardware_detection_code()
+        
+        # Add web platform optimization code
+        web_optimizations = generate_web_platform_optimization_code()
+        combined_code = hardware_detection + "\n" + web_optimizations
+        
+        # Find a suitable insertion point after imports
+        import_section_end = content.find("\n\n", content.find("import "))
+        if import_section_end == -1:
+            import_section_end = content.find("import ") + 100  # Rough estimate
+        
+        # Insert hardware detection code
+        new_content = content[:import_section_end] + "\n" + combined_code + content[import_section_end:]
+        
+        # Add the KEY_MODEL_HARDWARE_CONFIG if it's not already present
+        if "KEY_MODEL_HARDWARE_MAP" not in new_content and "KEY_MODEL_HARDWARE_CONFIG" not in new_content:
+            # Find a good place to insert the configuration
+            config_pos = new_content.find("def main(")
+            if config_pos == -1:
+                config_pos = new_content.find("if __name__ ==")
             
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
+            if config_pos != -1:
+                # Insert before the main function or __name__ check
+                config_str = "\n# Define key models that need special handling with hardware backends\n"
+                config_str += "KEY_MODEL_HARDWARE_MAP = " + str(KEY_MODEL_HARDWARE_CONFIG) + "\n\n"
+                
+                new_content = new_content[:config_pos] + config_str + new_content[config_pos:]
+        
+        # Add hardware initialization methods if appropriate
+        if "init_cpu" in new_content and "init_cuda" in new_content and HAS_HARDWARE_TEMPLATE:
+            # Find a suitable insertion point for hardware init methods
+            init_methods_match = re.search(r'def\s+init_cpu\s*\(', new_content)
+            if init_methods_match:
+                init_methods_pos = init_methods_match.start()
+                # Get all init methods
+                hardware_init_methods = generate_hardware_init_methods()
+                # Replace the existing methods with new ones
+                init_end_match = re.search(r'def\s+(?!init_)[a-zA-Z0-9_]+\s*\(', new_content[init_methods_pos:])
+                if init_end_match:
+                    init_end_pos = init_methods_pos + init_end_match.start()
+                    new_content = new_content[:init_methods_pos] + hardware_init_methods + new_content[init_end_pos:]
+        
+        # Create handler creation methods if needed
+        if "create_cpu_" in new_content and "create_cuda_" in new_content and HAS_HARDWARE_TEMPLATE:
+            # Find a suitable insertion point for creation methods
+            creation_methods_match = re.search(r'def\s+create_cpu_[a-zA-Z0-9_]+\s*\(', new_content)
+            if creation_methods_match:
+                creation_methods_pos = creation_methods_match.start()
+                # Get all creation methods
+                creation_methods_code = generate_creation_methods()
+                # Replace the existing methods with new ones
+                creation_end_match = re.search(r'def\s+(?!create_)[a-zA-Z0-9_]+\s*\(', new_content[creation_methods_pos:])
+                if creation_end_match:
+                    creation_end_pos = creation_methods_pos + creation_end_match.start()
+                    new_content = new_content[:creation_methods_pos] + creation_methods_code + new_content[creation_end_pos:]
+        
+        # Update platform detection for web
+        if "detect_model_modality" in new_content:
+            # Check if we need to update the modality detection
+            if "def detect_model_modality" in new_content and "multimodal" not in new_content:
+                modality_match = re.search(r'def\s+detect_model_modality.*?\)', new_content)
+                if modality_match:
+                    # Extract sample templates for different modalities
+                    text_template = "Default text template"
+                    vision_template = "Default vision template"
+                    audio_template = "Default audio template"
+                    multimodal_template = "Default multimodal template"
+                    video_template = "Default video template"
+                    
+                    # Create hardware template integration
+                    template_file = create_hardware_template_integration(
+                        file_path, 
+                        text_template, 
+                        vision_template, 
+                        audio_template, 
+                        multimodal_template, 
+                        video_template
+                    )
+                    
+                    # Add import for hardware template integration
+                    import_pos = new_content.find("import ")
+                    import_statement = f"# Import hardware template integration\ntry:\n    from hardware_template_integration import detect_model_modality, get_hardware_template_for_model\n    HAS_HARDWARE_TEMPLATES = True\nexcept ImportError:\n    HAS_HARDWARE_TEMPLATES = False\n\n"
+                    new_content = new_content[:import_pos] + import_statement + new_content[import_pos:]
+        
+        # Write updated content
+        with open(file_path, 'w') as f:
+            f.write(new_content)
+        
+        print(f"Successfully updated hardware support in {file_path}")
+        return True
+        
+    except Exception as e:
+        print(f"Error updating {file_path}: {e}")
+        # Restore from backup
+        shutil.copy2(backup_path, file_path)
+        print(f"Restored {file_path} from backup")
+        return False
+
+def update_web_platform_files(force=False):
+    """Update web platform files with optimization support."""
+    success_count = 0
+    
+    for web_file in WEB_PLATFORM_FILES:
+        if web_file.exists():
+            print(f"Updating web platform file: {web_file}")
             
-            # Implementation using Optimum Intel
+            # Create backup
+            backup_path = backup_file(web_file)
+            
             try:
-                # Import OpenVINO-specific modules
-                from optimum.intel import OVModelForFeatureExtraction
+                # Read content
+                with open(web_file, 'r') as f:
+                    content = f.read()
                 
-                # Initialize the model with OpenVINO
-                model = OVModelForFeatureExtraction.from_pretrained(
-                    model_name,
-                    export=True,
-                    provider=device,
-                    trust_remote_code=True
-                )
+                # Check if optimizations are already present and we're not forcing update
+                if not force and "WEBGPU_COMPUTE_SHADERS_ENABLED" in content and "WEB_PARALLEL_LOADING_ENABLED" in content:
+                    print(f"Web platform optimizations already present in {web_file} (use --force to update anyway)")
+                    success_count += 1
+                    continue
                 
-                # Create handler function
-                def handler(input_data, **kwargs):
-                    try:
-                        # Process input
-                        inputs = processor(input_data, return_tensors="pt")
+                # Add March 2025 web optimizations
+                has_changed = False
+                
+                # Add compute shader optimization
+                if "class WebGPUInference" in content and "compute_shaders" not in content:
+                    compute_shader_code = """
+    def _init_compute_shaders(self):
+        \"\"\"Initialize compute shaders for audio processing acceleration\"\"\"
+        # Check if compute shaders are enabled
+        compute_shaders_enabled = (
+            os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+            os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+        )
+        
+        if not compute_shaders_enabled:
+            return False
+            
+        # Detect browser for optimal workgroup size
+        is_firefox = False
+        try:
+            import js
+            if hasattr(js, 'navigator'):
+                user_agent = js.navigator.userAgent.lower()
+                is_firefox = "firefox" in user_agent
+        except (ImportError, AttributeError):
+            # Environment variable override for testing
+            is_firefox = os.environ.get("SIMULATE_FIREFOX", "0") == "1"
+        
+        # Set workgroup size based on browser
+        # Firefox performs best with 256x1x1 workgroups
+        # Chrome/Edge perform best with 128x2x1 workgroups
+        if is_firefox:
+            self.workgroup_size = [256, 1, 1]
+            logger.info("Using Firefox-optimized compute shader workgroup size: 256x1x1")
+        else:
+            self.workgroup_size = [128, 2, 1]
+            logger.info("Using standard compute shader workgroup size: 128x2x1")
+            
+        self.use_compute_shaders = True
+        return True
+"""
+                    # Find insertion point for compute shader method
+                    init_pos = content.find("def __init__")
+                    if init_pos != -1:
+                        next_method_pos = content.find("def ", init_pos + 10)
+                        if next_method_pos != -1:
+                            content = content[:next_method_pos] + compute_shader_code + content[next_method_pos:]
+                            has_changed = True
+                
+
+                    # Add parallel loading optimization
+                    if "def load_model" in content and "parallel_loading" not in content:
+                        parallel_loading_code = """
+    def _enable_parallel_loading(self):
+        \"\"\"Enable parallel loading for multimodal models\"\"\"
+        # Check if parallel loading is enabled
+        parallel_loading_enabled = (
+            os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+            os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+        )
+        
+        if not parallel_loading_enabled:
+            return False
+        
+        # Only enable for multimodal models
+        if not hasattr(self, 'model_type') or self.model_type != 'multimodal':
+            return False
+            
+        self.use_parallel_loading = True
+        logger.info("Parallel loading enabled for multimodal model")
+        return True
+"""
+          
+                        # Find insertion point for parallel loading method
+                        load_model_pos = content.find("def load_model")
+                        if load_model_pos != -1:
+                            prev_method_end = content.rfind("\n    def ", 0, load_model_pos)
+                            if prev_method_end != -1:
+                                content = content[:prev_method_end] + parallel_loading_code + content[prev_method_end:]
+                                has_changed = True
+                
+
+                    # Add shader precompilation optimization
+                    if "def compile_model" in content and "shader_precompile" not in content:
+                        shader_precompile_code = """
+    def _enable_shader_precompilation(self):
+        \"\"\"Enable shader precompilation for faster startup\"\"\"
+        # Check if shader precompilation is enabled
+        shader_precompile_enabled = (
+            os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+            os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+        )
+        
+        if not shader_precompile_enabled:
+            return False
+            
+        self.precompile_shaders = True
+        logger.info("Shader precompilation enabled")
+        return True
+"""
+                        # Find insertion point for shader precompilation method
+                        compile_model_pos = content.find("def compile_model")
+                        if compile_model_pos != -1:
+                            prev_method_end = content.rfind("\n    def ", 0, compile_model_pos)
+                            if prev_method_end != -1:
+                                content = content[:prev_method_end] + shader_precompile_code + content[prev_method_end:]
+                                has_changed = True
+                
+                # Add initialization in __init__ method
+                if has_changed and "def __init__" in content:
+                    init_method = re.search(r'def __init__\([^)]*\):.*?\n        [^\n]+', content, re.DOTALL)
+                    if init_method:
+                        init_pos = init_method.end()
+                        init_code = "\n        # March 2025 Optimizations\n"
+                        init_code += "        self.use_compute_shaders = False\n"
+                        init_code += "        self.use_parallel_loading = False\n"
+                        init_code += "        self.precompile_shaders = False\n"
+                        init_code += "        self.workgroup_size = [128, 1, 1]  # Default workgroup size\n"
                         
-                        # Run inference with OpenVINO model
-                        outputs = model(**inputs)
+                        content = content[:init_pos] + init_code + content[init_pos:]
                         
-                        return {
-                            "output": outputs,
-                            "implementation_type": "REAL_OPENVINO",
-                            "model": model_name,
-                            "device": device
-                        }
-                    except Exception as e:
-                        print(f"Error in OpenVINO handler: {e}")
-                        return {
-                            "output": f"Error: {str(e)}",
-                            "implementation_type": "ERROR",
-                            "error": str(e),
-                            "model": model_name,
-                            "device": device
-                        }
+                        # Also add calls to initialization methods
+                        setup_pattern = re.search(r'def setup\([^)]*\):[^}]*?return', content, re.DOTALL)
+                        if setup_pattern:
+                            setup_pos = setup_pattern.start() + setup_pattern.group(0).rfind("return")
+                            setup_code = "\n        # Initialize optimizations\n"
+                            setup_code += "        self._init_compute_shaders()\n"
+                            setup_code += "        self._enable_parallel_loading()\n"
+                            setup_code += "        self._enable_shader_precompilation()\n\n        "
+                            
+                            content = content[:setup_pos] + setup_code + content[setup_pos:]
                 
-                # Create queue
-                queue = asyncio.Queue(32)
-                batch_size = self.batch_size
+                # Write updated content
+                if has_changed:
+                    with open(web_file, 'w') as f:
+                        f.write(content)
+                    
+                    print(f"Successfully updated web platform optimizations in {web_file}")
+                    success_count += 1
+                else:
+                    print(f"No changes needed for {web_file}")
+                    success_count += 1
                 
-                endpoint = model
-                return endpoint, processor, handler, queue, batch_size
-                
-            except (ImportError, RuntimeError) as optimum_error:
-                print(f"Optimum Intel not available or error occurred: {optimum_error}")
-                print("Falling back to direct OpenVINO implementation")
-                
-                # Fallback to custom implementation
-                handler = MockHandler(model_name, platform="openvino")
-                return None, processor, handler, asyncio.Queue(32), self.batch_size
-        
-        except Exception as e:
-            print(f"Error in OpenVINO implementation: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create mock implementation as a fallback
-            handler = MockHandler(model_name, platform="openvino")
-            return None, None, handler, asyncio.Queue(16), 1
+            except Exception as e:
+                print(f"Error updating web platform file {web_file}: {e}")
+                # Restore from backup
+                shutil.copy2(backup_path, web_file)
+                print(f"Restored {web_file} from backup")
+        else:
+            print(f"Web platform file not found: {web_file}")
     
-    def init_mps(self, model_name=None, device="mps"):
-        """Initialize model for Apple Silicon (M1/M2/M3) inference."""
-        try:
-            # Check if MPS is available
-            if not hasattr(torch.backends, "mps") or not torch.backends.mps.is_available():
-                raise RuntimeError("MPS (Apple Silicon) is not available")
-                
-            model_name = model_name or self.model_name
-            
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # Initialize model on MPS
-            model = self.resources["transformers"].AutoModel.from_pretrained(model_name)
-            model.to(device)
-            model.eval()
-            
-            # Create handler function
-            def handler(input_data, **kwargs):
-                try:
-                    # Process input
-                    inputs = processor(input_data, return_tensors="pt")
-                    
-                    # Move inputs to MPS
-                    inputs = {key: val.to(device) for key, val in inputs.items()}
-                    
-                    # Run inference
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    return {
-                        "output": outputs,
-                        "implementation_type": "REAL_MPS",
-                        "model": model_name,
-                        "device": device
-                    }
-                except Exception as e:
-                    print(f"Error in MPS handler: {e}")
-                    return {
-                        "output": f"Error: {str(e)}",
-                        "implementation_type": "ERROR",
-                        "error": str(e),
-                        "model": model_name,
-                        "device": device
-                    }
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = self.batch_size
-            
-            endpoint = model
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on MPS: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create simple mock implementation for MPS
-            handler = MockHandler(model_name, platform="mps")
-            return None, None, handler, asyncio.Queue(16), self.batch_size
-    
-    def init_rocm(self, model_name=None, device="hip"):
-        """Initialize model for AMD ROCm inference."""
-        try:
-            # Detect if ROCm is available via PyTorch
-            if not torch.cuda.is_available() or not any("hip" in d.lower() for d in [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]):
-                raise RuntimeError("ROCm (AMD GPU) is not available")
-                
-            model_name = model_name or self.model_name
-            
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # Initialize model on ROCm (via CUDA API in PyTorch)
-            model = self.resources["transformers"].AutoModel.from_pretrained(model_name)
-            model.to("cuda")  # ROCm uses CUDA API
-            model.eval()
-            
-            # Create handler function
-            def handler(input_data, **kwargs):
-                try:
-                    # Process input
-                    inputs = processor(input_data, return_tensors="pt")
-                    
-                    # Move inputs to ROCm
-                    inputs = {key: val.to("cuda") for key, val in inputs.items()}
-                    
-                    # Run inference
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                    
-                    return {
-                        "output": outputs,
-                        "implementation_type": "REAL_ROCM",
-                        "model": model_name,
-                        "device": device
-                    }
-                except Exception as e:
-                    print(f"Error in ROCm handler: {e}")
-                    return {
-                        "output": f"Error: {str(e)}",
-                        "implementation_type": "ERROR",
-                        "error": str(e),
-                        "model": model_name,
-                        "device": device
-                    }
-            
-            # Create queue
-            queue = asyncio.Queue(32)
-            batch_size = self.batch_size
-            
-            endpoint = model
-            
-            return endpoint, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on ROCm: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create simple mock implementation for ROCm
-            handler = MockHandler(model_name, platform="rocm")
-            return None, None, handler, asyncio.Queue(16), self.batch_size
-    
-    def init_webnn(self, model_name=None, device="webnn"):
-        """Initialize model for WebNN-based inference."""
-        try:
-            model_name = model_name or self.model_name
-            
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # In a real implementation, we'd use the WebNN API
-            # For now, create a mock implementation
-            handler = MockHandler(model_name, platform="webnn")
-            
-            # Create queue
-            queue = asyncio.Queue(8)
-            batch_size = 1
-            
-            return None, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on WebNN: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create simple mock implementation for WebNN
-            handler = MockHandler(model_name, platform="webnn")
-            return None, None, handler, asyncio.Queue(8), 1
-    
-    def init_webgpu(self, model_name=None, device="webgpu"):
-        """Initialize model for WebGPU-based inference."""
-        try:
-            model_name = model_name or self.model_name
-            
-            # Initialize processor same as CPU
-            processor = self.resources["transformers"].AutoProcessor.from_pretrained(model_name)
-            
-            # In a real implementation, we'd use the WebGPU API
-            # For now, create a mock implementation
-            handler = MockHandler(model_name, platform="webgpu")
-            
-            # Create queue
-            queue = asyncio.Queue(8)
-            batch_size = 1
-            
-            return None, processor, handler, queue, batch_size
-        except Exception as e:
-            print(f"Error initializing {model_name} on WebGPU: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
-            print("Falling back to mock implementation")
-            
-            # Create simple mock implementation for WebGPU
-            handler = MockHandler(model_name, platform="webgpu")
-            return None, None, handler, asyncio.Queue(8), 1
-'''
+    return success_count == len(WEB_PLATFORM_FILES)
 
-    # Add main test functions
-    template += '''
-# Test functions for this model
-
-def test_all_platforms(model_name="MODEL_PLACEHOLDER"):
-    """Test the model on all supported hardware platforms."""
-    test_model = TestHF{class_name}()
-    test_model.model_name = model_name
+def fix_all_generators(force=False):
+    """Fix hardware support in all generator files."""
+    success_count = 0
     
-    results = {}
+    for generator_file in GENERATOR_FILES:
+        if generator_file.exists():
+            success = update_generator_hardware_support(generator_file, force)
+            if success:
+                success_count += 1
+        else:
+            print(f"Generator file not found: {generator_file}")
     
-    # Test on each platform
-    platforms = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
-    for platform in platforms:
-        print(f"\\nTesting on {platform.upper()} platform...")
-        try:
-            init_method = getattr(test_model, f"init_{platform}")
-            endpoint, processor, handler, queue, batch_size = init_method()
-            
-            # Test with a sample input
-            if platform in ["webnn", "webgpu"]:
-                # WebNN/WebGPU specific handling
-                test_input = "Test input for web platforms"
-            else:
-                # Default input handling
-                test_input = test_model.test_text if hasattr(test_model, "test_text") else "Default test input"
-                
-            start_time = time.time()
-            output = handler(test_input)
-            inference_time = time.time() - start_time
-            
-            # Record results
-            results[platform] = {
-                "success": True,
-                "implementation_type": output.get("implementation_type", "UNKNOWN"),
-                "inference_time": inference_time
-            }
-            
-            print(f"  Success on {platform.upper()} - {output.get('implementation_type', 'UNKNOWN')}")
-            print(f"  Inference time: {inference_time:.4f} seconds")
-            
-        except Exception as e:
-            print(f"  Error on {platform.upper()}: {e}")
-            results[platform] = {
-                "success": False,
-                "error": str(e)
-            }
+    # Update web platform files
+    web_success = update_web_platform_files(force)
+    if web_success:
+        print("Successfully updated all web platform files")
+    else:
+        print("Some web platform files could not be updated")
     
-    # Print summary
-    print("\\nTest Results Summary:")
-    for platform, result in results.items():
-        status = "✅ Success" if result.get("success") else "❌ Failed"
-        impl_type = result.get("implementation_type", "N/A")
-        info = f"({impl_type})" if result.get("success") else f"({result.get('error', 'Unknown error')})"
-        print(f"  {platform.upper()}: {status} {info}")
+    print(f"\nSummary: Successfully updated {success_count} of {len(GENERATOR_FILES)} generator files")
+    if web_success:
+        print("Web platform files updated with March 2025 optimizations")
     
-    return results
+    return success_count == len(GENERATOR_FILES) and web_success
 
 def main():
-    """Main function for testing."""
-    import argparse
-    parser = argparse.ArgumentParser(description="Test {model_type} model")
-    parser.add_argument("--model", default="MODEL_PLACEHOLDER", help="Model name or path")
-    parser.add_argument("--platform", default="all", help="Hardware platform (cpu, cuda, openvino, mps, rocm, webnn, webgpu, all)")
+    """Main function."""
+    parser = argparse.ArgumentParser(description="Fix generator hardware support and web platform optimizations")
+    parser.add_argument("--force", action="store_true", help="Force update even if hardware detection is already present")
     args = parser.parse_args()
     
-    if args.platform.lower() == "all":
-        test_all_platforms(args.model)
+    print("Fixing hardware support in test generators and web platform files...")
+    print("This includes March 2025 web platform optimizations:")
+    print("- WebGPU Compute Shader optimization for audio models")
+    print("- Parallel Model Loading for multimodal models")
+    print("- Shader Precompilation for faster startup")
+    
+    success = fix_all_generators(args.force)
+    
+    if success:
+        print("\nAll generators and web platform files successfully updated!")
     else:
-        # Test on specific platform
-        test_model = TestHF{class_name}()
-        test_model.model_name = args.model
-        
-        platform = args.platform.lower()
-        print(f"Testing on {platform.upper()} platform...")
-        try:
-            init_method = getattr(test_model, f"init_{platform}")
-            endpoint, processor, handler, queue, batch_size = init_method()
-            
-            # Test with a sample input
-            if platform in ["webnn", "webgpu"]:
-                # WebNN/WebGPU specific handling
-                test_input = "Test input for web platforms"
-            else:
-                # Default input handling
-                test_input = test_model.test_text if hasattr(test_model, "test_text") else "Default test input"
-                
-            start_time = time.time()
-            output = handler(test_input)
-            inference_time = time.time() - start_time
-            
-            print(f"Success on {platform.upper()} - {output.get('implementation_type', 'UNKNOWN')}")
-            print(f"Inference time: {inference_time:.4f} seconds")
-            
-        except Exception as e:
-            print(f"Error on {platform.upper()}: {e}")
-            print(f"Traceback:\\n{traceback.format_exc()}")
+        print("\nSome generators or web platform files could not be updated. Check the logs above.")
+    
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    main()
-'''
-
-    return template
-"""
-
-    # Add the function to the content after the existing generate_test_template function
-    generate_template_func_match = content.find("def generate_test_template(")
-    if generate_template_func_match > 0:
-        # Find the end of the function
-        next_func = content.find("\n\ndef ", generate_template_func_match + 1)
-        if next_func > 0:
-            # Insert after the function
-            content = content[:next_func] + hardware_template_func + content[next_func:]
-    
-    # Update the generate_test_file function to use the new template function
-    generate_test_file_match = content.find("def generate_test_file(")
-    if generate_test_file_match > 0:
-        # Find if a platform parameter already exists
-        if "platform=" not in content[generate_test_file_match:generate_test_file_match+500]:
-            # Add platform parameter
-            old_sig = content[generate_test_file_match:content.find(")", generate_test_file_match)+1]
-            new_sig = old_sig.replace(")", ", platform=\"all\")")
-            content = content.replace(old_sig, new_sig)
-        
-        # Update the template generation part
-        template_gen_match = content.find("template = generate_test_template(", generate_test_file_match)
-        if template_gen_match > 0:
-            old_template_gen = content[template_gen_match:content.find("\n", template_gen_match)]
-            new_template_gen = "template = generate_modality_specific_template(model, modality=detect_model_modality(model), platform=platform)"
-            content = content.replace(old_template_gen, new_template_gen)
-    
-    # Add platform argument to argparse
-    argparse_match = content.find("parser = argparse.ArgumentParser(")
-    if argparse_match > 0:
-        # Find the end of the argparse section
-        argparse_end = content.find("return parser.parse_args()", argparse_match)
-        if argparse_end > 0:
-            # Check if platform argument already exists
-            if "platform" not in content[argparse_match:argparse_end]:
-                # Add platform argument before the return
-                platform_arg = """    # Hardware platform options
-    parser.add_argument("--platform", choices=["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu", "all"],
-                      default="all", help="Hardware platform to target (default: all)")
-    
-"""
-                insertion_point = content.rfind("\n", 0, argparse_end)
-                content = content[:insertion_point] + "\n" + platform_arg + content[insertion_point:]
-    
-    # Update main function to pass platform argument
-    main_func_match = content.find("def main():")
-    if main_func_match > 0:
-        # Find the generate_test_file call
-        generate_call_match = content.find("generate_test_file(", main_func_match)
-        while generate_call_match > 0:
-            old_call = content[generate_call_match:content.find(")", generate_call_match)+1]
-            if "platform=" not in old_call:
-                new_call = old_call.replace(")", ", platform=args.platform)")
-                content = content.replace(old_call, new_call)
-            generate_call_match = content.find("generate_test_file(", generate_call_match+1)
-    
-    # Write the updated content back to the file
-    with open(file_path, 'w') as f:
-        f.write(content)
-    
-    print(f"Successfully updated {file_path} with hardware-aware template generation")
-    return True
-
-if __name__ == "__main__":
-    update_generator()
+    sys.exit(main())

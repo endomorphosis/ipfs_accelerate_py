@@ -4,21 +4,21 @@ This document provides a comprehensive overview of the test coverage implementat
 
 ## Current Hardware Coverage Matrix
 
-| Model Class | CPU | CUDA | OpenVINO | MPS (Apple) | ROCm (AMD) | WebNN | WebGPU | Implementation Status |
-|-------------|-----|------|----------|-------------|------------|-------|--------|----------------------|
-| BERT        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| T5          | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| LLAMA       | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| CLIP        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| ViT         | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| CLAP        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| Whisper     | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| Wav2Vec2    | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| LLaVA       | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| LLaVA-Next  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| XCLIP       | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| Qwen2       | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
-| DETR        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| Model Class | CPU | CUDA | OpenVINO | MPS (Apple) | ROCm (AMD) | Qualcomm | WebNN | WebGPU | Implementation Status |
+|-------------|-----|------|----------|-------------|------------|---------|-------|--------|----------------------|
+| BERT        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| T5          | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| LLAMA       | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅* | ✅* | Complete |
+| CLIP        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| ViT         | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| CLAP        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| Whisper     | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| Wav2Vec2    | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| LLaVA       | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅* | ✅* | Complete |
+| LLaVA-Next  | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅* | ✅* | Complete |
+| XCLIP       | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
+| Qwen2       | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅* | ✅* | Complete |
+| DETR        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
 
 Legend:
 - ✅ Full support with real implementation
@@ -41,7 +41,13 @@ All 13 high-priority models now have implementation for all hardware platforms w
    - LLaVA and LLaVA-Next now have optimized implementations with half-precision and MPS synchronization
    - Specialized handling for multimodal models on Apple Silicon with fallback mechanisms
 
-3. **Web Platform Implementation Status**:
+3. **Qualcomm AI Engine Support Status**:
+   - 9 of 13 models have full Qualcomm support (70% complete)
+   - 4 memory-intensive models (LLAMA, LLaVA, LLaVA-Next, Qwen2) use partial implementation with fallbacks
+   - All models have test implementations with conversion pipeline to Qualcomm formats
+   - Integration with both QNN and QTI SDKs is complete
+
+4. **Web Platform Implementation Status**:
    - All models have test implementations for WebNN and WebGPU
    - Some implementations use simulation or mock functionality
    - Implementation validation with real browser tests is ongoing
@@ -56,7 +62,20 @@ See [PHASE16_COMPLETION_TASKS.md](PHASE16_COMPLETION_TASKS.md) for the detailed 
    - ✅ Implemented memory-efficient loading for limited VRAM environments
    - Completed: March 5, 2025
 
-2. **Enhance Web Platform Implementations** (Medium Priority)
+2. **Qualcomm AI Engine Support** (✅ Completed)
+   - ✅ Added hardware detection for Qualcomm AI Engine and Hexagon DSP
+   - ✅ Implemented model conversion pipeline (PyTorch → ONNX → Qualcomm)
+   - ✅ Created template-based implementation for all model families
+   - ✅ Added integration with QNN and QTI SDKs
+   - Completed: March 6, 2025
+
+3. **Enhance Qualcomm Support for Large Models** (High Priority)
+   - Optimize memory usage for LLM and multimodal models on Qualcomm
+   - Implement model quantization for more efficient inference
+   - Add specialized optimization for different Snapdragon chipsets
+   - Estimated completion: March 20, 2025
+
+4. **Enhance Web Platform Implementations** (Medium Priority)
    - Replace mock/simulated implementations with real browser-based code
    - Validate WebNN and WebGPU implementations with browser tests
    - Add specialized optimizations for audio models on web platforms
@@ -68,7 +87,7 @@ To verify the cross-platform compatibility of models, we have developed testing 
 
 ```bash
 # Test a single model on multiple hardware platforms
-python test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps
+python test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps qualcomm
 
 # Run the full benchmark suite for all models
 python benchmark_all_key_models.py --output-dir ./benchmark_results
@@ -93,6 +112,8 @@ In addition to the 13 key model classes, the framework has been extended to supp
 | Speech-Text | 10 | 100% | 100% | 80% | 70% | 60% | 10% | 10% |
 | Diffusion Models | 12 | 100% | 100% | 67% | 58% | 42% | 0% | 0% |
 | **Overall** | **213** | **100%** | **100%** | **89%** | **84%** | **80%** | **34%** | **34%** |
+
+For a complete and up-to-date view of compatibility across all 300+ model classes, see the [Comprehensive Model Compatibility Matrix](COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md) which is automatically generated from the benchmark database.
 
 ### Comprehensive Testing Framework
 

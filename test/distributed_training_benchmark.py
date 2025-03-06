@@ -31,6 +31,19 @@ import socket
 import subprocess
 import itertools
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -193,280 +206,285 @@ def create_distributed_training_script(
         # Create template file if it doesn't exist
         create_template_file(strategy)
     
-    with open(template_file, "r") as f:
-        template = f.read()
-    
-    # Customize template
-    script = template.replace("{{MODEL_NAME}}", model_name)
-    script = script.replace("{{MODEL_KEY}}", model_key)
-    script = script.replace("{{CATEGORY}}", category)
-    script = script.replace("{{STRATEGY}}", strategy)
-    script = script.replace("{{BATCH_SIZE}}", str(batch_size))
-    script = script.replace("{{GLOBAL_BATCH_SIZE}}", str(global_batch_size))
-    script = script.replace("{{NUM_NODES}}", str(num_nodes))
-    script = script.replace("{{GPUS_PER_NODE}}", str(gpus_per_node))
-    
-    # Add custom dataset code for specific model types
-    if category == "text_embedding" or category == "text_generation":
-        dataset_code = """
-    # Create a text dataset
-    from datasets import load_dataset
-    dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-    
-    # Create tokenizer
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    
-    # Tokenize function
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=128)
-    
-    # Tokenize dataset
-    tokenized_dataset = dataset.map(tokenize_function, batched=True)
-    tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    
-    # Create dataloader
-    from torch.utils.data import DataLoader
-    train_dataloader = DataLoader(
-        tokenized_dataset, 
-        batch_size=batch_size_per_gpu,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=4
-    )
-    """
-    elif category == "vision":
-        dataset_code = """
-    # Create an image dataset
-    from torchvision.datasets import ImageFolder
-    from torchvision import transforms
-    
-    # Image transformations
-    transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    
-    # Create a synthetic dataset if real data not available
-    import torch
-    import os
-    
-    # Create temp directory for synthetic data
-    os.makedirs("./synthetic_data/class1", exist_ok=True)
-    os.makedirs("./synthetic_data/class2", exist_ok=True)
-    
-    # Generate some random images
-    for i in range(10):
-        img = torch.randint(0, 256, (3, 224, 224), dtype=torch.uint8)
-        transforms.ToPILImage()(img).save(f"./synthetic_data/class{i%2+1}/img_{i}.jpg")
-    
-    # Load dataset
-    dataset = ImageFolder("./synthetic_data", transform=transform)
-    
-    # Create dataloader
-    from torch.utils.data import DataLoader
-    train_dataloader = DataLoader(
-        dataset, 
-        batch_size=batch_size_per_gpu,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=4
-    )
-    """
-    else:
-        dataset_code = """
-    # Create a generic dataset
-    import torch
-    from torch.utils.data import TensorDataset, DataLoader
-    
-    # Create synthetic data
-    num_samples = 10000
-    input_shape = (3, 224, 224) if "vision" in model_name.lower() else (128,)
-    inputs = torch.randn(num_samples, *input_shape)
-    labels = torch.randint(0, 2, (num_samples,))
-    
-    # Create dataset and dataloader
-    dataset = TensorDataset(inputs, labels)
-    train_dataloader = DataLoader(
-        dataset, 
-        batch_size=batch_size_per_gpu,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=4
-    )
-    """
-    
-    script = script.replace("{{DATASET_CODE}}", dataset_code)
-    
-    # Determine output file path
-    if output_file is None:
-        output_file = DISTRIBUTED_TEMPLATES_DIR / f"train_{model_key}_{strategy}_{num_nodes}nodes_{gpus_per_node}gpus.py"
-    
-    # Create file
-    with open(output_file, "w") as f:
-        f.write(script)
-    
-    return str(output_file)
-
-def create_template_file(strategy: str):
-    """
-    Create a template file for a specific distributed strategy.
-    
-    Args:
-        strategy (str): The distributed strategy to create a template for
-    """
-    template_file = DISTRIBUTED_TEMPLATES_DIR / f"{strategy}_template.py"
-    
-    if strategy == "data_parallel":
-        template = """#!/usr/bin/env python3
-\"\"\"
-DataParallel training template for {{MODEL_NAME}}.
-\"\"\"
-
-import os
-import sys
-import time
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from transformers import AutoModel, AutoModelForSequenceClassification, AutoModelForCausalLM
-from torch.utils.data import DataLoader, DistributedSampler
-import json
-from datetime import datetime
-
-# Model and training configuration
-model_name = "{{MODEL_NAME}}"
-model_key = "{{MODEL_KEY}}"
-category = "{{CATEGORY}}"
-batch_size_per_gpu = {{BATCH_SIZE}}
-global_batch_size = {{GLOBAL_BATCH_SIZE}}
-num_nodes = {{NUM_NODES}}
-gpus_per_node = {{GPUS_PER_NODE}}
-total_gpus = num_nodes * gpus_per_node
-num_epochs = 3
-learning_rate = 5e-5
-gradient_accumulation_steps = 1
-use_mixed_precision = True
-report_interval = 10
-output_file = f"distributed_results_{model_key}_DataParallel_{num_nodes}nodes_{gpus_per_node}gpus.json"
-
-def main():
-    # Check for GPUs
-    if not torch.cuda.is_available():
-        print("No GPUs available, exiting")
-        sys.exit(1)
-    
-    device_ids = list(range(gpus_per_node))
-    
-    # Set up mixed precision
-    scaler = torch.cuda.amp.GradScaler() if use_mixed_precision else None
-    
-    # Create dataset and dataloader
-{{DATASET_CODE}}
-    
-    # Load model
-    print(f"Loading model {model_name}")
-    start_time = time.time()
-    
-    # Load model based on category
-    if category == "text_embedding":
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    elif category == "text_generation":
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-    elif category == "vision":
-        from transformers import AutoModelForImageClassification
-        model = AutoModelForImageClassification.from_pretrained(model_name)
-    else:
-        model = AutoModel.from_pretrained(model_name)
-    
-    model_load_time = time.time() - start_time
-    print(f"Model loaded in {model_load_time:.2f}s")
-    
-    # Move model to GPU and wrap with DataParallel
-    model = model.cuda()
-    model = nn.DataParallel(model, device_ids=device_ids)
-    
-    # Set up optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
-    
-    # Train the model
-    model.train()
-    total_start_time = time.time()
-    training_steps = 0
-    epoch_times = []
-    
-    for epoch in range(num_epochs):
-        epoch_start_time = time.time()
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+        with open(template_file, "r") as f:
+            template = f.read()
         
-        for batch_idx, batch in enumerate(train_dataloader):
-            # Move batch to device
-            batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        # Customize template
+        script = template.replace("{{MODEL_NAME}}", model_name)
+        script = script.replace("{{MODEL_KEY}}", model_key)
+        script = script.replace("{{CATEGORY}}", category)
+        script = script.replace("{{STRATEGY}}", strategy)
+        script = script.replace("{{BATCH_SIZE}}", str(batch_size))
+        script = script.replace("{{GLOBAL_BATCH_SIZE}}", str(global_batch_size))
+        script = script.replace("{{NUM_NODES}}", str(num_nodes))
+        script = script.replace("{{GPUS_PER_NODE}}", str(gpus_per_node))
+        
+        # Add custom dataset code for specific model types
+        if category == "text_embedding" or category == "text_generation":
+            dataset_code = """
+        # Create a text dataset
+        from datasets import load_dataset
+        dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+        
+        # Create tokenizer
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Tokenize function
+        def tokenize_function(examples):
+            return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=128)
+        
+        # Tokenize dataset
+        tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+        
+        # Create dataloader
+        from torch.utils.data import DataLoader
+        train_dataloader = DataLoader(
+            tokenized_dataset, 
+            batch_size=batch_size_per_gpu,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=4
+        )
+        """
+        elif category == "vision":
+            dataset_code = """
+        # Create an image dataset
+        from torchvision.datasets import ImageFolder
+        from torchvision import transforms
+        
+        # Image transformations
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        
+        # Create a synthetic dataset if real data not available
+        import torch
+        import os
+        
+        # Create temp directory for synthetic data
+        os.makedirs("./synthetic_data/class1", exist_ok=True)
+        os.makedirs("./synthetic_data/class2", exist_ok=True)
+        
+        # Generate some random images
+        for i in range(10):
+            img = torch.randint(0, 256, (3, 224, 224), dtype=torch.uint8)
+            transforms.ToPILImage()(img).save(f"./synthetic_data/class{i%2+1}/img_{i}.jpg")
+        
+        # Load dataset
+        dataset = ImageFolder("./synthetic_data", transform=transform)
+        
+        # Create dataloader
+        from torch.utils.data import DataLoader
+        train_dataloader = DataLoader(
+            dataset, 
+            batch_size=batch_size_per_gpu,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=4
+        )
+        """
+        else:
+            dataset_code = """
+        # Create a generic dataset
+        import torch
+        from torch.utils.data import TensorDataset, DataLoader
+        
+        # Create synthetic data
+        num_samples = 10000
+        input_shape = (3, 224, 224) if "vision" in model_name.lower() else (128,)
+        inputs = torch.randn(num_samples, *input_shape)
+        labels = torch.randint(0, 2, (num_samples,))
+        
+        # Create dataset and dataloader
+        dataset = TensorDataset(inputs, labels)
+        train_dataloader = DataLoader(
+            dataset, 
+            batch_size=batch_size_per_gpu,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=4
+        )
+        """
+        
+        script = script.replace("{{DATASET_CODE}}", dataset_code)
+        
+        # Determine output file path
+        if output_file is None:
+            output_file = DISTRIBUTED_TEMPLATES_DIR / f"train_{model_key}_{strategy}_{num_nodes}nodes_{gpus_per_node}gpus.py"
+        
+        # Create file
+        with open(output_file, "w") as f:
+            f.write(script)
+        
+        return str(output_file)
+    
+    def create_template_file(strategy: str):
+        """
+        Create a template file for a specific distributed strategy.
+        
+        Args:
+            strategy (str): The distributed strategy to create a template for
+        """
+        template_file = DISTRIBUTED_TEMPLATES_DIR / f"{strategy}_template.py"
+        
+        if strategy == "data_parallel":
+            template = """#!/usr/bin/env python3
+    \"\"\"
+    DataParallel training template for {{MODEL_NAME}}.
+    \"\"\"
+    
+    import os
+    import sys
+    import time
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from transformers import AutoModel, AutoModelForSequenceClassification, AutoModelForCausalLM
+    from torch.utils.data import DataLoader, DistributedSampler
+    import json
+    from datetime import datetime
+    
+    # Model and training configuration
+    model_name = "{{MODEL_NAME}}"
+    model_key = "{{MODEL_KEY}}"
+    category = "{{CATEGORY}}"
+    batch_size_per_gpu = {{BATCH_SIZE}}
+    global_batch_size = {{GLOBAL_BATCH_SIZE}}
+    num_nodes = {{NUM_NODES}}
+    gpus_per_node = {{GPUS_PER_NODE}}
+    total_gpus = num_nodes * gpus_per_node
+    num_epochs = 3
+    learning_rate = 5e-5
+    gradient_accumulation_steps = 1
+    use_mixed_precision = True
+    report_interval = 10
+    output_file = f"distributed_results_{model_key}_DataParallel_{num_nodes}nodes_{gpus_per_node}gpus.json"
+    
+    def main():
+        # Check for GPUs
+        if not torch.cuda.is_available():
+            print("No GPUs available, exiting")
+            sys.exit(1)
+        
+        device_ids = list(range(gpus_per_node))
+        
+        # Set up mixed precision
+        scaler = torch.cuda.amp.GradScaler() if use_mixed_precision else None
+        
+        # Create dataset and dataloader
+    {{DATASET_CODE}}
+        
+        # Load model
+        print(f"Loading model {model_name}")
+        start_time = time.time()
+        
+        # Load model based on category
+        if category == "text_embedding":
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        elif category == "text_generation":
+            model = AutoModelForCausalLM.from_pretrained(model_name)
+        elif category == "vision":
+            from transformers import AutoModelForImageClassification
+            model = AutoModelForImageClassification.from_pretrained(model_name)
+        else:
+            model = AutoModel.from_pretrained(model_name)
+        
+        model_load_time = time.time() - start_time
+        print(f"Model loaded in {model_load_time:.2f}s")
+        
+        # Move model to GPU and wrap with DataParallel
+        model = model.cuda()
+        model = nn.DataParallel(model, device_ids=device_ids)
+        
+        # Set up optimizer
+        optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
+        
+        # Train the model
+        model.train()
+        total_start_time = time.time()
+        training_steps = 0
+        epoch_times = []
+        
+        for epoch in range(num_epochs):
+            epoch_start_time = time.time()
             
-            # Forward pass with mixed precision
-            if use_mixed_precision:
-                with torch.cuda.amp.autocast():
+            for batch_idx, batch in enumerate(train_dataloader):
+                # Move batch to device
+                batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+                
+                # Forward pass with mixed precision
+                if use_mixed_precision:
+                    with torch.cuda.amp.autocast():
+                        outputs = model(**batch)
+                        loss = outputs.loss if hasattr(outputs, "loss") else outputs[0]
+                        loss = loss / gradient_accumulation_steps
+                    
+                    # Backward pass with gradient scaling
+                    scaler.scale(loss).backward()
+                    
+                    if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                        scaler.step(optimizer)
+                        scaler.update()
+                        optimizer.zero_grad()
+                else:
+                    # Standard forward and backward pass
                     outputs = model(**batch)
                     loss = outputs.loss if hasattr(outputs, "loss") else outputs[0]
                     loss = loss / gradient_accumulation_steps
+                    
+                    loss.backward()
+                    
+                    if (batch_idx + 1) % gradient_accumulation_steps == 0:
+                        optimizer.step()
+                        optimizer.zero_grad()
                 
-                # Backward pass with gradient scaling
-                scaler.scale(loss).backward()
+                training_steps += 1
                 
-                if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                    scaler.step(optimizer)
-                    scaler.update()
-                    optimizer.zero_grad()
-            else:
-                # Standard forward and backward pass
-                outputs = model(**batch)
-                loss = outputs.loss if hasattr(outputs, "loss") else outputs[0]
-                loss = loss / gradient_accumulation_steps
+                if batch_idx % report_interval == 0:
+                    print(f"Epoch {epoch+1}/{num_epochs}, Batch {batch_idx}/{len(train_dataloader)}, Loss: {loss.item():.4f}")
                 
-                loss.backward()
-                
-                if (batch_idx + 1) % gradient_accumulation_steps == 0:
-                    optimizer.step()
-                    optimizer.zero_grad()
+                # For benchmark purposes, limit training steps
+                if training_steps >= 100:
+                    break
             
-            training_steps += 1
-            
-            if batch_idx % report_interval == 0:
-                print(f"Epoch {epoch+1}/{num_epochs}, Batch {batch_idx}/{len(train_dataloader)}, Loss: {loss.item():.4f}")
-            
-            # For benchmark purposes, limit training steps
-            if training_steps >= 100:
-                break
+            epoch_time = time.time() - epoch_start_time
+            epoch_times.append(epoch_time)
+            print(f"Epoch {epoch+1} completed in {epoch_time:.2f}s")
         
-        epoch_time = time.time() - epoch_start_time
-        epoch_times.append(epoch_time)
-        print(f"Epoch {epoch+1} completed in {epoch_time:.2f}s")
-    
-    total_training_time = time.time() - total_start_time
-    
-    # Collect and report metrics
-    metrics = {
-        "model": model_name,
-        "model_key": model_key,
-        "strategy": "DataParallel",
-        "category": category,
-        "num_nodes": num_nodes,
-        "gpus_per_node": gpus_per_node,
-        "total_gpus": total_gpus,
-        "batch_size_per_gpu": batch_size_per_gpu,
-        "global_batch_size": global_batch_size,
-        "model_load_time": model_load_time,
-        "total_training_time": total_training_time,
-        "average_epoch_time": sum(epoch_times) / len(epoch_times),
-        "samples_per_second": global_batch_size * training_steps / total_training_time,
-        "timestamp": datetime.now().isoformat(),
-        "hostname": os.uname()[1]
-    }
-    
-    # Save metrics
-    with open(output_file, 'w') as f:
-        json.dump(metrics, f, indent=2)
+        total_training_time = time.time() - total_start_time
+        
+        # Collect and report metrics
+        metrics = {
+            "model": model_name,
+            "model_key": model_key,
+            "strategy": "DataParallel",
+            "category": category,
+            "num_nodes": num_nodes,
+            "gpus_per_node": gpus_per_node,
+            "total_gpus": total_gpus,
+            "batch_size_per_gpu": batch_size_per_gpu,
+            "global_batch_size": global_batch_size,
+            "model_load_time": model_load_time,
+            "total_training_time": total_training_time,
+            "average_epoch_time": sum(epoch_times) / len(epoch_times),
+            "samples_per_second": global_batch_size * training_steps / total_training_time,
+            "timestamp": datetime.now().isoformat(),
+            "hostname": os.uname()[1]
+        }
+        
+        # Save metrics
+        with open(output_file, 'w') as f:
+            json.dump(metrics, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
     
     print(f"Training completed in {total_training_time:.2f}s")
     print(f"Results saved to {output_file}")
@@ -1057,213 +1075,218 @@ def train(local_rank, world_size):
             "model_key": model_key,
             "strategy": "FullyShardedDataParallel",
             "category": category,
-            "num_nodes": num_nodes,
-            "gpus_per_node": gpus_per_node,
-            "total_gpus": total_gpus,
-            "batch_size_per_gpu": batch_size_per_gpu,
-            "global_batch_size": global_batch_size,
-            "model_load_time": model_load_time,
-            "total_training_time": total_training_time,
-            "average_epoch_time": sum(epoch_times) / len(epoch_times),
-            "samples_per_second": global_batch_size * training_steps / total_training_time,
-            "timestamp": datetime.now().isoformat(),
-            "hostname": os.uname()[1],
-            "mixed_precision": use_mixed_precision
-        }
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                "num_nodes": num_nodes,
+                "gpus_per_node": gpus_per_node,
+                "total_gpus": total_gpus,
+                "batch_size_per_gpu": batch_size_per_gpu,
+                "global_batch_size": global_batch_size,
+                "model_load_time": model_load_time,
+                "total_training_time": total_training_time,
+                "average_epoch_time": sum(epoch_times) / len(epoch_times),
+                "samples_per_second": global_batch_size * training_steps / total_training_time,
+                "timestamp": datetime.now().isoformat(),
+                "hostname": os.uname()[1],
+                "mixed_precision": use_mixed_precision
+            }
+            
+            # Save metrics
+            with open(output_file, 'w') as f:
+                json.dump(metrics, f, indent=2)
+            
+            print(f"Training completed in {total_training_time:.2f}s")
+            print(f"Results saved to {output_file}")
         
-        # Save metrics
-        with open(output_file, 'w') as f:
-            json.dump(metrics, f, indent=2)
+        # Clean up distributed process group
+        cleanup()
+    
+    def main():
+        # Check for GPUs
+        if not torch.cuda.is_available():
+            print("No GPUs available, exiting")
+            sys.exit(1)
         
-        print(f"Training completed in {total_training_time:.2f}s")
-        print(f"Results saved to {output_file}")
+        # Launch processes
+        world_size = gpus_per_node * num_nodes
+        mp.spawn(train, args=(world_size,), nprocs=gpus_per_node, join=True)
     
-    # Clean up distributed process group
-    cleanup()
-
-def main():
-    # Check for GPUs
-    if not torch.cuda.is_available():
-        print("No GPUs available, exiting")
-        sys.exit(1)
-    
-    # Launch processes
-    world_size = gpus_per_node * num_nodes
-    mp.spawn(train, args=(world_size,), nprocs=gpus_per_node, join=True)
-
-if __name__ == "__main__":
-    main()
-"""
-    
-    with open(template_file, "w") as f:
-        f.write(template)
-
-def create_launcher_script(
-    script_path: str,
-    num_nodes: int = 1,
-    gpus_per_node: int = None,
-    node_list: List[str] = None,
-    output_file: Optional[str] = None
-) -> str:
+    if __name__ == "__main__":
+        main()
     """
-    Create a launcher script for distributed training.
-    
-    Args:
-        script_path (str): Path to the Python script to launch
-        num_nodes (int): Number of nodes to use
-        gpus_per_node (int): Number of GPUs per node
-        node_list (List[str]): List of node hostnames
-        output_file (str): Path to output file
         
-    Returns:
-        str: Path to the created launcher script
-    """
-    # Determine number of GPUs if not specified
-    if gpus_per_node is None:
-        available_gpus = detect_available_gpus()
-        gpus_per_node = len(available_gpus) if available_gpus else 1
+        with open(template_file, "w") as f:
+            f.write(template)
     
-    # Get node list if not specified
-    if node_list is None:
+    def create_launcher_script(
+        script_path: str,
+        num_nodes: int = 1,
+        gpus_per_node: int = None,
+        node_list: List[str] = None,
+        output_file: Optional[str] = None
+    ) -> str:
+        """
+        Create a launcher script for distributed training.
+        
+        Args:
+            script_path (str): Path to the Python script to launch
+            num_nodes (int): Number of nodes to use
+            gpus_per_node (int): Number of GPUs per node
+            node_list (List[str]): List of node hostnames
+            output_file (str): Path to output file
+            
+        Returns:
+            str: Path to the created launcher script
+        """
+        # Determine number of GPUs if not specified
+        if gpus_per_node is None:
+            available_gpus = detect_available_gpus()
+            gpus_per_node = len(available_gpus) if available_gpus else 1
+        
+        # Get node list if not specified
+        if node_list is None:
+            node_list = detect_available_nodes()
+            # Truncate to requested number of nodes
+            node_list = node_list[:num_nodes]
+        
+        # Create launcher script
+        launcher = f"""#!/bin/bash
+    # Launcher script for distributed training
+    
+    # Node information
+    NODES=({" ".join(node_list)})
+    NUM_NODES={len(node_list)}
+    GPUS_PER_NODE={gpus_per_node}
+    MASTER_ADDR={node_list[0]}
+    MASTER_PORT=12355
+    SCRIPT={script_path}
+    
+    # Launch on each node
+    for ((i=0; i<$NUM_NODES; i++)); do
+        NODE=${NODES[$i]}
+        echo "Launching on node $NODE (rank $i)"
+        
+        if [ "$NODE" = "$(hostname)" ]; then
+            # Local node
+            NODE_RANK=$i MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT python $SCRIPT &
+        else
+            # Remote node
+            ssh $NODE "cd $(pwd) && NODE_RANK=$i MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT python $SCRIPT" &
+        fi
+    done
+    
+    # Wait for all processes to complete
+    wait
+    echo "All nodes completed"
+    """
+        
+        # Determine output file path
+        if output_file is None:
+            output_file = DISTRIBUTED_TEMPLATES_DIR / f"launch_{os.path.basename(script_path)}.sh"
+        
+        # Create file
+        with open(output_file, "w") as f:
+            f.write(launcher)
+        
+        # Make executable
+        os.chmod(output_file, 0o755)
+        
+        return str(output_file)
+    
+    def run_distributed_benchmark(
+        model_key: str,
+        strategy: str,
+        num_nodes: int = 1,
+        gpus_per_node: int = None,
+        batch_size: int = None,
+        timeout: int = 3600
+    ) -> Dict[str, Any]:
+        """
+        Run a distributed training benchmark.
+        
+        Args:
+            model_key (str): Key for the model to benchmark
+            strategy (str): Distributed strategy to use
+            num_nodes (int): Number of nodes to use
+            gpus_per_node (int): Number of GPUs per node
+            batch_size (int): Batch size per GPU
+            timeout (int): Timeout in seconds
+            
+        Returns:
+            Dict[str, Any]: Benchmark results
+        """
+        if model_key not in DISTRIBUTED_MODELS:
+            logger.error(f"Unknown model: {model_key}")
+            return {
+                "model": model_key,
+                "strategy": strategy,
+                "status": "error",
+                "error": "Unknown model"
+            }
+        
+        if strategy not in STRATEGIES:
+            logger.error(f"Unknown strategy: {strategy}")
+            return {
+                "model": model_key,
+                "strategy": strategy,
+                "status": "error",
+                "error": "Unknown strategy"
+            }
+        
+        # Check strategy compatibility
+        if num_nodes > 1 and not STRATEGIES[strategy].get("multi_node", False):
+            logger.error(f"Strategy {strategy} does not support multi-node training")
+            return {
+                "model": model_key,
+                "strategy": strategy,
+                "status": "error",
+                "error": f"Strategy {strategy} does not support multi-node training"
+            }
+        
+        # Determine number of GPUs if not specified
+        if gpus_per_node is None:
+            available_gpus = detect_available_gpus()
+            gpus_per_node = len(available_gpus) if available_gpus else 1
+        
+        # Use default batch size if not specified
+        if batch_size is None:
+            batch_size = DISTRIBUTED_MODELS[model_key].get("batch_sizes", [16])[0]
+        
+        # Create node list
         node_list = detect_available_nodes()
-        # Truncate to requested number of nodes
-        node_list = node_list[:num_nodes]
-    
-    # Create launcher script
-    launcher = f"""#!/bin/bash
-# Launcher script for distributed training
-
-# Node information
-NODES=({" ".join(node_list)})
-NUM_NODES={len(node_list)}
-GPUS_PER_NODE={gpus_per_node}
-MASTER_ADDR={node_list[0]}
-MASTER_PORT=12355
-SCRIPT={script_path}
-
-# Launch on each node
-for ((i=0; i<$NUM_NODES; i++)); do
-    NODE=${NODES[$i]}
-    echo "Launching on node $NODE (rank $i)"
-    
-    if [ "$NODE" = "$(hostname)" ]; then
-        # Local node
-        NODE_RANK=$i MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT python $SCRIPT &
-    else
-        # Remote node
-        ssh $NODE "cd $(pwd) && NODE_RANK=$i MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT python $SCRIPT" &
-    fi
-done
-
-# Wait for all processes to complete
-wait
-echo "All nodes completed"
-"""
-    
-    # Determine output file path
-    if output_file is None:
-        output_file = DISTRIBUTED_TEMPLATES_DIR / f"launch_{os.path.basename(script_path)}.sh"
-    
-    # Create file
-    with open(output_file, "w") as f:
-        f.write(launcher)
-    
-    # Make executable
-    os.chmod(output_file, 0o755)
-    
-    return str(output_file)
-
-def run_distributed_benchmark(
-    model_key: str,
-    strategy: str,
-    num_nodes: int = 1,
-    gpus_per_node: int = None,
-    batch_size: int = None,
-    timeout: int = 3600
-) -> Dict[str, Any]:
-    """
-    Run a distributed training benchmark.
-    
-    Args:
-        model_key (str): Key for the model to benchmark
-        strategy (str): Distributed strategy to use
-        num_nodes (int): Number of nodes to use
-        gpus_per_node (int): Number of GPUs per node
-        batch_size (int): Batch size per GPU
-        timeout (int): Timeout in seconds
+        if len(node_list) < num_nodes:
+            logger.warning(f"Only {len(node_list)} nodes available, requested {num_nodes}")
+            num_nodes = len(node_list)
         
-    Returns:
-        Dict[str, Any]: Benchmark results
-    """
-    if model_key not in DISTRIBUTED_MODELS:
-        logger.error(f"Unknown model: {model_key}")
-        return {
-            "model": model_key,
-            "strategy": strategy,
-            "status": "error",
-            "error": "Unknown model"
-        }
-    
-    if strategy not in STRATEGIES:
-        logger.error(f"Unknown strategy: {strategy}")
-        return {
-            "model": model_key,
-            "strategy": strategy,
-            "status": "error",
-            "error": "Unknown strategy"
-        }
-    
-    # Check strategy compatibility
-    if num_nodes > 1 and not STRATEGIES[strategy].get("multi_node", False):
-        logger.error(f"Strategy {strategy} does not support multi-node training")
-        return {
-            "model": model_key,
-            "strategy": strategy,
-            "status": "error",
-            "error": f"Strategy {strategy} does not support multi-node training"
-        }
-    
-    # Determine number of GPUs if not specified
-    if gpus_per_node is None:
-        available_gpus = detect_available_gpus()
-        gpus_per_node = len(available_gpus) if available_gpus else 1
-    
-    # Use default batch size if not specified
-    if batch_size is None:
-        batch_size = DISTRIBUTED_MODELS[model_key].get("batch_sizes", [16])[0]
-    
-    # Create node list
-    node_list = detect_available_nodes()
-    if len(node_list) < num_nodes:
-        logger.warning(f"Only {len(node_list)} nodes available, requested {num_nodes}")
-        num_nodes = len(node_list)
-    
-    # Get model name
-    model_name = DISTRIBUTED_MODELS[model_key]["models"][0]
-    
-    # In an actual implementation, we would:
-    # 1. Create the training script
-    script_path = create_distributed_training_script(
-        model_key=model_key,
-        model_name=model_name,
-        strategy=strategy,
-        batch_size=batch_size,
-        num_nodes=num_nodes,
-        gpus_per_node=gpus_per_node
-    )
-    
-    # 2. Create the launcher script
-    launcher_path = create_launcher_script(
-        script_path=script_path,
-        num_nodes=num_nodes,
-        gpus_per_node=gpus_per_node,
-        node_list=node_list[:num_nodes]
-    )
-    
-    # 3. Run the benchmark
-    logger.info(f"Running distributed benchmark for {model_key} with {strategy} on {num_nodes} nodes x {gpus_per_node} GPUs")
-    
-    # In a real implementation, we would execute the launcher script
+        # Get model name
+        model_name = DISTRIBUTED_MODELS[model_key]["models"][0]
+        
+        # In an actual implementation, we would:
+        # 1. Create the training script
+        script_path = create_distributed_training_script(
+            model_key=model_key,
+            model_name=model_name,
+            strategy=strategy,
+            batch_size=batch_size,
+            num_nodes=num_nodes,
+            gpus_per_node=gpus_per_node
+        )
+        
+        # 2. Create the launcher script
+        launcher_path = create_launcher_script(
+            script_path=script_path,
+            num_nodes=num_nodes,
+            gpus_per_node=gpus_per_node,
+            node_list=node_list[:num_nodes]
+        )
+        
+        # 3. Run the benchmark
+        logger.info(f"Running distributed benchmark for {model_key} with {strategy} on {num_nodes} nodes x {gpus_per_node} GPUs")
+        
+        # In a real implementation, we would execute the launcher script
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
     # Here, we simulate the results
     
     # 4. Load and return results
@@ -1650,7 +1673,12 @@ def main():
     # Output options
     parser.add_argument("--output", help="Output file for results")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Create directories
     os.makedirs(DISTRIBUTED_BENCHMARK_DIR, exist_ok=True)
@@ -1740,7 +1768,16 @@ def main():
         # Load analysis results
         try:
             with open(args.create_charts, "r") as f:
-                results = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                    results = json.load(f)
+
             
             # Create charts
             chart_files = create_scaling_charts(results, output_dir=args.output)

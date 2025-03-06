@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 """
 Class-based test file for all BERT-family models.
 This file provides a unified testing interface for:
@@ -559,128 +570,128 @@ def test_from_pretrained(self, device="auto"):
     
     
     def test_with_openvino(self):
-    """Test the model using OpenVINO integration."""
-    results = {
-        "model": self.model_id,
-        "task": self.task,
-        "class": self.class_name
-    }
-    
-    # Check for OpenVINO support
-    if not HW_CAPABILITIES["openvino"]:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["openvino"]
-        results["openvino_success"] = False
-        return results
-    
-    # Check for transformers
-    if not HAS_TRANSFORMERS:
-        results["openvino_error_type"] = "missing_dependency"
-        results["openvino_missing_core"] = ["transformers"]
-        results["openvino_success"] = False
-        return results
-    
-    try:
-        from optimum.intel import OVModelForMaskedLM
-        logger.info(f"Testing {self.model_id} with OpenVINO...")
+        """Test the model using OpenVINO integration."""
+        results = {
+            "model": self.model_id,
+            "task": self.task,
+            "class": self.class_name
+        }
         
-        # Time tokenizer loading
-        tokenizer_load_start = time.time()
-        tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
-        tokenizer_load_time = time.time() - tokenizer_load_start
+        # Check for OpenVINO support
+        if not HW_CAPABILITIES["openvino"]:
+            results["openvino_error_type"] = "missing_dependency"
+            results["openvino_missing_core"] = ["openvino"]
+            results["openvino_success"] = False
+            return results
         
-        # Time model loading
-        model_load_start = time.time()
-        model = OVModelForMaskedLM.from_pretrained(
-            self.model_id,
-            export=True,
-            provider="CPU"
-        )
-        model_load_time = time.time() - model_load_start
+        # Check for transformers
+        if not HAS_TRANSFORMERS:
+            results["openvino_error_type"] = "missing_dependency"
+            results["openvino_missing_core"] = ["transformers"]
+            results["openvino_success"] = False
+            return results
         
-        # Prepare input
-        if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
-            mask_token = tokenizer.mask_token
-            test_input = self.test_text.replace("[MASK]", mask_token)
-        else:
-            test_input = self.test_text
+        try:
+            from optimum.intel import OVModelForMaskedLM
+            logger.info(f"Testing {self.model_id} with OpenVINO...")
             
-        inputs = tokenizer(test_input, return_tensors="pt")
-        
-        # Run inference
-        start_time = time.time()
-        outputs = model(**inputs)
-        inference_time = time.time() - start_time
-        
-        # Get predictions
-        if hasattr(tokenizer, "mask_token_id"):
-            mask_token_id = tokenizer.mask_token_id
-            mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
+            # Time tokenizer loading
+            tokenizer_load_start = time.time()
+            tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_id)
+            tokenizer_load_time = time.time() - tokenizer_load_start
             
-            if len(mask_positions) > 0:
-                mask_index = mask_positions[0][-1].item()
-                logits = outputs.logits[0, mask_index]
-                top_k_indices = torch.topk(logits, 5).indices.tolist()
+            # Time model loading
+            model_load_start = time.time()
+            model = OVModelForMaskedLM.from_pretrained(
+                self.model_id,
+                export=True,
+                provider="CPU"
+            )
+            model_load_time = time.time() - model_load_start
+            
+            # Prepare input
+            if hasattr(tokenizer, "mask_token") and "[MASK]" in self.test_text:
+                mask_token = tokenizer.mask_token
+                test_input = self.test_text.replace("[MASK]", mask_token)
+            else:
+                test_input = self.test_text
                 
-                predictions = []
-                for idx in top_k_indices:
-                    if hasattr(tokenizer, "convert_ids_to_tokens"):
-                        token = tokenizer.convert_ids_to_tokens(idx)
-                    else:
-                        token = f"token_{idx}"
-                    predictions.append(token)
+            inputs = tokenizer(test_input, return_tensors="pt")
+            
+            # Run inference
+            start_time = time.time()
+            outputs = model(**inputs)
+            inference_time = time.time() - start_time
+            
+            # Get predictions
+            if hasattr(tokenizer, "mask_token_id"):
+                mask_token_id = tokenizer.mask_token_id
+                mask_positions = (inputs["input_ids"] == mask_token_id).nonzero()
+                
+                if len(mask_positions) > 0:
+                    mask_index = mask_positions[0][-1].item()
+                    logits = outputs.logits[0, mask_index]
+                    top_k_indices = torch.topk(logits, 5).indices.tolist()
+                    
+                    predictions = []
+                    for idx in top_k_indices:
+                        if hasattr(tokenizer, "convert_ids_to_tokens"):
+                            token = tokenizer.convert_ids_to_tokens(idx)
+                        else:
+                            token = f"token_{idx}"
+                        predictions.append(token)
+                else:
+                    predictions = []
             else:
                 predictions = []
-        else:
-            predictions = []
+            
+            # Store results
+            results["openvino_success"] = True
+            results["openvino_load_time"] = model_load_time
+            results["openvino_inference_time"] = inference_time
+            results["openvino_tokenizer_load_time"] = tokenizer_load_time
+            
+            # Add predictions if available
+            if 'predictions' in locals():
+                results["openvino_predictions"] = predictions
+            
+            results["openvino_error_type"] = "none"
+            
+            # Add to examples
+            example_data = {
+                "method": "OpenVINO inference",
+                "input": str(test_input)
+            }
+            
+            if 'predictions' in locals():
+                example_data["predictions"] = predictions
+            
+            self.examples.append(example_data)
+            
+            # Store in performance stats
+            self.performance_stats["openvino"] = {
+                "inference_time": inference_time,
+                "load_time": model_load_time,
+                "tokenizer_load_time": tokenizer_load_time
+            }
         
-        # Store results
-        results["openvino_success"] = True
-        results["openvino_load_time"] = model_load_time
-        results["openvino_inference_time"] = inference_time
-        results["openvino_tokenizer_load_time"] = tokenizer_load_time
+        except Exception as e:
+            # Store error information
+            results["openvino_success"] = False
+            results["openvino_error"] = str(e)
+            results["openvino_traceback"] = traceback.format_exc()
+            logger.error(f"Error testing with OpenVINO: {e}")
+            
+            # Classify error
+            error_str = str(e).lower()
+            if "no module named" in error_str:
+                results["openvino_error_type"] = "missing_dependency"
+            else:
+                results["openvino_error_type"] = "other"
         
-        # Add predictions if available
-        if 'predictions' in locals():
-            results["openvino_predictions"] = predictions
-        
-        results["openvino_error_type"] = "none"
-        
-        # Add to examples
-        example_data = {
-            "method": "OpenVINO inference",
-            "input": str(test_input)
-        }
-        
-        if 'predictions' in locals():
-            example_data["predictions"] = predictions
-        
-        self.examples.append(example_data)
-        
-        # Store in performance stats
-        self.performance_stats["openvino"] = {
-            "inference_time": inference_time,
-            "load_time": model_load_time,
-            "tokenizer_load_time": tokenizer_load_time
-        }
-        
-    except Exception as e:
-        # Store error information
-        results["openvino_success"] = False
-        results["openvino_error"] = str(e)
-        results["openvino_traceback"] = traceback.format_exc()
-        logger.error(f"Error testing with OpenVINO: {e}")
-        
-        # Classify error
-        error_str = str(e).lower()
-        if "no module named" in error_str:
-            results["openvino_error_type"] = "missing_dependency"
-        else:
-            results["openvino_error_type"] = "other"
-    
-    # Add to overall results
-    self.results["openvino"] = results
-    return results
+        # Add to overall results
+        self.results["openvino"] = results
+        return results
 
     
     
@@ -797,7 +808,6 @@ def test_from_pretrained(self, device="auto"):
             return self.init_cpu(model_name)
 
 
-
                     def init_rocm(self, model_name=None, device="hip"):
         """Initialize model for ROCm (AMD GPU) inference."""
         model_name = model_name or self.model_name
@@ -862,7 +872,6 @@ def test_from_pretrained(self, device="auto"):
             logger.error(f"Error initializing model with ROCm: {str(e)}")
             logger.warning("Falling back to CPU implementation")
             return self.init_cpu(model_name)
-
 
 
                     def init_webnn(self, model_name=None):
@@ -932,7 +941,6 @@ def test_from_pretrained(self, device="auto"):
         batch_size = 1  # Single item processing for WebNN typically
         
         return model, processor, handler, queue, batch_size
-
 
 
                 def init_webgpu(self, model_name=None):

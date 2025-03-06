@@ -19,6 +19,9 @@ import datetime
 from typing import Dict, List, Optional, Any, Tuple, Union
 from pathlib import Path
 
+# Check for JSON output deprecation flag
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "0") == "1"
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -875,6 +878,39 @@ class AutomatedHardwareSelection:
         """
         selection_map = self.create_hardware_map()
         
+        if DEPRECATE_JSON_OUTPUT and DUCKDB_AVAILABLE:
+            try:
+                # Connect to the database
+                db_path = os.environ.get("BENCHMARK_DB_PATH", self.database_path)
+                if db_path:
+                    conn = duckdb.connect(db_path)
+                    
+                    # Create the table if it doesn't exist
+                    conn.execute("""
+                    CREATE TABLE IF NOT EXISTS hardware_selection_maps (
+                        id INTEGER PRIMARY KEY,
+                        timestamp TIMESTAMP,
+                        map_data JSON,
+                        description VARCHAR
+                    )
+                    """)
+                    
+                    # Insert the data
+                    timestamp = datetime.datetime.now().isoformat()
+                    conn.execute(
+                        "INSERT INTO hardware_selection_maps (timestamp, map_data, description) VALUES (?, ?, ?)",
+                        [timestamp, json.dumps(selection_map), "Hardware selection map"]
+                    )
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    logger.info(f"Hardware selection map saved to database {db_path}")
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to save to database, falling back to JSON: {e}")
+        
+        # Fall back to JSON if database not available or JSON not deprecated
         with open(output_file, 'w') as f:
             json.dump(selection_map, f, indent=2)
         
@@ -1051,7 +1087,40 @@ class AutomatedHardwareSelection:
         if output_file is None:
             output_file = f"{model_name.replace('/', '_')}_hardware_analysis.json"
             
-        # Save analysis
+        if DEPRECATE_JSON_OUTPUT and DUCKDB_AVAILABLE:
+            try:
+                # Connect to the database
+                db_path = os.environ.get("BENCHMARK_DB_PATH", self.database_path)
+                if db_path:
+                    conn = duckdb.connect(db_path)
+                    
+                    # Create the table if it doesn't exist
+                    conn.execute("""
+                    CREATE TABLE IF NOT EXISTS model_hardware_analysis (
+                        id INTEGER PRIMARY KEY,
+                        timestamp TIMESTAMP,
+                        model_name VARCHAR,
+                        model_family VARCHAR,
+                        analysis_data JSON
+                    )
+                    """)
+                    
+                    # Insert the data
+                    timestamp = datetime.datetime.now().isoformat()
+                    conn.execute(
+                        "INSERT INTO model_hardware_analysis (timestamp, model_name, model_family, analysis_data) VALUES (?, ?, ?, ?)",
+                        [timestamp, model_name, model_family or analysis["model_family"], json.dumps(analysis)]
+                    )
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    logger.info(f"Model analysis saved to database {db_path}")
+                    return output_file
+            except Exception as e:
+                logger.warning(f"Failed to save to database, falling back to JSON: {e}")
+                
+        # Fall back to JSON if database not available or JSON not deprecated
         with open(output_file, 'w') as f:
             json.dump(analysis, f, indent=2)
             

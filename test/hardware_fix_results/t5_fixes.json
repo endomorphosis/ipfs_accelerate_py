@@ -1,18 +1,6 @@
 {
   "total_files": 2,
-  "files_fixed": 1,
-  "total_issues_fixed": 4,
-  "files_details": [
-    {
-      "file": "test_hf_t5_small.py",
-      "model_name": "t5_small",
-      "issues_fixed": 4,
-      "fixed_issues": [
-        "Fixed method indentation",
-        "Added AMD precision handling for ROCm",
-        "Integrated WebNN testing",
-        "Integrated WebGPU testing"
-      ]
-    }
-  ]
+  "files_fixed": 0,
+  "total_issues_fixed": 0,
+  "files_details": []
 }

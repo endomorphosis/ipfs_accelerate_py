@@ -834,7 +834,7 @@
     {
       "file": "test_hf_qwen2.py",
       "model_name": "qwen2",
-      "issues": 14,
+      "issues": 12,
       "hardware_methods": {
         "init_cpu": false,
         "test_with_cpu": false,
@@ -1104,11 +1104,11 @@
       "integration_issues": []
     }
   ],
-  "total_issues": 350,
+  "total_issues": 348,
   "issue_types": {
     "missing_hardware": 136,
     "integration_issues": 164,
-    "indentation_issues": 50,
+    "indentation_issues": 48,
     "asyncio_issues": 0
   }
 }

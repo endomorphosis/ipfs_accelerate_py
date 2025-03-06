@@ -1,4 +1,15 @@
 #\!/usr/bin/env python3
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 """
 Cross-Platform 4-bit Quantization Testing Tool (April 2025)
 
@@ -332,7 +343,7 @@ def compare_precisions_on_platform(platform, model_path, model_type, model_detai
         
         # Calculate relative performance
         relative_performance = 1.0
-        if precision \!= "fp16" and "fp16" in results:
+        if precision != "fp16" and "fp16" in results:
             fp16_time = results["fp16"]["execution_time_ms"]
             relative_performance = fp16_time / execution_time_ms if execution_time_ms > 0 else 1.0
         
@@ -508,7 +519,7 @@ def simulate_browser_test(browser, model_path, model_type, model_details):
         
         # Calculate relative performance
         relative_performance = 1.0
-        if precision \!= "fp16" and "fp16" in results:
+        if precision != "fp16" and "fp16" in results:
             fp16_time = results["fp16"]["execution_time_ms"]
             relative_performance = fp16_time / execution_time_ms if execution_time_ms > 0 else 1.0
         
@@ -530,7 +541,7 @@ def generate_html_report(results, output_path):
     """Generate an HTML report of the cross-platform results."""
     # Create HTML report
     html = f"""
-    <\!DOCTYPE html>
+    <!DOCTYPE html>
     <html>
     <head>
         <title>Cross-Platform 4-bit Quantization Results: {results['model']}</title>
@@ -841,7 +852,7 @@ def generate_compatibility_matrix(results, output_path):
     
     # Create HTML compatibility matrix
     html = f"""
-    <\!DOCTYPE html>
+    <!DOCTYPE html>
     <html>
     <head>
         <title>4-bit Quantization Compatibility Matrix</title>
@@ -875,7 +886,7 @@ def generate_compatibility_matrix(results, output_path):
                     <th>Compatibility Level</th>
                 </tr>
                 
-                <\!-- Hardware Platforms Section -->
+                <!-- Hardware Platforms Section -->
                 <tr>
                     <td colspan="5" class="platform-header">Hardware Platforms</td>
                 </tr>
@@ -912,7 +923,7 @@ def generate_compatibility_matrix(results, output_path):
     # Add browser platforms if available
     if browser_platforms:
         html += """
-                <\!-- Browser Platforms Section -->
+                <!-- Browser Platforms Section -->
                 <tr>
                     <td colspan="5" class="platform-header">Browser Platforms (WebGPU)</td>
                 </tr>

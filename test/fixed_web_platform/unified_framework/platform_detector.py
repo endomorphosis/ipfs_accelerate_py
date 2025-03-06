@@ -159,6 +159,53 @@ class PlatformDetector:
         
         return platform_info
     
+    
+    def detect_capabilities(self) -> Dict[str, Any]:
+        """
+        Detect platform capabilities and return configuration options.
+        
+        Returns:
+            Dictionary with detected capabilities as configuration options
+        """
+        # Get platform info
+        platform_info = self.detect_platform()
+        
+        # Create configuration dictionary
+        config = {
+            "browser": platform_info["browser"]["name"],
+            "browser_version": platform_info["browser"]["version"],
+            "webgpu_supported": platform_info.get("features", {}).get("webgpu", True),
+            "webnn_supported": platform_info.get("features", {}).get("webnn", True),
+            "wasm_supported": platform_info.get("features", {}).get("wasm", True),
+            "hardware_platform": platform_info["hardware"].get("platform", "unknown"),
+            "hardware_memory_gb": platform_info["hardware"].get("memory_gb", 4)
+        }
+        
+        # Set optimization flags based on capabilities
+        browser = platform_info["browser"]["name"].lower()
+        
+        # Add WebGPU optimization flags
+        if config["webgpu_supported"]:
+            config["enable_shader_precompilation"] = True
+            
+            # Add model-type specific optimizations
+            if hasattr(self, "model_type"):
+                # Enable compute shaders for audio models in Firefox
+                if browser == "firefox" and self.model_type == "audio":
+                    config["enable_compute_shaders"] = True
+                    config["firefox_audio_optimization"] = True
+                    config["workgroup_size"] = [256, 1, 1]  # Optimized for Firefox
+                elif self.model_type == "audio":
+                    config["enable_compute_shaders"] = True
+                    config["workgroup_size"] = [128, 2, 1]  # Standard size
+                    
+                # Enable parallel loading for multimodal models
+                if self.model_type == "multimodal":
+                    config["enable_parallel_loading"] = True
+                    config["progressive_loading"] = True
+        
+        return config
+    
     def _create_simulated_capabilities(self) -> Dict[str, Any]:
         """Create simulated capabilities for testing."""
         # Get browser information from environment variables or use defaults

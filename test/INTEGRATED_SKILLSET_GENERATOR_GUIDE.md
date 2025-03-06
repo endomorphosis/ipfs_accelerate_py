@@ -1,6 +1,6 @@
-# Integrated Skillset Generator Guide
+# Integrated Skillset Generator Guide (Updated March 6, 2025)
 
-This guide explains how to use the `integrated_skillset_generator.py` tool to create implementation files for all 300+ Hugging Face model types with full hardware support, including the newly added WebNN and WebGPU (transformers.js) web backends.
+This guide explains how to use the `integrated_skillset_generator.py` tool to create implementation files for all 300+ Hugging Face model types with full hardware support, including comprehensive modality-specific handling and specialized processors for different model types.
 
 ## Overview
 
@@ -12,13 +12,19 @@ The Integrated Skillset Generator implements a test-driven development approach 
 4. Creates consistent implementations using existing reference templates
 5. Validates implementations against test expectations
 
-## Key Features
+## Key Features (Updated March 2025)
 
+- **Model Registry System**: Comprehensive mapping from short names to full model IDs
+- **Modality-Specific Initialization**: Specialized initialization for text, vision, audio, and multimodal models
+- **Processor Selection**: Automatic selection of appropriate processor (tokenizer, image processor, feature extractor)
 - **Test-Driven Development**: Implementations are based on real test results
 - **Web Backend Support**: Full WebNN and WebGPU (transformers.js) support
 - **Hardware Compatibility Analysis**: Automatically detects compatible hardware
+- **Enhanced OpenVINO Support**: Proper initialization with all required parameters
+- **Qualcomm AI Engine Integration**: Support for Qualcomm mobile/edge hardware
 - **Template-Based Generation**: Uses reference implementations as templates
 - **Parallel Generation**: Can generate multiple implementations simultaneously
+- **Output Validation**: Flexible validation that handles different output structures
 - **Comprehensive Validation**: Ensures implementations match test expectations
 
 ## Requirements
@@ -58,6 +64,12 @@ To generate an implementation for a specific model:
 ```bash
 # Basic generation
 python integrated_skillset_generator.py --model bert
+
+# Generate with specific hardware platforms
+python integrated_skillset_generator.py --model vit --hardware cuda,openvino,qualcomm,webgpu
+
+# Generate with cross-platform support for all hardware
+python integrated_skillset_generator.py --model clip --hardware all --cross-platform
 
 # Run tests first to inform implementation
 python integrated_skillset_generator.py --model bert --run-tests
@@ -207,33 +219,75 @@ async def process_with_webgpu():
     print(f"WebGPU result: {result}")
 ```
 
-## Template System
+## Template System (Updated March 2025)
 
-The generator uses a template system based on existing reference implementations. The templates are automatically selected based on the model's family:
+The generator uses a template system based on existing reference implementations. The templates are automatically selected based on the model's family and include modality-specific code:
 
-- Text models use BERT, T5, GPT, or LLAMA templates
-- Vision models use ViT or CLIP templates
-- Audio models use Whisper or Wav2Vec2 templates
-- Multimodal models use LLaVA templates
+- **Text Models**:
+  - Use BERT, T5, GPT, or LLAMA templates
+  - Include AutoTokenizer initialization
+  - Handle text processing with appropriate tokenization
+  - Validate text model outputs (last_hidden_state, logits)
 
-## Understanding Hardware Compatibility
+- **Vision Models**:
+  - Use ViT or CLIP templates
+  - Include AutoImageProcessor initialization
+  - Handle image preprocessing with PIL
+  - Validate vision model outputs (logits, image_embeds)
+
+- **Audio Models**:
+  - Use Whisper or Wav2Vec2 templates
+  - Include AutoFeatureExtractor initialization
+  - Handle audio sampling and processing
+  - Validate audio model outputs (logits, spectrogram)
+
+- **Multimodal Models**:
+  - Use LLaVA, CLIP, or BLIP templates
+  - Include AutoProcessor initialization
+  - Handle combined text and image inputs
+  - Validate multimodal outputs (text_embeds, image_embeds)
+
+## Understanding Hardware Compatibility (Updated March 2025)
 
 The generator analyzes test results to determine hardware compatibility for each model. This information is used to generate appropriate initialization methods and handlers:
 
 ```python
-# Example hardware compatibility dictionary
+# Example hardware compatibility dictionary (March 2025 update)
 hardware_compatibility = {
-    "cpu": True,      # Always true for all models
-    "cuda": True,     # For NVIDIA GPUs
-    "openvino": True, # For Intel CPUs and GPUs with OpenVINO
-    "mps": True,      # For Apple Silicon (M1/M2/M3)
-    "amd": True,      # For AMD GPUs with ROCm
-    "webnn": True,    # For WebNN in browsers
-    "webgpu": True    # For WebGPU/transformers.js in browsers
+    "cpu": True,          # Always true for all models
+    "cuda": True,         # For NVIDIA GPUs
+    "openvino": True,     # For Intel CPUs and GPUs with OpenVINO
+    "mps": True,          # For Apple Silicon (M1/M2/M3)
+    "rocm": True,         # For AMD GPUs with ROCm
+    "qualcomm": True,     # For Qualcomm AI Engine on mobile/edge devices
+    "webnn": True,        # For WebNN in browsers
+    "webgpu": True        # For WebGPU/transformers.js in browsers
 }
+
+# Modality-specific initialization based on hardware
+def initialize_model(model_id, hardware, modality):
+    if modality == "text":
+        # Text model initialization
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        if hardware == "openvino":
+            # OpenVINO initialization with proper parameters
+            model = init_openvino(model_id, openvino_label="text_model")
+        elif hardware == "qualcomm":
+            # Qualcomm AI Engine initialization
+            model = init_qualcomm(model_id)
+        elif hardware in ["webnn", "webgpu"]:
+            # Web backend initialization
+            model = init_web_backend(model_id, hardware)
+        else:
+            # Standard initialization
+            model = AutoModel.from_pretrained(model_id)
+    elif modality == "vision":
+        # Vision model initialization with appropriate processor
+        processor = AutoImageProcessor.from_pretrained(model_id)
+        # ... hardware-specific initialization
 ```
 
-## Extending the Generator
+## Extending the Generator (March 2025 Updates)
 
 The generator is designed to be extensible. Here are some ways to extend it:
 
@@ -245,6 +299,21 @@ To add support for a new hardware backend:
 2. Add initialization methods for the new backend
 3. Add handler creation methods for the new backend
 4. Add validation checks for the new backend
+5. Ensure all modality-specific processors are properly initialized
+
+### Adding New Model Types and Processors
+
+To add support for new modality types:
+
+1. Update the model registry with appropriate mappings
+2. Add modality-specific processor initialization:
+   ```python
+   if modality == "new_modality":
+       from transformers import AutoNewModalityProcessor
+       processor = AutoNewModalityProcessor.from_pretrained(model_id)
+   ```
+3. Add input preparation logic for the new modality
+4. Add output validation for the new modality's output structures
 
 ### Adding New Model Types
 
@@ -300,14 +369,32 @@ The generator creates implementations that support both WebNN and WebGPU based o
 4. Browser-compatible handler functions
 5. Proper async support for browser environments
 
-## Next Steps
+## Next Steps (March 2025)
 
 After generating implementations:
 
 1. Run the validation to ensure quality: `--validate model_name`
 2. Test the implementations in real environments
-3. Export models to web formats with the web export utilities
-4. Deploy the models to browser environments
+3. Verify output structure handling for different model types
+4. Export models to web formats with the web export utilities
+5. Deploy the models to browser environments
+6. Use the DuckDB database to store benchmark results
+7. Update the template database with any new model types
+
+## March 2025 Updates
+
+The March 2025 update to the integrated skillset generator includes several critical improvements:
+
+1. **Model Registry System**: Added comprehensive mapping of short model names to full model IDs
+2. **Modality-Based Initialization**: Added specialized initialization for different model types
+3. **Processor Selection**: Automatic selection of appropriate processor based on model type
+4. **OpenVINO Integration**: Fixed initialization with proper parameters
+5. **Qualcomm AI Engine Support**: Added support for Qualcomm mobile/edge hardware
+6. **Output Validation**: Improved validation for different output structures
+7. **Error Handling**: Enhanced error handling with contextual messages
+8. **Test Interface**: Added proper integration with test class interface
+
+These improvements ensure that the generator creates valid, executable implementations for all model types and hardware platforms.
 
 ## Full Web Backend Workflow
 

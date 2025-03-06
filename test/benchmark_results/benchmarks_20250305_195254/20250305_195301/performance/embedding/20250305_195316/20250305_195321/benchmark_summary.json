@@ -1,0 +1,43 @@
+{
+  "timestamp": "20250305_195321",
+  "system_info": {
+    "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+    "cpu": "x86_64",
+    "cuda_available": true,
+    "mps_available": false,
+    "openvino_available": true
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "mps",
+    "rocm",
+    "openvino"
+  ],
+  "model_families": {
+    "embedding": {
+      "models_tested": [
+        "bert-base-uncased",
+        "distilbert-base-uncased",
+        "roberta-base"
+      ],
+      "hardware_results": {
+        "cpu": {
+          "latency_ms": [
+            3602.502642737494,
+            1851.7850001653032,
+            3592.391418086158
+          ],
+          "throughput": [
+            2.54931246534826,
+            5.615448785345406,
+            3.4642793550576254
+          ]
+        }
+      }
+    }
+  },
+  "performance_comparison": {
+    "embedding": {}
+  }
+}

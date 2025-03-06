@@ -1,4 +1,15 @@
 """
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 Hardware Selector for the IPFS Accelerate Python Framework.
 
 This module implements an automated system for selecting optimal hardware
@@ -549,6 +560,20 @@ class HardwareSelector:
     
     def _initialize_prediction_models(self):
         """Initialize prediction models for performance prediction."""
+        # Initialize flags
+        self.sklearn_available = False
+        self.using_external_models = False
+        
+        # Create empty model dictionary
+        self.prediction_models = {
+            "inference": {},
+            "training": {}
+        }
+        
+        # Create a configuration file path for model hyperparameters
+        model_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_hyperparams.json")
+        model_hyperparams = self._load_model_hyperparams(model_config_path)
+        
         # Check if scikit-learn is available
         try:
             from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
@@ -557,118 +582,238 @@ class HardwareSelector:
             logger.info("scikit-learn is available, enabling advanced prediction features")
         except ImportError:
             logger.warning("scikit-learn not available, performance prediction will be limited")
-            self.sklearn_available = False
             return
         
         # Check if external prediction models are available
+        external_models_available = False
         try:
             # Try to load external model
             from model_performance_predictor import load_prediction_models
             external_models = load_prediction_models()
             if external_models and len(external_models) > 1:  # Check if we have more than just preprocessing_info
                 logger.info("Loading external performance prediction models")
-                self.prediction_models = {"external": external_models}
+                self.prediction_models["external"] = external_models
                 self.using_external_models = True
-                return
+                external_models_available = True
         except (ImportError, Exception) as e:
             logger.debug(f"External performance models not available: {e}")
             self.using_external_models = False
         
+        # Skip internal model training if external models are available
+        if external_models_available:
+            logger.info("Using external prediction models, skipping internal model training")
+            return
+        
         # Create prediction models for inference and training
         for mode in ["inference", "training"]:
             # Prepare training data
-            X, y_latency, y_throughput, y_memory = self._prepare_prediction_data(mode)
+            try:
+                X, y_latency, y_throughput, y_memory = self._prepare_prediction_data(mode)
+            except Exception as e:
+                logger.warning(f"Failed to prepare prediction data for {mode}: {e}")
+                continue
             
             if len(X) == 0:
                 logger.warning(f"No data available for {mode} performance prediction")
+                # Create fallback models for each metric
+                self._initialize_fallback_models(mode)
                 continue
             
-            # Train models
-            self.prediction_models[mode] = {}
+            # Ensure metrics dictionaries exist
+            if mode not in self.prediction_models:
+                self.prediction_models[mode] = {}
+            
+            # Set thresholds for model quality
+            min_samples_for_training = 10  # Minimum number of samples required for training
             
             # Latency prediction model
-            if y_latency is not None and len(y_latency) > 0:
-                try:
-                    # Use RandomForestRegressor for latency prediction (better for non-linear relationships)
-                    scaler_X = StandardScaler()
-                    X_scaled = scaler_X.fit_transform(X)
-                    
-                    model = RandomForestRegressor(
-                        n_estimators=100, 
-                        max_depth=10,
-                        min_samples_split=5,
-                        random_state=42
-                    )
-                    model.fit(X_scaled, y_latency)
-                    
-                    self.prediction_models[mode]["latency"] = {
-                        "model": model,
-                        "scaler": scaler_X,
-                        "importance": dict(zip(
-                            self.config["prediction_features"], 
-                            model.feature_importances_
-                        ))
-                    }
-                    
-                    logger.info(f"Trained {mode} latency prediction model with {len(X)} samples")
-                except Exception as e:
-                    logger.warning(f"Failed to train {mode} latency prediction model: {e}")
+            self._train_prediction_model(
+                mode=mode,
+                metric="latency",
+                X=X,
+                y=y_latency,
+                min_samples=min_samples_for_training,
+                model_type="RandomForest",
+                hyperparams=model_hyperparams.get("latency", {})
+            )
             
             # Throughput prediction model
-            if y_throughput is not None and len(y_throughput) > 0:
-                try:
-                    # Use GradientBoostingRegressor for throughput (better for continuous values)
-                    scaler_X = StandardScaler()
-                    X_scaled = scaler_X.fit_transform(X)
-                    
-                    model = GradientBoostingRegressor(
-                        n_estimators=100,
-                        learning_rate=0.1,
-                        max_depth=5,
-                        random_state=42
-                    )
-                    model.fit(X_scaled, y_throughput)
-                    
-                    self.prediction_models[mode]["throughput"] = {
-                        "model": model,
-                        "scaler": scaler_X,
-                        "importance": dict(zip(
-                            self.config["prediction_features"], 
-                            model.feature_importances_
-                        ))
-                    }
-                    
-                    logger.info(f"Trained {mode} throughput prediction model with {len(X)} samples")
-                except Exception as e:
-                    logger.warning(f"Failed to train {mode} throughput prediction model: {e}")
-                    
+            self._train_prediction_model(
+                mode=mode,
+                metric="throughput",
+                X=X,
+                y=y_throughput,
+                min_samples=min_samples_for_training,
+                model_type="GradientBoosting",
+                hyperparams=model_hyperparams.get("throughput", {})
+            )
+            
             # Memory usage prediction model
-            if y_memory is not None and len(y_memory) > 0:
-                try:
-                    # Use GradientBoostingRegressor for memory prediction
-                    scaler_X = StandardScaler()
-                    X_scaled = scaler_X.fit_transform(X)
-                    
-                    model = GradientBoostingRegressor(
-                        n_estimators=100,
-                        learning_rate=0.1,
-                        max_depth=5,
-                        random_state=42
-                    )
-                    model.fit(X_scaled, y_memory)
-                    
-                    self.prediction_models[mode]["memory_usage"] = {
-                        "model": model,
-                        "scaler": scaler_X,
-                        "importance": dict(zip(
-                            self.config["prediction_features"], 
-                            model.feature_importances_
-                        ))
-                    }
-                    
-                    logger.info(f"Trained {mode} memory usage prediction model with {len(X)} samples")
-                except Exception as e:
-                    logger.warning(f"Failed to train {mode} memory usage prediction model: {e}")
+            self._train_prediction_model(
+                mode=mode,
+                metric="memory_usage",
+                X=X,
+                y=y_memory,
+                min_samples=min_samples_for_training,
+                model_type="GradientBoosting",
+                hyperparams=model_hyperparams.get("memory_usage", {})
+            )
+    
+    def _train_prediction_model(self, mode, metric, X, y, min_samples, model_type, hyperparams):
+        """
+        Train a prediction model for a specific metric.
+        
+        Args:
+            mode (str): "inference" or "training"
+            metric (str): The metric to predict (latency, throughput, memory_usage)
+            X (np.ndarray): Feature matrix
+            y (np.ndarray): Target values
+            min_samples (int): Minimum number of samples required for training
+            model_type (str): Type of model to train ("RandomForest" or "GradientBoosting")
+            hyperparams (dict): Hyperparameters for the model
+        """
+        if y is None or len(y) < min_samples:
+            logger.warning(f"Insufficient data for {mode} {metric} prediction (samples: {0 if y is None else len(y)})")
+            self._initialize_fallback_model(mode, metric)
+            return
+        
+        try:
+            from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+            from sklearn.preprocessing import StandardScaler
+            
+            # Create scaler and scale features
+            scaler_X = StandardScaler()
+            X_scaled = scaler_X.fit_transform(X)
+            
+            # Create model with hyperparameters
+            default_rf_params = {
+                "n_estimators": 100, 
+                "max_depth": 10,
+                "min_samples_split": 5,
+                "random_state": 42
+            }
+            
+            default_gb_params = {
+                "n_estimators": 100,
+                "learning_rate": 0.1,
+                "max_depth": 5,
+                "random_state": 42
+            }
+            
+            # Merge default params with custom hyperparams
+            if model_type == "RandomForest":
+                model_params = {**default_rf_params, **hyperparams}
+                model = RandomForestRegressor(**model_params)
+            else:  # GradientBoosting
+                model_params = {**default_gb_params, **hyperparams}
+                model = GradientBoostingRegressor(**model_params)
+            
+            # Fit model
+            model.fit(X_scaled, y)
+            
+            # Store model
+            self.prediction_models[mode][metric] = {
+                "model": model,
+                "scaler": scaler_X,
+                "importance": dict(zip(
+                    self.config["prediction_features"], 
+                    model.feature_importances_
+                )),
+                "training_samples": len(y),
+                "model_type": model_type,
+                "params": model_params
+            }
+            
+            logger.info(f"Trained {mode} {metric} prediction model with {len(y)} samples")
+            
+        except Exception as e:
+            logger.warning(f"Failed to train {mode} {metric} prediction model: {e}")
+            self._initialize_fallback_model(mode, metric)
+    
+    def _initialize_fallback_models(self, mode):
+        """
+        Initialize fallback models for a mode when no training data is available.
+        
+        Args:
+            mode (str): "inference" or "training"
+        """
+        for metric in ["latency", "throughput", "memory_usage"]:
+            self._initialize_fallback_model(mode, metric)
+    
+    def _initialize_fallback_model(self, mode, metric):
+        """
+        Initialize a fallback model for a specific metric.
+        
+        Args:
+            mode (str): "inference" or "training"
+            metric (str): The metric to predict (latency, throughput, memory_usage)
+        """
+        logger.warning(f"Initializing fallback model for {mode} {metric}")
+        
+        # Create a simple rule-based fallback model
+        self.prediction_models.setdefault(mode, {})[metric] = {
+            "model": None,
+            "scaler": None,
+            "fallback": True,
+            "fallback_rules": {
+                "embedding": {"cpu": 0.5, "cuda": 0.8, "rocm": 0.7, "mps": 0.7, "openvino": 0.6, "webnn": 0.5, "webgpu": 0.5},
+                "text_generation": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.8, "mps": 0.6, "openvino": 0.4, "webnn": 0.2, "webgpu": 0.3},
+                "vision": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.8, "mps": 0.7, "openvino": 0.7, "webnn": 0.6, "webgpu": 0.6},
+                "audio": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.7, "mps": 0.6, "openvino": 0.5, "webnn": 0.3, "webgpu": 0.4},
+                "multimodal": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.7, "mps": 0.5, "openvino": 0.4, "webnn": 0.2, "webgpu": 0.3}
+            }
+        }
+    
+    def _load_model_hyperparams(self, config_path):
+        """
+        Load model hyperparameters from a configuration file.
+        
+        Args:
+            config_path (str): Path to configuration file.
+            
+        Returns:
+            dict: Model hyperparameters.
+        """
+        default_hyperparams = {
+            "latency": {
+                "n_estimators": 100,
+                "max_depth": 10,
+                "min_samples_split": 5
+            },
+            "throughput": {
+                "n_estimators": 100,
+                "learning_rate": 0.1,
+                "max_depth": 5
+            },
+            "memory_usage": {
+                "n_estimators": 100,
+                "learning_rate": 0.1,
+                "max_depth": 5
+            }
+        }
+        
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    custom_hyperparams = json.load(f)
+                # Merge default with custom
+                merged_hyperparams = {}
+                for metric in default_hyperparams:
+                    merged_hyperparams[metric] = {**default_hyperparams[metric], **(custom_hyperparams.get(metric, {}))}
+                return merged_hyperparams
+            except Exception as e:
+                logger.warning(f"Failed to load model hyperparameters from {config_path}: {e}")
+                return default_hyperparams
+        else:
+            # Create the default config file for future customization
+            try:
+                os.makedirs(os.path.dirname(config_path), exist_ok=True)
+                with open(config_path, 'w') as f:
+                    json.dump(default_hyperparams, f, indent=2)
+                logger.info(f"Created default model hyperparameters file at {config_path}")
+            except Exception as e:
+                logger.warning(f"Failed to create default hyperparameters file: {e}")
+            return default_hyperparams
     
     def _prepare_prediction_data(self, mode: str) -> Tuple:
         """
@@ -808,6 +953,64 @@ class HardwareSelector:
             "webgpu": 6.0
         }
         return types.get(hw_type, 0.0)
+        
+    def _get_fallback_score(self, model_info: Dict, model_family: str, hw_type: str, metric: str) -> float:
+        """
+        Get a fallback score from the fallback rules.
+        
+        Args:
+            model_info (Dict): Model information dictionary.
+            model_family (str): Model family.
+            hw_type (str): Hardware type.
+            metric (str): Metric type (latency, throughput, memory_usage).
+            
+        Returns:
+            float: Fallback score.
+        """
+        # Get fallback rules
+        fallback_rules = model_info.get("fallback_rules", {})
+        
+        # Get score for model family and hardware type
+        if model_family in fallback_rules and hw_type in fallback_rules[model_family]:
+            return fallback_rules[model_family][hw_type]
+        
+        # Fall back to reasonable defaults
+        default_scores = {
+            "latency": {
+                "cpu": 0.4,
+                "cuda": 0.8,
+                "rocm": 0.7,
+                "mps": 0.6,
+                "openvino": 0.6,
+                "webnn": 0.5,
+                "webgpu": 0.5
+            },
+            "throughput": {
+                "cpu": 0.3,
+                "cuda": 0.9,
+                "rocm": 0.8,
+                "mps": 0.7,
+                "openvino": 0.6,
+                "webnn": 0.4,
+                "webgpu": 0.5
+            },
+            "memory_usage": {
+                "cpu": 0.5,
+                "cuda": 0.6,
+                "rocm": 0.6,
+                "mps": 0.7,
+                "openvino": 0.7,
+                "webnn": 0.8,
+                "webgpu": 0.7
+            }
+        }
+        
+        # Get default score for metric and hardware type
+        if metric in default_scores and hw_type in default_scores[metric]:
+            return default_scores[metric][hw_type]
+        
+        # Last resort default
+        return 0.5  # Middle value as safest default
     
     def _estimate_model_size(self, model_name: str) -> int:
         """
@@ -1032,77 +1235,128 @@ class HardwareSelector:
                     logger.debug(f"Failed to use external prediction: {e}")
             
             # Use internal prediction models if external failed or not available
-            if (latency_score == 0.0 or throughput_score == 0.0) and mode in self.prediction_models and self.sklearn_available:
-                # Prepare feature vector for prediction
-                feature = [
-                    self._encode_model_family(model_family),
-                    model_size,
-                    batch_size,
-                    sequence_length,
-                    self._encode_hardware_type(hw_type)
-                ]
-                
-                # Add precision if available in feature list
-                if "precision_numeric" in self.config["prediction_features"]:
-                    feature.append(precision_numeric)
-                
-                # Predict latency
-                if "latency" in self.prediction_models[mode] and latency_score == 0.0:
-                    try:
-                        scaler = self.prediction_models[mode]["latency"]["scaler"]
-                        model = self.prediction_models[mode]["latency"]["model"]
-                        
-                        # Scale feature
-                        feature_scaled = scaler.transform([feature])
-                        
-                        # Predict
-                        latency_pred = model.predict(feature_scaled)[0]
-                        
-                        # Store prediction
-                        predictions.setdefault(hw_type, {})["latency"] = latency_pred
-                        
-                        # Convert to score (lower latency is better)
-                        latency_score = 1.0 / max(0.001, latency_pred)
-                    except Exception as e:
-                        logger.warning(f"Failed to predict latency for {hw_type}: {e}")
-                
-                # Predict throughput
-                if "throughput" in self.prediction_models[mode] and throughput_score == 0.0:
-                    try:
-                        scaler = self.prediction_models[mode]["throughput"]["scaler"]
-                        model = self.prediction_models[mode]["throughput"]["model"]
-                        
-                        # Scale feature
-                        feature_scaled = scaler.transform([feature])
-                        
-                        # Predict
-                        throughput_pred = model.predict(feature_scaled)[0]
-                        
-                        # Store prediction
-                        predictions.setdefault(hw_type, {})["throughput"] = throughput_pred
-                        
-                        # Convert to score (higher throughput is better)
-                        throughput_score = throughput_pred
-                    except Exception as e:
-                        logger.warning(f"Failed to predict throughput for {hw_type}: {e}")
-                
-                # Predict memory usage
-                if "memory_usage" in self.prediction_models[mode] and memory_usage == 0.0:
-                    try:
-                        scaler = self.prediction_models[mode]["memory_usage"]["scaler"]
-                        model = self.prediction_models[mode]["memory_usage"]["model"]
-                        
-                        # Scale feature
-                        feature_scaled = scaler.transform([feature])
-                        
-                        # Predict
-                        memory_pred = model.predict(feature_scaled)[0]
-                        
-                        # Store prediction
-                        predictions.setdefault(hw_type, {})["memory_usage"] = memory_pred
-                        memory_usage = memory_pred
-                    except Exception as e:
-                        logger.warning(f"Failed to predict memory usage for {hw_type}: {e}")
+            if (latency_score == 0.0 or throughput_score == 0.0) and mode in self.prediction_models:
+                # Try using trained models if available
+                if self.sklearn_available:
+                    # Prepare feature vector for prediction
+                    feature = [
+                        self._encode_model_family(model_family),
+                        model_size,
+                        batch_size,
+                        sequence_length,
+                        self._encode_hardware_type(hw_type)
+                    ]
+                    
+                    # Add precision if available in feature list
+                    if "precision_numeric" in self.config["prediction_features"]:
+                        feature.append(precision_numeric)
+                    
+                    # Predict latency
+                    if "latency" in self.prediction_models[mode] and latency_score == 0.0:
+                        model_info = self.prediction_models[mode]["latency"]
+                        if "fallback" in model_info and model_info["fallback"]:
+                            # Use fallback rules for latency
+                            latency_score = self._get_fallback_score(model_info, model_family, hw_type, "latency")
+                            predictions.setdefault(hw_type, {})["latency"] = 1.0 / max(0.001, latency_score) if latency_score > 0 else 0
+                            latency_score = max(0.001, latency_score)
+                            logger.debug(f"Using fallback model for latency prediction: {hw_type}={latency_score}")
+                        elif "model" in model_info and model_info["model"] is not None:
+                            try:
+                                scaler = model_info["scaler"]
+                                model = model_info["model"]
+                                
+                                # Scale feature
+                                feature_scaled = scaler.transform([feature])
+                                
+                                # Predict
+                                latency_pred = max(0.001, model.predict(feature_scaled)[0])
+                                
+                                # Store prediction
+                                predictions.setdefault(hw_type, {})["latency"] = latency_pred
+                                
+                                # Convert to score (lower latency is better)
+                                latency_score = 1.0 / latency_pred
+                                logger.debug(f"Predicted latency for {hw_type}: {latency_pred}")
+                            except Exception as e:
+                                logger.warning(f"Failed to predict latency for {hw_type}: {e}")
+                                # Fall back to compatibility rating on error
+                                latency_score = compatibility_rating
+                    
+                    # Predict throughput
+                    if "throughput" in self.prediction_models[mode] and throughput_score == 0.0:
+                        model_info = self.prediction_models[mode]["throughput"]
+                        if "fallback" in model_info and model_info["fallback"]:
+                            # Use fallback rules for throughput
+                            throughput_score = self._get_fallback_score(model_info, model_family, hw_type, "throughput")
+                            predictions.setdefault(hw_type, {})["throughput"] = throughput_score
+                            logger.debug(f"Using fallback model for throughput prediction: {hw_type}={throughput_score}")
+                        elif "model" in model_info and model_info["model"] is not None:
+                            try:
+                                scaler = model_info["scaler"]
+                                model = model_info["model"]
+                                
+                                # Scale feature
+                                feature_scaled = scaler.transform([feature])
+                                
+                                # Predict
+                                throughput_pred = max(0.001, model.predict(feature_scaled)[0])
+                                
+                                # Store prediction
+                                predictions.setdefault(hw_type, {})["throughput"] = throughput_pred
+                                
+                                # Convert to score (higher throughput is better)
+                                throughput_score = throughput_pred
+                                logger.debug(f"Predicted throughput for {hw_type}: {throughput_pred}")
+                            except Exception as e:
+                                logger.warning(f"Failed to predict throughput for {hw_type}: {e}")
+                                # Fall back to compatibility rating on error
+                                throughput_score = compatibility_rating
+                    
+                    # Predict memory usage
+                    if "memory_usage" in self.prediction_models[mode] and memory_usage == 0.0:
+                        model_info = self.prediction_models[mode]["memory_usage"]
+                        if "fallback" in model_info and model_info["fallback"]:
+                            # Use fallback rules for memory usage - higher values mean MORE memory usage, so invert for scoring
+                            memory_score = self._get_fallback_score(model_info, model_family, hw_type, "memory_usage")
+                            # Convert to reasonable memory usage estimate (5-20% of model size)
+                            memory_usage = model_size * (0.05 + (1.0 - memory_score) * 0.15)
+                            predictions.setdefault(hw_type, {})["memory_usage"] = memory_usage
+                            logger.debug(f"Using fallback model for memory prediction: {hw_type}={memory_usage}")
+                        elif "model" in model_info and model_info["model"] is not None:
+                            try:
+                                scaler = model_info["scaler"]
+                                model = model_info["model"]
+                                
+                                # Scale feature
+                                feature_scaled = scaler.transform([feature])
+                                
+                                # Predict
+                                memory_pred = max(0.001, model.predict(feature_scaled)[0])
+                                
+                                # Store prediction
+                                predictions.setdefault(hw_type, {})["memory_usage"] = memory_pred
+                                memory_usage = memory_pred
+                                logger.debug(f"Predicted memory usage for {hw_type}: {memory_pred}")
+                            except Exception as e:
+                                logger.warning(f"Failed to predict memory usage for {hw_type}: {e}")
+                                # Fall back to model size-based estimate
+                                memory_usage = model_size * 0.1  # 10% of model size as a fallback
+                else:
+                    # Use fallback predictions if scikit-learn is not available
+                    for metric in ["latency", "throughput", "memory_usage"]:
+                        if metric in self.prediction_models[mode]:
+                            model_info = self.prediction_models[mode][metric]
+                            if "fallback" in model_info and model_info["fallback"]:
+                                score = self._get_fallback_score(model_info, model_family, hw_type, metric)
+                                if metric == "latency" and latency_score == 0.0:
+                                    latency_score = score
+                                    predictions.setdefault(hw_type, {})["latency"] = 1.0 / max(0.001, score)
+                                elif metric == "throughput" and throughput_score == 0.0:
+                                    throughput_score = score
+                                    predictions.setdefault(hw_type, {})["throughput"] = score
+                                elif metric == "memory_usage" and memory_usage == 0.0:
+                                    memory_usage = model_size * (0.05 + (1.0 - score) * 0.15)
+                                    predictions.setdefault(hw_type, {})["memory_usage"] = memory_usage
             
             # If we couldn't predict, use compatibility rating as an approximation
             if latency_score == 0.0:

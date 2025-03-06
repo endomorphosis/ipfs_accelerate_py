@@ -127,14 +127,14 @@ class Template:
             
             # Custom inheritance directive using comments
             if line.strip().startswith('#') and 'inherits:' in line:
-                match = re.search(r'inherits:\s+(.*?)$', line)$', line)
+                match = re.search(r'inherits:\s+(.*?)$', line)
                 if match:
                     parent_templates = [t.strip() for t in match.group(1).split(',')]
                     self.parent_templates.extend(parent_templates)
             
             # Multiple inheritance support
             if line.strip().startswith('#') and 'uses:' in line:
-                match = re.search(r'uses:\s+(.*?)(?:\s+for\s+(.*?))?$', line)$', line)
+                match = re.search(r'uses:\s+(.*?)(?:\s+for\s+(.*?))?$', line)
                 if match:
                     used_template = match.group(1).strip()
                     sections = [s.strip() for s in match.group(2).split(',')] if match.group(2) else []

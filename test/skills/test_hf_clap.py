@@ -8,6 +8,17 @@ from unittest.mock import MagicMock, patch
 from PIL import Image
 
 # Define utility functions needed for tests
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 def load_audio(audio_file):
     """Load audio from file or URL and return audio data and sample rate.
     

@@ -19,6 +19,56 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+# Database integration
+import os
+try:
+    from integrated_improvements.database_integration import (
+# Improved hardware detection
+try:
+    from integrated_improvements.improved_hardware_detection import (
+        detect_available_hardware,
+        check_web_optimizations,
+        HARDWARE_PLATFORMS,
+        HAS_CUDA,
+        HAS_ROCM,
+        HAS_MPS,
+        HAS_OPENVINO,
+        HAS_WEBNN,
+        HAS_WEBGPU
+    )
+    HAS_HARDWARE_MODULE = True
+except ImportError:
+    logger.warning("Improved hardware detection not available")
+    HAS_HARDWARE_MODULE = False
+
+        get_db_connection,
+        store_test_result,
+        store_performance_result,
+        create_test_run,
+        complete_test_run,
+        get_or_create_model,
+        get_or_create_hardware_platform,
+        DEPRECATE_JSON_OUTPUT
+    )
+    HAS_DB_INTEGRATION = True
+except ImportError:
+    logger.warning("Database integration not available")
+    HAS_DB_INTEGRATION = False
+    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
+
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Import key model and hardware definitions from test coverage script
 try:
     from test_comprehensive_hardware_coverage import KEY_MODELS, HARDWARE_PLATFORMS
@@ -53,6 +103,61 @@ def get_model_categories() -> Dict[str, List[str]]:
         categories[category].append(model_key)
     
     return categories
+
+def store_benchmark_in_database(result, db_path=None):
+    # Store benchmark results in database
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot store benchmark")
+        return False
+    
+    try:
+        # Get database connection
+        conn = get_db_connection(db_path)
+        if conn is None:
+            logger.error("Failed to connect to database")
+            return False
+        
+        # Create test run
+        run_id = create_test_run(
+            test_name=result.get("model_name", "unknown_model"),
+            test_type="benchmark",
+            metadata={"benchmark_script": os.path.basename(__file__)}
+        )
+        
+        # Get or create model
+        model_id = get_or_create_model(
+            model_name=result.get("model_name", "unknown_model"),
+            model_family=result.get("model_family"),
+            model_type=result.get("model_type"),
+            metadata=result
+        )
+        
+        # Get or create hardware platform
+        hw_id = get_or_create_hardware_platform(
+            hardware_type=result.get("hardware", "unknown"),
+            metadata={"source": "benchmark"}
+        )
+        
+        # Store performance result
+        store_performance_result(
+            run_id=run_id,
+            model_id=model_id,
+            hardware_id=hw_id,
+            batch_size=result.get("batch_size", 1),
+            throughput=result.get("throughput_items_per_second"),
+            latency=result.get("latency_ms"),
+            memory=result.get("memory_mb"),
+            metadata=result
+        )
+        
+        # Complete test run
+        complete_test_run(run_id)
+        
+        logger.info(f"Stored benchmark result in database for {result.get('model_name', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Error storing benchmark in database: {e}")
+        return False
 
 def get_benchmark_command(
     model_key: str, 
@@ -187,8 +292,13 @@ def save_benchmark_results(results: Dict, output_dir: str = None) -> str:
     
     result_path = os.path.join(output_dir, f"benchmark_{model_key}_{hardware_key}_{timestamp}.json")
     
-    with open(result_path, "w") as f:
-        json.dump(results, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+        with open(result_path, "w") as f:
+            json.dump(results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
     
     return result_path
 
@@ -276,7 +386,12 @@ def main():
     parser.add_argument("--no-report", action="store_false", dest="generate_report", help="Don't generate a markdown report")
     parser.add_argument("--verbose", action="store_true", help="Print detailed output")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Process batch sizes
     batch_sizes = None

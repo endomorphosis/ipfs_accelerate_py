@@ -1,0 +1,497 @@
+[
+  {
+    "model_name": "bert-base-uncased",
+    "family": "embedding",
+    "subfamily": "masked_lm",
+    "confidence": 0.20000000000000004,
+    "subfamily_confidence": 0.3444444444444444,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "bert-base-uncased",
+        "family": "embedding",
+        "subfamily": "masked_lm",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.2,
+        "source": "name_analysis"
+      },
+      {
+        "family": "embedding",
+        "subfamily": "masked_lm",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.3333333333333333,
+        "source": "class_analysis"
+      },
+      {
+        "family": "embedding",
+        "subfamily": "masked_lm",
+        "confidence": 0.4,
+        "subfamily_confidence": 0.5,
+        "source": "task_analysis"
+      },
+      {
+        "family": "audio",
+        "confidence": 0.4,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "ROCm incompatible but MPS compatible suggests audio model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 500
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": true
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "rocm",
+      "mps",
+      "openvino",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "gpt2",
+    "family": "text_generation",
+    "subfamily": "causal_lm",
+    "confidence": 0.12222222222222223,
+    "subfamily_confidence": 0.46428571428571425,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "gpt2",
+        "family": "text_generation",
+        "subfamily": "causal_lm",
+        "confidence": 0.08333333333333333,
+        "subfamily_confidence": 0.14285714285714285,
+        "source": "name_analysis"
+      },
+      {
+        "family": "text_generation",
+        "subfamily": "causal_lm",
+        "confidence": 0.08333333333333333,
+        "subfamily_confidence": 0.25,
+        "source": "class_analysis"
+      },
+      {
+        "family": "text_generation",
+        "subfamily": "causal_lm",
+        "confidence": 0.2,
+        "subfamily_confidence": 1.0,
+        "source": "task_analysis"
+      },
+      {
+        "family": "audio",
+        "confidence": 0.4,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "ROCm incompatible but MPS compatible suggests audio model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 1200
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": true
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "t5-small",
+    "family": "text_generation",
+    "subfamily": "seq2seq",
+    "confidence": 0.24444444444444446,
+    "subfamily_confidence": 0.37222222222222223,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "t5-small",
+        "family": "text_generation",
+        "subfamily": "seq2seq",
+        "confidence": 0.08333333333333333,
+        "subfamily_confidence": 0.2,
+        "source": "name_analysis"
+      },
+      {
+        "family": "text_generation",
+        "subfamily": "seq2seq",
+        "confidence": 0.25,
+        "subfamily_confidence": 0.25,
+        "source": "class_analysis"
+      },
+      {
+        "family": "text_generation",
+        "subfamily": "seq2seq",
+        "confidence": 0.4,
+        "subfamily_confidence": 0.6666666666666666,
+        "source": "task_analysis"
+      },
+      {
+        "family": "audio",
+        "confidence": 0.4,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "ROCm incompatible but MPS compatible suggests audio model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 900
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": true
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "facebook/wav2vec2-base",
+    "family": "audio",
+    "subfamily": "speech_recognition",
+    "confidence": 0.13333333333333333,
+    "subfamily_confidence": 0.5111111111111111,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "facebook/wav2vec2-base",
+        "family": "audio",
+        "subfamily": "speech_recognition",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.2,
+        "source": "name_analysis"
+      },
+      {
+        "family": "audio",
+        "subfamily": "speech_recognition",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.3333333333333333,
+        "source": "class_analysis"
+      },
+      {
+        "family": "audio",
+        "subfamily": "speech_recognition",
+        "confidence": 0.2,
+        "subfamily_confidence": 1.0,
+        "source": "task_analysis"
+      },
+      {
+        "family": "vision",
+        "confidence": 0.5,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "OpenVINO compatible but WebNN incompatible suggests vision model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 1500
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": false
+      },
+      "audio_incompatible": true
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "clip-vit-base-patch32",
+    "family": "vision",
+    "subfamily": "image_classifier",
+    "confidence": 0.14545454545454545,
+    "subfamily_confidence": 0.375,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "clip-vit-base-patch32",
+        "family": "vision",
+        "subfamily": "image_classifier",
+        "confidence": 0.09090909090909091,
+        "subfamily_confidence": 0.25,
+        "source": "name_analysis"
+      },
+      {
+        "family": "multimodal",
+        "subfamily": "image_text_encoder",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.25,
+        "source": "class_analysis"
+      },
+      {
+        "family": "vision",
+        "subfamily": "image_classifier",
+        "confidence": 0.2,
+        "subfamily_confidence": 0.5,
+        "source": "task_analysis"
+      },
+      {
+        "family": "audio",
+        "confidence": 0.4,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "ROCm incompatible but MPS compatible suggests audio model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 1100
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": true
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "openvino",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "vit-base-patch16-224",
+    "family": "vision",
+    "subfamily": "image_classifier",
+    "confidence": 0.1272727272727273,
+    "subfamily_confidence": 0.5,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "vit-base-patch16-224",
+        "family": "vision",
+        "subfamily": "image_classifier",
+        "confidence": 0.09090909090909091,
+        "subfamily_confidence": 0.25,
+        "source": "name_analysis"
+      },
+      {
+        "family": "vision",
+        "subfamily": "image_classifier",
+        "confidence": 0.09090909090909091,
+        "subfamily_confidence": 0.25,
+        "source": "class_analysis"
+      },
+      {
+        "family": "vision",
+        "subfamily": "image_classifier",
+        "confidence": 0.2,
+        "subfamily_confidence": 1.0,
+        "source": "task_analysis"
+      },
+      {
+        "family": "audio",
+        "confidence": 0.4,
+        "subfamily": null,
+        "subfamily_confidence": 0,
+        "source": "hardware_analysis",
+        "reason": "ROCm incompatible but MPS compatible suggests audio model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 800
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": true,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": true,
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "webnn": {
+        "compatible": true
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "openvino",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  },
+  {
+    "model_name": "llava-hf/llava-1.5-7b-hf",
+    "family": "text_generation",
+    "subfamily": "causal_lm",
+    "confidence": 0.4333333333333333,
+    "subfamily_confidence": 0.65,
+    "source": "combined_analysis",
+    "analyses": [
+      {
+        "model_name": "llava-hf/llava-1.5-7b-hf",
+        "family": "multimodal",
+        "subfamily": "vision_language",
+        "confidence": 0.1,
+        "subfamily_confidence": 0.25,
+        "source": "name_analysis"
+      },
+      {
+        "family": "text_generation",
+        "subfamily": null,
+        "confidence": 0.16666666666666666,
+        "subfamily_confidence": 0,
+        "source": "class_analysis"
+      },
+      {
+        "family": "multimodal",
+        "subfamily": null,
+        "confidence": 0.2,
+        "subfamily_confidence": 0,
+        "source": "task_analysis"
+      },
+      {
+        "family": "text_generation",
+        "confidence": 0.7,
+        "subfamily": "causal_lm",
+        "subfamily_confidence": 0.65,
+        "source": "hardware_analysis",
+        "reason": "Very high memory usage (14.6GB) suggests large language model"
+      }
+    ],
+    "hardware_profile": {
+      "cuda": {
+        "compatible": true,
+        "memory_usage": {
+          "peak": 15000
+        },
+        "system_available": true,
+        "effective_compatibility": true
+      },
+      "mps": {
+        "compatible": false,
+        "system_available": false,
+        "effective_compatibility": false
+      },
+      "openvino": {
+        "compatible": false,
+        "system_available": true,
+        "effective_compatibility": false
+      },
+      "webnn": {
+        "compatible": false
+      }
+    },
+    "recommended_hardware": "cuda",
+    "hardware_priority": [
+      "cuda",
+      "mps",
+      "cpu"
+    ],
+    "torch_device": "cuda:0"
+  }
+]

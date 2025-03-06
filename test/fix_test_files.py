@@ -6,14 +6,17 @@ This script fixes the indentation and structure of Hugging Face test files
 to ensure consistency and proper hardware integration.
 
 It focuses on:
-1. Fixing indentation issues
+1. Fixing indentation issues for test generator files and test implementations
 2. Placing methods inside the correct class
 3. Organizing methods in a consistent order
 4. Ensuring proper implementation of hardware methods
+5. Fixing string termination, table examples, and model modality detection functions
+6. Ensuring KEY_MODEL_HARDWARE_MAP is defined properly
 
 Usage:
 python fix_test_files.py --file test_hf_bert.py
 python fix_test_files.py --directory key_models_hardware_fixes
+python fix_test_files.py --generators  # Fix test generator files
 """
 
 import os
@@ -21,6 +24,7 @@ import re
 import sys
 import glob
 import argparse
+import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -207,6 +211,187 @@ def process_directory(directory: str) -> int:
     
     return fixed_count
 
+# Generator file fixing functions
+def backup_generator_file(file_path):
+    """Create a backup of the file before modifying it."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = file_path.with_suffix(f".py.bak_{timestamp}")
+    
+    with open(file_path, 'r', encoding='utf-8') as source_file:
+        with open(backup_path, 'w', encoding='utf-8') as backup_file:
+            backup_file.write(source_file.read())
+    
+    print(f"Created backup of {file_path} at {backup_path}")
+    return backup_path
+
+def fix_table_example_indentation(content):
+    """Fix the table example indentation issue."""
+    # Pattern to find the table example with improper indentation
+    pattern = r"(if\s+primary_task\s+==\s+\"table-question-answering\"[^\n]*\n)(\s*)table_example\s+=\s+'''self\.test_table"
+    replacement = r"\1\2    table_example = '''self.test_table"
+    
+    # Apply the fix
+    fixed_content = re.sub(pattern, replacement, content)
+    
+    return fixed_content
+
+def fix_function_indentation(content):
+    """Fix indentation issues in functions."""
+    # Pattern for functions that should be indented
+    pattern = r"(\s*)(def\s+[a-zA-Z0-9_]+\([^)]*\):)(\s*)([\r\n]+)([^\s])"
+    replacement = r"\1\2\3\4\1    \5"
+    
+    # Apply the fix
+    fixed_content = re.sub(pattern, replacement, content)
+    
+    return fixed_content
+
+def fix_class_indentation(content):
+    """Fix indentation issues in class methods."""
+    # Pattern for class methods that should be indented
+    pattern = r"(\s*)(class\s+[a-zA-Z0-9_]+(?:\([^)]*\))?:)(\s*)([\r\n]+)([^\s])"
+    replacement = r"\1\2\3\4\1    \5"
+    
+    # Apply the fix
+    fixed_content = re.sub(pattern, replacement, content)
+    
+    return fixed_content
+
+def fix_string_termination(content):
+    """Fix any unterminated string literals."""
+    # Pattern for triple-quoted strings that might be unterminated
+    # This is a simplified approach; for robust parsing you'd need a proper parser
+    pattern = r"('''[^']*?)(?:(?!''')[^'])*$"
+    replacement = r"\1'''"
+    
+    # Apply the fix (note: this might not catch all cases)
+    fixed_content = re.sub(pattern, replacement, content)
+    
+    return fixed_content
+
+def fix_hardware_map_placement(content):
+    """Fix the KEY_MODEL_HARDWARE_MAP definition placement."""
+    # If KEY_MODEL_HARDWARE_MAP is referenced before defined, this fixes that
+    if "KEY_MODEL_HARDWARE_MAP" in content:
+        hardware_map_def = re.search(r"KEY_MODEL_HARDWARE_MAP\s*=\s*\{[^}]*\}", content, re.DOTALL)
+        if hardware_map_def:
+            # Extract the full definition
+            map_definition = hardware_map_def.group(0)
+            
+            # Remove it from its current location
+            content = content.replace(map_definition, "")
+            
+            # Find a good place to put it (after imports but before first function)
+            first_function = re.search(r"def\s+[a-zA-Z0-9_]+\(", content)
+            if first_function:
+                insertion_point = first_function.start()
+                # Add the definition before the first function
+                content = content[:insertion_point] + "\n# Define hardware map\n" + map_definition + "\n\n" + content[insertion_point:]
+    
+    return content
+
+def fix_detect_modality_function(content):
+    """Fix specific issues with the detect_model_modality function."""
+    # Pattern for incomplete detect_model_modality function
+    pattern = r"(def\s+detect_model_modality\([^)]*\):.*?\n)(\s*# Normalize the model type.*?\n)(\s*model_name = model_type\.lower\(\)\.replace\('-', '_'\)\.replace\('\.', '_'\).*?\n)(\s*# Check direct matches in defined modality types.*?\n)(\s*for modality, types in MODALITY_TYPES\.items\(\):.*?\n)(\s*if model_name in types or any\(t in model_name for t in types\):)"
+    
+    replacement = r"\1\2\3\4\5\6\n        return modality\n        \n    # Check specialized models\n    for model_key, task in SPECIALIZED_MODELS.items():\n        if model_name == model_key.lower().replace('-', '_').replace('.', '_'):\n            # Determine modality based on task\n            if 'audio' in task or 'speech' in task:\n                return 'audio'\n            elif 'image' in task or 'vision' in task or 'depth' in task:\n                return 'vision'\n            elif 'text-to-text' in task or 'text-generation' in task:\n                return 'text'\n            elif 'multimodal' in task or ('image' in task and 'text' in task):\n                return 'multimodal'\n    \n    # Default to text if no match found\n    return 'text'"
+    
+    # Apply the fix (this is a partial fix, a complete solution would need proper parsing)
+    fixed_content = re.sub(pattern, replacement, content)
+    
+    return fixed_content
+
+def fix_duplicate_hardware_detection(content):
+    """Remove duplicate hardware detection blocks."""
+    # Find the first complete hardware detection block
+    first_block = re.search(r"# Hardware Detection.*?HW_CAPABILITIES = check_hardware\(\)", content, re.DOTALL)
+    if first_block:
+        first_block_text = first_block.group(0)
+        
+        # Find and remove subsequent hardware detection blocks
+        duplicate_blocks = re.finditer(r"# Hardware Detection.*?HW_CAPABILITIES = check_hardware\(\)", content[first_block.end():], re.DOTALL)
+        for duplicate in duplicate_blocks:
+            duplicate_text = duplicate.group(0)
+            content = content.replace(duplicate_text, "")
+    
+    return content
+
+def fix_duplicate_optimizations(content):
+    """Remove duplicate web platform optimization definitions."""
+    # Find the first complete optimization block
+    first_block = re.search(r"# Web Platform Optimizations.*?def apply_web_platform_optimizations\(.*?def detect_browser_for_optimizations\(.*?return browser_info", content, re.DOTALL)
+    if first_block:
+        first_block_text = first_block.group(0)
+        
+        # Find and remove subsequent optimization blocks
+        duplicate_blocks = re.finditer(r"# Web Platform Optimizations.*?def apply_web_platform_optimizations\(.*?def detect_browser_for_optimizations\(.*?return browser_info", content[first_block.end():], re.DOTALL)
+        for duplicate in duplicate_blocks:
+            duplicate_text = duplicate.group(0)
+            content = content.replace(duplicate_text, "")
+    
+    return content
+
+def process_generator_file(file_path):
+    """Process a single generator file to fix the identified issues."""
+    if not file_path.exists():
+        print(f"File not found: {file_path}")
+        return False
+    
+    # Create backup
+    backup_path = backup_generator_file(file_path)
+    
+    try:
+        # Read content
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Apply fixes
+        fixed_content = content
+        fixed_content = fix_duplicate_hardware_detection(fixed_content)
+        fixed_content = fix_duplicate_optimizations(fixed_content)
+        fixed_content = fix_table_example_indentation(fixed_content)
+        fixed_content = fix_function_indentation(fixed_content)
+        fixed_content = fix_class_indentation(fixed_content)
+        fixed_content = fix_string_termination(fixed_content)
+        fixed_content = fix_hardware_map_placement(fixed_content)
+        fixed_content = fix_detect_modality_function(fixed_content)
+        
+        # Write fixed content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(fixed_content)
+        
+        print(f"Successfully fixed issues in {file_path}")
+        return True
+        
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
+        # Restore from backup
+        with open(backup_path, 'r', encoding='utf-8') as backup_file:
+            with open(file_path, 'w', encoding='utf-8') as source_file:
+                source_file.write(backup_file.read())
+        
+        print(f"Restored {file_path} from backup")
+        return False
+
+def process_generator_files():
+    """Process all test generator files."""
+    generator_files = [
+        CURRENT_DIR / "fixed_merged_test_generator.py",
+        CURRENT_DIR / "merged_test_generator.py",
+        CURRENT_DIR / "integrated_skillset_generator.py"
+    ]
+    
+    success_count = 0
+    
+    for file_path in generator_files:
+        if process_generator_file(file_path):
+            success_count += 1
+    
+    print(f"\nSummary: Successfully fixed {success_count} of {len(generator_files)} generator files")
+    
+    return success_count == len(generator_files)
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Fix Hugging Face test files structure")
@@ -215,6 +400,7 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="Path to a specific test file to fix")
     group.add_argument("--directory", type=str, help="Path to a directory containing test files to fix")
+    group.add_argument("--generators", action="store_true", help="Fix test generator files")
     
     args = parser.parse_args()
     
@@ -232,6 +418,15 @@ def main():
         fixed_count = process_directory(args.directory)
         print(f"Fixed {fixed_count} files in directory: {args.directory}")
         return 0 if fixed_count > 0 else 1
+    
+    if args.generators:
+        # Fix test generator files
+        if process_generator_files():
+            print("Successfully fixed all generator files")
+            return 0
+        else:
+            print("Some generator files could not be fixed")
+            return 1
     
     return 1
 

@@ -70,7 +70,11 @@ python test/benchmark_db_converter.py --consolidate --categories performance har
 
 ### 2. Migrating Historical Data
 
-To migrate historical data, use the converter tool which has been enhanced to properly handle various data formats:
+To migrate historical data, use one of the migration tools that can handle various data formats:
+
+#### General Benchmark Data Migration
+
+For general benchmark data, use the converter tool:
 
 ```bash
 # Import data from specific directories
@@ -88,6 +92,45 @@ python test/scripts/benchmark_db_fix.py --fix-all --db ./benchmark_db.duckdb
 # Fix specific issues like timestamp errors
 python test/scripts/benchmark_db_fix.py --fix-timestamps --db ./benchmark_db.duckdb
 ```
+
+#### IPFS Test Results Migration
+
+For IPFS-specific test results, use the specialized migration tool:
+
+```bash
+# Migrate IPFS test results from specific directories
+python test/migrate_ipfs_test_results.py --input-dirs ./test_results ./archived_results
+
+# Migrate and archive original files
+python test/migrate_ipfs_test_results.py --input-dirs ./test_results --archive
+
+# Migrate, archive, and generate a report
+python test/migrate_ipfs_test_results.py --input-dirs ./test_results --archive --report
+
+# Create an archive package of all processed files
+python test/migrate_ipfs_test_results.py --input-dirs ./test_results --create-archive-package
+
+# Migrate, archive, and delete original files after successful migration
+python test/migrate_ipfs_test_results.py --input-dirs ./test_results --delete
+```
+
+For testing the IPFS migration tool:
+
+```bash
+# Create sample data and test migration
+python test/test_ipfs_migration.py --all
+
+# Create sample data only
+python test/test_ipfs_migration.py --create-samples
+
+# Run migration on existing sample data
+python test/test_ipfs_migration.py --migrate
+
+# Validate migration results
+python test/test_ipfs_migration.py --validate
+```
+
+See [DATA_MIGRATION_README.md](DATA_MIGRATION_README.md) for complete documentation on the IPFS migration tool.
 
 ### 3. Querying the Database
 
@@ -176,11 +219,21 @@ The database schema is designed to be comprehensive yet flexible:
 - **integration_test_results**: Integration test results
 - **performance_batch_results**: Detailed batch-level performance data
 
+### Comprehensive Testing Tables
+
+- **model_architecture_coverage**: Information about all 300+ HuggingFace architectures
+- **hardware_compatibility_matrix**: Compatibility status across architectures and hardware
+- **generator_improvements**: Tracking of generator improvements and their impact
+- **architecture_metadata**: Details about each architecture including parameters, tasks, etc.
+- **comprehensive_test_results**: Results from testing all architectures across hardware
+
 ### Views
 
 - **latest_performance_metrics**: Latest performance metrics by model/hardware
 - **model_hardware_compatibility**: Compatibility matrix across models and hardware
 - **integration_test_status**: Summary of integration test status by component
+- **comprehensive_coverage_summary**: Coverage percentage by model category and hardware
+- **architecture_hardware_support**: Support status of each architecture on each hardware platform
 
 ## Migration Strategies
 
@@ -225,39 +278,51 @@ python test/validate_migration.py --json-dir ./archived_test_results --db ./benc
 python test/validate_migration.py --report
 ```
 
-## Maintaining Backward Compatibility
+## Database Storage Transition Complete
 
-During migration, backward compatibility is maintained through:
+As of March 5, 2025, all benchmark tools have been fully migrated to use the DuckDB database system:
 
-1. **Dual Output Mode**: Test runners can output both to JSON and the database
-2. **JSON Bridge**: Tools to convert between database and JSON formats
-3. **Legacy Adapters**: Adapter functions for legacy tools expecting JSON files
+1. **Complete Migration**: All JSON files have been migrated to the database system
+2. **JSON Deprecated**: JSON output has been officially deprecated and disabled by default
+3. **Database-Only Storage**: All benchmark tools now store results directly in the database
+4. **Archived Files**: Legacy JSON files have been archived for reference
 
-Example of dual output mode:
+> **Important Update**: The transition phase is complete. JSON file generation has been deprecated and disabled by default (DEPRECATE_JSON_OUTPUT=1). All tools now use the database for storage and retrieval. The archived JSON files remain available for reference but are no longer actively used.
+
+Example of database-only storage (current implementation):
 
 ```python
 def store_test_results(results, json_path=None, use_db=True):
-    # Store to database if enabled
-    if use_db:
-        api = BenchmarkDBAPI()
-        api.store_performance_result(**results)
+    # Store to database (now the default behavior)
+    api = BenchmarkDBAPI()
+    api.store_performance_result(**results)
     
-    # Store to JSON if path provided
-    if json_path:
+    # JSON output is deprecated and disabled by default
+    # Only used if explicitly requested and JSON deprecation is disabled
+    if json_path and not os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes"):
+        logger.warning("Using deprecated JSON output. Consider using database-only storage.")
         with open(json_path, 'w') as f:
             json.dump(results, f, indent=2)
 ```
 
-## Cleanup After Migration
+## Archiving Completed
 
-After successful migration and validation:
+The JSON file cleanup and archiving process has been completed as of March 5, 2025:
 
 ```bash
-# Clean up old JSON files (dry run first)
-python test/benchmark_db_maintenance.py --clean-json --dry-run
+# All JSON files have been archived into compressed tar.gz files:
+archived_json_files/
+  - api_check_results_20250305.tar.gz
+  - archived_test_results_20250305.tar.gz
+  - benchmark_results_20250305.tar.gz
+  - critical_model_results_20250305.tar.gz
+  - hardware_fix_results_20250305.tar.gz
 
-# Clean up if everything looks good
-python test/benchmark_db_maintenance.py --clean-json --older-than 30
+# The following categories of files have been archived:
+# 1. JSON benchmark and test result files (now in DuckDB)
+# 2. Backup (.bak) files from previous development iterations
+# 3. Files in /archived_* directories
+# 4. Legacy scripts replaced by the DuckDB-based system
 ```
 
 ## Troubleshooting
@@ -291,16 +356,73 @@ python test/benchmark_db_maintenance.py --restore ./benchmark_backups/benchmark_
 python test/benchmark_db_query.py --export performance --format json --output ./exported_performance.json
 ```
 
+## Migrating Comprehensive HuggingFace Testing Data
+
+The database migration system has been extended to handle data from comprehensive HuggingFace model testing:
+
+```bash
+# Migrate comprehensive test results to the database
+python test/benchmark_db_migration.py --migrate-comprehensive --db ./benchmark_db.duckdb
+
+# Migrate specific model categories
+python test/benchmark_db_migration.py --migrate-comprehensive --categories text_encoders,vision_models --db ./benchmark_db.duckdb
+
+# Extract and store architecture metadata during migration
+python test/benchmark_db_migration.py --migrate-comprehensive --extract-architecture-metadata --db ./benchmark_db.duckdb
+
+# Analyze model-architecture coverage after migration
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --report comprehensive-coverage --format html --output coverage_report.html
+```
+
+### Comprehensive Testing Data Structure
+
+The database stores detailed information about all 300+ HuggingFace model architectures:
+
+1. **Architecture Information**:
+   - Architecture name and category
+   - Model count and popularity metrics
+   - Parameter counts and computational complexity
+   - Task compatibility and special requirements
+
+2. **Hardware Compatibility**:
+   - Status on each hardware platform (compatible, mock, incompatible)
+   - Implementation details and error categories
+   - Performance scores and memory requirements
+   - Optimization opportunities and limitations
+
+3. **Generator Improvements**:
+   - Changes made to test generators
+   - Impact on coverage and compatibility
+   - Error resolution patterns and statistics
+   - Code patterns and reusable components
+
+### Validation and Reporting
+
+After migrating comprehensive test data:
+
+```bash
+# Validate architecture coverage data
+python test/benchmark_db_maintenance.py --validate-architecture-coverage --db ./benchmark_db.duckdb
+
+# Generate hardware compatibility matrix
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --comprehensive-matrix --format html --output matrix.html
+
+# Create improvement plan based on coverage gaps
+python test/benchmark_db_query.py --db ./benchmark_db.duckdb --generate-improvement-plan --output plan.md
+```
+
 ## Timeline and Milestones
 
-The migration is on schedule with major milestones completed in March 2025:
+The migration is on schedule with all major milestones completed in March 2025:
 
 - ✅ **March 2, 2025**: Fix database access and integration issues
 - ✅ **March 3, 2025**: Create robust database schema and fix timestamp handling
 - ✅ **March 3, 2025**: Update converter for proper data handling
 - ✅ **March 3, 2025**: Fix benchmark runner compatibility
 - ✅ **March 3, 2025**: Update query tools to handle both old and new formats
-- ⏱️ **March 15, 2025**: Complete cleanup of JSON files (in progress)
+- ✅ **March 5, 2025**: Extend schema for comprehensive HuggingFace model testing
+- ✅ **March 5, 2025**: Migrate comprehensive test results to database
+- ✅ **March 5, 2025**: Complete cleanup and archiving of JSON files
 
 ## Resources
 

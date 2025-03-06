@@ -20,6 +20,19 @@ import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -290,107 +303,112 @@ class BenchmarkDBUpdater:
             # Save all files
             with open(tracking_file, 'w') as f:
                 for file_path in sorted(existing_files.union(new_files)):
-                    f.write(f"{file_path}\n")
-                    
-            logger.info(f"Updated tracking file with {len(new_files)} new processed files")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error updating tracking file: {e}")
-            return False
-    
-    def get_processed_files(self, tracking_file: str = ".benchmark_db_processed.txt") -> List[str]:
-        """
-        Get the list of previously processed files.
-        
-        Args:
-            tracking_file: Path to the tracking file
-            
-        Returns:
-            List of processed file paths
-        """
-        if not os.path.exists(tracking_file):
-            return []
-            
-        try:
-            with open(tracking_file, 'r') as f:
-                return [line.strip() for line in f if line.strip()]
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        f.write(f"{file_path}\n")
+                        
+                logger.info(f"Updated tracking file with {len(new_files)} new processed files")
+                return True
                 
-        except Exception as e:
-            logger.error(f"Error reading tracking file: {e}")
-            return []
-    
-    def clean_processed_files(self, older_than_days: int = 30, 
-                             tracking_file: str = ".benchmark_db_processed.txt") -> int:
-        """
-        Clean up the tracking file by removing entries older than specified days.
-        
-        Args:
-            older_than_days: Remove files older than this many days
-            tracking_file: Path to the tracking file
-            
-        Returns:
-            Number of entries removed
-        """
-        if not os.path.exists(tracking_file):
-            return 0
-            
-        try:
-            # Get existing processed files
-            existing_files = self.get_processed_files(tracking_file)
-            
-            # Calculate cutoff date
-            cutoff_date = datetime.datetime.now() - datetime.timedelta(days=older_than_days)
-            
-            # Filter files based on modification time
-            retained_files = []
-            removed_count = 0
-            
-            for file_path in existing_files:
-                if os.path.exists(file_path):
-                    mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
-                    if mtime > cutoff_date:
-                        retained_files.append(file_path)
-                    else:
-                        removed_count += 1
-                else:
-                    # File no longer exists, skip it
-                    removed_count += 1
-            
-            # Save retained files
-            with open(tracking_file, 'w') as f:
-                for file_path in retained_files:
-                    f.write(f"{file_path}\n")
-                    
-            logger.info(f"Cleaned up tracking file: removed {removed_count} entries older than {older_than_days} days")
-            return removed_count
-            
-        except Exception as e:
-            logger.error(f"Error cleaning tracking file: {e}")
-            return 0
-    
-    def update_from_auto_store_db(self, output_dir: str = None) -> bool:
-        """
-        Update the database by checking auto-store results from test runners.
-        This looks for temporary JSON results files in output_dir.
-        
-        Args:
-            output_dir: Directory where auto-store files are saved
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Use default directory if not specified
-            if output_dir is None:
-                output_dir = os.path.join(os.path.dirname(self.db_path), "auto_store")
-            
-            # Check if directory exists
-            if not os.path.exists(output_dir):
-                logger.warning(f"Auto-store directory not found: {output_dir}")
+            except Exception as e:
+                logger.error(f"Error updating tracking file: {e}")
                 return False
+        
+        def get_processed_files(self, tracking_file: str = ".benchmark_db_processed.txt") -> List[str]:
+            """
+            Get the list of previously processed files.
             
-            # Find all JSON files in the directory
+            Args:
+                tracking_file: Path to the tracking file
+                
+            Returns:
+                List of processed file paths
+            """
+            if not os.path.exists(tracking_file):
+                return []
+                
+            try:
+                with open(tracking_file, 'r') as f:
+                    return [line.strip() for line in f if line.strip()]
+                    
+            except Exception as e:
+                logger.error(f"Error reading tracking file: {e}")
+                return []
+        
+        def clean_processed_files(self, older_than_days: int = 30, 
+                                 tracking_file: str = ".benchmark_db_processed.txt") -> int:
+            """
+            Clean up the tracking file by removing entries older than specified days.
+            
+            Args:
+                older_than_days: Remove files older than this many days
+                tracking_file: Path to the tracking file
+                
+            Returns:
+                Number of entries removed
+            """
+            if not os.path.exists(tracking_file):
+                return 0
+                
+            try:
+                # Get existing processed files
+                existing_files = self.get_processed_files(tracking_file)
+                
+                # Calculate cutoff date
+                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=older_than_days)
+                
+                # Filter files based on modification time
+                retained_files = []
+                removed_count = 0
+                
+                for file_path in existing_files:
+                    if os.path.exists(file_path):
+                        mtime = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
+                        if mtime > cutoff_date:
+                            retained_files.append(file_path)
+                        else:
+                            removed_count += 1
+                    else:
+                        # File no longer exists, skip it
+                        removed_count += 1
+                
+                # Save retained files
+                with open(tracking_file, 'w') as f:
+                    for file_path in retained_files:
+                        f.write(f"{file_path}\n")
+                        
+                logger.info(f"Cleaned up tracking file: removed {removed_count} entries older than {older_than_days} days")
+                return removed_count
+                
+            except Exception as e:
+                logger.error(f"Error cleaning tracking file: {e}")
+                return 0
+        
+        def update_from_auto_store_db(self, output_dir: str = None) -> bool:
+            """
+            Update the database by checking auto-store results from test runners.
+            This looks for temporary JSON results files in output_dir.
+            
+            Args:
+                output_dir: Directory where auto-store files are saved
+                
+            Returns:
+                True if successful, False otherwise
+            """
+            try:
+                # Use default directory if not specified
+                if output_dir is None:
+                    output_dir = os.path.join(os.path.dirname(self.db_path), "auto_store")
+                
+                # Check if directory exists
+                if not os.path.exists(output_dir):
+                    logger.warning(f"Auto-store directory not found: {output_dir}")
+                    return False
+                
+                # Find all JSON files in the directory
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
             pattern = os.path.join(output_dir, "*.json")
             json_files = glob.glob(pattern)
             
@@ -447,7 +465,12 @@ def main():
                        help="Directory where auto-store files are saved")
     parser.add_argument("--debug", action="store_true",
                        help="Enable debug logging")
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Create updater
     updater = BenchmarkDBUpdater(db_path=args.db, debug=args.debug)

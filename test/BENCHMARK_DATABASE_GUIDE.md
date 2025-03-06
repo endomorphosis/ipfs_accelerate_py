@@ -1,6 +1,6 @@
-# Benchmark Database System Guide
+# Benchmark Database System Guide (Updated March 6, 2025)
 
-> **Status Update (March 5, 2025)**: The database implementation is 100% complete. All scripts have been migrated to use the database system. JSON file output is now fully deprecated. See [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md) for details.
+> **Status Update (March 6, 2025)**: The database implementation is 100% complete with enhanced querying capabilities. A new robust query tool (`fixed_benchmark_db_query.py`) has been implemented to provide improved NULL handling, better error reporting, and comprehensive report generation. See [MARCH_2025_DB_INTEGRATION_UPDATE.md](MARCH_2025_DB_INTEGRATION_UPDATE.md) for details.
 >
 > **Current Implementation Approach**: The system now exclusively uses the DuckDB database for all storage, with JSON output completely deprecated. This approach significantly reduces context window usage and provides much more efficient storage, querying, and analysis capabilities. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts.
 
@@ -8,18 +8,24 @@
 
 The Benchmark Database System is a comprehensive solution for storing, querying, and analyzing benchmark results in a structured and efficient manner. This system replaces the previous approach of storing results in individual JSON files, providing better performance, data consistency, and analytical capabilities.
 
+As of March 6, 2025, the database system has been enhanced with a robust query tool (`fixed_benchmark_db_query.py`) that provides improved error handling, proper NULL value processing, and comprehensive report generation capabilities.
+
 The database system uses DuckDB as the underlying storage engine, with a Parquet-compatible format that allows for efficient querying and storage of benchmark data. This guide explains how to use the various components of the system to manage your benchmark data.
 
 ## System Components
 
 The Benchmark Database System consists of the following components:
 
-1. **Benchmark DB Converter** (`benchmark_db_converter.py`): Converts JSON files to the database format
-2. **Benchmark DB Query** (`benchmark_db_query.py`): Command-line tool for querying and reporting
-3. **Benchmark DB Maintenance** (`benchmark_db_maintenance.py`): Maintenance tasks like optimization and cleanup
-4. **DB Fix Tool** (`scripts/benchmark_db_fix.py`): Fixes database issues like timestamp errors
-5. **Schema Creator** (`scripts/create_new_database.py`): Creates a clean database with proper schema
-6. **DB Integrated Runner** (`run_benchmark_with_db.py`): Benchmark runner with direct database integration
+1. **Fixed Benchmark DB Query Tool** (`fixed_benchmark_db_query.py`): Robust command-line tool for querying, reporting, and visualizing benchmark results with improved error handling and NULL value processing (NEW - March 6, 2025)
+2. **Simple Report Generator** (`generate_simple_report.py`): Simplified tool for generating markdown reports from the database (NEW - March 6, 2025)
+3. **Benchmark DB Converter** (`benchmark_db_converter.py`): Converts JSON files to the database format
+4. **Benchmark DB Query** (`benchmark_db_query.py`): Legacy command-line tool for querying and reporting (Being deprecated in favor of the Fixed Query Tool)
+5. **Benchmark DB Maintenance** (`benchmark_db_maintenance.py`): Maintenance tasks like optimization and cleanup
+6. **DB Fix Tool** (`scripts/benchmark_db_fix.py`): Fixes database issues like timestamp errors
+7. **Schema Creator** (`scripts/create_new_database.py`): Creates a clean database with proper schema
+8. **DB Integrated Runner** (`run_benchmark_with_db.py`): Benchmark runner with direct database integration
+
+The most significant addition is the Fixed Benchmark DB Query Tool, which addresses various issues with the original query tool and provides comprehensive report generation capabilities. See [BENCHMARK_DB_QUERY_GUIDE.md](BENCHMARK_DB_QUERY_GUIDE.md) for detailed documentation.
 
 ## Getting Started
 
@@ -34,6 +40,29 @@ python test/scripts/create_new_database.py --db ./benchmark_db.duckdb --force
 # Or use the converter to create from existing JSON files
 python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
 ```
+
+### Using the Fixed Query Tool (Recommended)
+
+The Fixed Benchmark DB Query Tool is the recommended way to interact with the database:
+
+```bash
+# Set database path environment variable (recommended)
+export BENCHMARK_DB_PATH=./benchmark_db.duckdb
+
+# Generate a summary report
+python fixed_benchmark_db_query.py --report summary --format markdown --output benchmark_summary.md
+
+# Generate a hardware compatibility matrix
+python fixed_benchmark_db_query.py --compatibility-matrix --format markdown --output compatibility_matrix.md
+
+# Compare hardware performance for a specific model
+python fixed_benchmark_db_query.py --model bert-base-uncased --compare-hardware --metric throughput --format chart --output bert_throughput.png
+
+# Run a custom SQL query
+python fixed_benchmark_db_query.py --sql "SELECT m.model_name, h.hardware_type, AVG(p.throughput_items_per_second) FROM performance_results p JOIN models m ON p.model_id = m.model_id JOIN hardware_platforms h ON p.hardware_id = h.hardware_id GROUP BY m.model_name, h.hardware_type"
+```
+
+See [BENCHMARK_DB_QUERY_GUIDE.md](BENCHMARK_DB_QUERY_GUIDE.md) for complete documentation on using the Fixed Query Tool.
 
 ### Migrating and Converting Existing Data
 
@@ -738,6 +767,10 @@ cp ci_benchmark.duckdb ci_benchmark_${timestamp}.duckdb
 
 ### Query Performance
 
+- Use the Fixed Query Tool (`fixed_benchmark_db_query.py`) for all database operations (preferred over the legacy query tool)
+- Generate reports in markdown or HTML format for better readability
+- Use predefined reports for common analysis tasks
+- Create visualizations for complex performance comparisons
 - Use views for common queries
 - Limit result sets for large queries
 - Prefilter data before complex aggregations
@@ -750,6 +783,23 @@ cp ci_benchmark.duckdb ci_benchmark_${timestamp}.duckdb
 2. **Schema Mismatch**: Use the schema validation tools to check for inconsistencies
 3. **Slow Queries**: Run the optimizer and check for inefficient query patterns
 4. **Missing Data**: Check if the data was properly converted from JSON
+5. **NULL Value Errors**: When using the legacy query tool, NULL values may cause errors. Use the Fixed Query Tool (`fixed_benchmark_db_query.py`) which has proper NULL handling.
+6. **Report Generation Errors**: If report generation fails with the legacy tool, try the simple report generator (`generate_simple_report.py`) which has better error handling.
+
+### Using the Fixed Query Tool for Troubleshooting
+
+The Fixed Query Tool has enhanced error reporting and can help diagnose issues:
+
+```bash
+# Get database status summary (useful for troubleshooting)
+python fixed_benchmark_db_query.py --report summary --verbose
+
+# Check if a specific model exists in the database
+python fixed_benchmark_db_query.py --sql "SELECT * FROM models WHERE model_name LIKE '%bert%'" --verbose
+
+# Validate the database schema
+python fixed_benchmark_db_query.py --validate-schema
+```
 
 ### Error Codes
 
@@ -905,9 +955,17 @@ The core database system is now functional with essential components implemented
 - ✅ Comprehensive HuggingFace Model Testing Integration (100% complete)
 - ✅ Advanced Analytics (Implemented for comprehensive testing)
 - ✅ CI/CD Integration (100% complete)
+- ✅ Fixed Query Tool (100% complete, March 6, 2025)
+- ✅ Enhanced Visualization (100% complete, March 6, 2025)
+- ✅ Improved Error Handling (100% complete, March 6, 2025)
 
 ### Completed Milestones
 
+- **March 6, 2025**: Implemented fixed benchmark query tool with enhanced error handling and NULL value processing
+- **March 6, 2025**: Created comprehensive documentation for database query tools
+- **March 6, 2025**: Added visualization capabilities to the query tool
+- **March 6, 2025**: Created simplified report generator for quick database analysis
+- **March 5, 2025**: Completed JSON output deprecation across all scripts
 - **March 3, 2025**: Fixed database timestamp handling issues
 - **March 3, 2025**: Implemented database fix tools
 - **March 3, 2025**: Updated converter to handle different data formats

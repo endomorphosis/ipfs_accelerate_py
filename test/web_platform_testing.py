@@ -17,6 +17,15 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any, Optional, Tuple, Union
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
 # Add the parent directory to sys.path to import modules correctly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -529,13 +538,18 @@ class WebPlatformTesting:
                 filename = f"web_platform_{report_type}_{timestamp}.json"
                 file_path = os.path.join(self.results_dir, filename)
                 
-                with open(file_path, "w") as f:
-                    # Add metadata about database storage
-                    report_data["metadata"] = report_data.get("metadata", {})
-                    report_data["metadata"]["stored_in_db"] = os.path.exists(os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
-                    report_data["metadata"]["deprecated_format"] = True
-                    report_data["metadata"]["timestamp"] = timestamp
-                    json.dump(report_data, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(file_path, "w") as f:
+                        # Add metadata about database storage
+                        report_data["metadata"] = report_data.get("metadata", {})
+                        report_data["metadata"]["stored_in_db"] = os.path.exists(os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+                        report_data["metadata"]["deprecated_format"] = True
+                        report_data["metadata"]["timestamp"] = timestamp
+                        json.dump(report_data, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
                     
         if output_format == "md":
             # Markdown report
@@ -776,7 +790,12 @@ def parse_arguments():
     parser.add_argument("--list-models", action="store_true", help="List available models for testing")
     parser.add_argument("--list-by-modality", action="store_true", help="List models grouped by modality")
     
-    return parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+return parser.parse_args()
 
 def main():
     """Main entry point for the script."""

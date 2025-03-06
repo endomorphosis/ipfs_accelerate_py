@@ -13,6 +13,19 @@ from pathlib import Path
 import concurrent.futures
 import platform
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -1196,30 +1209,52 @@ class HardwareBenchmarkRunner:
         results_dir = os.path.join(self.output_dir, timestamp)
         os.makedirs(results_dir, exist_ok=True)
         
-        # Save complete benchmark results
-        results_file = os.path.join(results_dir, "benchmark_results.json")
-        with open(results_file, 'w') as f:
-            json.dump(self.benchmark_results, f, indent=2)
+        # Check if database storage is available and should be used
+        if BENCHMARK_DB_AVAILABLE:
+            # Store results in database
+            try:
+                db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                db_api = BenchmarkDBAPI(db_path=db_path)
+                
+                # Save all benchmark results to database
+                db_api.save_benchmark_results(self.benchmark_results)
+                logger.info(f"Benchmark results saved to database: {db_path}")
+                
+                # If JSON output is deprecated, don't save to files
+                if DEPRECATE_JSON_OUTPUT:
+                    logger.info("JSON output is deprecated. Results stored only in database.")
+                    return results_dir
+                    
+            except Exception as e:
+                logger.error(f"Error saving to database: {e}")
+                logger.warning("Falling back to JSON file storage")
+        elif DEPRECATE_JSON_OUTPUT:
+            logger.warning("Database API not available but JSON output is deprecated. "
+                           "Install required packages to use database storage.")
         
-        logger.info(f"Benchmark results saved to {results_file}")
-        
-        # Also save a summary report
-        summary = self._generate_summary_report()
-        summary_file = os.path.join(results_dir, "benchmark_summary.json")
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2)
-        
-        logger.info(f"Benchmark summary saved to {summary_file}")
-        
-        # Create a human-readable report
-        report_file = os.path.join(results_dir, "benchmark_report.md")
-        with open(report_file, 'w') as f:
-            f.write(self._generate_markdown_report())
-        
-        logger.info(f"Benchmark report saved to {report_file}")
+        # If not deprecated or database save failed, save to JSON file
+        if not DEPRECATE_JSON_OUTPUT:
+            # Save complete benchmark results
+            results_file = os.path.join(results_dir, "benchmark_results.json")
+            with open(results_file, 'w') as f:
+                json.dump(self.benchmark_results, f, indent=2)
+            logger.info(f"Benchmark results saved to {results_file}")
+            
+            # Also save a summary report
+            summary = self._generate_summary_report()
+            summary_file = os.path.join(results_dir, "benchmark_summary.json")
+            with open(summary_file, 'w') as f:
+                json.dump(summary, f, indent=2)
+            logger.info(f"Benchmark summary saved to {summary_file}")
+            
+            # Create a human-readable report
+            report_file = os.path.join(results_dir, "benchmark_report.md")
+            with open(report_file, 'w') as f:
+                f.write(self._generate_markdown_report())
+            logger.info(f"Benchmark report saved to {report_file}")
         
         return results_dir
-    
+        
     def _generate_summary_report(self):
         """Generate a summary of benchmark results"""
         summary = {
@@ -1298,7 +1333,7 @@ class HardwareBenchmarkRunner:
                             summary["performance_comparison"][family]["relative_latency_speedup"][hw] = relative_speedup
         
         return summary
-    
+        
     def _generate_markdown_report(self):
         """Generate a human-readable Markdown report of benchmark results"""
         report = []
@@ -1527,22 +1562,37 @@ class HardwareBenchmarkRunner:
             report.append("")
         
         return "\n".join(report)
-    
-    def _update_compatibility_matrix(self):
-        """Update hardware compatibility matrix based on benchmark results"""
-        try:
-            # Only update if we have the model family classifier available
             if "model_family_classifier" not in sys.modules:
                 logger.warning("Model family classifier not available, skipping compatibility matrix update")
                 return
             
-            # Load the compatibility matrix if it exists
-            compatibility_file = os.path.join(self.output_dir, "hardware_compatibility_matrix.json")
+            # Initialize compatibility matrix
             compatibility_matrix = {}
             
-            if os.path.exists(compatibility_file):
-                with open(compatibility_file, 'r') as f:
-                    compatibility_matrix = json.load(f)
+            # Try to load from database first
+            db_loaded = False
+            if BENCHMARK_DB_AVAILABLE and not DEPRECATE_JSON_OUTPUT:
+                try:
+                    db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                    db_api = BenchmarkDBAPI(db_path=db_path)
+                    compatibility_matrix = db_api.get_compatibility_matrix()
+                    logger.info("Successfully loaded compatibility matrix from database")
+                    db_loaded = True
+                except Exception as e:
+                    logger.warning(f"Error reading from database: {e}")
+                    logger.warning("Falling back to JSON file")
+            
+            # If database not available or load failed, try from file
+            compatibility_file = os.path.join(self.output_dir, "hardware_compatibility_matrix.json")
+            if not db_loaded and os.path.exists(compatibility_file) and not DEPRECATE_JSON_OUTPUT:
+                try:
+                    with open(compatibility_file, 'r') as f:
+                        compatibility_matrix = json.load(f)
+                    logger.info(f"Loaded compatibility matrix from {compatibility_file}")
+                except Exception as e:
+                    logger.warning(f"Error reading compatibility matrix from file: {e}")
+                    # Initialize a new one
+                    compatibility_matrix = {}
             
             # Initialize compatibility matrix if needed
             if "model_families" not in compatibility_matrix:
@@ -1623,11 +1673,27 @@ class HardwareBenchmarkRunner:
                                         
                                     compatibility_matrix["model_families"][family]["hardware_compatibility"][hw_type]["performance_rating"] = rating
             
-            # Save updated compatibility matrix
-            with open(compatibility_file, 'w') as f:
-                json.dump(compatibility_matrix, f, indent=2)
+            # Save updated compatibility matrix to database first if available
+            if BENCHMARK_DB_AVAILABLE:
+                try:
+                    db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                    db_api = BenchmarkDBAPI(db_path=db_path)
+                    db_api.save_compatibility_matrix(compatibility_matrix)
+                    logger.info(f"Compatibility matrix saved to database: {db_path}")
+                    
+                    # If JSON is deprecated, don't save to file
+                    if DEPRECATE_JSON_OUTPUT:
+                        return
+                except Exception as e:
+                    logger.error(f"Error saving compatibility matrix to database: {e}")
+                    logger.warning("Falling back to JSON file storage")
             
-            logger.info(f"Hardware compatibility matrix updated at {compatibility_file}")
+            # Save to JSON file if not deprecated or database save failed
+            if not DEPRECATE_JSON_OUTPUT:
+                with open(compatibility_file, 'w') as f:
+                    json.dump(compatibility_matrix, f, indent=2)
+                logger.info(f"Hardware compatibility matrix updated at {compatibility_file}")
+            
         except Exception as e:
             logger.error(f"Error updating compatibility matrix: {e}")
 
@@ -1645,7 +1711,12 @@ def main():
     parser.add_argument("--use-resource-pool", action="store_true", default=True, help="Use ResourcePool for model caching")
     parser.add_argument("--include-web-platforms", action="store_true", help="Include WebNN and WebGPU in benchmarks")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
 
     # Configure logging
     if args.debug:

@@ -47,6 +47,7 @@ class TestResultsDBHandler:
     """
     Handler for storing test results in DuckDB database.
     This class abstracts away the database operations to store test results.
+    Support for IPFS accelerator test results has been added.
     """
     
     def __init__(self, db_path: str = None):
@@ -60,7 +61,8 @@ class TestResultsDBHandler:
         # Skip initialization if DuckDB is not available
         if not HAVE_DUCKDB:
             self.db_path = None
-            self.api = None
+            self.con = None
+            print("DuckDB not available - results will not be stored in database")
             return
             
         # Get database path from environment or argument
@@ -69,85 +71,1745 @@ class TestResultsDBHandler:
         else:
             self.db_path = db_path
             
-        # Try to import BenchmarkDBAPI from various possible locations
-        self.api = None
         try:
-            # First try direct import from benchmark_db_api
-            from benchmark_db_api import BenchmarkDBAPI
-            self.api = BenchmarkDBAPI(self.db_path)
-            print(f"Using BenchmarkDBAPI from benchmark_db_api module with DB path: {self.db_path}")
-        except ImportError:
+            # Connect to DuckDB database directly
+            self.con = duckdb.connect(self.db_path)
+            print(f"Connected to DuckDB database at: {self.db_path}")
+            
+            # Create necessary tables
+            self._create_tables()
+            
+            # Check if API is available
+            self.api = None
             try:
-                # Try import from other possible locations
-                module_paths = [
-                    "scripts.benchmark_db_api",
-                    "test.scripts.benchmark_db_api",
-                    "test.benchmark_db_api"
-                ]
-                
-                for module_path in module_paths:
-                    try:
-                        module = __import__(module_path, fromlist=["BenchmarkDBAPI"])
-                        self.api = module.BenchmarkDBAPI(self.db_path)
-                        print(f"Using BenchmarkDBAPI from {module_path} with DB path: {self.db_path}")
-                        break
-                    except (ImportError, AttributeError):
-                        continue
+                # Create a simple API wrapper for easier database queries
+                # This helps with compatibility with other code that expects an API object
+                class SimpleDBApi:
+                    def __init__(self, conn):
+                        self.conn = conn
                         
-                if self.api is None:
-                    raise ImportError("Could not import BenchmarkDBAPI from any known location")
+                    def query(self, query, params=None):
+                        try:
+                            if params:
+                                result = self.conn.execute(query, params)
+                            else:
+                                result = self.conn.execute(query)
+                            return result
+                        except Exception as e:
+                            print(f"Error executing query: {e}")
+                            return None
+                    
+                    def execute_query(self, query, params=None):
+                        return self.query(query, params)
+                    
+                    def store_integration_test_result(self, result):
+                        # Simple implementation to store test results
+                        try:
+                            query = """
+                            INSERT INTO test_runs (
+                                run_id, test_name, test_type, success, started_at, 
+                                completed_at, execution_time_seconds, metadata
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """
+                            self.conn.execute(query, [
+                                result.get("run_id", f"test_run_{int(time.time())}"),
+                                result.get("test_name", result.get("test_module", "__test__")),
+                                result.get("test_type", "integration"),
+                                result.get("status", "pass") == "pass",
+                                datetime.now(),
+                                datetime.now(),
+                                result.get("execution_time_seconds", 0),
+                                json.dumps(result.get("metadata", {}))
+                            ])
+                            return True
+                        except Exception as e:
+                            print(f"Error storing integration test result: {e}")
+                            return False
+                    
+                    def store_compatibility_result(self, result):
+                        # Simple implementation to store compatibility results
+                        try:
+                            # Get model ID
+                            model_id = None
+                            model_query = "SELECT model_id FROM models WHERE model_name = ?"
+                            model_result = self.conn.execute(model_query, [result.get("model_name")]).fetchone()
+                            if model_result:
+                                model_id = model_result[0]
+                            else:
+                                # Create model entry
+                                self.conn.execute(
+                                    "INSERT INTO models (model_name, model_family, added_at) VALUES (?, ?, ?)",
+                                    [result.get("model_name"), result.get("model_family"), datetime.now()]
+                                )
+                                model_id = self.conn.execute(model_query, [result.get("model_name")]).fetchone()[0]
+                            
+                            # Get hardware ID
+                            hardware_id = None
+                            hardware_query = "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ?"
+                            hardware_result = self.conn.execute(hardware_query, [result.get("hardware_type")]).fetchone()
+                            if hardware_result:
+                                hardware_id = hardware_result[0]
+                            else:
+                                # Create hardware entry
+                                self.conn.execute(
+                                    "INSERT INTO hardware_platforms (hardware_type, device_name, detected_at) VALUES (?, ?, ?)",
+                                    [result.get("hardware_type"), result.get("device_name", "unknown"), datetime.now()]
+                                )
+                                hardware_id = self.conn.execute(hardware_query, [result.get("hardware_type")]).fetchone()[0]
+                            
+                            # Store compatibility result
+                            query = """
+                            INSERT INTO hardware_compatibility (
+                                model_id, hardware_id, compatibility_status, compatibility_score,
+                                recommended, last_tested, run_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """
+                            self.conn.execute(query, [
+                                model_id,
+                                hardware_id,
+                                result.get("is_compatible", False),
+                                result.get("score", 0.0),
+                                result.get("recommended", False),
+                                datetime.now(),
+                                result.get("run_id", f"test_run_{int(time.time())}")
+                            ])
+                            return True
+                        except Exception as e:
+                            print(f"Error storing compatibility result: {e}")
+                            return False
+                
+                # Create API instance
+                self.api = SimpleDBApi(self.con)
+                
             except Exception as e:
-                print(f"Warning: Failed to initialize database API: {e}")
+                print(f"Warning: Could not initialize database API layer: {e}")
                 self.api = None
-        
-        # Ensure power metrics table exists if API is available
-        if self.api and hasattr(self.api, "execute_query"):
-            try:
-                self._ensure_power_metrics_table()
-            except Exception as e:
-                print(f"Warning: Failed to ensure power metrics table: {e}")
-    
-    def _ensure_power_metrics_table(self):
-        """Ensure the power_metrics table exists in the database."""
-        power_metrics_query = """
-        CREATE TABLE IF NOT EXISTS power_metrics (
-            metric_id INTEGER PRIMARY KEY,
-            test_result_id INTEGER,
-            run_id INTEGER,
-            model_id INTEGER,
-            hardware_id INTEGER,
-            hardware_type VARCHAR,
-            power_consumption_mw FLOAT,
-            energy_consumption_mj FLOAT,
-            temperature_celsius FLOAT,
-            monitoring_duration_ms FLOAT,
-            average_power_mw FLOAT,
-            peak_power_mw FLOAT,
-            idle_power_mw FLOAT,
-            device_name VARCHAR,
-            sdk_type VARCHAR,
-            sdk_version VARCHAR,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            model_type VARCHAR,
-            energy_efficiency_items_per_joule FLOAT,
-            thermal_throttling_detected BOOLEAN,
-            battery_impact_percent_per_hour FLOAT,
-            throughput FLOAT,
-            throughput_units VARCHAR,
-            metadata JSON,
-            FOREIGN KEY (run_id) REFERENCES test_runs(run_id)
-        )
-        """
-        try:
-            self.api.execute_query(power_metrics_query)
-            print("Ensured power_metrics table exists in database with enhanced fields")
+                
         except Exception as e:
-            print(f"Error creating power_metrics table: {e}")
-            # We'll continue even if this fails, as the main functionality can still work
+            print(f"Warning: Failed to initialize database connection: {e}")
+            self.con = None
+            
+    def _create_tables(self):
+        """Create necessary tables if they don't exist."""
+        if self.con is None:
+            return
+            
+        try:
+            # Create test_runs table for tracking test runs including IPFS accelerator tests
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS test_runs (
+                    id INTEGER PRIMARY KEY,
+                    run_id VARCHAR,
+                    test_name VARCHAR,
+                    test_type VARCHAR,
+                    success BOOLEAN,
+                    started_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    execution_time_seconds FLOAT,
+                    metadata VARCHAR
+                )
+            """)
+            
+            # Create ipfs_acceleration_results table for storing IPFS acceleration test results
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS ipfs_acceleration_results (
+                    id INTEGER PRIMARY KEY,
+                    run_id VARCHAR,
+                    model_name VARCHAR,
+                    endpoint_type VARCHAR,
+                    acceleration_type VARCHAR,
+                    status VARCHAR,
+                    success BOOLEAN,
+                    execution_time_ms FLOAT,
+                    implementation_type VARCHAR,
+                    error_message VARCHAR,
+                    additional_data VARCHAR,
+                    test_date TIMESTAMP
+                )
+            """)
+            
+            # Create hardware_platforms table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS hardware_platforms (
+                    hardware_id INTEGER PRIMARY KEY,
+                    hardware_type VARCHAR,
+                    device_name VARCHAR,
+                    compute_units INTEGER,
+                    memory_capacity FLOAT,
+                    driver_version VARCHAR,
+                    supported_precisions VARCHAR,
+                    max_batch_size INTEGER,
+                    detected_at TIMESTAMP
+                )
+            """)
+            
+            # Create models table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS models (
+                    model_id INTEGER PRIMARY KEY,
+                    model_name VARCHAR,
+                    model_family VARCHAR,
+                    model_type VARCHAR,
+                    model_size VARCHAR,
+                    parameters_million FLOAT,
+                    added_at TIMESTAMP
+                )
+            """)
+            
+            # Create test_results table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS test_results (
+                    id INTEGER PRIMARY KEY,
+                    timestamp TIMESTAMP,
+                    test_date VARCHAR,
+                    status VARCHAR,
+                    test_type VARCHAR,
+                    model_id INTEGER,
+                    hardware_id INTEGER,
+                    endpoint_type VARCHAR,
+                    success BOOLEAN,
+                    error_message VARCHAR,
+                    execution_time FLOAT,
+                    memory_usage FLOAT,
+                    details VARCHAR,
+                    FOREIGN KEY (model_id) REFERENCES models(model_id),
+                    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                )
+            """)
+            
+            # Create performance_results table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS performance_results (
+                    id INTEGER PRIMARY KEY,
+                    model_id INTEGER,
+                    hardware_id INTEGER,
+                    batch_size INTEGER,
+                    sequence_length INTEGER,
+                    average_latency_ms FLOAT,
+                    p50_latency_ms FLOAT,
+                    p90_latency_ms FLOAT,
+                    p99_latency_ms FLOAT,
+                    throughput_items_per_second FLOAT,
+                    memory_peak_mb FLOAT,
+                    power_watts FLOAT,
+                    energy_efficiency_items_per_joule FLOAT,
+                    test_timestamp TIMESTAMP,
+                    FOREIGN KEY (model_id) REFERENCES models(model_id),
+                    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                )
+            """)
+            
+            # Create hardware_compatibility table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS hardware_compatibility (
+                    id INTEGER PRIMARY KEY,
+                    model_id INTEGER,
+                    hardware_id INTEGER,
+                    compatibility_status VARCHAR,
+                    compatibility_score FLOAT,
+                    recommended BOOLEAN,
+                    last_tested TIMESTAMP,
+                    FOREIGN KEY (model_id) REFERENCES models(model_id),
+                    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                )
+            """)
+            
+            # Create cross_platform_compatibility table
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS cross_platform_compatibility (
+                    id INTEGER PRIMARY KEY,
+                    model_name VARCHAR,
+                    model_family VARCHAR,
+                    cuda_support BOOLEAN,
+                    rocm_support BOOLEAN,
+                    mps_support BOOLEAN,
+                    openvino_support BOOLEAN,
+                    qualcomm_support BOOLEAN,
+                    webnn_support BOOLEAN,
+                    webgpu_support BOOLEAN,
+                    recommended_platform VARCHAR,
+                    notes VARCHAR,
+                    last_updated TIMESTAMP
+                )
+            """)
+            
+            # Create power_metrics table for mobile/edge devices
+            self.con.execute("""
+                CREATE TABLE IF NOT EXISTS power_metrics (
+                    id INTEGER PRIMARY KEY,
+                    test_id INTEGER,
+                    model_id INTEGER,
+                    hardware_id INTEGER,
+                    power_watts_avg FLOAT,
+                    power_watts_peak FLOAT,
+                    temperature_celsius_avg FLOAT,
+                    temperature_celsius_peak FLOAT,
+                    battery_impact_mah FLOAT,
+                    test_duration_seconds FLOAT,
+                    estimated_runtime_hours FLOAT,
+                    test_timestamp TIMESTAMP,
+                    FOREIGN KEY (test_id) REFERENCES test_results(id),
+                    FOREIGN KEY (model_id) REFERENCES models(model_id),
+                    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+                )
+            """)
+            
+            print("Database tables created successfully")
+        except Exception as e:
+            print(f"Error creating database tables: {e}")
+            traceback.print_exc()
+            
+    def _get_or_create_model(self, model_name, model_family=None, model_type=None, model_size=None, parameters_million=None):
+        """Get model ID from database or create new entry if it doesn't exist."""
+        if self.con is None or not model_name:
+            return None
+            
+        try:
+            # Check if model exists
+            result = self.con.execute(
+                "SELECT model_id FROM models WHERE model_name = ?", 
+                [model_name]
+            ).fetchone()
+            
+            if result:
+                return result[0]
+                
+            # Create new model entry
+            now = datetime.now()
+            self.con.execute(
+                """
+                INSERT INTO models (model_name, model_family, model_type, model_size, parameters_million, added_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [model_name, model_family, model_type, model_size, parameters_million, now]
+            )
+            
+            # Get the newly created ID
+            result = self.con.execute(
+                "SELECT model_id FROM models WHERE model_name = ?", 
+                [model_name]
+            ).fetchone()
+            
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error in _get_or_create_model: {e}")
+            return None
+            
+    def _get_or_create_hardware(self, hardware_type, device_name=None, compute_units=None, 
+                               memory_capacity=None, driver_version=None, supported_precisions=None,
+                               max_batch_size=None):
+        """Get hardware ID from database or create new entry if it doesn't exist."""
+        if self.con is None or not hardware_type:
+            return None
+            
+        try:
+            # Check if hardware platform exists
+            result = self.con.execute(
+                "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
+                [hardware_type, device_name]
+            ).fetchone()
+            
+            if result:
+                return result[0]
+                
+            # Create new hardware platform entry
+            now = datetime.now()
+            self.con.execute(
+                """
+                INSERT INTO hardware_platforms (
+                    hardware_type, device_name, compute_units, memory_capacity, 
+                    driver_version, supported_precisions, max_batch_size, detected_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [hardware_type, device_name, compute_units, memory_capacity,
+                 driver_version, supported_precisions, max_batch_size, now]
+            )
+            
+            # Get the newly created ID
+            result = self.con.execute(
+                "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
+                [hardware_type, device_name]
+            ).fetchone()
+            
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error in _get_or_create_hardware: {e}")
+            return None
+            
+    def store_test_result(self, test_result):
+        """Store a test result in the database."""
+        if self.con is None or not test_result:
+            return False
+            
+        try:
+            # Extract values from test_result
+            model_name = test_result.get('model_name')
+            model_family = test_result.get('model_family')
+            hardware_type = test_result.get('hardware_type')
+            
+            # Get or create model and hardware entries
+            model_id = self._get_or_create_model(model_name, model_family)
+            hardware_id = self._get_or_create_hardware(hardware_type)
+            
+            if not model_id or not hardware_id:
+                print(f"Warning: Could not get/create model or hardware ID for {model_name} on {hardware_type}")
+                return False
+                
+            # Prepare test data
+            now = datetime.now()
+            test_date = now.strftime("%Y-%m-%d")
+            
+            # Store main test result
+            self.con.execute(
+                """
+                INSERT INTO test_results (
+                    timestamp, test_date, status, test_type, model_id, hardware_id,
+                    endpoint_type, success, error_message, execution_time, memory_usage, details
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    now, test_date, 
+                    test_result.get('status'),
+                    test_result.get('test_type'),
+                    model_id, hardware_id,
+                    test_result.get('endpoint_type'),
+                    test_result.get('success', False),
+                    test_result.get('error_message'),
+                    test_result.get('execution_time'),
+                    test_result.get('memory_usage'),
+                    json.dumps(test_result.get('details', {}))
+                ]
+            )
+            
+            # Get the newly created test result ID
+            result = self.con.execute(
+                """
+                SELECT id FROM test_results 
+                WHERE model_id = ? AND hardware_id = ? 
+                ORDER BY timestamp DESC LIMIT 1
+                """, 
+                [model_id, hardware_id]
+            ).fetchone()
+            
+            test_id = result[0] if result else None
+            
+            # Store performance metrics if available
+            if test_id and 'performance' in test_result:
+                self._store_performance_metrics(test_id, model_id, hardware_id, test_result['performance'])
+                
+            # Store power metrics if available
+            if test_id and 'power_metrics' in test_result:
+                self._store_power_metrics(test_id, model_id, hardware_id, test_result['power_metrics'])
+                
+            # Store hardware compatibility if available
+            if 'compatibility' in test_result:
+                self._store_hardware_compatibility(model_id, hardware_id, test_result['compatibility'])
+                
+            # Store model family information if available
+            if 'model_family' in test_result and test_result['model_family']:
+                self._update_model_family(model_id, test_result['model_family'])
+                
+            return True
+        except Exception as e:
+            print(f"Error storing test result: {e}")
+            traceback.print_exc()
+            return False
+            
+    def _store_performance_metrics(self, test_id, model_id, hardware_id, performance):
+        """Store performance metrics in the database."""
+        if self.con is None or not performance:
+            return False
+            
+        try:
+            now = datetime.now()
+            self.con.execute(
+                """
+                INSERT INTO performance_results (
+                    model_id, hardware_id, batch_size, sequence_length,
+                    average_latency_ms, p50_latency_ms, p90_latency_ms, p99_latency_ms,
+                    throughput_items_per_second, memory_peak_mb, power_watts,
+                    energy_efficiency_items_per_joule, test_timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    model_id, hardware_id,
+                    performance.get('batch_size'),
+                    performance.get('sequence_length'),
+                    performance.get('average_latency_ms'),
+                    performance.get('p50_latency_ms'),
+                    performance.get('p90_latency_ms'),
+                    performance.get('p99_latency_ms'),
+                    performance.get('throughput_items_per_second'),
+                    performance.get('memory_peak_mb'),
+                    performance.get('power_watts'),
+                    performance.get('energy_efficiency_items_per_joule'),
+                    now
+                ]
+            )
+            return True
+        except Exception as e:
+            print(f"Error storing performance metrics: {e}")
+            return False
+            
+    def _store_power_metrics(self, test_id, model_id, hardware_id, power_metrics):
+        """Store power metrics in the database."""
+        if self.con is None or not power_metrics:
+            return False
+            
+        try:
+            now = datetime.now()
+            self.con.execute(
+                """
+                INSERT INTO power_metrics (
+                    test_id, model_id, hardware_id, 
+                    power_watts_avg, power_watts_peak,
+                    temperature_celsius_avg, temperature_celsius_peak,
+                    battery_impact_mah, test_duration_seconds,
+                    estimated_runtime_hours, test_timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    test_id, model_id, hardware_id,
+                    power_metrics.get('power_watts_avg'),
+                    power_metrics.get('power_watts_peak'),
+                    power_metrics.get('temperature_celsius_avg'),
+                    power_metrics.get('temperature_celsius_peak'),
+                    power_metrics.get('battery_impact_mah'),
+                    power_metrics.get('test_duration_seconds'),
+                    power_metrics.get('estimated_runtime_hours'),
+                    now
+                ]
+            )
+            return True
+        except Exception as e:
+            print(f"Error storing power metrics: {e}")
+            return False
+            
+    def _store_hardware_compatibility(self, model_id, hardware_id, compatibility):
+        """Store hardware compatibility information in the database."""
+        if self.con is None or not compatibility:
+            return False
+            
+        try:
+            now = datetime.now()
+            self.con.execute(
+                """
+                INSERT INTO hardware_compatibility (
+                    model_id, hardware_id, compatibility_status,
+                    compatibility_score, recommended, last_tested
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    model_id, hardware_id,
+                    compatibility.get('status'),
+                    compatibility.get('score'),
+                    compatibility.get('recommended', False),
+                    now
+                ]
+            )
+            return True
+        except Exception as e:
+            print(f"Error storing hardware compatibility: {e}")
+            return False
+            
+    def _update_model_family(self, model_id, model_family):
+        """Update model family information in the database."""
+        if self.con is None or not model_id or not model_family:
+            return False
+            
+        try:
+            # Update model family in the models table
+            self.con.execute(
+                """
+                UPDATE models
+                SET model_family = ?
+                WHERE model_id = ?
+                """,
+                [model_family, model_id]
+            )
+            
+            # Check if this family exists in the cross_platform_compatibility table
+            family_query = """
+            SELECT COUNT(*) 
+            FROM cross_platform_compatibility
+            WHERE model_family = ?
+            """
+            family_exists = self.con.execute(family_query, [model_family]).fetchone()[0] > 0
+            
+            # If it doesn't exist, create an entry
+            if not family_exists:
+                # Get model name from model_id
+                model_name_query = """
+                SELECT model_name
+                FROM models
+                WHERE model_id = ?
+                """
+                model_name = self.con.execute(model_name_query, [model_id]).fetchone()[0]
+                
+                # Create compatibility entry for the family
+                now = datetime.now()
+                self.con.execute(
+                    """
+                    INSERT INTO cross_platform_compatibility (
+                        model_name, model_family, cuda_support, rocm_support,
+                        mps_support, openvino_support, qualcomm_support,
+                        webnn_support, webgpu_support, last_updated
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        model_name, model_family,
+                        True, False, False, False, False, False, False,
+                        now
+                    ]
+                )
+            
+            return True
+        except Exception as e:
+            print(f"Error updating model family: {e}")
+            return False
+            
+    def generate_report(self, format='markdown', output_file=None):
+        """Generate a report from the database."""
+        if self.con is None:
+            print("Cannot generate report - database connection not available")
+            return None
+            
+        try:
+            # Get summary data
+            models_count = self.con.execute("SELECT COUNT(*) FROM models").fetchone()[0]
+            hardware_count = self.con.execute("SELECT COUNT(*) FROM hardware_platforms").fetchone()[0]
+            tests_count = self.con.execute("SELECT COUNT(*) FROM test_results").fetchone()[0]
+            successful_tests = self.con.execute("SELECT COUNT(*) FROM test_results WHERE success = TRUE").fetchone()[0]
+            
+            # Get hardware platforms
+            hardware_platforms = self.con.execute(
+                "SELECT hardware_type, COUNT(*) FROM hardware_platforms GROUP BY hardware_type"
+            ).fetchall()
+            
+            # Get model families
+            model_families = self.con.execute(
+                "SELECT model_family, COUNT(*) FROM models GROUP BY model_family"
+            ).fetchall()
+            
+            # Get recent test results
+            recent_tests = self.con.execute(
+                """
+                SELECT 
+                    m.model_name, h.hardware_type, tr.status, tr.success, tr.timestamp
+                FROM test_results tr
+                JOIN models m ON tr.model_id = m.model_id
+                JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                ORDER BY tr.timestamp DESC
+                LIMIT 10
+                """
+            ).fetchall()
+            
+            # Get performance data
+            performance_data = self.con.execute(
+                """
+                SELECT 
+                    m.model_name, h.hardware_type, 
+                    AVG(pr.average_latency_ms) as avg_latency,
+                    AVG(pr.throughput_items_per_second) as avg_throughput,
+                    AVG(pr.memory_peak_mb) as avg_memory
+                FROM performance_results pr
+                JOIN models m ON pr.model_id = m.model_id
+                JOIN hardware_platforms h ON pr.hardware_id = h.hardware_id
+                GROUP BY m.model_name, h.hardware_type
+                ORDER BY m.model_name, avg_throughput DESC
+                """
+            ).fetchall()
+            
+            # Check if cross_platform_compatibility table exists and has data
+            cross_platform_count = self.con.execute(
+                "SELECT COUNT(*) FROM cross_platform_compatibility"
+            ).fetchone()[0]
+            
+            if cross_platform_count > 0:
+                # Use the dedicated cross-platform compatibility table
+                compatibility_matrix = self.con.execute(
+                    """
+                    SELECT 
+                        model_name,
+                        model_family,
+                        CASE WHEN cuda_support THEN 1 ELSE 0 END as cuda_support,
+                        CASE WHEN rocm_support THEN 1 ELSE 0 END as rocm_support,
+                        CASE WHEN mps_support THEN 1 ELSE 0 END as mps_support,
+                        CASE WHEN openvino_support THEN 1 ELSE 0 END as openvino_support,
+                        CASE WHEN qualcomm_support THEN 1 ELSE 0 END as qualcomm_support,
+                        CASE WHEN webnn_support THEN 1 ELSE 0 END as webnn_support,
+                        CASE WHEN webgpu_support THEN 1 ELSE 0 END as webgpu_support
+                    FROM cross_platform_compatibility
+                    ORDER BY model_family, model_name
+                    """
+                ).fetchall()
+            else:
+                # Fall back to generating matrix from test results
+                compatibility_matrix = self.con.execute(
+                    """
+                    SELECT 
+                        m.model_name,
+                        m.model_family,
+                        MAX(CASE WHEN h.hardware_type = 'cpu' THEN 1 ELSE 0 END) as cpu_support,
+                        MAX(CASE WHEN h.hardware_type = 'cuda' THEN 1 ELSE 0 END) as cuda_support,
+                        MAX(CASE WHEN h.hardware_type = 'rocm' THEN 1 ELSE 0 END) as rocm_support,
+                        MAX(CASE WHEN h.hardware_type = 'mps' THEN 1 ELSE 0 END) as mps_support,
+                        MAX(CASE WHEN h.hardware_type = 'openvino' THEN 1 ELSE 0 END) as openvino_support,
+                        MAX(CASE WHEN h.hardware_type = 'qualcomm' THEN 1 ELSE 0 END) as qualcomm_support,
+                        MAX(CASE WHEN h.hardware_type = 'webnn' THEN 1 ELSE 0 END) as webnn_support,
+                        MAX(CASE WHEN h.hardware_type = 'webgpu' THEN 1 ELSE 0 END) as webgpu_support
+                    FROM models m
+                    LEFT JOIN test_results tr ON m.model_id = tr.model_id
+                    LEFT JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                    GROUP BY m.model_name, m.model_family
+                    """
+                ).fetchall()
+            
+            # Format the report based on the requested format
+            if format.lower() == 'markdown':
+                report = self._generate_markdown_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            elif format.lower() == 'html':
+                report = self._generate_html_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            elif format.lower() == 'json':
+                report = self._generate_json_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            else:
+                print(f"Unsupported report format: {format}")
+                return None
+                
+            # Write to file if output_file is specified
+            if output_file and report:
+                with open(output_file, 'w') as f:
+                    f.write(report)
+                print(f"Report written to {output_file}")
+                
+            return report
+        except Exception as e:
+            print(f"Error generating report: {e}")
+            traceback.print_exc()
+            return None
+            
+    def _generate_markdown_report(self, models_count, hardware_count, tests_count, successful_tests,
+                                 hardware_platforms, model_families, recent_tests, 
+                                 performance_data, compatibility_matrix):
+        """Generate a markdown report from the database data."""
+        report = []
+        report.append("# IPFS Accelerate Test Results Report")
+        report.append(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Summary section
+        report.append("\n## Summary")
+        report.append(f"- **Models**: {models_count}")
+        report.append(f"- **Hardware Platforms**: {hardware_count}")
+        report.append(f"- **Tests Run**: {tests_count}")
+        success_rate = (successful_tests / tests_count * 100) if tests_count > 0 else 0
+        report.append(f"- **Success Rate**: {success_rate:.2f}% ({successful_tests}/{tests_count})")
+        
+        # Hardware platforms section
+        report.append("\n## Hardware Platforms")
+        report.append("| Hardware Type | Count |")
+        report.append("|--------------|-------|")
+        for hw in hardware_platforms:
+            report.append(f"| {hw[0] or 'Unknown'} | {hw[1]} |")
+            
+        # Model families section
+        report.append("\n## Model Families")
+        report.append("| Model Family | Count |")
+        report.append("|-------------|-------|")
+        for family in model_families:
+            report.append(f"| {family[0] or 'Unknown'} | {family[1]} |")
+            
+        # Recent tests section
+        report.append("\n## Recent Tests")
+        report.append("| Model | Hardware | Status | Success | Timestamp |")
+        report.append("|-------|----------|--------|---------|-----------|")
+        for test in recent_tests:
+            status_icon = "✅" if test[3] else "❌"
+            report.append(f"| {test[0]} | {test[1]} | {test[2]} | {status_icon} | {test[4]} |")
+            
+        # Performance data section
+        report.append("\n## Performance Data")
+        report.append("| Model | Hardware | Avg Latency (ms) | Throughput (items/s) | Memory (MB) |")
+        report.append("|-------|----------|------------------|---------------------|------------|")
+        for perf in performance_data:
+            report.append(f"| {perf[0]} | {perf[1]} | {perf[2]:.2f if perf[2] is not None else 'N/A'} | {perf[3]:.2f if perf[3] is not None else 'N/A'} | {perf[4]:.2f if perf[4] is not None else 'N/A'} |")
+            
+        # Compatibility matrix section
+        report.append("\n## Hardware Compatibility Matrix")
+        report.append("| Model | Family | CPU | CUDA | ROCm | MPS | OpenVINO | Qualcomm | WebNN | WebGPU |")
+        report.append("|-------|--------|-----|------|------|-----|----------|----------|-------|--------|")
+        for compat in compatibility_matrix:
+            # Convert 1/0 to ✅/⚠️
+            cpu = "✅" if compat[2] == 1 else "⚠️"
+            cuda = "✅" if compat[3] == 1 else "⚠️"
+            rocm = "✅" if compat[4] == 1 else "⚠️"
+            mps = "✅" if compat[5] == 1 else "⚠️"
+            openvino = "✅" if compat[6] == 1 else "⚠️"
+            qualcomm = "✅" if compat[7] == 1 else "⚠️"
+            webnn = "✅" if compat[8] == 1 else "⚠️"
+            webgpu = "✅" if compat[9] == 1 else "⚠️"
+            
+            report.append(f"| {compat[0]} | {compat[1] or 'Unknown'} | {cpu} | {cuda} | {rocm} | {mps} | {openvino} | {qualcomm} | {webnn} | {webgpu} |")
+            
+        return "\n".join(report)
+        
+    def _generate_html_report(self, models_count, hardware_count, tests_count, successful_tests,
+                             hardware_platforms, model_families, recent_tests, 
+                             performance_data, compatibility_matrix):
+        """Generate an HTML report from the database data."""
+        # Basic HTML structure with some simple styling
+        html = []
+        html.append("<!DOCTYPE html>")
+        html.append("<html>")
+        html.append("<head>")
+        html.append("    <title>IPFS Accelerate Test Results Report</title>")
+        html.append("    <style>")
+        html.append("        body { font-family: Arial, sans-serif; margin: 20px; }")
+        html.append("        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }")
+        html.append("        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
+        html.append("        th { background-color: #f2f2f2; }")
+        html.append("        tr:nth-child(even) { background-color: #f9f9f9; }")
+        html.append("        .success { color: green; }")
+        html.append("        .failure { color: red; }")
+        html.append("        .summary { display: flex; justify-content: space-between; flex-wrap: wrap; }")
+        html.append("        .summary-box { border: 1px solid #ddd; padding: 15px; margin: 10px; min-width: 150px; text-align: center; }")
+        html.append("        .summary-number { font-size: 24px; font-weight: bold; margin: 10px 0; }")
+        html.append("    </style>")
+        html.append("</head>")
+        html.append("<body>")
+        
+        # Header
+        html.append(f"<h1>IPFS Accelerate Test Results Report</h1>")
+        html.append(f"<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
+        
+        # Summary section with fancy boxes
+        html.append("<h2>Summary</h2>")
+        html.append("<div class='summary'>")
+        html.append("    <div class='summary-box'>")
+        html.append("        <div>Models</div>")
+        html.append(f"        <div class='summary-number'>{models_count}</div>")
+        html.append("    </div>")
+        html.append("    <div class='summary-box'>")
+        html.append("        <div>Hardware Platforms</div>")
+        html.append(f"        <div class='summary-number'>{hardware_count}</div>")
+        html.append("    </div>")
+        html.append("    <div class='summary-box'>")
+        html.append("        <div>Tests Run</div>")
+        html.append(f"        <div class='summary-number'>{tests_count}</div>")
+        html.append("    </div>")
+        html.append("    <div class='summary-box'>")
+        html.append("        <div>Success Rate</div>")
+        success_rate = (successful_tests / tests_count * 100) if tests_count > 0 else 0
+        html.append(f"        <div class='summary-number'>{success_rate:.2f}%</div>")
+        html.append(f"        <div>({successful_tests}/{tests_count})</div>")
+        html.append("    </div>")
+        html.append("</div>")
+        
+        # Hardware platforms section
+        html.append("<h2>Hardware Platforms</h2>")
+        html.append("<table>")
+        html.append("    <tr><th>Hardware Type</th><th>Count</th></tr>")
+        for hw in hardware_platforms:
+            html.append(f"    <tr><td>{hw[0] or 'Unknown'}</td><td>{hw[1]}</td></tr>")
+        html.append("</table>")
+        
+        # Model families section
+        html.append("<h2>Model Families</h2>")
+        html.append("<table>")
+        html.append("    <tr><th>Model Family</th><th>Count</th></tr>")
+        for family in model_families:
+            html.append(f"    <tr><td>{family[0] or 'Unknown'}</td><td>{family[1]}</td></tr>")
+        html.append("</table>")
+        
+        # Recent tests section
+        html.append("<h2>Recent Tests</h2>")
+        html.append("<table>")
+        html.append("    <tr><th>Model</th><th>Hardware</th><th>Status</th><th>Success</th><th>Timestamp</th></tr>")
+        for test in recent_tests:
+            success_class = "success" if test[3] else "failure"
+            success_icon = "✅" if test[3] else "❌"
+            html.append(f"    <tr><td>{test[0]}</td><td>{test[1]}</td><td>{test[2]}</td><td class='{success_class}'>{success_icon}</td><td>{test[4]}</td></tr>")
+        html.append("</table>")
+        
+        # Performance data section
+        html.append("<h2>Performance Data</h2>")
+        html.append("<table>")
+        html.append("    <tr><th>Model</th><th>Hardware</th><th>Avg Latency (ms)</th><th>Throughput (items/s)</th><th>Memory (MB)</th></tr>")
+        for perf in performance_data:
+            html.append(f"    <tr><td>{perf[0]}</td><td>{perf[1]}</td><td>{perf[2]:.2f if perf[2] is not None else 'N/A'}</td><td>{perf[3]:.2f if perf[3] is not None else 'N/A'}</td><td>{perf[4]:.2f if perf[4] is not None else 'N/A'}</td></tr>")
+        html.append("</table>")
+        
+        # Compatibility matrix section
+        html.append("<h2>Hardware Compatibility Matrix</h2>")
+        html.append("<table>")
+        html.append("    <tr><th>Model</th><th>Family</th><th>CPU</th><th>CUDA</th><th>ROCm</th><th>MPS</th><th>OpenVINO</th><th>Qualcomm</th><th>WebNN</th><th>WebGPU</th></tr>")
+        for compat in compatibility_matrix:
+            # Convert 1/0 to ✅/⚠️
+            cpu = "✅" if compat[2] == 1 else "⚠️"
+            cuda = "✅" if compat[3] == 1 else "⚠️"
+            rocm = "✅" if compat[4] == 1 else "⚠️"
+            mps = "✅" if compat[5] == 1 else "⚠️"
+            openvino = "✅" if compat[6] == 1 else "⚠️"
+            qualcomm = "✅" if compat[7] == 1 else "⚠️"
+            webnn = "✅" if compat[8] == 1 else "⚠️"
+            webgpu = "✅" if compat[9] == 1 else "⚠️"
+            
+            html.append(f"    <tr><td>{compat[0]}</td><td>{compat[1] or 'Unknown'}</td><td>{cpu}</td><td>{cuda}</td><td>{rocm}</td><td>{mps}</td><td>{openvino}</td><td>{qualcomm}</td><td>{webnn}</td><td>{webgpu}</td></tr>")
+        html.append("</table>")
+        
+        html.append("</body>")
+        html.append("</html>")
+        
+        return "\n".join(html)
+        
+    def _generate_json_report(self, models_count, hardware_count, tests_count, successful_tests,
+                             hardware_platforms, model_families, recent_tests, 
+                             performance_data, compatibility_matrix):
+        """Generate a JSON report from the database data."""
+        # Convert tuples to lists for JSON serialization
+        hardware_platforms_list = [{"hardware_type": hw[0], "count": hw[1]} for hw in hardware_platforms]
+        model_families_list = [{"model_family": family[0], "count": family[1]} for family in model_families]
+        
+        recent_tests_list = [
+            {
+                "model": test[0],
+                "hardware": test[1],
+                "status": test[2],
+                "success": bool(test[3]),
+                "timestamp": str(test[4])
+            }
+            for test in recent_tests
+        ]
+        
+        performance_data_list = [
+            {
+                "model": perf[0],
+                "hardware": perf[1],
+                "average_latency_ms": float(perf[2]) if perf[2] is not None else None,
+                "throughput_items_per_second": float(perf[3]) if perf[3] is not None else None,
+                "memory_peak_mb": float(perf[4]) if perf[4] is not None else None
+            }
+            for perf in performance_data
+        ]
+        
+        compatibility_matrix_list = [
+            {
+                "model": compat[0],
+                "family": compat[1],
+                "cpu_support": bool(compat[2]),
+                "cuda_support": bool(compat[3]),
+                "rocm_support": bool(compat[4]),
+                "mps_support": bool(compat[5]),
+                "openvino_support": bool(compat[6]),
+                "qualcomm_support": bool(compat[7]),
+                "webnn_support": bool(compat[8]),
+                "webgpu_support": bool(compat[9])
+            }
+            for compat in compatibility_matrix
+        ]
+        
+        # Build the JSON structure
+        report_data = {
+            "generated_at": datetime.now().isoformat(),
+            "summary": {
+                "models_count": models_count,
+                "hardware_count": hardware_count,
+                "tests_count": tests_count,
+                "successful_tests": successful_tests,
+                "success_rate": (successful_tests / tests_count * 100) if tests_count > 0 else 0
+            },
+            "hardware_platforms": hardware_platforms_list,
+            "model_families": model_families_list,
+            "recent_tests": recent_tests_list,
+            "performance_data": performance_data_list,
+            "compatibility_matrix": compatibility_matrix_list
+        }
+        
+        return json.dumps(report_data, indent=2)
+    def generate_acceleration_comparison_report(self, format="html", output=None, model_name=None):
+        """
+        Generate a comparative report for acceleration types across different models or for a specific model.
+        
+        This report focuses on comparing the performance of different acceleration types (CUDA, OpenVINO, WebNN, etc.)
+        to help users identify the best acceleration method for their use case.
+        
+        Args:
+            format: Report format ("html", "json")
+            output: Output file path (if None, returns the report as a string)
+            model_name: Optional model name to filter results (if None, compares across all models)
+            
+        Returns:
+            Report content as string if output is None, otherwise None
+        """
+        if not self.is_available():
+            return "Database not available. Cannot generate comparison report."
+        
+        try:
+            # Try to import visualization libraries
+            try:
+                import plotly.express as px
+                import plotly.graph_objects as go
+                import pandas as pd
+                import numpy as np
+                HAVE_PLOTLY = True
+            except ImportError:
+                HAVE_PLOTLY = False
+                if format == "html":
+                    print("Warning: plotly and pandas not available. Charts will not be generated.")
+            
+            # Query the ipfs_acceleration_results table for comparative data
+            if model_name:
+                # Query for a specific model
+                query = """
+                SELECT 
+                    model_name, endpoint_type, acceleration_type, status, 
+                    success, execution_time_ms, implementation_type,
+                    test_date
+                FROM 
+                    ipfs_acceleration_results
+                WHERE 
+                    model_name = ?
+                ORDER BY
+                    test_date DESC
+                """
+                results = self.con.execute(query, [model_name]).fetchall()
+                title = f"Acceleration Comparison for {model_name}"
+            else:
+                # Query across all models
+                query = """
+                SELECT 
+                    model_name, endpoint_type, acceleration_type, status, 
+                    success, execution_time_ms, implementation_type,
+                    test_date
+                FROM 
+                    ipfs_acceleration_results
+                ORDER BY
+                    model_name, test_date DESC
+                """
+                results = self.con.execute(query).fetchall()
+                title = "Acceleration Comparison Across All Models"
+            
+            if not results:
+                return f"No acceleration results found{' for model '+model_name if model_name else ''}."
+            
+            # Process data for visualization
+            acceleration_data = []
+            for row in results:
+                acceleration_data.append({
+                    "Model": row[0],
+                    "Endpoint Type": row[1],
+                    "Acceleration Type": row[2] or "Unknown",
+                    "Status": row[3] or "Unknown",
+                    "Success": bool(row[4]),
+                    "Execution Time (ms)": float(row[5]) if row[5] is not None else None,
+                    "Implementation": row[6] or "Unknown",
+                    "Test Date": row[7]
+                })
+            
+            # Create DataFrame
+            if not HAVE_PLOTLY:
+                # Without visualization libraries, return text summary
+                if format == "json":
+                    return json.dumps({"acceleration_data": acceleration_data}, indent=2)
+                else:
+                    # Simple HTML table summary
+                    html = ["<!DOCTYPE html><html><head><title>Acceleration Comparison</title>",
+                           "<style>table {border-collapse: collapse; width: 100%;} th, td {padding: 8px; text-align: left; border: 1px solid #ddd;}</style>",
+                           "</head><body>",
+                           f"<h1>{title}</h1>",
+                           "<table><tr><th>Model</th><th>Acceleration Type</th><th>Success</th><th>Execution Time (ms)</th></tr>"]
+                    
+                    for item in acceleration_data:
+                        success_text = "✅" if item["Success"] else "❌"
+                        time_text = f"{item['Execution Time (ms)']:.2f}" if item["Execution Time (ms)"] is not None else "N/A"
+                        html.append(f"<tr><td>{item['Model']}</td><td>{item['Acceleration Type']}</td><td>{success_text}</td><td>{time_text}</td></tr>")
+                    
+                    html.append("</table></body></html>")
+                    report = "\n".join(html)
+                    
+                    if output:
+                        with open(output, "w") as f:
+                            f.write(report)
+                        return f"Report saved to {output}"
+                    return report
+            
+            # With plotly, create rich visualizations
+            df = pd.DataFrame(acceleration_data)
+            
+            # Prepare HTML report with visualizations
+            html = []
+            html.append("<!DOCTYPE html>")
+            html.append("<html>")
+            html.append("<head>")
+            html.append(f"<title>{title}</title>")
+            html.append("<style>")
+            html.append("  body { font-family: Arial, sans-serif; margin: 20px; max-width: 1200px; margin: 0 auto; }")
+            html.append("  .chart { width: 100%; height: 500px; margin-bottom: 30px; }")
+            html.append("  .insight { background-color: #f8f9fa; border-left: 4px solid #4285f4; padding: 10px; margin: 15px 0; }")
+            html.append("  h1, h2, h3 { color: #333; }")
+            html.append("  table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }")
+            html.append("  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
+            html.append("  th { background-color: #f2f2f2; }")
+            html.append("</style>")
+            html.append("</head>")
+            html.append("<body>")
+            
+            html.append(f"<h1>{title}</h1>")
+            html.append(f"<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
+            
+            # Create success rate comparison
+            html.append("<h2>Success Rate by Acceleration Type</h2>")
+            
+            # Calculate success rates
+            success_rates = df.groupby("Acceleration Type")["Success"].agg(
+                ["count", "sum"]).reset_index()
+            success_rates["Success Rate (%)"] = (success_rates["sum"] / 
+                                              success_rates["count"] * 100).round(1)
+            
+            # Create success rate bar chart
+            fig_success = px.bar(
+                success_rates,
+                x="Acceleration Type",
+                y="Success Rate (%)",
+                color="Success Rate (%)",
+                title="Success Rate by Acceleration Type",
+                color_continuous_scale=["#FF4136", "#FFDC00", "#2ECC40"],
+                text="Success Rate (%)"
+            )
+            fig_success.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+            
+            html.append("<div class='chart'>")
+            html.append(fig_success.to_html(full_html=False, include_plotlyjs='cdn'))
+            html.append("</div>")
+            
+            # Add insights about success rates
+            best_accel = success_rates.loc[success_rates["Success Rate (%)"].idxmax()]
+            worst_accel = success_rates.loc[success_rates["Success Rate (%)"].idxmin()]
+            
+            html.append("<div class='insight'>")
+            html.append("<h3>Success Rate Insights</h3>")
+            html.append("<ul>")
+            html.append(f"<li><strong>Most reliable acceleration:</strong> {best_accel['Acceleration Type']} " +
+                       f"with {best_accel['Success Rate (%)']:.1f}% success rate ({best_accel['sum']}/{best_accel['count']} tests)</li>")
+            html.append(f"<li><strong>Least reliable acceleration:</strong> {worst_accel['Acceleration Type']} " +
+                       f"with {worst_accel['Success Rate (%)']:.1f}% success rate ({worst_accel['sum']}/{worst_accel['count']} tests)</li>")
+            html.append("</ul>")
+            html.append("</div>")
+            
+            # Performance comparison (only for successful tests)
+            html.append("<h2>Performance Comparison</h2>")
+            
+            # Filter for successful tests with valid execution times
+            df_success = df[(df["Success"] == True) & (df["Execution Time (ms)"].notna())]
+            
+            if not df_success.empty:
+                # Create box plot of execution times
+                fig_perf = px.box(
+                    df_success,
+                    x="Acceleration Type",
+                    y="Execution Time (ms)",
+                    color="Acceleration Type",
+                    hover_data=["Model", "Implementation"],
+                    title="Execution Time Distribution by Acceleration Type (Successful Tests Only)"
+                )
+                
+                html.append("<div class='chart'>")
+                html.append(fig_perf.to_html(full_html=False, include_plotlyjs='cdn'))
+                html.append("</div>")
+                
+                # Add performance insights
+                perf_stats = df_success.groupby("Acceleration Type")["Execution Time (ms)"].agg(
+                    ["median", "mean", "std", "count"]).reset_index()
+                
+                fastest_median = perf_stats.loc[perf_stats["median"].idxmin()]
+                slowest_median = perf_stats.loc[perf_stats["median"].idxmax()]
+                
+                html.append("<div class='insight'>")
+                html.append("<h3>Performance Insights</h3>")
+                html.append("<ul>")
+                html.append(f"<li><strong>Fastest acceleration (median):</strong> {fastest_median['Acceleration Type']} " +
+                           f"with {fastest_median['median']:.2f} ms median execution time</li>")
+                html.append(f"<li><strong>Slowest acceleration (median):</strong> {slowest_median['Acceleration Type']} " +
+                           f"with {slowest_median['median']:.2f} ms median execution time</li>")
+                
+                speed_diff = ((slowest_median['median'] - fastest_median['median']) / 
+                             fastest_median['median'] * 100)
+                html.append(f"<li><strong>Performance gap:</strong> {speed_diff:.1f}% slower</li>")
+                html.append("</ul>")
+                html.append("</div>")
+                
+                # If we have multiple models, add model-specific comparison
+                if model_name is None and len(df_success["Model"].unique()) > 1:
+                    # Create heatmap of median execution time by model and acceleration type
+                    pivot_perf = df_success.pivot_table(
+                        values="Execution Time (ms)",
+                        index="Model",
+                        columns="Acceleration Type",
+                        aggfunc="median"
+                    )
+                    
+                    fig_heatmap = px.imshow(
+                        pivot_perf,
+                        labels=dict(x="Acceleration Type", y="Model", color="Median Execution Time (ms)"),
+                        title="Median Execution Time by Model and Acceleration Type (ms)",
+                        color_continuous_scale=["#2ECC40", "#FFDC00", "#FF4136"]
+                    )
+                    
+                    html.append("<div class='chart'>")
+                    html.append(fig_heatmap.to_html(full_html=False, include_plotlyjs='cdn'))
+                    html.append("</div>")
+                    
+                    # Find best acceleration type for each model
+                    best_per_model = df_success.groupby(["Model", "Acceleration Type"])["Execution Time (ms)"].median().reset_index()
+                    best_per_model = best_per_model.sort_values(["Model", "Execution Time (ms)"])
+                    best_accel_by_model = best_per_model.groupby("Model").first().reset_index()
+                    
+                    # Create a summary table for best acceleration per model
+                    html.append("<h3>Best Acceleration Type by Model</h3>")
+                    html.append("<table>")
+                    html.append("<tr><th>Model</th><th>Best Acceleration Type</th><th>Median Execution Time (ms)</th></tr>")
+                    
+                    for _, row in best_accel_by_model.iterrows():
+                        html.append(f"<tr><td>{row['Model']}</td><td>{row['Acceleration Type']}</td><td>{row['Execution Time (ms)']:.2f}</td></tr>")
+                    
+                    html.append("</table>")
+            else:
+                html.append("<p>No successful tests with valid execution times found.</p>")
+            
+            # Add summary of available implementation types
+            impl_counts = df.groupby(["Acceleration Type", "Implementation"]).size().reset_index(name="Count")
+            
+            if not impl_counts.empty:
+                html.append("<h2>Implementation Types</h2>")
+                html.append("<table>")
+                html.append("<tr><th>Acceleration Type</th><th>Implementation</th><th>Count</th></tr>")
+                
+                for _, row in impl_counts.iterrows():
+                    html.append(f"<tr><td>{row['Acceleration Type']}</td><td>{row['Implementation']}</td><td>{row['Count']}</td></tr>")
+                
+                html.append("</table>")
+            
+            # Close HTML
+            html.append("</body>")
+            html.append("</html>")
+            
+            # Assemble the report
+            report = "\n".join(html)
+            
+            # Write to file if output is specified
+            if output:
+                with open(output, "w") as f:
+                    f.write(report)
+                return f"Report saved to {output}"
+            
+            return report
+            
+        except Exception as e:
+            print(f"Error generating acceleration comparison report: {e}")
+            traceback.print_exc()
+            return f"Error generating comparison report: {str(e)}"
+    
+    def generate_ipfs_acceleration_report(self, format="markdown", output=None, run_id=None):
+        """
+        Generate a report specifically for IPFS acceleration results.
+        
+        Args:
+            format: Report format ("markdown", "html", "json")
+            output: Output file path (if None, returns the report as a string)
+            run_id: Optional run ID to filter results (if None, uses latest run)
+            
+        Returns:
+            Report content as string if output is None, otherwise None
+        """
+        if not self.is_available():
+            return "Database not available. Cannot generate IPFS acceleration report."
+            
+        try:
+            # Check if ipfs_acceleration_results table exists
+            table_check = self.con.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='ipfs_acceleration_results'
+            """).fetchone()
+            
+            if not table_check:
+                # Create the table if it doesn't exist yet
+                self.con.execute("""
+                CREATE TABLE IF NOT EXISTS ipfs_acceleration_results (
+                    id INTEGER PRIMARY KEY,
+                    run_id VARCHAR,
+                    model_name VARCHAR,
+                    endpoint_type VARCHAR,
+                    acceleration_type VARCHAR,
+                    status VARCHAR,
+                    success BOOLEAN,
+                    execution_time_ms FLOAT,
+                    implementation_type VARCHAR,
+                    error_message VARCHAR,
+                    additional_data VARCHAR,
+                    test_date TIMESTAMP
+                )
+                """)
+                return "IPFS acceleration results table was created but contains no data yet."
+            
+            # Get run_id if not provided (use most recent)
+            if run_id is None:
+                run_query = "SELECT run_id FROM ipfs_acceleration_results ORDER BY test_date DESC LIMIT 1"
+                run_result = self.con.execute(run_query).fetchone()
+                if not run_result:
+                    return "No IPFS acceleration test results found in database."
+                run_id = run_result[0]
+                
+            # Get all acceleration results for this run
+            query = """
+            SELECT 
+                model_name, endpoint_type, acceleration_type, status, 
+                success, execution_time_ms, implementation_type,
+                error_message, test_date
+            FROM 
+                ipfs_acceleration_results
+            WHERE 
+                run_id = ?
+            ORDER BY
+                model_name, endpoint_type
+            """
+            
+            results = self.con.execute(query, [run_id]).fetchall()
+            if not results:
+                return f"No IPFS acceleration results found for run {run_id}"
+                
+            # Calculate summary statistics
+            total_tests = len(results)
+            successful_tests = sum(1 for r in results if r[4])  # r[4] is success boolean
+            
+            # Group by model
+            model_results = {}
+            for row in results:
+                model = row[0]
+                if model not in model_results:
+                    model_results[model] = []
+                model_results[model].append(row)
+                
+            # Group by acceleration type
+            accel_results = {}
+            for row in results:
+                accel_type = row[2] or "Unknown"
+                if accel_type not in accel_results:
+                    accel_results[accel_type] = []
+                accel_results[accel_type].append(row)
+                
+            # Calculate success rate by acceleration type
+            accel_stats = {}
+            for accel_type, rows in accel_results.items():
+                total = len(rows)
+                successful = sum(1 for r in rows if r[4])
+                avg_time = 0
+                if any(r[5] is not None for r in rows):
+                    avg_time = sum(r[5] for r in rows if r[5] is not None) / sum(1 for r in rows if r[5] is not None)
+                
+                accel_stats[accel_type] = {
+                    "total": total,
+                    "successful": successful,
+                    "success_rate": f"{(successful / total * 100):.1f}%" if total > 0 else "N/A",
+                    "avg_time_ms": avg_time if avg_time else "N/A"
+                }
+            
+            # Generate report based on format
+            if format.lower() == "markdown":
+                return self._generate_ipfs_markdown_report(run_id, model_results, accel_stats, 
+                                                         total_tests, successful_tests, output)
+            elif format.lower() == "html":
+                return self._generate_ipfs_html_report(run_id, model_results, accel_stats,
+                                                     total_tests, successful_tests, output)
+            elif format.lower() == "json":
+                return self._generate_ipfs_json_report(run_id, model_results, accel_stats,
+                                                     total_tests, successful_tests, output)
+            else:
+                return f"Unsupported format: {format}"
+        
+        except Exception as e:
+            print(f"Error generating IPFS acceleration report: {e}")
+            traceback.print_exc()
+            return f"Error generating report: {str(e)}"
+    
+    def _generate_ipfs_markdown_report(self, run_id, model_results, accel_stats, total_tests, successful_tests, output=None):
+        """Generate markdown report for IPFS acceleration results"""
+        report = []
+        
+        # Header
+        report.append("# IPFS Acceleration Test Results")
+        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append(f"Run ID: {run_id}")
+        report.append("")
+        
+        # Summary section
+        report.append("## Summary")
+        report.append(f"- **Total Tests**: {total_tests}")
+        report.append(f"- **Successful Tests**: {successful_tests}")
+        success_rate = (successful_tests / total_tests * 100) if total_tests > 0 else 0
+        report.append(f"- **Success Rate**: {success_rate:.1f}%")
+        report.append("")
+        
+        # Performance by acceleration type
+        report.append("## Performance by Acceleration Type")
+        report.append("| Acceleration Type | Tests | Success Rate | Avg Execution Time (ms) |")
+        report.append("|-------------------|-------|--------------|-------------------------|")
+        
+        for accel_type, stats in accel_stats.items():
+            avg_time = stats["avg_time_ms"]
+            avg_time_str = f"{avg_time:.2f}" if isinstance(avg_time, (int, float)) else avg_time
+            report.append(f"| {accel_type} | {stats['total']} | {stats['success_rate']} | {avg_time_str} |")
+        
+        report.append("")
+        
+        # Results by model
+        report.append("## Results by Model")
+        
+        for model, rows in model_results.items():
+            report.append(f"### {model}")
+            report.append("| Endpoint Type | Acceleration Type | Status | Success | Execution Time (ms) | Implementation |")
+            report.append("|---------------|-------------------|--------|---------|---------------------|----------------|")
+            
+            for row in rows:
+                endpoint = row[1]
+                accel_type = row[2] or "Unknown"
+                status = row[3] or "Unknown"
+                success = "✅" if row[4] else "❌"
+                time_ms = f"{row[5]:.2f}" if row[5] is not None else "N/A"
+                impl_type = row[6] or "Unknown"
+                
+                report.append(f"| {endpoint} | {accel_type} | {status} | {success} | {time_ms} | {impl_type} |")
+            
+            report.append("")
+        
+        # Assemble the report
+        report_text = "\n".join(report)
+        
+        # Write to file if output is specified
+        if output:
+            with open(output, "w") as f:
+                f.write(report_text)
+            return f"Report saved to {output}"
+        
+        return report_text
+        
+    def _generate_ipfs_html_report(self, run_id, model_results, accel_stats, total_tests, successful_tests, output=None):
+        """Generate HTML report for IPFS acceleration results with enhanced visualizations"""
+        html = []
+        
+        # Import necessary library
+        try:
+            import plotly.express as px
+            import plotly.graph_objects as go
+            import pandas as pd
+            import numpy as np
+            HAVE_PLOTLY = True
+        except ImportError:
+            HAVE_PLOTLY = False
+        
+        # HTML header and styles
+        html.append("<!DOCTYPE html>")
+        html.append("<html>")
+        html.append("<head>")
+        html.append("  <title>IPFS Acceleration Test Results</title>")
+        html.append("  <style>")
+        html.append("    body { font-family: Arial, sans-serif; margin: 20px; max-width: 1200px; margin: 0 auto; }")
+        html.append("    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }")
+        html.append("    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
+        html.append("    th { background-color: #f2f2f2; }")
+        html.append("    tr:nth-child(even) { background-color: #f9f9f9; }")
+        html.append("    .success { color: green; }")
+        html.append("    .failure { color: red; }")
+        html.append("    .summary { display: flex; justify-content: space-between; flex-wrap: wrap; }")
+        html.append("    .summary-box { border: 1px solid #ddd; padding: 15px; margin: 10px; min-width: 150px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }")
+        html.append("    .summary-number { font-size: 24px; font-weight: bold; margin: 10px 0; }")
+        html.append("    h1, h2, h3 { color: #333; }")
+        html.append("    .chart { width: 100%; height: 400px; margin-bottom: 30px; }")
+        html.append("    .insights { background-color: #f8f9fa; border-left: 4px solid #4285f4; padding: 10px; margin: 15px 0; }")
+        html.append("  </style>")
+        html.append("</head>")
+        html.append("<body>")
+        
+        # Main header
+        html.append("<h1>IPFS Acceleration Test Results</h1>")
+        html.append(f"<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
+        html.append(f"<p>Run ID: {run_id}</p>")
+        
+        # Summary section with fancy boxes
+        html.append("<h2>Summary</h2>")
+        html.append("<div class='summary'>")
+        html.append("  <div class='summary-box'>")
+        html.append("    <div>Total Tests</div>")
+        html.append(f"    <div class='summary-number'>{total_tests}</div>")
+        html.append("  </div>")
+        html.append("  <div class='summary-box'>")
+        html.append("    <div>Successful Tests</div>")
+        html.append(f"    <div class='summary-number'>{successful_tests}</div>")
+        html.append("  </div>")
+        html.append("  <div class='summary-box'>")
+        html.append("    <div>Success Rate</div>")
+        success_rate = (successful_tests / total_tests * 100) if total_tests > 0 else 0
+        html.append(f"    <div class='summary-number'>{success_rate:.1f}%</div>")
+        html.append("  </div>")
+        html.append("</div>")
+        
+        # Add visualization for acceleration type statistics if plotly is available
+        if HAVE_PLOTLY:
+            # Create dataframe for acceleration stats
+            accel_data = []
+            for accel_type, stats in accel_stats.items():
+                accel_data.append({
+                    "Acceleration Type": accel_type,
+                    "Total Tests": stats["total"],
+                    "Success Rate": float(stats["success_rate"].replace("%", "")) if isinstance(stats["success_rate"], str) else stats["success_rate"],
+                    "Avg Execution Time (ms)": stats["avg_time_ms"] if isinstance(stats["avg_time_ms"], (int, float)) else 0
+                })
+            
+            if accel_data:
+                df_accel = pd.DataFrame(accel_data)
+                
+                # Create bar chart for success rates
+                fig_success = px.bar(
+                    df_accel, 
+                    x="Acceleration Type", 
+                    y="Success Rate",
+                    color="Success Rate",
+                    labels={"Success Rate": "Success Rate (%)"},
+                    title="Success Rate by Acceleration Type",
+                    color_continuous_scale=["#FF4136", "#FFDC00", "#2ECC40"],
+                    range_color=[0, 100]
+                )
+                
+                # Create bar chart for execution times
+                fig_time = px.bar(
+                    df_accel, 
+                    x="Acceleration Type", 
+                    y="Avg Execution Time (ms)",
+                    color="Avg Execution Time (ms)",
+                    labels={"Avg Execution Time (ms)": "Avg Execution Time (ms)"},
+                    title="Average Execution Time by Acceleration Type",
+                    color_continuous_scale=["#2ECC40", "#FFDC00", "#FF4136"],
+                )
+                
+                # Add the charts to the HTML report
+                html.append("<div class='chart'>")
+                html.append(fig_success.to_html(full_html=False, include_plotlyjs='cdn'))
+                html.append("</div>")
+                
+                html.append("<div class='chart'>")
+                html.append(fig_time.to_html(full_html=False, include_plotlyjs='cdn'))
+                html.append("</div>")
+                
+                # Add insights section based on the data
+                fastest_accel = df_accel.loc[df_accel["Avg Execution Time (ms)"].idxmin()]["Acceleration Type"] if len(df_accel) > 0 else "N/A"
+                most_reliable = df_accel.loc[df_accel["Success Rate"].idxmax()]["Acceleration Type"] if len(df_accel) > 0 else "N/A"
+                
+                html.append("<div class='insights'>")
+                html.append("<h3>Key Insights</h3>")
+                html.append("<ul>")
+                html.append(f"<li><strong>Fastest Acceleration Type:</strong> {fastest_accel}</li>")
+                html.append(f"<li><strong>Most Reliable Acceleration Type:</strong> {most_reliable}</li>")
+                if fastest_accel == most_reliable:
+                    html.append(f"<li><strong>Recommendation:</strong> {fastest_accel} provides the best balance of speed and reliability.</li>")
+                else:
+                    html.append(f"<li><strong>Speed vs. Reliability Trade-off:</strong> {fastest_accel} is fastest but {most_reliable} is most reliable.</li>")
+                html.append("</ul>")
+                html.append("</div>")
+        
+        # Performance by acceleration type
+        html.append("<h2>Performance by Acceleration Type</h2>")
+        html.append("<table>")
+        html.append("  <tr><th>Acceleration Type</th><th>Tests</th><th>Success Rate</th><th>Avg Execution Time (ms)</th></tr>")
+        
+        for accel_type, stats in accel_stats.items():
+            avg_time = stats["avg_time_ms"]
+            avg_time_str = f"{avg_time:.2f}" if isinstance(avg_time, (int, float)) else avg_time
+            html.append(f"  <tr><td>{accel_type}</td><td>{stats['total']}</td><td>{stats['success_rate']}</td><td>{avg_time_str}</td></tr>")
+        
+        html.append("</table>")
+        
+        # Results by model
+        html.append("<h2>Results by Model</h2>")
+        
+        # Process model results to create visualization data
+        if HAVE_PLOTLY:
+            model_data = []
+            for model, rows in model_results.items():
+                for row in rows:
+                    endpoint = row[1]
+                    accel_type = row[2] or "Unknown"
+                    status = row[3] or "Unknown"
+                    success = bool(row[4])
+                    exec_time = float(row[5]) if row[5] is not None else None
+                    impl_type = row[6] or "Unknown"
+                    
+                    model_data.append({
+                        "Model": model,
+                        "Endpoint Type": endpoint,
+                        "Acceleration Type": accel_type,
+                        "Status": status,
+                        "Success": success,
+                        "Execution Time (ms)": exec_time,
+                        "Implementation Type": impl_type
+                    })
+            
+            if model_data:
+                df_models = pd.DataFrame(model_data)
+                
+                # Create heatmap of success rates by model and acceleration type
+                success_pivot = pd.pivot_table(
+                    df_models,
+                    values="Success",
+                    index="Model",
+                    columns="Acceleration Type",
+                    aggfunc=lambda x: 100 * sum(x) / len(x) if len(x) > 0 else 0
+                )
+                
+                fig_heatmap = px.imshow(
+                    success_pivot,
+                    labels=dict(x="Acceleration Type", y="Model", color="Success Rate (%)"),
+                    color_continuous_scale=["#FF4136", "#FFDC00", "#2ECC40"],
+                    range_color=[0, 100],
+                    title="Success Rate by Model and Acceleration Type (%)"
+                )
+                
+                html.append("<div class='chart'>")
+                html.append(fig_heatmap.to_html(full_html=False, include_plotlyjs='cdn'))
+                html.append("</div>")
+                
+                # Create scatter plot of execution times by acceleration type
+                # Only include successful tests with valid execution times
+                df_success = df_models[(df_models["Success"] == True) & (df_models["Execution Time (ms)"].notna())]
+                
+                if not df_success.empty:
+                    fig_scatter = px.box(
+                        df_success,
+                        x="Acceleration Type",
+                        y="Execution Time (ms)",
+                        color="Acceleration Type",
+                        hover_data=["Model", "Implementation Type"],
+                        title="Execution Time Distribution by Acceleration Type (Successful Tests Only)"
+                    )
+                    
+                    html.append("<div class='chart'>")
+                    html.append(fig_scatter.to_html(full_html=False, include_plotlyjs='cdn'))
+                    html.append("</div>")
+                    
+                    # Add insights about execution time distribution
+                    if len(df_success) > 0:
+                        accel_median_times = df_success.groupby("Acceleration Type")["Execution Time (ms)"].median()
+                        if not accel_median_times.empty:
+                            fastest_accel = accel_median_times.idxmin()
+                            slowest_accel = accel_median_times.idxmax()
+                            time_diff_pct = ((accel_median_times[slowest_accel] - accel_median_times[fastest_accel]) / 
+                                            accel_median_times[fastest_accel] * 100) if accel_median_times[fastest_accel] > 0 else 0
+                            
+                            html.append("<div class='insights'>")
+                            html.append("<h3>Performance Insights</h3>")
+                            html.append("<ul>")
+                            html.append(f"<li><strong>Fastest median response time:</strong> {fastest_accel} ({accel_median_times[fastest_accel]:.2f} ms)</li>")
+                            html.append(f"<li><strong>Slowest median response time:</strong> {slowest_accel} ({accel_median_times[slowest_accel]:.2f} ms)</li>")
+                            html.append(f"<li><strong>Performance difference:</strong> {time_diff_pct:.1f}% slower</li>")
+                            html.append("</ul>")
+                            html.append("</div>")
+        
+        # Detailed results tables by model
+        for model, rows in model_results.items():
+            html.append(f"<h3>{model}</h3>")
+            html.append("<table>")
+            html.append("  <tr><th>Endpoint Type</th><th>Acceleration Type</th><th>Status</th><th>Success</th><th>Execution Time (ms)</th><th>Implementation</th></tr>")
+            
+            for row in rows:
+                endpoint = row[1]
+                accel_type = row[2] or "Unknown"
+                status = row[3] or "Unknown"
+                success_class = "success" if row[4] else "failure"
+                success_icon = "✅" if row[4] else "❌"
+                time_ms = f"{row[5]:.2f}" if row[5] is not None else "N/A"
+                impl_type = row[6] or "Unknown"
+                
+                html.append(f"  <tr><td>{endpoint}</td><td>{accel_type}</td><td>{status}</td>" +
+                          f"<td class='{success_class}'>{success_icon}</td><td>{time_ms}</td><td>{impl_type}</td></tr>")
+            
+            html.append("</table>")
+        
+        # Close HTML
+        html.append("</body>")
+        html.append("</html>")
+        
+        # Assemble the report
+        html_text = "\n".join(html)
+        
+        # Write to file if output is specified
+        if output:
+            with open(output, "w") as f:
+                f.write(html_text)
+            return f"Report saved to {output}"
+        
+        return html_text
+        
+    def _generate_ipfs_json_report(self, run_id, model_results, accel_stats, total_tests, successful_tests, output=None):
+        """Generate JSON report for IPFS acceleration results"""
+        # Convert model results to JSON-friendly format
+        model_results_json = {}
+        for model, rows in model_results.items():
+            model_results_json[model] = [
+                {
+                    "endpoint_type": row[1],
+                    "acceleration_type": row[2] or "Unknown",
+                    "status": row[3] or "Unknown",
+                    "success": bool(row[4]),
+                    "execution_time_ms": row[5],
+                    "implementation_type": row[6] or "Unknown",
+                    "error_message": row[7],
+                    "test_date": str(row[8])
+                }
+                for row in rows
+            ]
+        
+        # Create report data structure
+        report_data = {
+            "generated_at": datetime.now().isoformat(),
+            "run_id": run_id,
+            "summary": {
+                "total_tests": total_tests,
+                "successful_tests": successful_tests,
+                "success_rate": (successful_tests / total_tests * 100) if total_tests > 0 else 0
+            },
+            "acceleration_stats": accel_stats,
+            "model_results": model_results_json
+        }
+        
+        # Convert to JSON
+        json_text = json.dumps(report_data, indent=2)
+        
+        # Write to file if output is specified
+        if output:
+            with open(output, "w") as f:
+                f.write(json_text)
+            return f"Report saved to {output}"
+        
+        return json_text
     
     def is_available(self) -> bool:
         """Check if database storage is available."""
-        return HAVE_DUCKDB and self.api is not None
+        return HAVE_DUCKDB and self.con is not None
     
     def store_test_results(self, results: Dict[str, Any], run_id: str = None) -> bool:
         """
@@ -177,12 +1839,739 @@ class TestResultsDBHandler:
             # Store power metrics if available (mainly for Qualcomm devices)
             self._store_power_metrics(results, run_id)
             
+            # Store IPFS acceleration results if present
+            self._store_ipfs_acceleration_results(results, run_id)
+            
             return True
         except Exception as e:
             print(f"Error storing test results in database: {e}")
             print(traceback.format_exc())
             return False
             
+    def _store_ipfs_acceleration_results(self, results: Dict[str, Any], run_id: str):
+        """Extract and store IPFS acceleration results from the test results dictionary."""
+        if not self.is_available() or not results:
+            return
+            
+        # Look for IPFS acceleration test results in different places in the results structure
+        if "ipfs_accelerate_tests" in results and isinstance(results["ipfs_accelerate_tests"], dict):
+            # Process model results to extract IPFS acceleration data
+            for model, model_data in results["ipfs_accelerate_tests"].items():
+                # Skip summary entry
+                if model == "summary":
+                    continue
+                    
+                # Check for local endpoints (CUDA, OpenVINO)
+                if "local_endpoint" in model_data and isinstance(model_data["local_endpoint"], dict):
+                    for endpoint_type, endpoint_results in model_data["local_endpoint"].items():
+                        # Only process endpoints if they exist and are dictionaries
+                        if isinstance(endpoint_results, dict):
+                            # Store the endpoint results in the IPFS acceleration table
+                            self.store_ipfs_acceleration_result(
+                                model_name=model,
+                                endpoint_type=endpoint_type,
+                                acceleration_results=endpoint_results,
+                                run_id=run_id
+                            )
+                
+                # Check for qualcomm endpoint
+                if "qualcomm_endpoint" in model_data and isinstance(model_data["qualcomm_endpoint"], dict):
+                    # Store the Qualcomm endpoint results
+                    self.store_ipfs_acceleration_result(
+                        model_name=model,
+                        endpoint_type="qualcomm",
+                        acceleration_results=model_data["qualcomm_endpoint"],
+                        run_id=run_id
+                    )
+                    
+                # Check for API endpoints
+                if "api_endpoint" in model_data and isinstance(model_data["api_endpoint"], dict):
+                    for endpoint_type, endpoint_results in model_data["api_endpoint"].items():
+                        # Process only if results are a dictionary
+                        if isinstance(endpoint_results, dict):
+                            # Store the API endpoint results
+                            self.store_ipfs_acceleration_result(
+                                model_name=model,
+                                endpoint_type=f"api_{endpoint_type}",
+                                acceleration_results=endpoint_results,
+                                run_id=run_id
+                            )
+                            
+                # Check for WebNN endpoints
+                if "webnn_endpoint" in model_data and isinstance(model_data["webnn_endpoint"], dict):
+                    # Store the WebNN endpoint results
+                    self.store_ipfs_acceleration_result(
+                        model_name=model,
+                        endpoint_type="webnn",
+                        acceleration_results=model_data["webnn_endpoint"],
+                        run_id=run_id
+                    )
+                    
+        # Also look for direct test results structure
+        elif "test_endpoints" in results and isinstance(results["test_endpoints"], dict):
+            for model, endpoint_data in results["test_endpoints"].items():
+                # Skip non-model entries
+                if model in ["test_stats", "endpoint_handler_resources"]:
+                    continue
+                    
+                # Process different endpoint types
+                for endpoint_key in ["local_endpoint", "qualcomm_endpoint", "api_endpoint", "webnn_endpoint"]:
+                    if endpoint_key in endpoint_data and isinstance(endpoint_data[endpoint_key], dict):
+                        # For local endpoints, we may have multiple endpoint types
+                        if endpoint_key == "local_endpoint":
+                            for endpoint_type, endpoint_results in endpoint_data[endpoint_key].items():
+                                if isinstance(endpoint_results, dict):
+                                    self.store_ipfs_acceleration_result(
+                                        model_name=model,
+                                        endpoint_type=endpoint_type,
+                                        acceleration_results=endpoint_results,
+                                        run_id=run_id
+                                    )
+                        else:
+                            # Direct endpoint type
+                            endpoint_type = endpoint_key.replace("_endpoint", "")
+                            self.store_ipfs_acceleration_result(
+                                model_name=model,
+                                endpoint_type=endpoint_type,
+                                acceleration_results=endpoint_data[endpoint_key],
+                                run_id=run_id
+                            )
+            
+    def execute_query(self, query: str, params: list = None):
+        """
+        Execute a SQL query.
+        
+        Args:
+            query: SQL query to execute
+            params: Query parameters (optional)
+            
+        Returns:
+            Query result or False if error occurred
+        """
+        if not self.is_available():
+            return False
+            
+        try:
+            if params:
+                result = self.con.execute(query, params)
+            else:
+                result = self.con.execute(query)
+            return result
+        except Exception as e:
+            print(f"Error executing query: {e}")
+            return False
+            
+    def get_test_results(self, run_id=None, model=None, hardware_type=None, limit=50):
+        """
+        Query test results from the database with flexible filtering.
+        
+        Args:
+            run_id: Optional run ID to filter results
+            model: Optional model name to filter results
+            hardware_type: Optional hardware type to filter results
+            limit: Maximum number of results to return (default 50)
+            
+        Returns:
+            Query result or None if query failed
+        """
+        if not self.is_available():
+            return None
+            
+        try:
+            # Base query with appropriate joins
+            query = """
+            SELECT 
+                tr.id, tr.timestamp, tr.test_date, tr.status, tr.test_type,
+                m.model_name, m.model_family, 
+                hp.hardware_type, hp.device_name,
+                tr.success, tr.error_message, tr.execution_time,
+                tr.memory_usage, pr.batch_size, pr.average_latency_ms, 
+                pr.throughput_items_per_second, pr.memory_peak_mb
+            FROM 
+                test_results tr
+            LEFT JOIN 
+                models m ON tr.model_id = m.model_id
+            LEFT JOIN 
+                hardware_platforms hp ON tr.hardware_id = hp.hardware_id
+            LEFT JOIN 
+                performance_results pr ON tr.id = pr.id
+            """
+            
+            # Build WHERE clause
+            where_clauses = []
+            params = []
+            
+            if run_id:
+                where_clauses.append("tr.id = ?")
+                params.append(run_id)
+                
+            if model:
+                where_clauses.append("m.model_name = ?")
+                params.append(model)
+                
+            if hardware_type:
+                where_clauses.append("hp.hardware_type = ?")
+                params.append(hardware_type)
+                
+            # Add WHERE clause if we have any conditions
+            if where_clauses:
+                query += " WHERE " + " AND ".join(where_clauses)
+                
+            # Add ORDER BY and LIMIT
+            query += " ORDER BY tr.timestamp DESC LIMIT ?"
+            params.append(limit)
+            
+            # Execute query
+            return self.execute_query(query, params)
+            
+        except Exception as e:
+            print(f"Error getting test results: {e}")
+            return None
+            
+    def generate_report(self, format="markdown", output_file=None):
+        """
+        Generate a comprehensive report from database results.
+        
+        Args:
+            format: Report format ("markdown", "html", "json")
+            output_file: Output file path (if None, returns the report as a string)
+            
+        Returns:
+            Report content as string if output_file is None, otherwise None
+        """
+        if not self.is_available():
+            return "Database not available. Cannot generate report."
+            
+        try:
+            # Get summary data
+            models_count = self.con.execute("SELECT COUNT(*) FROM models").fetchone()[0]
+            hardware_count = self.con.execute("SELECT COUNT(*) FROM hardware_platforms").fetchone()[0]
+            tests_count = self.con.execute("SELECT COUNT(*) FROM test_results").fetchone()[0]
+            successful_tests = self.con.execute("SELECT COUNT(*) FROM test_results WHERE success = TRUE").fetchone()[0]
+            
+            # Get hardware platforms
+            hardware_platforms = self.con.execute(
+                "SELECT hardware_type, COUNT(*) FROM hardware_platforms GROUP BY hardware_type"
+            ).fetchall()
+            
+            # Get model families
+            model_families = self.con.execute(
+                "SELECT model_family, COUNT(*) FROM models GROUP BY model_family"
+            ).fetchall()
+            
+            # Get recent test results
+            recent_tests = self.con.execute(
+                """
+                SELECT 
+                    m.model_name, h.hardware_type, tr.status, tr.success, tr.timestamp
+                FROM test_results tr
+                JOIN models m ON tr.model_id = m.model_id
+                JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                ORDER BY tr.timestamp DESC
+                LIMIT 10
+                """
+            ).fetchall()
+            
+            # Get performance data
+            performance_data = self.con.execute(
+                """
+                SELECT 
+                    m.model_name, h.hardware_type, 
+                    AVG(pr.average_latency_ms) as avg_latency,
+                    AVG(pr.throughput_items_per_second) as avg_throughput,
+                    AVG(pr.memory_peak_mb) as avg_memory
+                FROM performance_results pr
+                JOIN models m ON pr.model_id = m.model_id
+                JOIN hardware_platforms h ON pr.hardware_id = h.hardware_id
+                GROUP BY m.model_name, h.hardware_type
+                ORDER BY m.model_name, avg_throughput DESC
+                """
+            ).fetchall()
+            
+            # Check if cross_platform_compatibility table exists and has data
+            cross_platform_count = self.con.execute(
+                "SELECT COUNT(*) FROM cross_platform_compatibility"
+            ).fetchone()[0]
+            
+            if cross_platform_count > 0:
+                # Use the dedicated cross-platform compatibility table
+                compatibility_matrix = self.con.execute(
+                    """
+                    SELECT 
+                        model_name,
+                        model_family,
+                        CASE WHEN cuda_support THEN 1 ELSE 0 END as cuda_support,
+                        CASE WHEN rocm_support THEN 1 ELSE 0 END as rocm_support,
+                        CASE WHEN mps_support THEN 1 ELSE 0 END as mps_support,
+                        CASE WHEN openvino_support THEN 1 ELSE 0 END as openvino_support,
+                        CASE WHEN qualcomm_support THEN 1 ELSE 0 END as qualcomm_support,
+                        CASE WHEN webnn_support THEN 1 ELSE 0 END as webnn_support,
+                        CASE WHEN webgpu_support THEN 1 ELSE 0 END as webgpu_support
+                    FROM cross_platform_compatibility
+                    ORDER BY model_family, model_name
+                    """
+                ).fetchall()
+            else:
+                # Fall back to generating matrix from test results
+                compatibility_matrix = self.con.execute(
+                    """
+                    SELECT 
+                        m.model_name,
+                        m.model_family,
+                        MAX(CASE WHEN h.hardware_type = 'cpu' THEN 1 ELSE 0 END) as cpu_support,
+                        MAX(CASE WHEN h.hardware_type = 'cuda' THEN 1 ELSE 0 END) as cuda_support,
+                        MAX(CASE WHEN h.hardware_type = 'rocm' THEN 1 ELSE 0 END) as rocm_support,
+                        MAX(CASE WHEN h.hardware_type = 'mps' THEN 1 ELSE 0 END) as mps_support,
+                        MAX(CASE WHEN h.hardware_type = 'openvino' THEN 1 ELSE 0 END) as openvino_support,
+                        MAX(CASE WHEN h.hardware_type = 'qualcomm' THEN 1 ELSE 0 END) as qualcomm_support,
+                        MAX(CASE WHEN h.hardware_type = 'webnn' THEN 1 ELSE 0 END) as webnn_support,
+                        MAX(CASE WHEN h.hardware_type = 'webgpu' THEN 1 ELSE 0 END) as webgpu_support
+                    FROM models m
+                    LEFT JOIN test_results tr ON m.model_id = tr.model_id
+                    LEFT JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                    GROUP BY m.model_name, m.model_family
+                    """
+                ).fetchall()
+            
+            # Format the report based on the requested format
+            if format.lower() == 'markdown':
+                report = self._generate_markdown_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            elif format.lower() == 'html':
+                report = self._generate_html_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            elif format.lower() == 'json':
+                report = self._generate_json_report(
+                    models_count, hardware_count, tests_count, successful_tests,
+                    hardware_platforms, model_families, recent_tests, 
+                    performance_data, compatibility_matrix
+                )
+            else:
+                return f"Unsupported format: {format}"
+            
+            # Write to file if output_file is specified
+            if output_file and report:
+                with open(output_file, 'w') as f:
+                    f.write(report)
+                return f"Report saved to {output_file}"
+            else:
+                return report
+                
+        except Exception as e:
+            print(f"Error generating report: {e}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating report: {e}"
+            
+    def _generate_markdown_report(self, models_count, hardware_count, tests_count, successful_tests,
+                                 hardware_platforms, model_families, recent_tests, 
+                                 performance_data, compatibility_matrix):
+        """Generate a markdown report from the database data."""
+        report = []
+        report.append("# IPFS Accelerate Test Results Report")
+        report.append(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Summary section
+        report.append("\n## Summary")
+        report.append(f"- **Models**: {models_count}")
+        report.append(f"- **Hardware Platforms**: {hardware_count}")
+        report.append(f"- **Tests Run**: {tests_count}")
+        success_rate = (successful_tests / tests_count * 100) if tests_count > 0 else 0
+        report.append(f"- **Success Rate**: {success_rate:.2f}% ({successful_tests}/{tests_count})")
+        
+        # Hardware platforms section
+        report.append("\n## Hardware Platforms")
+        report.append("| Hardware Type | Count |")
+        report.append("|--------------|-------|")
+        for hw in hardware_platforms:
+            report.append(f"| {hw[0] or 'Unknown'} | {hw[1]} |")
+            
+        # Model families section
+        report.append("\n## Model Families")
+        report.append("| Model Family | Count |")
+        report.append("|-------------|-------|")
+        for family in model_families:
+            report.append(f"| {family[0] or 'Unknown'} | {family[1]} |")
+            
+        # Recent tests section
+        report.append("\n## Recent Tests")
+        report.append("| Model | Hardware | Status | Success | Timestamp |")
+        report.append("|-------|----------|--------|---------|-----------|")
+        for test in recent_tests:
+            status_icon = "✅" if test[3] else "❌"
+            report.append(f"| {test[0]} | {test[1]} | {test[2]} | {status_icon} | {test[4]} |")
+            
+        # Performance data section
+        report.append("\n## Performance Data")
+        report.append("| Model | Hardware | Avg Latency (ms) | Throughput (items/s) | Memory (MB) |")
+        report.append("|-------|----------|------------------|---------------------|------------|")
+        for perf in performance_data:
+            report.append(f"| {perf[0]} | {perf[1]} | {"N/A" if perf[2] is None else f"{perf[2]:.2f}"} | {"N/A" if perf[3] is None else f"{perf[3]:.2f}"} | {"N/A" if perf[4] is None else f"{perf[4]:.2f}"} |")
+            
+        # Compatibility matrix section
+        report.append("\n## Hardware Compatibility Matrix")
+        report.append("| Model | Family | CPU | CUDA | ROCm | MPS | OpenVINO | Qualcomm | WebNN | WebGPU |")
+        report.append("|-------|--------|-----|------|------|-----|----------|----------|-------|--------|")
+        for compat in compatibility_matrix:
+            # Convert 1/0 to ✅/⚠️
+            cpu = "✅" if compat[2] == 1 else "⚠️"
+            cuda = "✅" if compat[3] == 1 else "⚠️"
+            rocm = "✅" if compat[4] == 1 else "⚠️"
+            mps = "✅" if compat[5] == 1 else "⚠️"
+            openvino = "✅" if compat[6] == 1 else "⚠️"
+            qualcomm = "✅" if compat[7] == 1 else "⚠️"
+            webnn = "✅" if compat[8] == 1 else "⚠️"
+            webgpu = "✅" if compat[9] == 1 else "⚠️"
+            
+            report.append(f"| {compat[0]} | {compat[1] or 'Unknown'} | {cpu} | {cuda} | {rocm} | {mps} | {openvino} | {qualcomm} | {webnn} | {webgpu} |")
+            
+        return "\n".join(report)
+    
+    def _generate_html_report(self, models_count, hardware_count, tests_count, successful_tests,
+                             hardware_platforms, model_families, recent_tests, 
+                             performance_data, compatibility_matrix):
+        """Generate an HTML report from the database data."""
+        # Import necessary library
+        try:
+            import plotly.express as px
+            import plotly.graph_objects as go
+            import pandas as pd
+            HAVE_PLOTLY = True
+        except ImportError:
+            HAVE_PLOTLY = False
+        
+        # Basic HTML structure
+        html = []
+        html.append("<!DOCTYPE html>")
+        html.append("<html lang='en'>")
+        html.append("<head>")
+        html.append("  <meta charset='UTF-8'>")
+        html.append("  <meta name='viewport' content='width=device-width, initial-scale=1.0'>")
+        html.append("  <title>IPFS Accelerate Python Test Report</title>")
+        html.append("  <style>")
+        html.append("    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }")
+        html.append("    h1, h2 { color: #333; }")
+        html.append("    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }")
+        html.append("    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
+        html.append("    th { background-color: #f2f2f2; }")
+        html.append("    tr:nth-child(even) { background-color: #f9f9f9; }")
+        html.append("    .chart { width: 100%; height: 400px; margin-bottom: 30px; }")
+        html.append("    .success { color: green; }")
+        html.append("    .failure { color: red; }")
+        html.append("  </style>")
+        html.append("</head>")
+        html.append("<body>")
+        
+        # Header
+        html.append("<h1>IPFS Accelerate Python Test Report</h1>")
+        html.append(f"<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
+        
+        # Run information
+        html.append("<h2>Test Run Information</h2>")
+        html.append("<table>")
+        html.append("  <tr><th>Property</th><th>Value</th></tr>")
+        html.append(f"  <tr><td>Test Name</td><td>{run_info.get('test_name', 'Database Report')}</td></tr>")
+        html.append(f"  <tr><td>Test Type</td><td>{run_info.get('test_type', 'Database')}</td></tr>")
+        html.append(f"  <tr><td>Started</td><td>{run_info.get('started_at', 'Unknown')}</td></tr>")
+        html.append(f"  <tr><td>Completed</td><td>{run_info.get('completed_at', 'Unknown')}</td></tr>")
+        html.append(f"  <tr><td>Execution Time</td><td>{run_info.get('execution_time_seconds', 0):.2f} seconds</td></tr>")
+        success_class = "success" if run_info.get('success', False) else "failure"
+        html.append(f"  <tr><td>Success</td><td class='{success_class}'>{run_info.get('success', False)}</td></tr>")
+        html.append("</table>")
+        
+        # Hardware compatibility
+        html.append("<h2>Hardware Compatibility</h2>")
+        html.append("<table>")
+        html.append("  <tr><th>Model</th><th>Hardware Type</th><th>Device Name</th><th>Compatible</th>" +
+                   "<th>Detection</th><th>Initialization</th><th>Error</th></tr>")
+        
+        for item in compatibility:
+            compatible_class = "success" if item.get('is_compatible', False) else "failure"
+            detection_class = "success" if item.get('detection_success', False) else "failure"
+            init_class = "success" if item.get('initialization_success', False) else "failure"
+            
+            html.append(f"  <tr>")
+            html.append(f"    <td>{item.get('model_name', 'Unknown')}</td>")
+            html.append(f"    <td>{item.get('hardware_type', 'Unknown')}</td>")
+            html.append(f"    <td>{item.get('device_name', 'Unknown')}</td>")
+            html.append(f"    <td class='{compatible_class}'>{item.get('is_compatible', False)}</td>")
+            html.append(f"    <td class='{detection_class}'>{item.get('detection_success', False)}</td>")
+            html.append(f"    <td class='{init_class}'>{item.get('initialization_success', False)}</td>")
+            html.append(f"    <td>{item.get('error_message', 'None')}</td>")
+            html.append(f"  </tr>")
+        html.append("</table>")
+        
+        # Add compatibility chart if plotly is available
+        if HAVE_PLOTLY:
+            df = pd.DataFrame(compatibility)
+            if not df.empty:
+                # Create a pivot table for compatibility by model and hardware
+                pivot_df = pd.crosstab(
+                    index=df['model_name'], 
+                    columns=df['hardware_type'], 
+                    values=df['is_compatible'],
+                    aggfunc=lambda x: 1 if x.any() else 0
+                )
+                
+                # Create heatmap
+                fig = px.imshow(
+                    pivot_df, 
+                    labels=dict(x="Hardware Type", y="Model", color="Compatible"),
+                    x=pivot_df.columns, 
+                    y=pivot_df.index,
+                    color_continuous_scale=["#FF4136", "#2ECC40"],
+                    range_color=[0, 1]
+                )
+                fig.update_layout(title="Model-Hardware Compatibility Matrix")
+                
+                # Add the chart to the HTML
+                html.append("<div class='chart'>")
+                html.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
+                html.append("</div>")
+        
+        # Performance metrics
+        if performance:
+            html.append("<h2>Performance Metrics</h2>")
+            html.append("<table>")
+            html.append("  <tr><th>Model</th><th>Hardware Type</th><th>Batch Size</th><th>Precision</th>" +
+                       "<th>Latency (ms)</th><th>Throughput (items/s)</th><th>Memory (MB)</th></tr>")
+            
+            for item in performance:
+                html.append(f"  <tr>")
+                html.append(f"    <td>{item.get('model_name', 'Unknown')}</td>")
+                html.append(f"    <td>{item.get('hardware_type', 'Unknown')}</td>")
+                html.append(f"    <td>{item.get('batch_size', 1)}</td>")
+                html.append(f"    <td>{item.get('precision', 'Unknown')}</td>")
+                html.append(f"    <td>{item.get('average_latency_ms', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('throughput_items_per_second', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('memory_peak_mb', 0):.2f}</td>")
+                html.append(f"  </tr>")
+            html.append("</table>")
+            
+            # Add performance chart if plotly is available
+            if HAVE_PLOTLY:
+                df = pd.DataFrame(performance)
+                if not df.empty:
+                    # Bar chart for throughput comparison
+                    fig = px.bar(
+                        df, 
+                        x='model_name', 
+                        y='throughput_items_per_second', 
+                        color='hardware_type',
+                        barmode='group',
+                        labels={'model_name': 'Model', 'throughput_items_per_second': 'Throughput (items/s)', 'hardware_type': 'Hardware'},
+                        title='Throughput Comparison by Model and Hardware'
+                    )
+                    
+                    # Add the chart to the HTML
+                    html.append("<div class='chart'>")
+                    html.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
+                    html.append("</div>")
+        
+        # Power metrics
+        if power_metrics:
+            html.append("<h2>Power Metrics</h2>")
+            html.append("<table>")
+            html.append("  <tr><th>Model</th><th>Hardware Type</th><th>Power (mW)</th><th>Energy (mJ)</th>" +
+                       "<th>Temperature (°C)</th><th>Efficiency (items/J)</th><th>Battery Impact (%/h)</th></tr>")
+            
+            for item in power_metrics:
+                html.append(f"  <tr>")
+                html.append(f"    <td>{item.get('model_name', 'Unknown')}</td>")
+                html.append(f"    <td>{item.get('hardware_type', 'Unknown')}</td>")
+                html.append(f"    <td>{item.get('power_consumption_mw', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('energy_consumption_mj', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('temperature_celsius', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('energy_efficiency_items_per_joule', 0):.2f}</td>")
+                html.append(f"    <td>{item.get('battery_impact_percent_per_hour', 0):.2f}</td>")
+                html.append(f"  </tr>")
+            html.append("</table>")
+            
+            # Add efficiency chart if plotly is available
+            if HAVE_PLOTLY:
+                df = pd.DataFrame(power_metrics)
+                if not df.empty:
+                    # Bar chart for energy efficiency
+                    fig = px.bar(
+                        df, 
+                        x='model_name', 
+                        y='energy_efficiency_items_per_joule', 
+                        color='hardware_type',
+                        barmode='group',
+                        labels={'model_name': 'Model', 'energy_efficiency_items_per_joule': 'Efficiency (items/J)', 'hardware_type': 'Hardware'},
+                        title='Energy Efficiency Comparison'
+                    )
+                    
+                    # Add the chart to the HTML
+                    html.append("<div class='chart'>")
+                    html.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
+                    html.append("</div>")
+        
+        # Summary
+        html.append("<h2>Summary</h2>")
+        
+        # Calculate compatibility rate
+        compatible_count = sum(1 for item in compatibility if item.get('is_compatible', False))
+        compatibility_rate = (compatible_count / len(compatibility) * 100) if compatibility else 0
+        
+        # Calculate metrics for summary
+        unique_models = len(set(item.get('model_name') for item in compatibility))
+        unique_hardware = len(set(item.get('hardware_type') for item in compatibility))
+        
+        html.append("<ul>")
+        html.append(f"<li><strong>Models Tested:</strong> {unique_models}</li>")
+        html.append(f"<li><strong>Hardware Platforms:</strong> {unique_hardware}</li>")
+        html.append(f"<li><strong>Compatibility Rate:</strong> {compatibility_rate:.1f}%</li>")
+        
+        if performance:
+            # Find best performing hardware
+            best_hardware = {}
+            for item in performance:
+                model = item.get('model_name')
+                hardware = item.get('hardware_type')
+                throughput = item.get('throughput_items_per_second', 0)
+                
+                if model not in best_hardware or throughput > best_hardware[model]['throughput']:
+                    best_hardware[model] = {
+                        'hardware': hardware,
+                        'throughput': throughput
+                    }
+            
+            if best_hardware:
+                html.append("<li><strong>Best Performing Hardware by Model:</strong>")
+                html.append("<ul>")
+                for model, info in best_hardware.items():
+                    html.append(f"<li>{model}: {info['hardware']} ({info['throughput']:.2f} items/s)</li>")
+                html.append("</ul>")
+                html.append("</li>")
+        
+        html.append("</ul>")
+        
+        # Close HTML
+        html.append("</body>")
+        html.append("</html>")
+        
+        return "\n".join(html)
+            
+    def store_ipfs_acceleration_result(self, model_name, endpoint_type, acceleration_results, run_id=None):
+        """
+        Store IPFS acceleration test results in the database.
+        
+        Args:
+            model_name: The name of the model being tested
+            endpoint_type: The endpoint type (cuda, openvino, etc.)
+            acceleration_results: Results from the acceleration test
+            run_id: Optional run ID to associate results with
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.is_available():
+            return False
+            
+        try:
+            # Create the table if it doesn't exist
+            self.con.execute("""
+            CREATE TABLE IF NOT EXISTS ipfs_acceleration_results (
+                id INTEGER PRIMARY KEY,
+                run_id VARCHAR,
+                model_name VARCHAR,
+                endpoint_type VARCHAR,
+                acceleration_type VARCHAR,
+                status VARCHAR,
+                success BOOLEAN,
+                execution_time_ms FLOAT,
+                implementation_type VARCHAR,
+                error_message VARCHAR,
+                additional_data VARCHAR,
+                test_date TIMESTAMP
+            )
+            """)
+            
+            # Generate run_id if not provided
+            if run_id is None:
+                run_id = f"ipfs_accel_{int(time.time())}"
+                
+            now = datetime.now()
+            
+            # Determine if the test was successful
+            success = False
+            status = "Unknown"
+            error_message = None
+            execution_time = None
+            implementation_type = "Unknown"
+            additional_data = {}
+            
+            # Extract data based on result structure
+            if isinstance(acceleration_results, dict):
+                # Get status directly or infer from other fields
+                if "status" in acceleration_results:
+                    status = acceleration_results["status"]
+                    success = status.lower() == "success"
+                    
+                # Get error message if present
+                if "error" in acceleration_results:
+                    error_message = acceleration_results["error"]
+                elif "error_message" in acceleration_results:
+                    error_message = acceleration_results["error_message"]
+                
+                # Get execution time if present
+                if "execution_time_ms" in acceleration_results:
+                    execution_time = acceleration_results["execution_time_ms"]
+                elif "execution_time" in acceleration_results:
+                    execution_time = acceleration_results["execution_time"]
+                    
+                # Get implementation type if present
+                if "implementation_type" in acceleration_results:
+                    implementation_type = acceleration_results["implementation_type"]
+                    
+                # Store any additional data as JSON
+                additional_data = {k: v for k, v in acceleration_results.items() 
+                                 if k not in ["status", "error", "error_message", 
+                                             "execution_time_ms", "execution_time",
+                                             "implementation_type"]}
+            
+            # Determine acceleration type based on endpoint_type
+            acceleration_type = "Unknown"
+            if "cuda" in endpoint_type.lower():
+                acceleration_type = "GPU"
+            elif "openvino" in endpoint_type.lower():
+                acceleration_type = "CPU"
+            elif "webgpu" in endpoint_type.lower():
+                acceleration_type = "WebGPU"
+            elif "webnn" in endpoint_type.lower():
+                acceleration_type = "WebNN"
+            elif "qualcomm" in endpoint_type.lower():
+                acceleration_type = "Mobile"
+                
+            # Insert the result into the database
+            self.con.execute("""
+                INSERT INTO ipfs_acceleration_results (
+                    run_id, model_name, endpoint_type, acceleration_type, status,
+                    success, execution_time_ms, implementation_type, error_message,
+                    additional_data, test_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                run_id, model_name, endpoint_type, acceleration_type, status,
+                success, execution_time, implementation_type, error_message,
+                json.dumps(additional_data), now
+            ])
+            
+            # Print success message
+            print(f"Stored IPFS acceleration result for {model_name} on {endpoint_type} (acceleration type: {acceleration_type})")
+            
+            return True
+        except Exception as e:
+            print(f"Error storing IPFS acceleration result: {e}")
+            traceback.print_exc()
+            return False
+    
     def _store_power_metrics(self, results: Dict[str, Any], run_id: str):
         """Store power and thermal metrics in the dedicated power_metrics table."""
         # Skip if no results or API not available or execute_query is not available
@@ -447,6 +2836,618 @@ class TestResultsDBHandler:
                         self.api.store_compatibility_result(compatibility)
                     except Exception as e:
                         print(f"Error storing compatibility result for {model} on {hardware_type}: {e}")
+                        
+    def generate_webgpu_analysis_report(self, format='markdown', output=None, browser=None, 
+                                       include_shader_metrics=False, analyze_compute_shaders=False):
+        """Generate a WebGPU performance analysis report from the database."""
+        if self.con is None:
+            print("Cannot generate WebGPU analysis report - database connection not available")
+            return None
+            
+        try:
+            # Get WebGPU test data
+            webgpu_data = self.con.execute("""
+                SELECT 
+                    m.model_name, 
+                    tr.test_date, 
+                    tr.success, 
+                    tr.execution_time,
+                    tr.details
+                FROM test_results tr
+                JOIN models m ON tr.model_id = m.model_id
+                JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                WHERE h.hardware_type = 'webgpu'
+                ORDER BY tr.timestamp DESC
+            """).fetchall()
+            
+            # Get browser-specific WebGPU performance if browser is specified
+            browser_specific_data = None
+            if browser:
+                browser_specific_data = self.con.execute("""
+                    SELECT 
+                        m.model_name, 
+                        tr.test_date, 
+                        tr.success, 
+                        tr.execution_time,
+                        tr.details
+                    FROM test_results tr
+                    JOIN models m ON tr.model_id = m.model_id
+                    JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                    WHERE h.hardware_type = 'webgpu' AND tr.details LIKE ?
+                    ORDER BY tr.timestamp DESC
+                """, [f'%"browser": "{browser}"%']).fetchall()
+            
+            # Get shader metrics if requested
+            shader_metrics = None
+            if include_shader_metrics:
+                try:
+                    shader_metrics = self.con.execute("""
+                        SELECT 
+                            m.model_name,
+                            json_extract(tr.details, '$.shader_compilation_time_ms') as compilation_time,
+                            json_extract(tr.details, '$.shader_count') as shader_count,
+                            json_extract(tr.details, '$.shader_cache_hits') as cache_hits,
+                            tr.test_date
+                        FROM test_results tr
+                        JOIN models m ON tr.model_id = m.model_id
+                        JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                        WHERE h.hardware_type = 'webgpu' 
+                          AND tr.details LIKE '%shader_compilation_time_ms%'
+                        ORDER BY tr.timestamp DESC
+                    """).fetchall()
+                except Exception as e:
+                    print(f"Warning: Could not extract shader metrics: {e}")
+                    shader_metrics = []
+            
+            # Get compute shader data if requested
+            compute_shader_data = None
+            if analyze_compute_shaders:
+                try:
+                    compute_shader_data = self.con.execute("""
+                        SELECT 
+                            m.model_name,
+                            json_extract(tr.details, '$.compute_shader_optimization') as optimization,
+                            json_extract(tr.details, '$.execution_time_ms') as execution_time,
+                            json_extract(tr.details, '$.browser') as browser,
+                            tr.test_date
+                        FROM test_results tr
+                        JOIN models m ON tr.model_id = m.model_id
+                        JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
+                        WHERE h.hardware_type = 'webgpu' 
+                          AND tr.details LIKE '%compute_shader_optimization%'
+                        ORDER BY tr.timestamp DESC
+                    """).fetchall()
+                except Exception as e:
+                    print(f"Warning: Could not extract compute shader data: {e}")
+                    compute_shader_data = []
+            
+            # Get WebGPU vs other hardware comparison
+            comparison_data = self.con.execute("""
+                SELECT 
+                    m.model_name,
+                    h.hardware_type,
+                    AVG(pr.average_latency_ms) as avg_latency,
+                    AVG(pr.throughput_items_per_second) as avg_throughput,
+                    AVG(pr.memory_peak_mb) as avg_memory
+                FROM performance_results pr
+                JOIN models m ON pr.model_id = m.model_id
+                JOIN hardware_platforms h ON pr.hardware_id = h.hardware_id
+                GROUP BY m.model_name, h.hardware_type
+                ORDER BY m.model_name, avg_throughput DESC
+            """).fetchall()
+            
+            # Format the report based on the requested format
+            if format.lower() == 'markdown':
+                report = self._generate_webgpu_markdown_report(
+                    webgpu_data, browser_specific_data, shader_metrics, 
+                    compute_shader_data, comparison_data, browser
+                )
+            elif format.lower() == 'html':
+                report = self._generate_webgpu_html_report(
+                    webgpu_data, browser_specific_data, shader_metrics, 
+                    compute_shader_data, comparison_data, browser
+                )
+            elif format.lower() == 'json':
+                report = self._generate_webgpu_json_report(
+                    webgpu_data, browser_specific_data, shader_metrics, 
+                    compute_shader_data, comparison_data, browser
+                )
+            else:
+                print(f"Unsupported report format: {format}")
+                return None
+                
+            # Write to file if output is specified
+            if output and report:
+                with open(output, 'w') as f:
+                    f.write(report)
+                print(f"WebGPU analysis report written to {output}")
+                
+            return report
+        except Exception as e:
+            print(f"Error generating WebGPU analysis report: {e}")
+            traceback.print_exc()
+            return None
+            
+    def _generate_webgpu_markdown_report(self, webgpu_data, browser_specific_data, 
+                                       shader_metrics, compute_shader_data, comparison_data, browser=None):
+        """Generate a markdown WebGPU analysis report."""
+        report = []
+        report.append("# WebGPU Performance Analysis Report")
+        report.append(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if browser:
+            report.append(f"\nBrowser: {browser}")
+        
+        # WebGPU overall performance section
+        report.append("\n## WebGPU Performance Overview")
+        if not webgpu_data:
+            report.append("\nNo WebGPU test data found in the database.")
+        else:
+            report.append(f"\nFound {len(webgpu_data)} WebGPU test results.")
+            report.append("\n| Model | Test Date | Success | Execution Time (ms) |")
+            report.append("|-------|-----------|---------|---------------------|")
+            for data in webgpu_data[:10]:  # Show top 10 results
+                status_icon = "✅" if data[2] else "❌"
+                report.append(f"| {data[0]} | {data[1]} | {status_icon} | {data[3] if data[3] is not None else 'N/A'} |")
+            
+            # Success rate calculation
+            success_count = sum(1 for data in webgpu_data if data[2])
+            success_rate = (success_count / len(webgpu_data) * 100) if webgpu_data else 0
+            report.append(f"\n**Success Rate**: {success_rate:.2f}% ({success_count}/{len(webgpu_data)})")
+        
+        # Browser-specific section
+        if browser_specific_data:
+            report.append(f"\n## {browser} WebGPU Performance")
+            report.append(f"\nFound {len(browser_specific_data)} test results for {browser}.")
+            report.append("\n| Model | Test Date | Success | Execution Time (ms) |")
+            report.append("|-------|-----------|---------|---------------------|")
+            for data in browser_specific_data[:10]:  # Show top 10 results
+                status_icon = "✅" if data[2] else "❌"
+                report.append(f"| {data[0]} | {data[1]} | {status_icon} | {data[3] if data[3] is not None else 'N/A'} |")
+        
+        # Shader metrics section
+        if shader_metrics:
+            report.append("\n## Shader Compilation Metrics")
+            report.append("\n| Model | Compilation Time (ms) | Shader Count | Cache Hits | Test Date |")
+            report.append("|-------|------------------------|--------------|------------|-----------|")
+            for metric in shader_metrics[:10]:  # Show top 10 results
+                report.append(f"| {metric[0]} | {metric[1] if metric[1] is not None else 'N/A'} | " +
+                             f"{metric[2] if metric[2] is not None else 'N/A'} | " +
+                             f"{metric[3] if metric[3] is not None else 'N/A'} | {metric[4]} |")
+        
+        # Compute shader optimization section
+        if compute_shader_data:
+            report.append("\n## Compute Shader Optimization Analysis")
+            report.append("\n| Model | Optimization | Execution Time (ms) | Browser | Test Date |")
+            report.append("|-------|--------------|---------------------|---------|-----------|")
+            for data in compute_shader_data[:10]:  # Show top 10 results
+                report.append(f"| {data[0]} | {data[1] if data[1] is not None else 'N/A'} | " +
+                             f"{data[2] if data[2] is not None else 'N/A'} | " +
+                             f"{data[3] if data[3] is not None else 'N/A'} | {data[4]} |")
+        
+        # WebGPU vs other hardware comparison
+        if comparison_data:
+            report.append("\n## WebGPU vs Other Hardware")
+            report.append("\n| Model | Hardware | Avg Latency (ms) | Throughput (items/s) | Memory (MB) |")
+            report.append("|-------|----------|------------------|---------------------|------------|")
+            
+            # Group by model
+            model_data = {}
+            for data in comparison_data:
+                model = data[0]
+                if model not in model_data:
+                    model_data[model] = []
+                model_data[model].append(data)
+            
+            # Output comparison for each model
+            for model, data_points in model_data.items():
+                for data in data_points:
+                    report.append(f"| {data[0]} | {data[1]} | {data[2]:.2f if data[2] is not None else 'N/A'} | " +
+                                 f"{data[3]:.2f if data[3] is not None else 'N/A'} | " +
+                                 f"{data[4]:.2f if data[4] is not None else 'N/A'} |")
+        
+        # Recommendations section
+        report.append("\n## Recommendations")
+        
+        # Add general recommendations
+        report.append("\n### General Recommendations")
+        report.append("- Use shader precompilation to improve initial load times")
+        report.append("- Consider WebGPU for models that are compatible with browser environment")
+        report.append("- Test with multiple browsers to optimize for specific user environments")
+        
+        # Add browser-specific recommendations if available
+        if browser:
+            report.append(f"\n### {browser}-Specific Recommendations")
+            if browser.lower() == "chrome":
+                report.append("- Ensure latest Chrome version is used for best WebGPU performance")
+                report.append("- For compute-heavy workloads, consider balanced workgroup sizes (e.g., 128x2x1)")
+            elif browser.lower() == "firefox":
+                report.append("- For audio models, Firefox often shows 20-30% better performance with compute shaders")
+                report.append("- Use 256x1x1 workgroup size for best performance with audio models")
+            elif browser.lower() == "safari":
+                report.append("- WebGPU support in Safari has limitations; test thoroughly")
+                report.append("- Fall back to WebNN for broader compatibility on Safari")
+            elif browser.lower() == "edge":
+                report.append("- Edge performs similarly to Chrome for most WebGPU workloads")
+                report.append("- Consider enabling hardware acceleration in browser settings")
+        
+        return "\n".join(report)
+
+    def _generate_webgpu_html_report(self, webgpu_data, browser_specific_data, 
+                                   shader_metrics, compute_shader_data, comparison_data, browser=None):
+        """Generate an HTML WebGPU analysis report."""
+        html = []
+        html.append("<!DOCTYPE html>")
+        html.append("<html>")
+        html.append("<head>")
+        html.append("    <title>WebGPU Performance Analysis Report</title>")
+        html.append("    <style>")
+        html.append("        body { font-family: Arial, sans-serif; margin: 20px; }")
+        html.append("        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }")
+        html.append("        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
+        html.append("        th { background-color: #f2f2f2; }")
+        html.append("        tr:nth-child(even) { background-color: #f9f9f9; }")
+        html.append("        .success { color: green; }")
+        html.append("        .failure { color: red; }")
+        html.append("        .summary { display: flex; justify-content: space-between; flex-wrap: wrap; }")
+        html.append("        .summary-box { border: 1px solid #ddd; padding: 15px; margin: 10px; min-width: 150px; text-align: center; }")
+        html.append("        .summary-number { font-size: 24px; font-weight: bold; margin: 10px 0; }")
+        html.append("        .recommendation { background-color: #f8f9fa; padding: 10px; border-left: 4px solid #4285f4; margin: 15px 0; }")
+        html.append("    </style>")
+        html.append("    <script src=\"https://cdn.plot.ly/plotly-latest.min.js\"></script>")
+        html.append("</head>")
+        html.append("<body>")
+        html.append("    <h1>WebGPU Performance Analysis Report</h1>")
+        html.append(f"    <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
+        
+        if browser:
+            html.append(f"    <p>Browser: {browser}</p>")
+        
+        # WebGPU overall performance section
+        html.append("    <h2>WebGPU Performance Overview</h2>")
+        if not webgpu_data:
+            html.append("    <p>No WebGPU test data found in the database.</p>")
+        else:
+            # Calculate success metrics
+            success_count = sum(1 for data in webgpu_data if data[2])
+            success_rate = (success_count / len(webgpu_data) * 100) if webgpu_data else 0
+            
+            # Add summary boxes
+            html.append("    <div class=\"summary\">")
+            html.append("        <div class=\"summary-box\">")
+            html.append("            <h3>Total Tests</h3>")
+            html.append(f"            <div class=\"summary-number\">{len(webgpu_data)}</div>")
+            html.append("        </div>")
+            html.append("        <div class=\"summary-box\">")
+            html.append("            <h3>Success Rate</h3>")
+            html.append(f"            <div class=\"summary-number\">{success_rate:.1f}%</div>")
+            html.append("        </div>")
+            html.append("        <div class=\"summary-box\">")
+            html.append("            <h3>Successful Tests</h3>")
+            html.append(f"            <div class=\"summary-number\">{success_count}</div>")
+            html.append("        </div>")
+            html.append("    </div>")
+            
+            # Add test results table
+            html.append("    <h3>Recent WebGPU Tests</h3>")
+            html.append("    <table>")
+            html.append("        <tr><th>Model</th><th>Test Date</th><th>Success</th><th>Execution Time (ms)</th></tr>")
+            for data in webgpu_data[:10]:  # Show top 10 results
+                status_icon = "<span class=\"success\">✅</span>" if data[2] else "<span class=\"failure\">❌</span>"
+                html.append(f"        <tr><td>{data[0]}</td><td>{data[1]}</td><td>{status_icon}</td><td>{data[3] if data[3] is not None else 'N/A'}</td></tr>")
+            html.append("    </table>")
+            
+            # Add visualization div for performance chart
+            html.append("    <div id=\"performance-chart\" style=\"width:100%; height:400px;\"></div>")
+            
+            # Add JavaScript for chart
+            html.append("    <script>")
+            html.append("        // Prepare data for chart")
+            html.append("        const performanceData = {")
+            html.append("            models: " + json.dumps([data[0] for data in webgpu_data[:10] if data[2] and data[3] is not None]) + ",")
+            html.append("            times: " + json.dumps([data[3] for data in webgpu_data[:10] if data[2] and data[3] is not None]) + "")
+            html.append("        };")
+            html.append("        ")
+            html.append("        // Create chart")
+            html.append("        if (performanceData.models.length > 0) {")
+            html.append("            const trace = {")
+            html.append("                x: performanceData.models,")
+            html.append("                y: performanceData.times,")
+            html.append("                type: 'bar',")
+            html.append("                marker: {")
+            html.append("                    color: 'rgba(66, 133, 244, 0.8)'")
+            html.append("                }")
+            html.append("            };")
+            html.append("            ")
+            html.append("            const layout = {")
+            html.append("                title: 'WebGPU Execution Times by Model',")
+            html.append("                xaxis: { title: 'Model' },")
+            html.append("                yaxis: { title: 'Execution Time (ms)' }")
+            html.append("            };")
+            html.append("            ")
+            html.append("            Plotly.newPlot('performance-chart', [trace], layout);")
+            html.append("        } else {")
+            html.append("            document.getElementById('performance-chart').innerHTML = '<p>No performance data available for visualization</p>';")
+            html.append("        }")
+            html.append("    </script>")
+        
+        # Browser-specific section
+        if browser_specific_data:
+            html.append(f"    <h2>{browser} WebGPU Performance</h2>")
+            html.append(f"    <p>Found {len(browser_specific_data)} test results for {browser}.</p>")
+            html.append("    <table>")
+            html.append("        <tr><th>Model</th><th>Test Date</th><th>Success</th><th>Execution Time (ms)</th></tr>")
+            for data in browser_specific_data[:10]:  # Show top 10 results
+                status_icon = "<span class=\"success\">✅</span>" if data[2] else "<span class=\"failure\">❌</span>"
+                html.append(f"        <tr><td>{data[0]}</td><td>{data[1]}</td><td>{status_icon}</td><td>{data[3] if data[3] is not None else 'N/A'}</td></tr>")
+            html.append("    </table>")
+        
+        # Shader metrics section
+        if shader_metrics:
+            html.append("    <h2>Shader Compilation Metrics</h2>")
+            html.append("    <table>")
+            html.append("        <tr><th>Model</th><th>Compilation Time (ms)</th><th>Shader Count</th><th>Cache Hits</th><th>Test Date</th></tr>")
+            for metric in shader_metrics[:10]:  # Show top 10 results
+                html.append(f"        <tr><td>{metric[0]}</td><td>{metric[1] if metric[1] is not None else 'N/A'}</td>" +
+                           f"<td>{metric[2] if metric[2] is not None else 'N/A'}</td>" +
+                           f"<td>{metric[3] if metric[3] is not None else 'N/A'}</td><td>{metric[4]}</td></tr>")
+            html.append("    </table>")
+            
+            # Add visualization div for shader metrics
+            html.append("    <div id=\"shader-chart\" style=\"width:100%; height:400px;\"></div>")
+            
+            # Add JavaScript for shader chart
+            html.append("    <script>")
+            html.append("        // Prepare data for shader chart")
+            html.append("        const shaderData = {")
+            html.append("            models: " + json.dumps([metric[0] for metric in shader_metrics[:10] if metric[1] is not None]) + ",")
+            html.append("            times: " + json.dumps([metric[1] for metric in shader_metrics[:10] if metric[1] is not None]) + ",")
+            html.append("            counts: " + json.dumps([metric[2] for metric in shader_metrics[:10] if metric[2] is not None]) + "")
+            html.append("        };")
+            html.append("        ")
+            html.append("        // Create chart")
+            html.append("        if (shaderData.models.length > 0) {")
+            html.append("            const trace1 = {")
+            html.append("                x: shaderData.models,")
+            html.append("                y: shaderData.times,")
+            html.append("                name: 'Compilation Time (ms)',")
+            html.append("                type: 'bar',")
+            html.append("                marker: { color: 'rgba(66, 133, 244, 0.8)' }")
+            html.append("            };")
+            html.append("            ")
+            html.append("            const trace2 = {")
+            html.append("                x: shaderData.models,")
+            html.append("                y: shaderData.counts,")
+            html.append("                name: 'Shader Count',")
+            html.append("                type: 'bar',")
+            html.append("                marker: { color: 'rgba(219, 68, 55, 0.8)' }")
+            html.append("            };")
+            html.append("            ")
+            html.append("            const layout = {")
+            html.append("                title: 'Shader Compilation Metrics by Model',")
+            html.append("                xaxis: { title: 'Model' },")
+            html.append("                yaxis: { title: 'Value' },")
+            html.append("                barmode: 'group'")
+            html.append("            };")
+            html.append("            ")
+            html.append("            Plotly.newPlot('shader-chart', [trace1, trace2], layout);")
+            html.append("        } else {")
+            html.append("            document.getElementById('shader-chart').innerHTML = '<p>No shader data available for visualization</p>';")
+            html.append("        }")
+            html.append("    </script>")
+        
+        # Compute shader optimization section
+        if compute_shader_data:
+            html.append("    <h2>Compute Shader Optimization Analysis</h2>")
+            html.append("    <table>")
+            html.append("        <tr><th>Model</th><th>Optimization</th><th>Execution Time (ms)</th><th>Browser</th><th>Test Date</th></tr>")
+            for data in compute_shader_data[:10]:  # Show top 10 results
+                html.append(f"        <tr><td>{data[0]}</td><td>{data[1] if data[1] is not None else 'N/A'}</td>" +
+                           f"<td>{data[2] if data[2] is not None else 'N/A'}</td>" +
+                           f"<td>{data[3] if data[3] is not None else 'N/A'}</td><td>{data[4]}</td></tr>")
+            html.append("    </table>")
+        
+        # WebGPU vs other hardware comparison
+        if comparison_data:
+            html.append("    <h2>WebGPU vs Other Hardware</h2>")
+            
+            # Group by model
+            model_data = {}
+            for data in comparison_data:
+                model = data[0]
+                if model not in model_data:
+                    model_data[model] = []
+                model_data[model].append(data)
+            
+            # Create a table for each model
+            for model, data_points in model_data.items():
+                html.append(f"    <h3>Model: {model}</h3>")
+                html.append("    <table>")
+                html.append("        <tr><th>Hardware</th><th>Avg Latency (ms)</th><th>Throughput (items/s)</th><th>Memory (MB)</th></tr>")
+                for data in data_points:
+                    html.append(f"        <tr><td>{data[1]}</td>" +
+                               f"<td>{data[2]:.2f if data[2] is not None else 'N/A'}</td>" +
+                               f"<td>{data[3]:.2f if data[3] is not None else 'N/A'}</td>" +
+                               f"<td>{data[4]:.2f if data[4] is not None else 'N/A'}</td></tr>")
+                html.append("    </table>")
+                
+                # Add visualization div for hardware comparison
+                html.append(f"    <div id=\"hardware-chart-{model.replace(' ', '_')}\" style=\"width:100%; height:400px;\"></div>")
+                
+                # Add JavaScript for hardware comparison chart
+                html.append("    <script>")
+                html.append("        // Prepare data for hardware comparison chart")
+                html.append("        const hardwareData_" + model.replace(' ', '_') + " = {")
+                html.append("            hardware: " + json.dumps([d[1] for d in data_points if d[3] is not None]) + ",")
+                html.append("            throughput: " + json.dumps([d[3] for d in data_points if d[3] is not None]) + "")
+                html.append("        };")
+                html.append("        ")
+                html.append("        // Create chart")
+                html.append("        if (hardwareData_" + model.replace(' ', '_') + ".hardware.length > 0) {")
+                html.append("            const trace = {")
+                html.append("                x: hardwareData_" + model.replace(' ', '_') + ".hardware,")
+                html.append("                y: hardwareData_" + model.replace(' ', '_') + ".throughput,")
+                html.append("                type: 'bar',")
+                html.append("                marker: {")
+                html.append("                    color: 'rgba(15, 157, 88, 0.8)'")
+                html.append("                }")
+                html.append("            };")
+                html.append("            ")
+                html.append("            const layout = {")
+                html.append(f"                title: 'Throughput Comparison for {model}',")
+                html.append("                xaxis: { title: 'Hardware' },")
+                html.append("                yaxis: { title: 'Throughput (items/s)' }")
+                html.append("            };")
+                html.append("            ")
+                html.append("            Plotly.newPlot('hardware-chart-" + model.replace(' ', '_') + "', [trace], layout);")
+                html.append("        } else {")
+                html.append("            document.getElementById('hardware-chart-" + model.replace(' ', '_') + "').innerHTML = '<p>No comparison data available for visualization</p>';")
+                html.append("        }")
+                html.append("    </script>")
+        
+        # Recommendations section
+        html.append("    <h2>Recommendations</h2>")
+        
+        # Add general recommendations
+        html.append("    <h3>General Recommendations</h3>")
+        html.append("    <div class=\"recommendation\">")
+        html.append("        <ul>")
+        html.append("            <li>Use shader precompilation to improve initial load times</li>")
+        html.append("            <li>Consider WebGPU for models that are compatible with browser environment</li>")
+        html.append("            <li>Test with multiple browsers to optimize for specific user environments</li>")
+        html.append("        </ul>")
+        html.append("    </div>")
+        
+        # Add browser-specific recommendations if available
+        if browser:
+            html.append(f"    <h3>{browser}-Specific Recommendations</h3>")
+            html.append("    <div class=\"recommendation\">")
+            html.append("        <ul>")
+            if browser.lower() == "chrome":
+                html.append("            <li>Ensure latest Chrome version is used for best WebGPU performance</li>")
+                html.append("            <li>For compute-heavy workloads, consider balanced workgroup sizes (e.g., 128x2x1)</li>")
+            elif browser.lower() == "firefox":
+                html.append("            <li>For audio models, Firefox often shows 20-30% better performance with compute shaders</li>")
+                html.append("            <li>Use 256x1x1 workgroup size for best performance with audio models</li>")
+            elif browser.lower() == "safari":
+                html.append("            <li>WebGPU support in Safari has limitations; test thoroughly</li>")
+                html.append("            <li>Fall back to WebNN for broader compatibility on Safari</li>")
+            elif browser.lower() == "edge":
+                html.append("            <li>Edge performs similarly to Chrome for most WebGPU workloads</li>")
+                html.append("            <li>Consider enabling hardware acceleration in browser settings</li>")
+            html.append("        </ul>")
+            html.append("    </div>")
+        
+        html.append("</body>")
+        html.append("</html>")
+        
+        return "\n".join(html)
+
+    def _generate_webgpu_json_report(self, webgpu_data, browser_specific_data, 
+                                   shader_metrics, compute_shader_data, comparison_data, browser=None):
+        """Generate a JSON WebGPU analysis report."""
+        # Convert database tuples to dictionaries for JSON serialization
+        report = {
+            "generated_at": datetime.now().isoformat(),
+            "browser": browser
+        }
+        
+        # Add WebGPU performance data
+        if webgpu_data:
+            report["webgpu_data"] = [
+                {
+                    "model": data[0],
+                    "test_date": str(data[1]),
+                    "success": bool(data[2]),
+                    "execution_time_ms": data[3]
+                }
+                for data in webgpu_data
+            ]
+            
+            # Calculate success metrics
+            success_count = sum(1 for data in webgpu_data if data[2])
+            report["success_metrics"] = {
+                "total_tests": len(webgpu_data),
+                "successful_tests": success_count,
+                "success_rate": (success_count / len(webgpu_data) * 100) if webgpu_data else 0
+            }
+        
+        # Add other sections
+        if browser_specific_data:
+            report["browser_specific_data"] = [
+                {
+                    "model": data[0],
+                    "test_date": str(data[1]),
+                    "success": bool(data[2]),
+                    "execution_time_ms": data[3]
+                }
+                for data in browser_specific_data
+            ]
+        
+        if shader_metrics:
+            report["shader_metrics"] = [
+                {
+                    "model": metric[0],
+                    "compilation_time_ms": metric[1],
+                    "shader_count": metric[2],
+                    "cache_hits": metric[3],
+                    "test_date": str(metric[4])
+                }
+                for metric in shader_metrics
+            ]
+        
+        if compute_shader_data:
+            report["compute_shader_data"] = [
+                {
+                    "model": data[0],
+                    "optimization": data[1],
+                    "execution_time_ms": data[2],
+                    "browser": data[3],
+                    "test_date": str(data[4])
+                }
+                for data in compute_shader_data
+            ]
+        
+        if comparison_data:
+            # Group by model
+            comparison_by_model = {}
+            for data in comparison_data:
+                model = data[0]
+                if model not in comparison_by_model:
+                    comparison_by_model[model] = []
+                
+                comparison_by_model[model].append({
+                    "hardware": data[1],
+                    "avg_latency_ms": data[2],
+                    "throughput_items_per_second": data[3],
+                    "memory_mb": data[4]
+                })
+            
+            report["hardware_comparison"] = comparison_by_model
+        
+        # Add recommendations
+        report["recommendations"] = {
+            "general": [
+                "Use shader precompilation to improve initial load times",
+                "Consider WebGPU for models that are compatible with browser environment",
+                "Test with multiple browsers to optimize for specific user environments"
+            ]
+        }
+        
+        if browser:
+            report["recommendations"][f"{browser.lower()}_specific"] = []
+            if browser.lower() == "chrome":
+                report["recommendations"][f"{browser.lower()}_specific"] = [
+                    "Ensure latest Chrome version is used for best WebGPU performance",
+                    "For compute-heavy workloads, consider balanced workgroup sizes (e.g., 128x2x1)"
+                ]
+            elif browser.lower() == "firefox":
+                report["recommendations"][f"{browser.lower()}_specific"] = [
+                    "For audio models, Firefox often shows 20-30% better performance with compute shaders",
+                    "Use 256x1x1 workgroup size for best performance with audio models"
+                ]
+        
+        return json.dumps(report, indent=2)
 
 
 class QualcommTestHandler:
@@ -2332,6 +5333,117 @@ class test_ipfs_accelerate:
             
         return test_results
     
+    async def test_webnn_endpoint(self, model, endpoint_list=None):
+        """
+        Test WebNN endpoint for a model with proper error handling.
+        
+        Args:
+            model (str): The model to test
+            endpoint_list (list, optional): List of endpoints to test. Defaults to None.
+            
+        Returns:
+            dict: Test results for each endpoint
+        """
+        this_endpoint = None
+        filtered_list = {}
+        test_results = {}
+        
+        try:
+            # Validate resources exist
+            if not hasattr(self.ipfs_accelerate_py, "resources") or "webnn_endpoints" not in self.ipfs_accelerate_py.resources:
+                return {"error": "Missing webnn_endpoints in resources"}
+                
+            # Check if model exists in endpoints
+            if not hasattr(self.ipfs_accelerate_py, "endpoints") or "webnn_endpoints" not in self.ipfs_accelerate_py.endpoints:
+                return {"error": "webnn_endpoints not found in ipfs_accelerate_py.endpoints"}
+                
+            if model not in self.ipfs_accelerate_py.endpoints.get("webnn_endpoints", {}):
+                return {"error": f"Model {model} not found in webnn_endpoints"}
+                
+            # Check if model exists in endpoint handlers
+            if model not in self.ipfs_accelerate_py.resources.get("webnn_endpoints", {}):
+                return {"error": f"Model {model} not found in webnn_endpoint handlers"}
+                
+            webnn_endpoints_by_model = self.ipfs_accelerate_py.endpoints["webnn_endpoints"][model]
+            endpoint_handlers_by_model = self.ipfs_accelerate_py.resources["webnn_endpoints"][model]
+            
+            # Get list of valid endpoints for the model
+            endpoints_by_model_by_endpoint = list(endpoint_handlers_by_model.keys())
+            
+            # Filter by provided endpoint list if specified
+            if endpoint_list is not None:
+                endpoints_by_model_by_endpoint = [
+                    x for x in endpoints_by_model_by_endpoint 
+                    if x in endpoint_list
+                ]
+            
+            # If no endpoints found, return error
+            if len(endpoints_by_model_by_endpoint) == 0:
+                return {"status": f"No valid WebNN endpoints found for model {model}"}
+            
+            # Test each endpoint
+            for endpoint in endpoints_by_model_by_endpoint:
+                try:
+                    endpoint_handler = endpoint_handlers_by_model[endpoint]
+                    implementation_type = "Unknown"
+                    
+                    # Create appropriate input based on model type
+                    model_type = self._determine_model_type(model)
+                    sample_input = self._create_sample_input(model_type)
+                    
+                    # Try async call first, then fallback to sync
+                    try:
+                        # Determine if handler is async
+                        if asyncio.iscoroutinefunction(endpoint_handler):
+                            test = await endpoint_handler(sample_input)
+                            implementation_type = "REAL (async)"
+                        else:
+                            test = endpoint_handler(sample_input)
+                            implementation_type = "REAL (sync)"
+                            
+                        # Record successful test results
+                        test_results[endpoint] = {
+                            "status": "Success",
+                            "implementation_type": implementation_type,
+                            "model_type": model_type,
+                            "result": str(test)[:100] + "..." if len(str(test)) > 100 else str(test)
+                        }
+                    except Exception as e:
+                        # If async call fails, try sync call as fallback
+                        try:
+                            if asyncio.iscoroutinefunction(endpoint_handler):
+                                # Already tried async and it failed
+                                raise e
+                            else:
+                                # Try with string input instead as a last resort
+                                test = endpoint_handler("hello world")
+                                implementation_type = "REAL (sync fallback)"
+                                test_results[endpoint] = {
+                                    "status": "Success (with fallback)",
+                                    "implementation_type": implementation_type,
+                                    "result": str(test)[:100] + "..." if len(str(test)) > 100 else str(test)
+                                }
+                        except Exception as fallback_error:
+                            # Both async and sync approaches failed
+                            test_results[endpoint] = {
+                                "status": "Error",
+                                "error": str(fallback_error),
+                                "traceback": traceback.format_exc()
+                            }
+                except Exception as e:
+                    test_results[endpoint] = {
+                        "status": "Error",
+                        "error": f"Error processing endpoint {endpoint}: {str(e)}",
+                        "traceback": traceback.format_exc()
+                    }
+        except Exception as e:
+            test_results["global_error"] = {
+                "error": f"Error in test_webnn_endpoint: {str(e)}",
+                "traceback": traceback.format_exc()
+            }
+            
+        return test_results
+        
     async def test_tei_endpoint(self, model, endpoint_list=None):
         """
         Test Text Embedding Inference (TEI) endpoints for a model with proper error handling.
@@ -2540,8 +5652,15 @@ class test_ipfs_accelerate:
             else:
                 test_results["qualcomm_endpoint"] = {"status": "Not enabled", "info": "Set TEST_QUALCOMM=1 to enable"}
                 
-            # WebNN endpoint not implemented yet
-            test_results["webnn_endpoint"] = {"status": "Not implemented"}
+            # Test WebNN endpoint
+            try:
+                test_results["webnn_endpoint"] = await self.test_webnn_endpoint(model, endpoint)
+            except Exception as e:
+                test_results["webnn_endpoint"] = {
+                    "status": "Error",
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
         except Exception as e:
             test_results["global_error"] = {
                 "status": "Error",
@@ -2563,6 +5682,19 @@ class test_ipfs_accelerate:
             dict: Test results for all endpoints
         """
         test_results = {}
+        run_id = f"endpoint_test_{int(time.time())}"
+        
+        # Initialize DB handler for direct result storage
+        db_handler = None
+        if HAVE_DUCKDB and DEPRECATE_JSON_OUTPUT:
+            try:
+                db_path = os.environ.get("BENCHMARK_DB_PATH")
+                db_handler = TestResultsDBHandler(db_path)
+                if db_handler.is_available():
+                    print(f"Database storage enabled - using run_id: {run_id}")
+            except Exception as e:
+                print(f"Error initializing database handler: {e}")
+                db_handler = None
         
         # Track overall stats
         test_stats = {
@@ -2587,6 +5719,21 @@ class test_ipfs_accelerate:
                 print(f"  Testing local endpoint...")
                 local_result = await self.test_local_endpoint(model)
                 test_results[model]["local_endpoint"] = local_result
+                
+                # Store result directly in database if available
+                if db_handler and isinstance(local_result, dict):
+                    for endpoint_type, endpoint_results in local_result.items():
+                        try:
+                            db_handler.store_ipfs_acceleration_result(
+                                model_name=model,
+                                endpoint_type=endpoint_type,
+                                acceleration_results=endpoint_results,
+                                run_id=run_id
+                            )
+                            print(f"  Stored {endpoint_type} result directly in database")
+                        except Exception as e:
+                            print(f"  Error storing {endpoint_type} result in database: {e}")
+                
                 if isinstance(local_result, Exception) or (isinstance(local_result, dict) and any("Error" in str(v) for v in local_result.values())):
                     model_success = False
             except Exception as e:
@@ -2601,6 +5748,18 @@ class test_ipfs_accelerate:
             # Test WebNN endpoint (currently not implemented)
             try:
                 test_results[model]["webnn_endpoint"] = {"status": "Not implemented"}
+                # Store WebNN result in database
+                if db_handler:
+                    try:
+                        db_handler.store_ipfs_acceleration_result(
+                            model_name=model,
+                            endpoint_type="webnn",
+                            acceleration_results={"status": "Not implemented"},
+                            run_id=run_id
+                        )
+                        print(f"  Stored WebNN result directly in database")
+                    except Exception as e:
+                        print(f"  Error storing WebNN result in database: {e}")
             except Exception as e:
                 test_results[model]["webnn_endpoint"] = {
                     "status": "Error",
@@ -2608,6 +5767,32 @@ class test_ipfs_accelerate:
                     "traceback": traceback.format_exc()
                 }
                 print(f"  Error testing WebNN endpoint for {model}: {str(e)}")
+                
+            # Test WebGPU endpoint if enabled
+            if os.environ.get("TEST_WEBGPU", "0") == "1":
+                try:
+                    print(f"  Testing WebGPU endpoint...")
+                    # Placeholder for WebGPU implementation
+                    test_results[model]["webgpu_endpoint"] = {"status": "Not implemented"}
+                    # Store WebGPU result in database
+                    if db_handler:
+                        try:
+                            db_handler.store_ipfs_acceleration_result(
+                                model_name=model,
+                                endpoint_type="webgpu",
+                                acceleration_results={"status": "Not implemented"},
+                                run_id=run_id
+                            )
+                            print(f"  Stored WebGPU result directly in database")
+                        except Exception as e:
+                            print(f"  Error storing WebGPU result in database: {e}")
+                except Exception as e:
+                    test_results[model]["webgpu_endpoint"] = {
+                        "status": "Error",
+                        "error": str(e),
+                        "traceback": traceback.format_exc()
+                    }
+                    print(f"  Error testing WebGPU endpoint for {model}: {str(e)}")
 
             # Update test stats
             if model_success:
@@ -2628,6 +5813,7 @@ class test_ipfs_accelerate:
                 
         # Add test stats to results
         test_results["test_stats"] = test_stats
+        test_results["db_run_id"] = run_id if db_handler else None
                 
         return test_results
     
@@ -3133,11 +6319,12 @@ class test_ipfs_accelerate:
         this_file = os.path.abspath(sys.modules[__name__].__file__)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Store in database if enabled
+        # Always try to store in database first (DuckDB is preferred storage method)
+        db_result_saved = False
         if HAVE_DUCKDB and not os.environ.get("DISABLE_DB_STORAGE", "0") == "1":
             try:
                 # Initialize database handler
-                db_path = os.environ.get("BENCHMARK_DB_PATH")
+                db_path = args.db_path or os.environ.get("BENCHMARK_DB_PATH")
                 db_handler = TestResultsDBHandler(db_path)
                 
                 if db_handler.is_available():
@@ -3148,6 +6335,58 @@ class test_ipfs_accelerate:
                     success = db_handler.store_test_results(test_results, run_id)
                     if success:
                         print(f"Saved test results to database with run ID: {run_id}")
+                        
+                        # Store IPFS acceleration results specifically
+                        print("Processing IPFS acceleration results...")
+                        db_handler._store_ipfs_acceleration_results(test_results, run_id)
+                        
+                        # Process test endpoint results
+                        for model_name, model_data in test_results.get("test_endpoints", {}).items():
+                            # Skip non-model entries like test_stats
+                            if model_name in ["test_stats", "endpoint_handler_resources"]:
+                                continue
+                                
+                            # Process local endpoint results
+                            if "local_endpoint" in model_data and isinstance(model_data["local_endpoint"], dict):
+                                for endpoint_type, endpoint_results in model_data["local_endpoint"].items():
+                                    db_handler.store_ipfs_acceleration_result(
+                                        model_name=model_name,
+                                        endpoint_type=endpoint_type,
+                                        acceleration_results=endpoint_results,
+                                        run_id=run_id
+                                    )
+                            
+                            # Process other endpoint types
+                            for endpoint_key in ["qualcomm_endpoint", "webnn_endpoint", "webgpu_endpoint"]:
+                                if endpoint_key in model_data and isinstance(model_data[endpoint_key], dict):
+                                    endpoint_type = endpoint_key.replace("_endpoint", "")
+                                    db_handler.store_ipfs_acceleration_result(
+                                        model_name=model_name,
+                                        endpoint_type=endpoint_type,
+                                        acceleration_results=model_data[endpoint_key],
+                                        run_id=run_id
+                                    )
+                        
+                        db_result_saved = True
+                        
+                        # Generate a report immediately after storing results
+                        try:
+                            report_path = "test_report.md"
+                            report_result = db_handler.generate_report(format="markdown", output_file=report_path)
+                            if report_result:
+                                print(f"Test report generated: {report_path}")
+                                
+                            # Generate an IPFS acceleration report
+                            accel_report_path = "ipfs_acceleration_report.html"
+                            accel_report = db_handler.generate_ipfs_acceleration_report(
+                                format="html", 
+                                output=accel_report_path,
+                                run_id=run_id
+                            )
+                            if accel_report:
+                                print(f"IPFS acceleration report generated: {accel_report_path}")
+                        except Exception as e:
+                            print(f"Error generating automatic reports: {e}")
                     else:
                         print("Failed to save test results to database")
                 else:
@@ -3156,8 +6395,11 @@ class test_ipfs_accelerate:
                 print(f"Error saving test results to database: {e}")
                 print(traceback.format_exc())
         
-        # Save to JSON file if not deprecated or database storage failed
-        if not DEPRECATE_JSON_OUTPUT or not HAVE_DUCKDB:
+        # Check if we should skip JSON output (db-only mode or successful DB storage with deprecated JSON)
+        skip_json = args.db_only or (DEPRECATE_JSON_OUTPUT and db_result_saved)
+        
+        # Save to JSON file if not skipping JSON output
+        if not skip_json:
             test_log = os.path.join(os.path.dirname(this_file), f"test_results_{timestamp}.json")
             try:
                 with open(test_log, "w") as f:
@@ -3171,8 +6413,11 @@ class test_ipfs_accelerate:
                 print(f"Saved test results to {standard_log}")
             except Exception as e:
                 print(f"Error saving test results: {str(e)}")
-        elif DEPRECATE_JSON_OUTPUT and HAVE_DUCKDB:
-            print("JSON output deprecated in favor of database storage")
+        else:
+            if args.db_only:
+                print("JSON output disabled by --db-only flag - results stored in database only")
+            else:
+                print("JSON output deprecated in favor of database storage - results stored in database only")
         
         print(f"\nTest suite completed with status: {test_results['metadata']['status']}")
         return test_results
@@ -3184,20 +6429,194 @@ if __name__ == "__main__":
     
     This will initialize the test class with a list of models to test,
     setup the necessary resources, and run the test suite.
+    
+    Command line arguments:
+    --report: Generate a general report from the database (formats: markdown, html, json)
+    --ipfs-acceleration-report: Generate an IPFS acceleration-specific report
+    --comparison-report: Generate a comparative report for acceleration types across models
+    --webgpu-analysis: Generate detailed WebGPU performance analysis report
+    --output: Path to save the report (default: <report_type>.<format>)
+    --format: Report format (default: markdown, html recommended for comparison reports)
+    --db-path: Path to the database (default: from environment or ./benchmark_db.duckdb)
+    --run-id: Specific run ID to generate a report for (default: latest)
+    --model: Specific model name to filter results for comparison report
+    --models: Comma-separated list of models to test (default: 2 small embedding models)
+    --endpoints: Comma-separated list of endpoint types to test
+    --qualcomm: Include Qualcomm endpoints in testing
+    --webnn: Include WebNN endpoints in testing
+    --webgpu: Include WebGPU endpoints in testing
+    --browser: Specify browser for WebGPU/WebNN analysis (chrome, firefox, edge, safari)
+    --shader-metrics: Include shader compilation metrics in WebGPU analysis
+    --compute-shader-optimization: Analyze compute shader optimizations for WebGPU
+    --store-in-db: Store test results directly in database even if DEPRECATE_JSON_OUTPUT=0
+    --db-only: Only store results in database, never in JSON (overrides DEPRECATE_JSON_OUTPUT=0)
+    
+    Examples:
+      # Run tests with default models
+      python test_ipfs_accelerate.py
+      
+      # Run tests with specific models, including WebNN, WebGPU and Qualcomm endpoints
+      python test_ipfs_accelerate.py --models "bert-base-uncased,prajjwal1/bert-tiny" --webnn --webgpu --qualcomm
+      
+      # Run tests and store results only in the database (no JSON files)
+      python test_ipfs_accelerate.py --models "bert-base-uncased" --db-only
+      
+      # Run tests with custom database path
+      python test_ipfs_accelerate.py --db-path ./my_benchmark.duckdb
+      
+      # Generate IPFS acceleration report in HTML format
+      python test_ipfs_accelerate.py --ipfs-acceleration-report --format html --output accel_report.html
+      
+      # Generate comparison report for all models
+      python test_ipfs_accelerate.py --comparison-report --format html
+      
+      # Generate comparison report for a specific model
+      python test_ipfs_accelerate.py --comparison-report --model "bert-base-uncased"
+      
+      # Generate WebGPU analysis report
+      python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics
     """
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Test IPFS Accelerate Python")
+    parser.add_argument("--report", action="store_true", help="Generate a general report from the database")
+    parser.add_argument("--ipfs-acceleration-report", action="store_true", help="Generate IPFS acceleration specific report")
+    parser.add_argument("--comparison-report", action="store_true", help="Generate acceleration comparison report across models or for a specific model")
+    parser.add_argument("--output", help="Path to save the report")
+    parser.add_argument("--format", choices=["markdown", "html", "json"], default="markdown", help="Report format")
+    parser.add_argument("--db-path", help="Path to the database")
+    parser.add_argument("--run-id", help="Specific run ID to generate a report for")
+    parser.add_argument("--model", help="Specific model name to filter results for comparison report")
+    parser.add_argument("--models", help="Comma-separated list of models to test")
+    parser.add_argument("--endpoints", help="Comma-separated list of endpoint types to test")
+    parser.add_argument("--qualcomm", action="store_true", help="Include Qualcomm endpoints in testing")
+    parser.add_argument("--webnn", action="store_true", help="Include WebNN endpoints in testing")
+    parser.add_argument("--webgpu", action="store_true", help="Include WebGPU endpoints in testing")
+    parser.add_argument("--webgpu-analysis", action="store_true", help="Generate detailed WebGPU performance analysis report")
+    parser.add_argument("--browser", choices=["chrome", "firefox", "edge", "safari"], help="Specify browser for WebGPU/WebNN analysis")
+    parser.add_argument("--shader-metrics", action="store_true", help="Include shader compilation metrics in WebGPU analysis")
+    parser.add_argument("--compute-shader-optimization", action="store_true", help="Analyze compute shader optimizations for WebGPU")
+    parser.add_argument("--store-in-db", action="store_true", help="Store test results directly in database even if DEPRECATE_JSON_OUTPUT=0")
+    parser.add_argument("--db-only", action="store_true", help="Only store results in database, never in JSON (overrides DEPRECATE_JSON_OUTPUT=0)")
+    args = parser.parse_args()
+    
+    # If generating a report, use the database handler directly
+    if args.report or args.ipfs_acceleration_report or args.comparison_report:
+        # Initialize database handler
+        db_handler = TestResultsDBHandler(db_path=args.db_path)
+        
+        if db_handler.con is None:
+            print("Error: Database not available. Install DuckDB or check database path.")
+            sys.exit(1)
+        
+        # Determine output path if not provided
+        if not args.output:
+            if args.ipfs_acceleration_report:
+                args.output = f"ipfs_acceleration_report.{args.format}"
+            elif args.comparison_report:
+                args.output = f"acceleration_comparison_report.{args.format}"
+            else:
+                args.output = f"test_report.{args.format}"
+        
+        # Generate specific type of report based on arguments
+        if args.ipfs_acceleration_report:
+            report_result = db_handler.generate_ipfs_acceleration_report(
+                format=args.format, 
+                output=args.output,
+                run_id=args.run_id
+            )
+            report_type = "IPFS acceleration"
+        elif args.comparison_report:
+            # For comparison report, HTML is most useful due to visualizations
+            if args.format != "html" and args.format != "json":
+                print("Warning: Comparison report works best with HTML format. Switching to HTML.")
+                args.format = "html"
+                if args.output.endswith(".md") or args.output.endswith(".markdown"):
+                    args.output = args.output.rsplit(".", 1)[0] + ".html"
+            
+            report_result = db_handler.generate_acceleration_comparison_report(
+                format=args.format,
+                output=args.output,
+                model_name=args.model
+            )
+            report_type = "Acceleration comparison"
+        elif args.webgpu_analysis:
+            # For WebGPU analysis report, HTML is most useful for visualization
+            if args.format != "html" and args.format != "json":
+                print("Warning: WebGPU analysis report works best with HTML format. Switching to HTML.")
+                args.format = "html"
+                if args.output and (args.output.endswith(".md") or args.output.endswith(".markdown")):
+                    args.output = args.output.rsplit(".", 1)[0] + ".html"
+            
+            # Default output name if not provided
+            if not args.output:
+                browser_suffix = f"_{args.browser}" if args.browser else ""
+                args.output = f"webgpu_analysis{browser_suffix}.{args.format}"
+            
+            report_result = db_handler.generate_webgpu_analysis_report(
+                format=args.format,
+                output=args.output,
+                browser=args.browser,
+                include_shader_metrics=args.shader_metrics,
+                analyze_compute_shaders=args.compute_shader_optimization
+            )
+            report_type = "WebGPU analysis"
+        else:
+            report_result = db_handler.generate_report(
+                format=args.format, 
+                output_file=args.output
+            )
+            report_type = "general"
+        
+        if not report_result:
+            print(f"Error generating {report_type} report.")
+            sys.exit(1)
+            
+        print(f"{report_type.capitalize()} report successfully generated and saved to {args.output}")
+        sys.exit(0)
+    
     # Define metadata including models to test
-    # For quick testing, we'll use just 2 small models
+    # For quick testing, we'll use just 2 small models by default
+    default_models = [
+        "BAAI/bge-small-en-v1.5",
+        "prajjwal1/bert-tiny"
+    ]
+    
+    # Use models from command line if provided
+    if args.models:
+        test_models = args.models.split(",")
+    else:
+        test_models = default_models
+    
+    # Use endpoints from command line if provided
+    if args.endpoints:
+        endpoint_types = args.endpoints.split(",")
+    else:
+        endpoint_types = ["cuda:0", "openvino:0", "cpu:0"]
+        
+    # Add Qualcomm endpoint if requested
+    if args.qualcomm:
+        endpoint_types.append("qualcomm:0")
+        os.environ["TEST_QUALCOMM"] = "1"
+        
+    # Add WebNN endpoint if requested
+    if args.webnn:
+        endpoint_types.append("webnn:0")
+        os.environ["TEST_WEBNN"] = "1"
+        
+    # Add WebGPU endpoint if requested
+    if args.webgpu:
+        endpoint_types.append("webgpu:0")
+        os.environ["TEST_WEBGPU"] = "1"
+    
     metadata = {
         "dataset": "laion/gpt4v-dataset",
         "namespace": "laion/gpt4v-dataset",
         "column": "link",
         "role": "master",
         "split": "train",
-        "models": [
-            # Just use two small embedding models that are fast to test
-            "BAAI/bge-small-en-v1.5",
-            "prajjwal1/bert-tiny"
-        ],
+        "models": test_models,
         "chunk_settings": {},
         "path": "/storage/gpt4v-dataset/data",
         "dst_path": "/storage/gpt4v-dataset/data",
@@ -3212,7 +6631,6 @@ if __name__ == "__main__":
     }
     
     # Define endpoint types and initialize with dictionary structure
-    endpoint_types = ["cuda:0", "openvino:0", "cpu:0"]
     for model in metadata["models"]:
         # Initialize model dictionaries
         resources["local_endpoints"][model] = []
@@ -3251,6 +6669,24 @@ if __name__ == "__main__":
     
     # Run test asynchronously
     print("Running tests...")
-    asyncio.run(tester.__test__(resources, metadata))
+    test_results = asyncio.run(tester.__test__(resources, metadata))
+    
+    # Generate report after test if DuckDB is available
+    if HAVE_DUCKDB:
+        # Get DB path from arguments or environment
+        db_path = args.db_path or os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        
+        # Initialize database handler and generate report
+        try:
+            db_handler = TestResultsDBHandler(db_path=db_path)
+            if db_handler.con is not None:
+                # Generate report after test using markdown format
+                report_path = "test_report.md"
+                report_result = db_handler.generate_report(format="markdown", output_file=report_path)
+                if report_result:
+                    print(f"\nTest report generated: {report_path}")
+        except Exception as e:
+            print(f"Error generating automatic test report: {e}")
+            traceback.print_exc()
     
     print("Test complete")

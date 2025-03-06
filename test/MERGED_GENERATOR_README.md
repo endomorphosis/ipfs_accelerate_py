@@ -1,6 +1,8 @@
-# Merged Hugging Face Test Generator (Updated with Key Model Support)
+# Merged Hugging Face Test Generator (March 2025 Update)
 
-> **NEW!** Enhanced with specialized hardware support for 13 key model classes. For detailed information, see [KEY_MODELS_README.md](KEY_MODELS_README.md).
+> **NEW! March 6, 2025:** Critical fixes for model registry, test methods, OpenVINO integration, and modality-specific handling. For detailed information, see [PHASE16_GENERATOR_FIXES.md](PHASE16_GENERATOR_FIXES.md).
+
+> **COMPLETE:** Enhanced with specialized hardware support for 13 key model classes and full web platform integration. See [KEY_MODELS_README.md](KEY_MODELS_README.md) for details.
 
 This tool provides a comprehensive framework for generating test files that cover
 all Hugging Face model architectures, with enhanced functionality for managing test files
@@ -8,9 +10,13 @@ and exporting model registry data.
 
 ## Key Features
 
-- **Modality-Specific Templates**: Specialized templates for text, vision, audio, and multimodal models
+- **Model Registry System**: Comprehensive mapping of short model names to full model IDs for consistent identification
+- **Modality-Specific Templates**: Specialized templates for text, vision, audio, and multimodal models with appropriate initialization
 - **Automatic Modality Detection**: Smart detection of model types based on name patterns
 - **Support for Multiple Hardware Backends**: CPU, CUDA, OpenVINO, Apple Silicon (MPS), AMD ROCm, Qualcomm AI, WebNN, and WebGPU
+- **Robust Test Interface**: Standardized test class structure with proper run_tests() method and hardware detection
+- **Specialized Model Initialization**: Modality-specific model and processor initialization for different model types
+- **Flexible Output Validation**: Robust output structure validation that handles different model output formats 
 - **Web Platform Support**: WebNN and WebGPU (transformers.js) for browser-based inference
 - **Testing for Both API Approaches**: Support for from_pretrained() and pipeline() patterns
 - **Consistent Performance Benchmarking**: Standardized performance metrics across all templates
@@ -45,6 +51,12 @@ python merged_test_generator.py --list-families
 
 # Generate a test file for a specific model family
 python merged_test_generator.py --generate bert
+
+# Generate a test with specific hardware platforms
+python merged_test_generator.py --generate vit --platform cuda,openvino,webgpu
+
+# Generate a test with cross-platform support for all hardware
+python fixed_merged_test_generator.py --generate clip --cross-platform
 
 # Generate tests for all model families
 python merged_test_generator.py --all
@@ -187,32 +199,46 @@ The enhanced test files now use a modality-specific architecture with standardiz
    - Specialized tokenizer initialization and text processing
    - Support for variable-length inputs and batch processing
    - Token-based performance metrics (tokens/second)
+   - AutoTokenizer and AutoModel initialization pattern
+   - Appropriate output validation for text model outputs
 
 2. **Vision Models**:
-   - Automatic image creation and preprocessing
-   - Format conversions and resolution handling
+   - Automatic image creation and preprocessing with PIL
+   - AutoImageProcessor and AutoModelForImageClassification initialization
+   - Image format conversions and resolution handling
    - Frame-based performance metrics (FPS)
+   - Image-specific output validation for vision models
 
 3. **Audio Models**:
    - Audio file handling and format conversion
+   - AutoFeatureExtractor and AutoModelForAudioClassification initialization
    - Sampling rate management and audio preprocessing
    - Real-time factor performance metrics
+   - Audio-specific output validation logic
 
 4. **Multimodal Models**:
-   - Combined text and image processing
+   - AutoProcessor and combined model initialization
+   - Combined text and image processing with appropriate formats
    - Different input formats (image+text, video+text)
    - End-to-end performance metrics
+   - Multimodal-specific output validation for embeddings
 
-### Common Structure Elements
+### Common Structure Elements (Updated March 2025)
 
-1. **Environment Detection**: Automatic detection of available hardware and libraries
-2. **Platform-Specific Testing**: Separate tests for each hardware platform (including web platforms)
-3. **Input Specialization**: Modality-specific test data and input processing
-4. **Hardware Optimization**: Platform-specific optimizations for each modality
-5. **Web Platform Integration**: Browser-specific handlers for WebNN and WebGPU
-6. **Error Handling**: Robust error capture with mock implementations as fallbacks
-7. **Result Collection**: Detailed benchmarking and performance data collection
-8. **Standardized Reporting**: Consistent reporting format for comparison
+1. **Model Registry Integration**: Full mapping of short model names to complete model IDs
+2. **Run Tests Method**: Standard run_tests() method that properly invokes unittest.main()
+3. **Environment Detection**: Comprehensive detection of available hardware and libraries
+4. **Centralized Hardware Detection**: Integration with centralized hardware detection module
+5. **Platform-Specific Testing**: Separate tests for each hardware platform (including web platforms)
+6. **Input Specialization**: Modality-specific test data and input processing
+7. **Hardware Optimization**: Platform-specific optimizations for each modality
+8. **Web Platform Integration**: Browser-specific handlers for WebNN and WebGPU
+9. **Enhanced OpenVINO Support**: Proper initialization with openvino_label parameter
+10. **Qualcomm AI Engine Support**: Full integration with Qualcomm AI Engine
+11. **Error Handling**: Robust error capture with mock implementations as fallbacks
+12. **Output Validation**: Flexible validation that handles different output structures
+13. **Result Collection**: Detailed benchmarking and performance data collection
+14. **Standardized Reporting**: Consistent reporting format for comparison
 
 ## Working with the Parquet Output
 

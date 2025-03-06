@@ -14,132 +14,150 @@ import argparse
 import importlib
 import traceback
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field
-import logging
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Add the parent directory to sys.path to import modules correctly
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Try to import required packages
+# Try database first, fall back to JSON if necessary
 try:
-    import torch
-    HAS_TORCH = True
-except ImportError:
-    HAS_TORCH = False
-    print("Warning: PyTorch not installed, some functionality will be limited")
-
-try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from typing import Dict, List, Any, Optional, Tuple, Union
+    from dataclasses import dataclass, field
+    import logging
+    import matplotlib.pyplot as plt
     import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-    print("Warning: NumPy not installed, some functionality will be limited")
-
-try:
-    import transformers
-    HAS_TRANSFORMERS = True
-except ImportError:
-    HAS_TRANSFORMERS = False
-    print("Warning: Transformers not installed, some functionality will be limited")
-
-try:
-    from tqdm import tqdm
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-    print("Warning: tqdm not installed, progress bars will be disabled")
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("web_benchmark")
-
-# Define modality types for categorization
-MODALITY_TYPES = {
-    "text": ["bert", "gpt", "t5", "llama", "roberta", "distilbert", "mistral", "phi"],
-    "vision": ["vit", "resnet", "detr", "convnext", "swin", "sam"],
-    "audio": ["whisper", "wav2vec", "clap", "hubert", "speecht5"],
-    "multimodal": ["clip", "llava", "blip", "flava", "git", "pix2struct"]
-}
-
-# Define input shapes for different modalities
-DEFAULT_INPUTS = {
-    "text": "The quick brown fox jumps over the lazy dog.",
-    "vision": "test.jpg",
-    "audio": "test.mp3",
-    "multimodal": {"image": "test.jpg", "text": "What is this?"}
-}
-
-@dataclass
-class WebBenchmarkResult:
-    """Store web platform benchmark results for a specific configuration"""
-    model_name: str
-    platform: str  # webnn or webgpu
-    implementation_type: str  # REAL_WEBNN, REAL_WEBGPU, SIMULATED_WEBNN, SIMULATED_WEBGPU
-    modality: str
-    batch_size: int
-    iteration_count: int = 10
     
-    # Performance metrics
-    inference_time_ms: float = 0.0
-    first_inference_time_ms: float = 0.0  # First inference (cold start)
-    avg_inference_time_ms: float = 0.0  # Average over all iterations after first
-    peak_memory_mb: float = 0.0
-    throughput: float = 0.0  # Items per second
+    # Add DuckDB database support
+    try:
+        from benchmark_db_api import BenchmarkDBAPI
+        BENCHMARK_DB_AVAILABLE = True
+    except ImportError:
+        BENCHMARK_DB_AVAILABLE = False
+        logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
     
-    # Load metrics
-    model_load_time_ms: float = 0.0
-    tokenization_time_ms: float = 0.0
-    preprocessing_time_ms: float = 0.0
-    postprocessing_time_ms: float = 0.0
     
-    # Status
-    initialized: bool = False
-    error: Optional[str] = None
+    # Add the parent directory to sys.path to import modules correctly
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    def as_dict(self) -> Dict:
-        """Convert result to dictionary for serialization"""
-        return {
-            "model_name": self.model_name,
-            "platform": self.platform,
-            "implementation_type": self.implementation_type,
-            "modality": self.modality,
-            "batch_size": self.batch_size,
-            "iteration_count": self.iteration_count,
-            "inference_time_ms": round(self.inference_time_ms, 2),
-            "first_inference_time_ms": round(self.first_inference_time_ms, 2),
-            "avg_inference_time_ms": round(self.avg_inference_time_ms, 2),
-            "peak_memory_mb": round(self.peak_memory_mb, 2),
-            "throughput": round(self.throughput, 2),
-            "model_load_time_ms": round(self.model_load_time_ms, 2),
-            "tokenization_time_ms": round(self.tokenization_time_ms, 2),
-            "preprocessing_time_ms": round(self.preprocessing_time_ms, 2),
-            "postprocessing_time_ms": round(self.postprocessing_time_ms, 2),
-            "initialized": self.initialized,
-            "error": self.error
-        }
+    # Try to import required packages
+    try:
+        import torch
+        HAS_TORCH = True
+    except ImportError:
+        HAS_TORCH = False
+        print("Warning: PyTorch not installed, some functionality will be limited")
+    
+    try:
+        import numpy as np
+        HAS_NUMPY = True
+    except ImportError:
+        HAS_NUMPY = False
+        print("Warning: NumPy not installed, some functionality will be limited")
+    
+    try:
+        import transformers
+        HAS_TRANSFORMERS = True
+    except ImportError:
+        HAS_TRANSFORMERS = False
+        print("Warning: Transformers not installed, some functionality will be limited")
+    
+    try:
+        from tqdm import tqdm
+        HAS_TQDM = True
+    except ImportError:
+        HAS_TQDM = False
+        print("Warning: tqdm not installed, progress bars will be disabled")
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger("web_benchmark")
+    
+    # Define modality types for categorization
+    MODALITY_TYPES = {
+        "text": ["bert", "gpt", "t5", "llama", "roberta", "distilbert", "mistral", "phi"],
+        "vision": ["vit", "resnet", "detr", "convnext", "swin", "sam"],
+        "audio": ["whisper", "wav2vec", "clap", "hubert", "speecht5"],
+        "multimodal": ["clip", "llava", "blip", "flava", "git", "pix2struct"]
+    }
+    
+    # Define input shapes for different modalities
+    DEFAULT_INPUTS = {
+        "text": "The quick brown fox jumps over the lazy dog.",
+        "vision": "test.jpg",
+        "audio": "test.mp3",
+        "multimodal": {"image": "test.jpg", "text": "What is this?"}
+    }
+    
+    @dataclass
+    class WebBenchmarkResult:
+        """Store web platform benchmark results for a specific configuration"""
+        model_name: str
+        platform: str  # webnn or webgpu
+        implementation_type: str  # REAL_WEBNN, REAL_WEBGPU, SIMULATED_WEBNN, SIMULATED_WEBGPU
+        modality: str
+        batch_size: int
+        iteration_count: int = 10
+        
+        # Performance metrics
+        inference_time_ms: float = 0.0
+        first_inference_time_ms: float = 0.0  # First inference (cold start)
+        avg_inference_time_ms: float = 0.0  # Average over all iterations after first
+        peak_memory_mb: float = 0.0
+        throughput: float = 0.0  # Items per second
+        
+        # Load metrics
+        model_load_time_ms: float = 0.0
+        tokenization_time_ms: float = 0.0
+        preprocessing_time_ms: float = 0.0
+        postprocessing_time_ms: float = 0.0
+        
+        # Status
+        initialized: bool = False
+        error: Optional[str] = None
+        
+        def as_dict(self) -> Dict:
+            """Convert result to dictionary for serialization"""
+            return {
+                "model_name": self.model_name,
+                "platform": self.platform,
+                "implementation_type": self.implementation_type,
+                "modality": self.modality,
+                "batch_size": self.batch_size,
+                "iteration_count": self.iteration_count,
+                "inference_time_ms": round(self.inference_time_ms, 2),
+                "first_inference_time_ms": round(self.first_inference_time_ms, 2),
+                "avg_inference_time_ms": round(self.avg_inference_time_ms, 2),
+                "peak_memory_mb": round(self.peak_memory_mb, 2),
+                "throughput": round(self.throughput, 2),
+                "model_load_time_ms": round(self.model_load_time_ms, 2),
+                "tokenization_time_ms": round(self.tokenization_time_ms, 2),
+                "preprocessing_time_ms": round(self.preprocessing_time_ms, 2),
+                "postprocessing_time_ms": round(self.postprocessing_time_ms, 2),
+                "initialized": self.initialized,
+                "error": self.error
+            }
+    
+    
+    @dataclass
+    class WebBenchmarkSuite:
+        """Main benchmark suite to run and collect results"""
+        results: List[WebBenchmarkResult] = field(default_factory=list)
+        
+        def add_result(self, result: WebBenchmarkResult) -> None:
+            """Add a benchmark result to the collection"""
+            self.results.append(result)
+        
+        def save_results(self, filename: str) -> None:
+            """Save benchmark results to DuckDB database and optionally to JSON file"""
 
-
-@dataclass
-class WebBenchmarkSuite:
-    """Main benchmark suite to run and collect results"""
-    results: List[WebBenchmarkResult] = field(default_factory=list)
-    
-    def add_result(self, result: WebBenchmarkResult) -> None:
-        """Add a benchmark result to the collection"""
-        self.results.append(result)
-    
-    def save_results(self, filename: str) -> None:
-        """Save benchmark results to DuckDB database and optionally to JSON file"""
         # Try to save to DuckDB database first
         try:
             # Check if we have database integration module
@@ -194,27 +212,47 @@ class WebBenchmarkSuite:
                     logger.info("JSON output is deprecated, results saved to database only")
                     return
                 
-                # If not deprecated, save to JSON with metadata about database storage
-                with open(filename, 'w') as f:
-                    results_with_metadata = [result.as_dict() for result in self.results]
-                    for result_dict in results_with_metadata:
-                        result_dict["metadata"] = {
-                            "stored_in_db": True,
-                            "deprecated_format": True,
-                            "db_path": db_path,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    json.dump(results_with_metadata, f, indent=2)
+                # If not deprecated, save to JSON with metadata about database storage# JSON output deprecated in favor of database storage
+logger.info("Storing results in database")
+# Store results directly in the database
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    db_api.store_benchmark_results(results)
+    logger.info("Successfully stored results in database")
+except Exception as e:
+    logger.error(f"Error storing results in database: {e}")
+
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(filename, 'w') as f:
+                        results_with_metadata = [result.as_dict() for result in self.results]
+                        for result_dict in results_with_metadata:
+                            result_dict["metadata"] = {
+                                "stored_in_db": True,
+                                "deprecated_format": True,
+                                "db_path": db_path,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        json.dump(results_with_metadata, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
                 logger.info(f"Results saved to both database and JSON file: {filename}")
                 
             else:
                 # If database doesn't exist, fall back to JSON
                 logger.warning(f"Database not found at {db_path}, saving to JSON only")
                 with open(filename, 'w') as f:
-                    json.dump([result.as_dict() for result in self.results], f, indent=2)
-                
-        except ImportError:
-            # If database integration not available, fall back to JSON
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        json.dump([result.as_dict() for result in self.results], f, indent=2)
+                    
+            except ImportError:
+                # If database integration not available, fall back to JSON
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
             logger.warning("Database integration not available, saving to JSON only")
             with open(filename, 'w') as f:
                 json.dump([result.as_dict() for result in self.results], f, indent=2)
@@ -222,7 +260,16 @@ class WebBenchmarkSuite:
     def load_results(self, filename: str) -> None:
         """Load benchmark results from JSON file"""
         with open(filename, 'r') as f:
-            data = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    data = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                data = json.load(f)
+
             self.results = [WebBenchmarkResult(**item) for item in data]
     
     def print_summary(self) -> None:
@@ -916,7 +963,12 @@ def parse_arguments():
     parser.add_argument("--platform", type=str, choices=["webnn", "webgpu", "both"],
                       default="both", help="Web platform to benchmark")
     
-    return parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+return parser.parse_args()
 
 
 def main():

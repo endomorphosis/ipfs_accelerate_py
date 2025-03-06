@@ -20,6 +20,19 @@ import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 import matplotlib
+
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -1282,33 +1295,38 @@ def main():
                         help="Generate a compatibility matrix")
     parser.add_argument("--debug", action="store_true",
                         help="Enable debug logging")
-    args = parser.parse_args()
     
-    # Create query tool
-    try:
-        query_tool = BenchmarkDBQuery(db_path=args.db, debug=args.debug)
-    except Exception as e:
-        logger.error(f"Error initializing query tool: {e}")
-        return
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
+
+# Create query tool
+try:
+    query_tool = BenchmarkDBQuery(db_path=args.db, debug=args.debug)
+except Exception as e:
+    logger.error(f"Error initializing query tool: {e}")
+    return
+
+# Perform requested actions
+if args.sql:
+    # Execute SQL query
+    result = query_tool.execute_sql(args.sql)
     
-    # Perform requested actions
-    if args.sql:
-        # Execute SQL query
-        result = query_tool.execute_sql(args.sql)
-        
-        if result.empty:
-            logger.error("Query returned no results")
-        else:
-            # Display or save result
-            if args.output:
-                if args.format == "csv":
-                    result.to_csv(args.output, index=False)
-                elif args.format == "json":
-                    result.to_json(args.output, orient="records", indent=2)
-                elif args.format == "html":
-                    result.to_html(args.output, index=False)
-                elif args.format == "xlsx":
-                    result.to_excel(args.output, index=False)
+    if result.empty:
+        logger.error("Query returned no results")
+    else:
+        # Display or save result
+        if args.output:
+            if args.format == "csv":
+                result.to_csv(args.output, index=False)
+            elif args.format == "json":
+                result.to_json(args.output, orient="records", indent=2)
+            elif args.format == "html":
+                result.to_html(args.output, index=False)
+            elif args.format == "xlsx":
+                result.to_excel(args.output, index=False)
                 else:
                     # Default to text
                     with open(args.output, 'w') as f:

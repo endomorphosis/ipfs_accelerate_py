@@ -19,6 +19,19 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -139,8 +152,13 @@ class DatabaseIntegratedRunner:
         
         # Save to JSON if requested
         if self.output_json and results:
-            with open(self.output_json, 'w') as f:
-                json.dump(results, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                with open(self.output_json, 'w') as f:
+                    json.dump(results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
             logger.info(f"Results saved to {self.output_json}")
         
         return results
@@ -374,7 +392,12 @@ def main():
     parser.add_argument("--debug", action="store_true",
                       help="Enable debug logging")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Configure logging
     if args.debug:
@@ -383,7 +406,10 @@ def main():
     
     # Create and run the integrated runner
     runner = DatabaseIntegratedRunner(
-        db_path=args.db_path,
+        db_path = args.db_path
+    if db_path is None:
+        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        logger.info(f"Using database path from environment: {db_path}"),
         models_set=args.models_set,
         hardware_types=args.hardware,
         batch_sizes=args.batch_sizes,

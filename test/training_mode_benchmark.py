@@ -26,6 +26,19 @@ from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 import concurrent.futures
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -273,648 +286,662 @@ class TrainingBenchmarkRunner:
         # If configuration file provided, load it and merge with defaults
         if config_file and os.path.exists(config_file):
             try:
-                with open(config_file, 'r') as f:
-                    user_config = json.load(f)
-                
-                # Merge with defaults
-                for key, value in user_config.items():
-                    if key in default_config and isinstance(value, dict) and isinstance(default_config[key], dict):
-                        default_config[key].update(value)
-                    else:
-                        default_config[key] = value
-                
-                logger.info(f"Loaded configuration from {config_file}")
-            except Exception as e:
-                logger.error(f"Error loading configuration file: {str(e)}")
-        
-        return default_config
-    
-    def run_training_benchmark(self, 
-                          model_name: str, 
-                          model_family: str, 
-                          hardware_platform: str,
-                          batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
-        """
-        Run training benchmark for a specific model on a specific hardware platform
-        
-        Args:
-            model_name: Name of the model to benchmark
-            model_family: Family of the model (e.g., embedding, text_generation)
-            hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
-            batch_sizes: Optional list of batch sizes to test
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(config_file, 'r') as f:
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    user_config = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                            user_config = json.load(f)
+
+                    
+                    # Merge with defaults
+                    for key, value in user_config.items():
+                        if key in default_config and isinstance(value, dict) and isinstance(default_config[key], dict):
+                            default_config[key].update(value)
+                        else:
+                            default_config[key] = value
+                    
+                    logger.info(f"Loaded configuration from {config_file}")
+                except Exception as e:
+                    logger.error(f"Error loading configuration file: {str(e)}")
             
-        Returns:
-            Dictionary with benchmark results
-        """
-        if not self.running:
-            return {"status": "cancelled"}
+            return default_config
         
-        hardware_preferences = {"device": hardware_platform}
-        
-        logger.info(f"Training benchmark for {model_name} ({model_family}) on {hardware_platform}")
-        
-        # Use batch sizes from config if not specified
-        if batch_sizes is None:
-            batch_sizes = self.config["batch_sizes"]
-        
-        # Create model constructor based on model family (for training)
-        constructor = self._get_training_model_constructor(model_name, model_family)
-        if not constructor:
-            return {
-                "status": "error",
-                "error": f"Failed to create training constructor for {model_name} ({model_family})"
-            }
-        
-        # Load model through resource pool
-        try:
-            model = self.pool.get_model(
-                model_family,
-                model_name,
-                constructor=constructor,
-                hardware_preferences=hardware_preferences
-            )
+        def run_training_benchmark(self, 
+                              model_name: str, 
+                              model_family: str, 
+                              hardware_platform: str,
+                              batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
+            """
+            Run training benchmark for a specific model on a specific hardware platform
             
-            if model is None:
+            Args:
+                model_name: Name of the model to benchmark
+                model_family: Family of the model (e.g., embedding, text_generation)
+                hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
+                batch_sizes: Optional list of batch sizes to test
+                
+            Returns:
+                Dictionary with benchmark results
+            """
+            if not self.running:
+                return {"status": "cancelled"}
+            
+            hardware_preferences = {"device": hardware_platform}
+            
+            logger.info(f"Training benchmark for {model_name} ({model_family}) on {hardware_platform}")
+            
+            # Use batch sizes from config if not specified
+            if batch_sizes is None:
+                batch_sizes = self.config["batch_sizes"]
+            
+            # Create model constructor based on model family (for training)
+            constructor = self._get_training_model_constructor(model_name, model_family)
+            if not constructor:
                 return {
                     "status": "error",
-                    "error": f"Failed to load model {model_name} on {hardware_platform}"
+                    "error": f"Failed to create training constructor for {model_name} ({model_family})"
                 }
             
-            # Determine device the model is on
-            device = self._get_model_device(model)
-            
-            # Set model to training mode
-            model.train()
-            
-            logger.info(f"Training model loaded successfully on {device}")
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error loading model for training: {str(e)}"
-            }
-        
-        # Create tokenizer or processor based on model family
-        tokenizer = None
-        processor = None
-        try:
-            if model_family in ["embedding", "text_generation"]:
-                tokenizer = self.pool.get_tokenizer(
+            # Load model through resource pool
+            try:
+                model = self.pool.get_model(
                     model_family,
                     model_name,
-                    constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
+                    constructor=constructor,
+                    hardware_preferences=hardware_preferences
                 )
-            elif model_family == "vision":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
-            elif model_family == "audio":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
-        except Exception as e:
-            logger.warning(f"Error loading tokenizer/processor for training: {str(e)}")
-            # Continue without tokenizer/processor as we'll use random inputs
-        
-        # Get optimizer configuration
-        optimizer_config = self.config["optimizers"].get(model_family, self.config["optimizers"]["default"])
-        
-        # Create optimizer
-        try:
-            if optimizer_config["name"].lower() == "adamw":
-                optimizer = self.torch.optim.AdamW(
-                    model.parameters(), 
-                    lr=optimizer_config.get("lr", 5e-5),
-                    weight_decay=optimizer_config.get("weight_decay", 0.01)
-                )
-            elif optimizer_config["name"].lower() == "adam":
-                optimizer = self.torch.optim.Adam(
-                    model.parameters(), 
-                    lr=optimizer_config.get("lr", 5e-5)
-                )
-            elif optimizer_config["name"].lower() == "sgd":
-                optimizer = self.torch.optim.SGD(
-                    model.parameters(), 
-                    lr=optimizer_config.get("lr", 0.01),
-                    momentum=optimizer_config.get("momentum", 0.9)
-                )
-            else:
-                # Default to AdamW
-                optimizer = self.torch.optim.AdamW(model.parameters(), lr=5e-5)
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error creating optimizer: {str(e)}"
-            }
-            
-        # Run warmup iterations
-        logger.info(f"Running {self.config['warmup_iterations']} training warmup iterations")
-        try:
-            self._run_training_warmup(model, optimizer, model_family, tokenizer, processor, device)
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error during training warmup: {str(e)}"
-            }
-        
-        # Initialize results structure
-        benchmark_results = {
-            "model_name": model_name,
-            "model_family": model_family,
-            "hardware_platform": hardware_platform,
-            "device": str(device),
-            "mode": "training",
-            "optimizer": optimizer_config["name"],
-            "learning_rate": optimizer_config.get("lr", 5e-5),
-            "timestamp": datetime.datetime.now().isoformat(),
-            "status": "success",
-            "batch_results": []
-        }
-        
-        # Check if model has parameter count
-        try:
-            param_count = sum(p.numel() for p in model.parameters())
-            benchmark_results["parameter_count"] = param_count
-        except:
-            pass
-        
-        # Estimate model size in memory
-        try:
-            model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
-            benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
-        except:
-            pass
-        
-        # Run benchmark for each batch size
-        for batch_size in batch_sizes:
-            if not self.running:
-                benchmark_results["status"] = "cancelled"
-                break
                 
-            logger.info(f"Training benchmark with batch size {batch_size}")
+                if model is None:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to load model {model_name} on {hardware_platform}"
+                    }
+                
+                # Determine device the model is on
+                device = self._get_model_device(model)
+                
+                # Set model to training mode
+                model.train()
+                
+                logger.info(f"Training model loaded successfully on {device}")
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error loading model for training: {str(e)}"
+                }
             
-            # Run benchmarks with sequence lengths appropriate for the model family
-            sequence_length_results = []
-            seq_lengths = self._get_sequence_lengths(model_family)
+            # Create tokenizer or processor based on model family
+            tokenizer = None
+            processor = None
+            try:
+                if model_family in ["embedding", "text_generation"]:
+                    tokenizer = self.pool.get_tokenizer(
+                        model_family,
+                        model_name,
+                        constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
+                    )
+                elif model_family == "vision":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+                elif model_family == "audio":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+            except Exception as e:
+                logger.warning(f"Error loading tokenizer/processor for training: {str(e)}")
+                # Continue without tokenizer/processor as we'll use random inputs
             
-            for seq_length in seq_lengths:
-                try:
-                    # Set a timeout timer for this benchmark
-                    timeout_event = threading.Event()
-                    timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
-                    timer.start()
+            # Get optimizer configuration
+            optimizer_config = self.config["optimizers"].get(model_family, self.config["optimizers"]["default"])
+            
+            # Create optimizer
+            try:
+                if optimizer_config["name"].lower() == "adamw":
+                    optimizer = self.torch.optim.AdamW(
+                        model.parameters(), 
+                        lr=optimizer_config.get("lr", 5e-5),
+                        weight_decay=optimizer_config.get("weight_decay", 0.01)
+                    )
+                elif optimizer_config["name"].lower() == "adam":
+                    optimizer = self.torch.optim.Adam(
+                        model.parameters(), 
+                        lr=optimizer_config.get("lr", 5e-5)
+                    )
+                elif optimizer_config["name"].lower() == "sgd":
+                    optimizer = self.torch.optim.SGD(
+                        model.parameters(), 
+                        lr=optimizer_config.get("lr", 0.01),
+                        momentum=optimizer_config.get("momentum", 0.9)
+                    )
+                else:
+                    # Default to AdamW
+                    optimizer = self.torch.optim.AdamW(model.parameters(), lr=5e-5)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error creating optimizer: {str(e)}"
+                }
+                
+            # Run warmup iterations
+            logger.info(f"Running {self.config['warmup_iterations']} training warmup iterations")
+            try:
+                self._run_training_warmup(model, optimizer, model_family, tokenizer, processor, device)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error during training warmup: {str(e)}"
+                }
+            
+            # Initialize results structure
+            benchmark_results = {
+                "model_name": model_name,
+                "model_family": model_family,
+                "hardware_platform": hardware_platform,
+                "device": str(device),
+                "mode": "training",
+                "optimizer": optimizer_config["name"],
+                "learning_rate": optimizer_config.get("lr", 5e-5),
+                "timestamp": datetime.datetime.now().isoformat(),
+                "status": "success",
+                "batch_results": []
+            }
+            
+            # Check if model has parameter count
+            try:
+                param_count = sum(p.numel() for p in model.parameters())
+                benchmark_results["parameter_count"] = param_count
+            except:
+                pass
+            
+            # Estimate model size in memory
+            try:
+                model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+                benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
+            except:
+                pass
+            
+            # Run benchmark for each batch size
+            for batch_size in batch_sizes:
+                if not self.running:
+                    benchmark_results["status"] = "cancelled"
+                    break
                     
-                    # Start benchmark
-                    start_time = time.time()
-                    
-                    # Run benchmark iterations
-                    fwd_latencies = []
-                    bwd_latencies = []
-                    opt_latencies = []
-                    total_latencies = []
-                    throughputs = []
-                    memory_usages = []
-                    losses = []
-                    
-                    for i in range(self.config["benchmark_iterations"]):
-                        if timeout_event.is_set() or not self.running:
-                            # Benchmark timed out or was cancelled
-                            logger.warning(f"Training benchmark timed out or was cancelled")
-                            break
+                logger.info(f"Training benchmark with batch size {batch_size}")
+                
+                # Run benchmarks with sequence lengths appropriate for the model family
+                sequence_length_results = []
+                seq_lengths = self._get_sequence_lengths(model_family)
+                
+                for seq_length in seq_lengths:
+                    try:
+                        # Set a timeout timer for this benchmark
+                        timeout_event = threading.Event()
+                        timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
+                        timer.start()
                         
-                        # Run a single training iteration and measure performance
-                        iter_result = self._run_single_training_iteration(
-                            model, 
-                            optimizer,
-                            model_family, 
-                            batch_size, 
-                            seq_length, 
-                            tokenizer, 
-                            processor, 
-                            device
-                        )
+                        # Start benchmark
+                        start_time = time.time()
                         
-                        fwd_latencies.append(iter_result["forward_latency"])
-                        bwd_latencies.append(iter_result["backward_latency"])
-                        opt_latencies.append(iter_result["optimizer_latency"])
-                        total_latencies.append(iter_result["total_latency"])
-                        throughputs.append(iter_result["throughput"])
-                        memory_usages.append(iter_result["memory_usage"])
-                        if "loss" in iter_result:
-                            losses.append(iter_result["loss"])
+                        # Run benchmark iterations
+                        fwd_latencies = []
+                        bwd_latencies = []
+                        opt_latencies = []
+                        total_latencies = []
+                        throughputs = []
+                        memory_usages = []
+                        losses = []
                         
-                        if self.debug:
-                            logger.debug(f"Training iteration {i+1}/{self.config['benchmark_iterations']}: "
-                                         f"Total Latency={iter_result['total_latency']:.4f}s, "
-                                         f"Throughput={iter_result['throughput']:.2f} items/s")
-                    
-                    # Clean up timer
-                    timer.cancel()
-                    
-                    # Calculate statistics
-                    if total_latencies:
-                        avg_fwd_latency = sum(fwd_latencies) / len(fwd_latencies)
-                        avg_bwd_latency = sum(bwd_latencies) / len(bwd_latencies)
-                        avg_opt_latency = sum(opt_latencies) / len(opt_latencies) 
-                        avg_total_latency = sum(total_latencies) / len(total_latencies)
-                        avg_throughput = sum(throughputs) / len(throughputs)
-                        max_memory = max(memory_usages) if memory_usages else 0
-                        
-                        # Calculate standard deviation for latency
-                        latency_std = (sum((l - avg_total_latency) ** 2 for l in total_latencies) / len(total_latencies)) ** 0.5
-                        
-                        result = {
-                            "sequence_length": seq_length,
-                            "average_forward_latency_seconds": avg_fwd_latency,
-                            "average_backward_latency_seconds": avg_bwd_latency, 
-                            "average_optimizer_latency_seconds": avg_opt_latency,
-                            "average_total_latency_seconds": avg_total_latency,
-                            "latency_std_dev": latency_std,
-                            "average_throughput_items_per_second": avg_throughput,
-                            "max_memory_usage_mb": max_memory,
-                            "iterations_completed": len(total_latencies)
-                        }
-                        
-                        if losses:
-                            result["average_loss"] = sum(losses) / len(losses)
+                        for i in range(self.config["benchmark_iterations"]):
+                            if timeout_event.is_set() or not self.running:
+                                # Benchmark timed out or was cancelled
+                                logger.warning(f"Training benchmark timed out or was cancelled")
+                                break
                             
-                        sequence_length_results.append(result)
-                    else:
+                            # Run a single training iteration and measure performance
+                            iter_result = self._run_single_training_iteration(
+                                model, 
+                                optimizer,
+                                model_family, 
+                                batch_size, 
+                                seq_length, 
+                                tokenizer, 
+                                processor, 
+                                device
+                            )
+                            
+                            fwd_latencies.append(iter_result["forward_latency"])
+                            bwd_latencies.append(iter_result["backward_latency"])
+                            opt_latencies.append(iter_result["optimizer_latency"])
+                            total_latencies.append(iter_result["total_latency"])
+                            throughputs.append(iter_result["throughput"])
+                            memory_usages.append(iter_result["memory_usage"])
+                            if "loss" in iter_result:
+                                losses.append(iter_result["loss"])
+                            
+                            if self.debug:
+                                logger.debug(f"Training iteration {i+1}/{self.config['benchmark_iterations']}: "
+                                             f"Total Latency={iter_result['total_latency']:.4f}s, "
+                                             f"Throughput={iter_result['throughput']:.2f} items/s")
+                        
+                        # Clean up timer
+                        timer.cancel()
+                        
+                        # Calculate statistics
+                        if total_latencies:
+                            avg_fwd_latency = sum(fwd_latencies) / len(fwd_latencies)
+                            avg_bwd_latency = sum(bwd_latencies) / len(bwd_latencies)
+                            avg_opt_latency = sum(opt_latencies) / len(opt_latencies) 
+                            avg_total_latency = sum(total_latencies) / len(total_latencies)
+                            avg_throughput = sum(throughputs) / len(throughputs)
+                            max_memory = max(memory_usages) if memory_usages else 0
+                            
+                            # Calculate standard deviation for latency
+                            latency_std = (sum((l - avg_total_latency) ** 2 for l in total_latencies) / len(total_latencies)) ** 0.5
+                            
+                            result = {
+                                "sequence_length": seq_length,
+                                "average_forward_latency_seconds": avg_fwd_latency,
+                                "average_backward_latency_seconds": avg_bwd_latency, 
+                                "average_optimizer_latency_seconds": avg_opt_latency,
+                                "average_total_latency_seconds": avg_total_latency,
+                                "latency_std_dev": latency_std,
+                                "average_throughput_items_per_second": avg_throughput,
+                                "max_memory_usage_mb": max_memory,
+                                "iterations_completed": len(total_latencies)
+                            }
+                            
+                            if losses:
+                                result["average_loss"] = sum(losses) / len(losses)
+                                
+                            sequence_length_results.append(result)
+                        else:
+                            sequence_length_results.append({
+                                "sequence_length": seq_length,
+                                "status": "failed",
+                                "error": "No iterations completed"
+                            })
+                        
+                    except Exception as e:
+                        logger.error(f"Error benchmarking training sequence length {seq_length}: {str(e)}")
                         sequence_length_results.append({
                             "sequence_length": seq_length,
-                            "status": "failed",
-                            "error": "No iterations completed"
+                            "status": "error",
+                            "error": str(e)
                         })
-                    
-                except Exception as e:
-                    logger.error(f"Error benchmarking training sequence length {seq_length}: {str(e)}")
-                    sequence_length_results.append({
-                        "sequence_length": seq_length,
-                        "status": "error",
-                        "error": str(e)
-                    })
+                
+                # Add batch results
+                benchmark_results["batch_results"].append({
+                    "batch_size": batch_size,
+                    "sequence_lengths": sequence_length_results
+                })
             
-            # Add batch results
-            benchmark_results["batch_results"].append({
-                "batch_size": batch_size,
-                "sequence_lengths": sequence_length_results
-            })
+            # Get final memory usage from resource pool
+            stats = self.pool.get_stats()
+            if "cuda_memory" in stats and hardware_platform == "cuda":
+                benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
+            
+            return benchmark_results
         
-        # Get final memory usage from resource pool
-        stats = self.pool.get_stats()
-        if "cuda_memory" in stats and hardware_platform == "cuda":
-            benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
-        
-        return benchmark_results
-    
-    def _get_training_model_constructor(self, model_name: str, model_family: str):
-        """Get constructor function for the model in training mode"""
-        # Similar to _get_model_constructor but may have different configurations for training
-        model_class = None
-        
-        if model_family == "embedding":
-            model_class = self.transformers.AutoModelForMaskedLM
-        elif model_family == "text_generation":
-            # Check if model is T5 or GPT-style
-            if "t5" in model_name.lower():
-                model_class = self.transformers.T5ForConditionalGeneration
+        def _get_training_model_constructor(self, model_name: str, model_family: str):
+            """Get constructor function for the model in training mode"""
+            # Similar to _get_model_constructor but may have different configurations for training
+            model_class = None
+            
+            if model_family == "embedding":
+                model_class = self.transformers.AutoModelForMaskedLM
+            elif model_family == "text_generation":
+                # Check if model is T5 or GPT-style
+                if "t5" in model_name.lower():
+                    model_class = self.transformers.T5ForConditionalGeneration
+                else:
+                    model_class = self.transformers.AutoModelForCausalLM
+            elif model_family == "vision":
+                # Try to determine specific model class from name
+                if "vit" in model_name.lower():
+                    model_class = self.transformers.ViTForImageClassification
+                else:
+                    model_class = self.transformers.AutoModelForImageClassification
+            elif model_family == "audio":
+                if "whisper" in model_name.lower():
+                    model_class = self.transformers.WhisperForConditionalGeneration
+                elif "wav2vec" in model_name.lower():
+                    model_class = self.transformers.Wav2Vec2ForCTC
+                else:
+                    model_class = self.transformers.AutoModelForAudioClassification
+            
+            if model_class:
+                return lambda: model_class.from_pretrained(model_name)
             else:
-                model_class = self.transformers.AutoModelForCausalLM
-        elif model_family == "vision":
-            # Try to determine specific model class from name
-            if "vit" in model_name.lower():
-                model_class = self.transformers.ViTForImageClassification
-            else:
-                model_class = self.transformers.AutoModelForImageClassification
-        elif model_family == "audio":
-            if "whisper" in model_name.lower():
-                model_class = self.transformers.WhisperForConditionalGeneration
-            elif "wav2vec" in model_name.lower():
-                model_class = self.transformers.Wav2Vec2ForCTC
-            else:
-                model_class = self.transformers.AutoModelForAudioClassification
+                logger.error(f"Could not determine training model class for {model_name} ({model_family})")
+                return None
         
-        if model_class:
-            return lambda: model_class.from_pretrained(model_name)
-        else:
-            logger.error(f"Could not determine training model class for {model_name} ({model_family})")
-            return None
-    
-    def _get_model_device(self, model):
-        """Get the device where the model is placed"""
-        if hasattr(model, "device"):
-            return model.device
-        elif hasattr(model, "parameters"):
-            try:
-                return next(model.parameters()).device
-            except StopIteration:
+        def _get_model_device(self, model):
+            """Get the device where the model is placed"""
+            if hasattr(model, "device"):
+                return model.device
+            elif hasattr(model, "parameters"):
+                try:
+                    return next(model.parameters()).device
+                except StopIteration:
+                    return self.torch.device("cpu")
+            else:
                 return self.torch.device("cpu")
-        else:
-            return self.torch.device("cpu")
-    
-    def _get_sequence_lengths(self, model_family: str) -> List[int]:
-        """Get appropriate sequence lengths for the model family"""
-        if model_family in ["embedding", "text_generation"]:
-            return self.config["sequence_lengths"]
-        elif model_family == "vision":
-            # Vision models don't typically use sequence length in the same way
-            # Return just a single "sequence length" for benchmarking consistency
-            return [224]  # Standard image size
-        elif model_family == "audio":
-            # Audio "sequence length" is in seconds of audio
-            return [1, 2, 4]  # 1, 2, and 4 seconds of audio
-        else:
-            return [32]  # Default sequence length
-            
-    def _run_training_warmup(self, model, optimizer, model_family, tokenizer, processor, device):
-        """Run warmup iterations for training benchmark"""
-        batch_size = 1
-        seq_length = 32
         
-        # Run warmup iterations
-        for _ in range(self.config["warmup_iterations"]):
-            try:
-                # Generate inputs based on model family
-                if model_family in ["embedding", "text_generation"]:
-                    if tokenizer:
-                        # Use tokenizer to generate inputs
-                        input_text = ["This is a test input for warmup"] * batch_size
-                        inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=seq_length)
-                        inputs = {k: v.to(device) for k, v in inputs.items()}
-                        if "labels" not in inputs:
-                            inputs["labels"] = inputs["input_ids"].clone()
-                    else:
-                        # Generate random inputs
-                        inputs = {
-                            "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                            "attention_mask": self.torch.ones((batch_size, seq_length), device=device),
-                            "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                        }
-                elif model_family == "vision":
-                    if processor:
-                        try:
-                            # Generate a random image
-                            import numpy as np
-                            from PIL import Image
-                            
-                            dummy_image = np.random.rand(batch_size, 3, 224, 224).astype(np.float32)
-                            dummy_image = [Image.fromarray((img.transpose(1, 2, 0) * 255).astype(np.uint8)) for img in dummy_image]
-                            inputs = processor(images=dummy_image, return_tensors="pt")
+        def _get_sequence_lengths(self, model_family: str) -> List[int]:
+            """Get appropriate sequence lengths for the model family"""
+            if model_family in ["embedding", "text_generation"]:
+                return self.config["sequence_lengths"]
+            elif model_family == "vision":
+                # Vision models don't typically use sequence length in the same way
+                # Return just a single "sequence length" for benchmarking consistency
+                return [224]  # Standard image size
+            elif model_family == "audio":
+                # Audio "sequence length" is in seconds of audio
+                return [1, 2, 4]  # 1, 2, and 4 seconds of audio
+            else:
+                return [32]  # Default sequence length
+                
+        def _run_training_warmup(self, model, optimizer, model_family, tokenizer, processor, device):
+            """Run warmup iterations for training benchmark"""
+            batch_size = 1
+            seq_length = 32
+            
+            # Run warmup iterations
+            for _ in range(self.config["warmup_iterations"]):
+                try:
+                    # Generate inputs based on model family
+                    if model_family in ["embedding", "text_generation"]:
+                        if tokenizer:
+                            # Use tokenizer to generate inputs
+                            input_text = ["This is a test input for warmup"] * batch_size
+                            inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=seq_length)
                             inputs = {k: v.to(device) for k, v in inputs.items()}
-                            inputs["labels"] = self.torch.randint(0, 10, (batch_size,), device=device)
-                        except ImportError:
-                            # Fall back to random tensors
+                            if "labels" not in inputs:
+                                inputs["labels"] = inputs["input_ids"].clone()
+                        else:
+                            # Generate random inputs
+                            inputs = {
+                                "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
+                                "attention_mask": self.torch.ones((batch_size, seq_length), device=device),
+                                "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                            }
+                    elif model_family == "vision":
+                        if processor:
+                            try:
+                                # Generate a random image
+                                import numpy as np
+                                from PIL import Image
+                                
+                                dummy_image = np.random.rand(batch_size, 3, 224, 224).astype(np.float32)
+                                dummy_image = [Image.fromarray((img.transpose(1, 2, 0) * 255).astype(np.uint8)) for img in dummy_image]
+                                inputs = processor(images=dummy_image, return_tensors="pt")
+                                inputs = {k: v.to(device) for k, v in inputs.items()}
+                                inputs["labels"] = self.torch.randint(0, 10, (batch_size,), device=device)
+                            except ImportError:
+                                # Fall back to random tensors
+                                inputs = {
+                                    "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
+                                    "labels": self.torch.randint(0, 10, (batch_size,), device=device)
+                                }
+                        else:
+                            # Generate random inputs
                             inputs = {
                                 "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
                                 "labels": self.torch.randint(0, 10, (batch_size,), device=device)
                             }
-                    else:
-                        # Generate random inputs
-                        inputs = {
-                            "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
-                            "labels": self.torch.randint(0, 10, (batch_size,), device=device)
-                        }
-                elif model_family == "audio":
-                    if processor:
-                        try:
-                            # Generate a random audio signal
-                            import numpy as np
-                            
-                            sample_rate = 16000
-                            dummy_audio = [np.random.randn(16000).astype(np.float32) for _ in range(batch_size)]
-                            inputs = processor(audio=dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
-                            inputs = {k: v.to(device) for k, v in inputs.items()}
-                            if "labels" not in inputs:
-                                inputs["labels"] = self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                        except ImportError:
-                            # Fall back to random tensors
+                    elif model_family == "audio":
+                        if processor:
+                            try:
+                                # Generate a random audio signal
+                                import numpy as np
+                                
+                                sample_rate = 16000
+                                dummy_audio = [np.random.randn(16000).astype(np.float32) for _ in range(batch_size)]
+                                inputs = processor(audio=dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
+                                inputs = {k: v.to(device) for k, v in inputs.items()}
+                                if "labels" not in inputs:
+                                    inputs["labels"] = self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                            except ImportError:
+                                # Fall back to random tensors
+                                inputs = {
+                                    "input_values": self.torch.rand((batch_size, 16000), device=device),
+                                    "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                                }
+                        else:
+                            # Generate random inputs for audio models
                             inputs = {
                                 "input_values": self.torch.rand((batch_size, 16000), device=device),
                                 "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
                             }
                     else:
-                        # Generate random inputs for audio models
+                        # Generate generic inputs for other model families
                         inputs = {
-                            "input_values": self.torch.rand((batch_size, 16000), device=device),
+                            "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
                             "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
                         }
-                else:
-                    # Generate generic inputs for other model families
-                    inputs = {
-                        "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                        "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                    }
-                
-                # Run training step
-                optimizer.zero_grad()
-                outputs = model(**inputs)
-                loss = outputs.loss
-                loss.backward()
-                optimizer.step()
-                
-            except Exception as e:
-                logger.warning(f"Error during training warmup: {str(e)}")
-                # Try with generic inputs if specific inputs failed
-                try:
-                    inputs = {
-                        "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                        "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                    }
                     
+                    # Run training step
                     optimizer.zero_grad()
                     outputs = model(**inputs)
                     loss = outputs.loss
                     loss.backward()
                     optimizer.step()
-                except:
-                    logger.error("Failed to run training warmup with generic inputs")
-                    raise
-    
-    def _run_single_training_iteration(self, model, optimizer, model_family, batch_size, seq_length, tokenizer, processor, device):
-        """Run a single training benchmark iteration"""
-        # Clear CUDA cache before iteration if tracking memory
-        if str(device).startswith("cuda"):
-            self.torch.cuda.empty_cache()
-            memory_before = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
-        else:
-            memory_before = 0
-        
-        # Generate inputs based on model family
-        if model_family in ["embedding", "text_generation"]:
-            if tokenizer:
-                # Use tokenizer to generate inputs
-                input_text = ["This is a test input for benchmarking"] * batch_size
-                inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=seq_length)
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                if "labels" not in inputs:
-                    inputs["labels"] = inputs["input_ids"].clone()
-            else:
-                # Generate random inputs
-                inputs = {
-                    "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                    "attention_mask": self.torch.ones((batch_size, seq_length), device=device),
-                    "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                }
-        elif model_family == "vision":
-            if processor:
-                try:
-                    # Generate a random image
-                    import numpy as np
-                    from PIL import Image
                     
-                    dummy_image = np.random.rand(batch_size, 3, 224, 224).astype(np.float32)
-                    dummy_image = [Image.fromarray((img.transpose(1, 2, 0) * 255).astype(np.uint8)) for img in dummy_image]
-                    inputs = processor(images=dummy_image, return_tensors="pt")
+                except Exception as e:
+                    logger.warning(f"Error during training warmup: {str(e)}")
+                    # Try with generic inputs if specific inputs failed
+                    try:
+                        inputs = {
+                            "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
+                            "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                        }
+                        
+                        optimizer.zero_grad()
+                        outputs = model(**inputs)
+                        loss = outputs.loss
+                        loss.backward()
+                        optimizer.step()
+                    except:
+                        logger.error("Failed to run training warmup with generic inputs")
+                        raise
+        
+        def _run_single_training_iteration(self, model, optimizer, model_family, batch_size, seq_length, tokenizer, processor, device):
+            """Run a single training benchmark iteration"""
+            # Clear CUDA cache before iteration if tracking memory
+            if str(device).startswith("cuda"):
+                self.torch.cuda.empty_cache()
+                memory_before = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
+            else:
+                memory_before = 0
+            
+            # Generate inputs based on model family
+            if model_family in ["embedding", "text_generation"]:
+                if tokenizer:
+                    # Use tokenizer to generate inputs
+                    input_text = ["This is a test input for benchmarking"] * batch_size
+                    inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=seq_length)
                     inputs = {k: v.to(device) for k, v in inputs.items()}
-                    inputs["labels"] = self.torch.randint(0, 10, (batch_size,), device=device)
-                except ImportError:
-                    # Fall back to random tensors
+                    if "labels" not in inputs:
+                        inputs["labels"] = inputs["input_ids"].clone()
+                else:
+                    # Generate random inputs
+                    inputs = {
+                        "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
+                        "attention_mask": self.torch.ones((batch_size, seq_length), device=device),
+                        "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                    }
+            elif model_family == "vision":
+                if processor:
+                    try:
+                        # Generate a random image
+                        import numpy as np
+                        from PIL import Image
+                        
+                        dummy_image = np.random.rand(batch_size, 3, 224, 224).astype(np.float32)
+                        dummy_image = [Image.fromarray((img.transpose(1, 2, 0) * 255).astype(np.uint8)) for img in dummy_image]
+                        inputs = processor(images=dummy_image, return_tensors="pt")
+                        inputs = {k: v.to(device) for k, v in inputs.items()}
+                        inputs["labels"] = self.torch.randint(0, 10, (batch_size,), device=device)
+                    except ImportError:
+                        # Fall back to random tensors
+                        inputs = {
+                            "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
+                            "labels": self.torch.randint(0, 10, (batch_size,), device=device)
+                        }
+                else:
+                    # Generate random inputs
                     inputs = {
                         "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
                         "labels": self.torch.randint(0, 10, (batch_size,), device=device)
                     }
-            else:
-                # Generate random inputs
-                inputs = {
-                    "pixel_values": self.torch.rand((batch_size, 3, 224, 224), device=device),
-                    "labels": self.torch.randint(0, 10, (batch_size,), device=device)
-                }
-        elif model_family == "audio":
-            if processor:
-                try:
-                    # Generate a random audio signal
-                    import numpy as np
-                    
-                    sample_rate = 16000
-                    dummy_audio = [np.random.randn(sample_rate * seq_length).astype(np.float32) for _ in range(batch_size)]
-                    inputs = processor(audio=dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
-                    inputs = {k: v.to(device) for k, v in inputs.items()}
-                    if "labels" not in inputs:
-                        inputs["labels"] = self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
-                except ImportError:
-                    # Fall back to random tensors
+            elif model_family == "audio":
+                if processor:
+                    try:
+                        # Generate a random audio signal
+                        import numpy as np
+                        
+                        sample_rate = 16000
+                        dummy_audio = [np.random.randn(sample_rate * seq_length).astype(np.float32) for _ in range(batch_size)]
+                        inputs = processor(audio=dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
+                        inputs = {k: v.to(device) for k, v in inputs.items()}
+                        if "labels" not in inputs:
+                            inputs["labels"] = self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                    except ImportError:
+                        # Fall back to random tensors
+                        inputs = {
+                            "input_values": self.torch.rand((batch_size, 16000 * seq_length), device=device),
+                            "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+                        }
+                else:
+                    # Generate random inputs for audio models
                     inputs = {
                         "input_values": self.torch.rand((batch_size, 16000 * seq_length), device=device),
                         "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
                     }
             else:
-                # Generate random inputs for audio models
+                # Generate generic inputs for other model families
                 inputs = {
-                    "input_values": self.torch.rand((batch_size, 16000 * seq_length), device=device),
+                    "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
                     "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
                 }
-        else:
-            # Generate generic inputs for other model families
-            inputs = {
-                "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                "labels": self.torch.randint(0, 1000, (batch_size, seq_length), device=device)
+            
+            # Forward pass timing
+            start_time = time.time()
+            optimizer.zero_grad()
+            outputs = model(**inputs)
+            loss = outputs.loss
+            self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
+            forward_end_time = time.time()
+            
+            # Backward pass timing
+            loss.backward()
+            self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
+            backward_end_time = time.time()
+            
+            # Optimizer step timing
+            optimizer.step()
+            self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
+            optimizer_end_time = time.time()
+            
+            # Calculate memory usage
+            if str(device).startswith("cuda"):
+                memory_after = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
+                memory_usage = memory_after - memory_before
+            else:
+                memory_usage = 0
+            
+            # Calculate timing metrics
+            forward_latency = forward_end_time - start_time
+            backward_latency = backward_end_time - forward_end_time
+            optimizer_latency = optimizer_end_time - backward_end_time
+            total_latency = optimizer_end_time - start_time
+            throughput = batch_size / total_latency
+            
+            # Get loss value
+            loss_value = loss.item() if hasattr(loss, "item") else float(loss)
+            
+            return {
+                "forward_latency": forward_latency,
+                "backward_latency": backward_latency,
+                "optimizer_latency": optimizer_latency,
+                "total_latency": total_latency,
+                "throughput": throughput,
+                "memory_usage": memory_usage,
+                "loss": loss_value
             }
         
-        # Forward pass timing
-        start_time = time.time()
-        optimizer.zero_grad()
-        outputs = model(**inputs)
-        loss = outputs.loss
-        self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
-        forward_end_time = time.time()
-        
-        # Backward pass timing
-        loss.backward()
-        self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
-        backward_end_time = time.time()
-        
-        # Optimizer step timing
-        optimizer.step()
-        self.torch.cuda.synchronize() if str(device).startswith("cuda") else None
-        optimizer_end_time = time.time()
-        
-        # Calculate memory usage
-        if str(device).startswith("cuda"):
-            memory_after = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
-            memory_usage = memory_after - memory_before
-        else:
-            memory_usage = 0
-        
-        # Calculate timing metrics
-        forward_latency = forward_end_time - start_time
-        backward_latency = backward_end_time - forward_end_time
-        optimizer_latency = optimizer_end_time - backward_end_time
-        total_latency = optimizer_end_time - start_time
-        throughput = batch_size / total_latency
-        
-        # Get loss value
-        loss_value = loss.item() if hasattr(loss, "item") else float(loss)
-        
-        return {
-            "forward_latency": forward_latency,
-            "backward_latency": backward_latency,
-            "optimizer_latency": optimizer_latency,
-            "total_latency": total_latency,
-            "throughput": throughput,
-            "memory_usage": memory_usage,
-            "loss": loss_value
-        }
-    
-    def run_all_benchmarks(self) -> Dict[str, Any]:
-        """Run all training benchmarks defined in the configuration"""
-        logger.info("Starting training benchmark suite")
-        
-        # Run benchmarks for each model family and hardware platform
-        for family_name, family_config in self.config["model_families"].items():
-            logger.info(f"Benchmarking model family: {family_name}")
+        def run_all_benchmarks(self) -> Dict[str, Any]:
+            """Run all training benchmarks defined in the configuration"""
+            logger.info("Starting training benchmark suite")
             
-            for model_name in family_config["models"]:
-                logger.info(f"Benchmarking model: {model_name}")
+            # Run benchmarks for each model family and hardware platform
+            for family_name, family_config in self.config["model_families"].items():
+                logger.info(f"Benchmarking model family: {family_name}")
                 
-                for platform in self.config["hardware_platforms"]:
-                    if not self.running:
-                        logger.info("Benchmark run cancelled")
-                        return {"status": "cancelled", "benchmarks": self.results["benchmarks"]}
+                for model_name in family_config["models"]:
+                    logger.info(f"Benchmarking model: {model_name}")
                     
-                    # Check if family-specific batch sizes are defined
-                    batch_sizes = family_config.get("batch_sizes", self.config["batch_sizes"])
-                    
-                    try:
-                        result = self.run_training_benchmark(
-                            model_name=model_name,
-                            model_family=family_name,
-                            hardware_platform=platform,
-                            batch_sizes=batch_sizes
-                        )
+                    for platform in self.config["hardware_platforms"]:
+                        if not self.running:
+                            logger.info("Benchmark run cancelled")
+                            return {"status": "cancelled", "benchmarks": self.results["benchmarks"]}
                         
-                        # Add result to overall results
-                        self.results["benchmarks"].append(result)
+                        # Check if family-specific batch sizes are defined
+                        batch_sizes = family_config.get("batch_sizes", self.config["batch_sizes"])
                         
-                        # Save intermediate results after each benchmark
-                        self._save_results()
-                        
-                        # Generate model-specific report
-                        self._generate_model_report(result)
-                    except Exception as e:
-                        logger.error(f"Error benchmarking {model_name} on {platform}: {str(e)}")
-                        self.results["benchmarks"].append({
-                            "model_name": model_name,
-                            "model_family": family_name,
-                            "hardware_platform": platform,
-                            "status": "error",
-                            "error": str(e)
-                        })
+                        try:
+                            result = self.run_training_benchmark(
+                                model_name=model_name,
+                                model_family=family_name,
+                                hardware_platform=platform,
+                                batch_sizes=batch_sizes
+                            )
+                            
+                            # Add result to overall results
+                            self.results["benchmarks"].append(result)
+                            
+                            # Save intermediate results after each benchmark
+                            self._save_results()
+                            
+                            # Generate model-specific report
+                            self._generate_model_report(result)
+                        except Exception as e:
+                            logger.error(f"Error benchmarking {model_name} on {platform}: {str(e)}")
+                            self.results["benchmarks"].append({
+                                "model_name": model_name,
+                                "model_family": family_name,
+                                "hardware_platform": platform,
+                                "status": "error",
+                                "error": str(e)
+                            })
+            
+            # Generate consolidated report
+            self._generate_consolidated_report()
+            
+            logger.info("Training benchmark suite completed successfully")
+            return self.results
         
-        # Generate consolidated report
-        self._generate_consolidated_report()
-        
-        logger.info("Training benchmark suite completed successfully")
-        return self.results
-    
-    def _save_results(self):
-        """Save benchmark results to file"""
-        # Get today's date for filename
-        date_str = datetime.datetime.now().strftime("%Y%m%d")
-        output_file = os.path.join(self.output_dir, f"training_benchmark_results_{date_str}.json")
-        
-        with open(output_file, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        def _save_results(self):
+            """Save benchmark results to file"""
+            # Get today's date for filename
+            date_str = datetime.datetime.now().strftime("%Y%m%d")
+            output_file = os.path.join(self.output_dir, f"training_benchmark_results_{date_str}.json")
+            
+            with open(output_file, 'w') as f:
+                json.dump(self.results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         logger.info(f"Saved training benchmark results to {output_file}")
     
@@ -1518,7 +1545,12 @@ def main():
                        help='Comma-separated list of batch sizes to test')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Create benchmark runner
     runner = TrainingBenchmarkRunner(

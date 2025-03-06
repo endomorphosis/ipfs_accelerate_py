@@ -1,0 +1,26 @@
+{
+  "model": "BERT",
+  "model_key": "bert",
+  "model_category": "embedding",
+  "model_path": "bert-base-uncased",
+  "hardware": "AMD ROCm",
+  "hardware_key": "rocm",
+  "timestamp": "2025-03-05T19:57:15.307065",
+  "batch_sizes": {
+    "1": {
+      "throughput": 75,
+      "latency_ms": 15,
+      "memory_usage_mb": 112,
+      "success": true,
+      "command": "python test/run_model_benchmarks.py --specific-models bert-base-uncased --device rocm --batch-sizes 1 --timeout 600"
+    },
+    "4": {
+      "throughput": 300,
+      "latency_ms": 30,
+      "memory_usage_mb": 148,
+      "success": true,
+      "command": "python test/run_model_benchmarks.py --specific-models bert-base-uncased --device rocm --batch-sizes 4 --timeout 600"
+    }
+  },
+  "compatible": true
+}

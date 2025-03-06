@@ -16,6 +16,19 @@ from pathlib import Path
 import threading
 import concurrent.futures
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -201,210 +214,459 @@ class BenchmarkRunner:
         # If config file is provided, load and merge with defaults
         if config_file and os.path.exists(config_file):
             try:
-                with open(config_file, 'r') as f:
-                    user_config = json.load(f)
-                
-                # Merge configs (user config takes precedence)
-                for key, value in user_config.items():
-                    if isinstance(value, dict) and key in default_config and isinstance(default_config[key], dict):
-                        # For nested dicts, merge recursively
-                        default_config[key].update(value)
-                    else:
-                        # For simple values or new keys, just update
-                        default_config[key] = value
-                
-                logger.info(f"Loaded benchmark configuration from {config_file}")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.error(f"Failed to load configuration from {config_file}: {str(e)}")
-                logger.info("Using default configuration")
-        else:
-            logger.info("Using default benchmark configuration")
-        
-        return default_config
-    
-    def import_model_dependencies(self) -> bool:
-        """
-        Import required dependencies for benchmarking
-        
-        Returns:
-            True if all dependencies were successfully imported, False otherwise
-        """
-        try:
-            # Import PyTorch and Transformers
-            self.torch = self.pool.get_resource("torch", constructor=lambda: __import__("torch"))
-            self.transformers = self.pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(config_file, 'r') as f:
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    user_config = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                            user_config = json.load(f)
+
+                    
+                    # Merge configs (user config takes precedence)
+                    for key, value in user_config.items():
+                        if isinstance(value, dict) and key in default_config and isinstance(default_config[key], dict):
+                            # For nested dicts, merge recursively
+                            default_config[key].update(value)
+                        else:
+                            # For simple values or new keys, just update
+                            default_config[key] = value
+                    
+                    logger.info(f"Loaded benchmark configuration from {config_file}")
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.error(f"Failed to load configuration from {config_file}: {str(e)}")
+                    logger.info("Using default configuration")
+            else:
+                logger.info("Using default benchmark configuration")
             
-            # Check if imported successfully
-            if not self.torch or not self.transformers:
-                logger.error("Failed to import required dependencies")
+            return default_config
+        
+        def import_model_dependencies(self) -> bool:
+            """
+            Import required dependencies for benchmarking
+            
+            Returns:
+                True if all dependencies were successfully imported, False otherwise
+            """
+            try:
+                # Import PyTorch and Transformers
+                self.torch = self.pool.get_resource("torch", constructor=lambda: __import__("torch"))
+                self.transformers = self.pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
+                
+                # Check if imported successfully
+                if not self.torch or not self.transformers:
+                    logger.error("Failed to import required dependencies")
+                    return False
+                
+                # Optionally import numpy for data processing
+                self.numpy = self.pool.get_resource("numpy", constructor=lambda: __import__("numpy"))
+                
+                logger.info("Successfully imported all required dependencies")
+                return True
+            except Exception as e:
+                logger.error(f"Error importing dependencies: {str(e)}")
                 return False
+        
+        def run_benchmark(self, 
+                          model_name: str, 
+                          model_family: str, 
+                          hardware_platform: str,
+                          batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
+            """
+            Run benchmark for a specific model on a specific hardware platform
             
-            # Optionally import numpy for data processing
-            self.numpy = self.pool.get_resource("numpy", constructor=lambda: __import__("numpy"))
+            Args:
+                model_name: Name of the model to benchmark
+                model_family: Family of the model (e.g., embedding, text_generation)
+                hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
+                batch_sizes: Optional list of batch sizes to test
+                
+            Returns:
+                Dictionary with benchmark results
+            """
+            if not self.running:
+                return {"status": "cancelled"}
             
-            logger.info("Successfully imported all required dependencies")
-            return True
-        except Exception as e:
-            logger.error(f"Error importing dependencies: {str(e)}")
-            return False
-    
-    def run_benchmark(self, 
-                      model_name: str, 
-                      model_family: str, 
-                      hardware_platform: str,
-                      batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
-        """
-        Run benchmark for a specific model on a specific hardware platform
-        
-        Args:
-            model_name: Name of the model to benchmark
-            model_family: Family of the model (e.g., embedding, text_generation)
-            hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
-            batch_sizes: Optional list of batch sizes to test
+            hardware_preferences = {"device": hardware_platform}
             
-        Returns:
-            Dictionary with benchmark results
-        """
-        if not self.running:
-            return {"status": "cancelled"}
-        
-        hardware_preferences = {"device": hardware_platform}
-        
-        logger.info(f"Benchmarking {model_name} ({model_family}) on {hardware_platform}")
-        
-        # Use batch sizes from config if not specified
-        if batch_sizes is None:
-            batch_sizes = self.config["batch_sizes"]
-        
-        # Create model constructor based on model family
-        constructor = self._get_model_constructor(model_name, model_family)
-        if not constructor:
-            return {
-                "status": "error",
-                "error": f"Failed to create constructor for {model_name} ({model_family})"
-            }
-        
-        # Load model through resource pool
-        try:
-            model = self.pool.get_model(
-                model_family,
-                model_name,
-                constructor=constructor,
-                hardware_preferences=hardware_preferences
-            )
+            logger.info(f"Benchmarking {model_name} ({model_family}) on {hardware_platform}")
             
-            if model is None:
+            # Use batch sizes from config if not specified
+            if batch_sizes is None:
+                batch_sizes = self.config["batch_sizes"]
+            
+            # Create model constructor based on model family
+            constructor = self._get_model_constructor(model_name, model_family)
+            if not constructor:
                 return {
                     "status": "error",
-                    "error": f"Failed to load model {model_name} on {hardware_platform}"
+                    "error": f"Failed to create constructor for {model_name} ({model_family})"
                 }
             
-            # Determine device the model is on
-            device = self._get_model_device(model)
-            
-            logger.info(f"Model loaded successfully on {device}")
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error loading model: {str(e)}"
-            }
-        
-        # Create tokenizer or processor based on model family
-        tokenizer = None
-        processor = None
-        try:
-            if model_family in ["embedding", "text_generation"]:
-                tokenizer = self.pool.get_tokenizer(
+            # Load model through resource pool
+            try:
+                model = self.pool.get_model(
                     model_family,
                     model_name,
-                    constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
+                    constructor=constructor,
+                    hardware_preferences=hardware_preferences
                 )
-            elif model_family == "vision":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
-            elif model_family == "audio":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
-        except Exception as e:
-            logger.warning(f"Error loading tokenizer/processor: {str(e)}")
-            # Continue without tokenizer/processor as we'll use random inputs
-        
-        # Run warmup iterations
-        logger.info(f"Running {self.config['warmup_iterations']} warmup iterations")
-        try:
-            self._run_model_warmup(model, model_family, tokenizer, processor, device)
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error during warmup: {str(e)}"
-            }
-        
-        # Initialize results structure
-        benchmark_results = {
-            "model_name": model_name,
-            "model_family": model_family,
-            "hardware_platform": hardware_platform,
-            "device": str(device),
-            "timestamp": datetime.datetime.now().isoformat(),
-            "status": "success",
-            "batch_results": []
-        }
-        
-        # Check if model has parameter count
-        try:
-            param_count = sum(p.numel() for p in model.parameters())
-            benchmark_results["parameter_count"] = param_count
-        except:
-            pass
-        
-        # Estimate model size in memory
-        try:
-            model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
-            benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
-        except:
-            pass
-        
-        # Run benchmark for each batch size
-        for batch_size in batch_sizes:
-            if not self.running:
-                benchmark_results["status"] = "cancelled"
-                break
                 
-            logger.info(f"Benchmarking with batch size {batch_size}")
+                if model is None:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to load model {model_name} on {hardware_platform}"
+                    }
+                
+                # Determine device the model is on
+                device = self._get_model_device(model)
+                
+                logger.info(f"Model loaded successfully on {device}")
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error loading model: {str(e)}"
+                }
             
-            # Run benchmarks with sequence lengths appropriate for the model family
-            sequence_length_results = []
-            seq_lengths = self._get_sequence_lengths(model_family)
+            # Create tokenizer or processor based on model family
+            tokenizer = None
+            processor = None
+            try:
+                if model_family in ["embedding", "text_generation"]:
+                    tokenizer = self.pool.get_tokenizer(
+                        model_family,
+                        model_name,
+                        constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
+                    )
+                elif model_family == "vision":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+                elif model_family == "audio":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+            except Exception as e:
+                logger.warning(f"Error loading tokenizer/processor: {str(e)}")
+                # Continue without tokenizer/processor as we'll use random inputs
             
-            for seq_length in seq_lengths:
-                try:
-                    # Set a timeout timer for this benchmark
-                    timeout_event = threading.Event()
-                    timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
-                    timer.start()
+            # Run warmup iterations
+            logger.info(f"Running {self.config['warmup_iterations']} warmup iterations")
+            try:
+                self._run_model_warmup(model, model_family, tokenizer, processor, device)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error during warmup: {str(e)}"
+                }
+            
+            # Initialize results structure
+            benchmark_results = {
+                "model_name": model_name,
+                "model_family": model_family,
+                "hardware_platform": hardware_platform,
+                "device": str(device),
+                "timestamp": datetime.datetime.now().isoformat(),
+                "status": "success",
+                "batch_results": []
+            }
+            
+            # Check if model has parameter count
+            try:
+                param_count = sum(p.numel() for p in model.parameters())
+                benchmark_results["parameter_count"] = param_count
+            except:
+                pass
+            
+            # Estimate model size in memory
+            try:
+                model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+                benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
+            except:
+                pass
+            
+            # Run benchmark for each batch size
+            for batch_size in batch_sizes:
+                if not self.running:
+                    benchmark_results["status"] = "cancelled"
+                    break
                     
-                    # Start benchmark
-                    start_time = time.time()
+                logger.info(f"Benchmarking with batch size {batch_size}")
+                
+                # Run benchmarks with sequence lengths appropriate for the model family
+                sequence_length_results = []
+                seq_lengths = self._get_sequence_lengths(model_family)
+                
+                for seq_length in seq_lengths:
+                    try:
+                        # Set a timeout timer for this benchmark
+                        timeout_event = threading.Event()
+                        timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
+                        timer.start()
+                        
+                        # Start benchmark
+                        start_time = time.time()
+                        
+                        # Run benchmark iterations
+                        latencies = []
+                        throughputs = []
+                        memory_usages = []
+                        
+                        with self.torch.no_grad():  # Disable gradients for inference
+                            for i in range(self.config["benchmark_iterations"]):
+                                if timeout_event.is_set() or not self.running:
+                                    # Benchmark timed out or was cancelled
+                                    logger.warning(f"Benchmark timed out or was cancelled")
+                                    break
+                                
+                                # Run a single iteration and measure performance
+                                iter_result = self._run_single_iteration(
+                                    model, 
+                                    model_family, 
+                                    batch_size, 
+                                    seq_length, 
+                                    tokenizer, 
+                                    processor, 
+                                    device
+                                )
+                                
+                                latencies.append(iter_result["latency"])
+                                throughputs.append(iter_result["throughput"])
+                                memory_usages.append(iter_result["memory_usage"])
+                                
+                                if self.debug:
+                                    logger.debug(f"Iteration {i+1}/{self.config['benchmark_iterations']}: "
+                                                 f"Latency={iter_result['latency']:.4f}s, "
+                                                 f"Throughput={iter_result['throughput']:.2f} items/s")
+                        
+                        # Clean up timer
+                        timer.cancel()
+                        
+                        # Calculate statistics
+                        if latencies:
+                            avg_latency = sum(latencies) / len(latencies)
+                            avg_throughput = sum(throughputs) / len(throughputs)
+                            max_memory = max(memory_usages) if memory_usages else 0
+                            
+                            # Calculate standard deviation for latency
+                            latency_std = (sum((l - avg_latency) ** 2 for l in latencies) / len(latencies)) ** 0.5
+                            
+                            sequence_length_results.append({
+                                "sequence_length": seq_length,
+                                "average_latency_seconds": avg_latency,
+                                "latency_std_dev": latency_std,
+                                "average_throughput_items_per_second": avg_throughput,
+                                "max_memory_usage_mb": max_memory,
+                                "iterations_completed": len(latencies)
+                            })
+                        else:
+                            sequence_length_results.append({
+                                "sequence_length": seq_length,
+                                "status": "failed",
+                                "error": "No iterations completed"
+                            })
+                        
+                    except Exception as e:
+                        logger.error(f"Error benchmarking sequence length {seq_length}: {str(e)}")
+                        sequence_length_results.append({
+                            "sequence_length": seq_length,
+                            "status": "error",
+                            "error": str(e)
+                        })
+                
+                # Add batch results
+                benchmark_results["batch_results"].append({
+                    "batch_size": batch_size,
+                    "sequence_lengths": sequence_length_results
+                })
+            
+            # Get final memory usage from resource pool
+            stats = self.pool.get_stats()
+            if "cuda_memory" in stats and hardware_platform == "cuda":
+                benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
+            
+            return benchmark_results
+        
+        def run_training_benchmark(self, 
+                              model_name: str, 
+                              model_family: str, 
+                              hardware_platform: str,
+                              batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
+            """
+            Run training benchmark for a specific model on a specific hardware platform
+            
+            Args:
+                model_name: Name of the model to benchmark
+                model_family: Family of the model (e.g., embedding, text_generation)
+                hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
+                batch_sizes: Optional list of batch sizes to test
+                
+            Returns:
+                Dictionary with benchmark results
+            """
+            if not self.running:
+                return {"status": "cancelled"}
+            
+            hardware_preferences = {"device": hardware_platform}
+            
+            logger.info(f"Training benchmark for {model_name} ({model_family}) on {hardware_platform}")
+            
+            # Use batch sizes from config if not specified
+            if batch_sizes is None:
+                batch_sizes = self.config["batch_sizes"]
+            
+            # Create model constructor based on model family (for training)
+            constructor = self._get_training_model_constructor(model_name, model_family)
+            if not constructor:
+                return {
+                    "status": "error",
+                    "error": f"Failed to create training constructor for {model_name} ({model_family})"
+                }
+            
+            # Load model through resource pool
+            try:
+                model = self.pool.get_model(
+                    model_family,
+                    model_name,
+                    constructor=constructor,
+                    hardware_preferences=hardware_preferences
+                )
+                
+                if model is None:
+                    return {
+                        "status": "error",
+                        "error": f"Failed to load model {model_name} on {hardware_platform}"
+                    }
+                
+                # Determine device the model is on
+                device = self._get_model_device(model)
+                
+                # Set model to training mode
+                model.train()
+                
+                logger.info(f"Training model loaded successfully on {device}")
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error loading model for training: {str(e)}"
+                }
+            
+            # Create tokenizer or processor based on model family
+            tokenizer = None
+            processor = None
+            try:
+                if model_family in ["embedding", "text_generation"]:
+                    tokenizer = self.pool.get_tokenizer(
+                        model_family,
+                        model_name,
+                        constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
+                    )
+                elif model_family == "vision":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+                elif model_family == "audio":
+                    processor = self.pool.get_resource(
+                        f"processor:{model_name}",
+                        constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
+                    )
+            except Exception as e:
+                logger.warning(f"Error loading tokenizer/processor for training: {str(e)}")
+                # Continue without tokenizer/processor as we'll use random inputs
+            
+            # Create optimizer
+            try:
+                optimizer = self.torch.optim.AdamW(model.parameters(), lr=5e-5)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error creating optimizer: {str(e)}"
+                }
+                
+            # Run warmup iterations
+            logger.info(f"Running {self.config['warmup_iterations']} training warmup iterations")
+            try:
+                self._run_training_warmup(model, optimizer, model_family, tokenizer, processor, device)
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Error during training warmup: {str(e)}"
+                }
+            
+            # Initialize results structure
+            benchmark_results = {
+                "model_name": model_name,
+                "model_family": model_family,
+                "hardware_platform": hardware_platform,
+                "device": str(device),
+                "mode": "training",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "status": "success",
+                "batch_results": []
+            }
+            
+            # Check if model has parameter count
+            try:
+                param_count = sum(p.numel() for p in model.parameters())
+                benchmark_results["parameter_count"] = param_count
+            except:
+                pass
+            
+            # Estimate model size in memory
+            try:
+                model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+                benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
+            except:
+                pass
+            
+            # Run benchmark for each batch size
+            for batch_size in batch_sizes:
+                if not self.running:
+                    benchmark_results["status"] = "cancelled"
+                    break
                     
-                    # Run benchmark iterations
-                    latencies = []
-                    throughputs = []
-                    memory_usages = []
-                    
-                    with self.torch.no_grad():  # Disable gradients for inference
+                logger.info(f"Training benchmark with batch size {batch_size}")
+                
+                # Run benchmarks with sequence lengths appropriate for the model family
+                sequence_length_results = []
+                seq_lengths = self._get_sequence_lengths(model_family)
+                
+                for seq_length in seq_lengths:
+                    try:
+                        # Set a timeout timer for this benchmark
+                        timeout_event = threading.Event()
+                        timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
+                        timer.start()
+                        
+                        # Start benchmark
+                        start_time = time.time()
+                        
+                        # Run benchmark iterations
+                        fwd_latencies = []
+                        bwd_latencies = []
+                        opt_latencies = []
+                        total_latencies = []
+                        throughputs = []
+                        memory_usages = []
+                        
                         for i in range(self.config["benchmark_iterations"]):
                             if timeout_event.is_set() or not self.running:
                                 # Benchmark timed out or was cancelled
-                                logger.warning(f"Benchmark timed out or was cancelled")
+                                logger.warning(f"Training benchmark timed out or was cancelled")
                                 break
                             
-                            # Run a single iteration and measure performance
-                            iter_result = self._run_single_iteration(
+                            # Run a single training iteration and measure performance
+                            iter_result = self._run_single_training_iteration(
                                 model, 
+                                optimizer,
                                 model_family, 
                                 batch_size, 
                                 seq_length, 
@@ -413,365 +675,257 @@ class BenchmarkRunner:
                                 device
                             )
                             
-                            latencies.append(iter_result["latency"])
+                            fwd_latencies.append(iter_result["forward_latency"])
+                            bwd_latencies.append(iter_result["backward_latency"])
+                            opt_latencies.append(iter_result["optimizer_latency"])
+                            total_latencies.append(iter_result["total_latency"])
                             throughputs.append(iter_result["throughput"])
                             memory_usages.append(iter_result["memory_usage"])
                             
                             if self.debug:
-                                logger.debug(f"Iteration {i+1}/{self.config['benchmark_iterations']}: "
-                                             f"Latency={iter_result['latency']:.4f}s, "
+                                logger.debug(f"Training iteration {i+1}/{self.config['benchmark_iterations']}: "
+                                             f"Total Latency={iter_result['total_latency']:.4f}s, "
                                              f"Throughput={iter_result['throughput']:.2f} items/s")
-                    
-                    # Clean up timer
-                    timer.cancel()
-                    
-                    # Calculate statistics
-                    if latencies:
-                        avg_latency = sum(latencies) / len(latencies)
-                        avg_throughput = sum(throughputs) / len(throughputs)
-                        max_memory = max(memory_usages) if memory_usages else 0
                         
-                        # Calculate standard deviation for latency
-                        latency_std = (sum((l - avg_latency) ** 2 for l in latencies) / len(latencies)) ** 0.5
+                        # Clean up timer
+                        timer.cancel()
                         
+                        # Calculate statistics
+                        if total_latencies:
+                            avg_fwd_latency = sum(fwd_latencies) / len(fwd_latencies)
+                            avg_bwd_latency = sum(bwd_latencies) / len(bwd_latencies)
+                            avg_opt_latency = sum(opt_latencies) / len(opt_latencies) 
+                            avg_total_latency = sum(total_latencies) / len(total_latencies)
+                            avg_throughput = sum(throughputs) / len(throughputs)
+                            max_memory = max(memory_usages) if memory_usages else 0
+                            
+                            # Calculate standard deviation for latency
+                            latency_std = (sum((l - avg_total_latency) ** 2 for l in total_latencies) / len(total_latencies)) ** 0.5
+                            
+                            sequence_length_results.append({
+                                "sequence_length": seq_length,
+                                "average_forward_latency_seconds": avg_fwd_latency,
+                                "average_backward_latency_seconds": avg_bwd_latency, 
+                                "average_optimizer_latency_seconds": avg_opt_latency,
+                                "average_total_latency_seconds": avg_total_latency,
+                                "latency_std_dev": latency_std,
+                                "average_throughput_items_per_second": avg_throughput,
+                                "max_memory_usage_mb": max_memory,
+                                "iterations_completed": len(total_latencies)
+                            })
+                        else:
+                            sequence_length_results.append({
+                                "sequence_length": seq_length,
+                                "status": "failed",
+                                "error": "No iterations completed"
+                            })
+                        
+                    except Exception as e:
+                        logger.error(f"Error benchmarking training sequence length {seq_length}: {str(e)}")
                         sequence_length_results.append({
                             "sequence_length": seq_length,
-                            "average_latency_seconds": avg_latency,
-                            "latency_std_dev": latency_std,
-                            "average_throughput_items_per_second": avg_throughput,
-                            "max_memory_usage_mb": max_memory,
-                            "iterations_completed": len(latencies)
+                            "status": "error",
+                            "error": str(e)
                         })
-                    else:
-                        sequence_length_results.append({
-                            "sequence_length": seq_length,
-                            "status": "failed",
-                            "error": "No iterations completed"
-                        })
-                    
-                except Exception as e:
-                    logger.error(f"Error benchmarking sequence length {seq_length}: {str(e)}")
-                    sequence_length_results.append({
-                        "sequence_length": seq_length,
-                        "status": "error",
-                        "error": str(e)
-                    })
+                
+                # Add batch results
+                benchmark_results["batch_results"].append({
+                    "batch_size": batch_size,
+                    "sequence_lengths": sequence_length_results
+                })
             
-            # Add batch results
-            benchmark_results["batch_results"].append({
-                "batch_size": batch_size,
-                "sequence_lengths": sequence_length_results
-            })
-        
-        # Get final memory usage from resource pool
-        stats = self.pool.get_stats()
-        if "cuda_memory" in stats and hardware_platform == "cuda":
-            benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
-        
-        return benchmark_results
-    
-    def run_training_benchmark(self, 
-                          model_name: str, 
-                          model_family: str, 
-                          hardware_platform: str,
-                          batch_sizes: Optional[List[int]] = None) -> Dict[str, Any]:
-        """
-        Run training benchmark for a specific model on a specific hardware platform
-        
-        Args:
-            model_name: Name of the model to benchmark
-            model_family: Family of the model (e.g., embedding, text_generation)
-            hardware_platform: Hardware platform to run on (e.g., cpu, cuda, mps)
-            batch_sizes: Optional list of batch sizes to test
+            # Get final memory usage from resource pool
+            stats = self.pool.get_stats()
+            if "cuda_memory" in stats and hardware_platform == "cuda":
+                benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
             
-        Returns:
-            Dictionary with benchmark results
-        """
-        if not self.running:
-            return {"status": "cancelled"}
+            return benchmark_results
         
-        hardware_preferences = {"device": hardware_platform}
-        
-        logger.info(f"Training benchmark for {model_name} ({model_family}) on {hardware_platform}")
-        
-        # Use batch sizes from config if not specified
-        if batch_sizes is None:
-            batch_sizes = self.config["batch_sizes"]
-        
-        # Create model constructor based on model family (for training)
-        constructor = self._get_training_model_constructor(model_name, model_family)
-        if not constructor:
-            return {
-                "status": "error",
-                "error": f"Failed to create training constructor for {model_name} ({model_family})"
-            }
-        
-        # Load model through resource pool
-        try:
-            model = self.pool.get_model(
-                model_family,
-                model_name,
-                constructor=constructor,
-                hardware_preferences=hardware_preferences
-            )
+        def _get_model_constructor(self, model_name: str, model_family: str):
+            """Get constructor function for the model"""
+            model_class = None
             
-            if model is None:
-                return {
-                    "status": "error",
-                    "error": f"Failed to load model {model_name} on {hardware_platform}"
-                }
-            
-            # Determine device the model is on
-            device = self._get_model_device(model)
-            
-            # Set model to training mode
-            model.train()
-            
-            logger.info(f"Training model loaded successfully on {device}")
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error loading model for training: {str(e)}"
-            }
-        
-        # Create tokenizer or processor based on model family
-        tokenizer = None
-        processor = None
-        try:
-            if model_family in ["embedding", "text_generation"]:
-                tokenizer = self.pool.get_tokenizer(
-                    model_family,
-                    model_name,
-                    constructor=lambda: self.transformers.AutoTokenizer.from_pretrained(model_name)
-                )
+            if model_family == "embedding":
+                model_class = self.transformers.AutoModel
+            elif model_family == "text_generation":
+                # Check if model is T5 or GPT-style
+                if "t5" in model_name.lower():
+                    model_class = self.transformers.T5ForConditionalGeneration
+                else:
+                    model_class = self.transformers.AutoModelForCausalLM
             elif model_family == "vision":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
+                # Try to determine specific model class from name
+                if "vit" in model_name.lower():
+                    model_class = self.transformers.ViTForImageClassification
+                else:
+                    model_class = self.transformers.AutoModelForImageClassification
             elif model_family == "audio":
-                processor = self.pool.get_resource(
-                    f"processor:{model_name}",
-                    constructor=lambda: self.transformers.AutoProcessor.from_pretrained(model_name)
-                )
-        except Exception as e:
-            logger.warning(f"Error loading tokenizer/processor for training: {str(e)}")
-            # Continue without tokenizer/processor as we'll use random inputs
-        
-        # Create optimizer
-        try:
-            optimizer = self.torch.optim.AdamW(model.parameters(), lr=5e-5)
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error creating optimizer: {str(e)}"
-            }
+                if "whisper" in model_name.lower():
+                    model_class = self.transformers.WhisperForConditionalGeneration
+                elif "wav2vec" in model_name.lower():
+                    model_class = self.transformers.Wav2Vec2ForCTC
+                else:
+                    model_class = self.transformers.AutoModelForAudioClassification
             
-        # Run warmup iterations
-        logger.info(f"Running {self.config['warmup_iterations']} training warmup iterations")
-        try:
-            self._run_training_warmup(model, optimizer, model_family, tokenizer, processor, device)
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": f"Error during training warmup: {str(e)}"
-            }
+            if model_class:
+                return lambda: model_class.from_pretrained(model_name)
+            else:
+                logger.error(f"Could not determine model class for {model_name} ({model_family})")
+                return None
         
-        # Initialize results structure
-        benchmark_results = {
-            "model_name": model_name,
-            "model_family": model_family,
-            "hardware_platform": hardware_platform,
-            "device": str(device),
-            "mode": "training",
-            "timestamp": datetime.datetime.now().isoformat(),
-            "status": "success",
-            "batch_results": []
-        }
-        
-        # Check if model has parameter count
-        try:
-            param_count = sum(p.numel() for p in model.parameters())
-            benchmark_results["parameter_count"] = param_count
-        except:
-            pass
-        
-        # Estimate model size in memory
-        try:
-            model_size_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
-            benchmark_results["model_size_mb"] = model_size_bytes / (1024 * 1024)
-        except:
-            pass
-        
-        # Run benchmark for each batch size
-        for batch_size in batch_sizes:
-            if not self.running:
-                benchmark_results["status"] = "cancelled"
-                break
-                
-            logger.info(f"Training benchmark with batch size {batch_size}")
-            
-            # Run benchmarks with sequence lengths appropriate for the model family
-            sequence_length_results = []
-            seq_lengths = self._get_sequence_lengths(model_family)
-            
-            for seq_length in seq_lengths:
+        def _get_model_device(self, model):
+            """Get the device where the model is placed"""
+            if hasattr(model, "device"):
+                return model.device
+            elif hasattr(model, "parameters"):
                 try:
-                    # Set a timeout timer for this benchmark
-                    timeout_event = threading.Event()
-                    timer = threading.Timer(self.config["timeout_seconds"], lambda: timeout_event.set())
-                    timer.start()
-                    
-                    # Start benchmark
-                    start_time = time.time()
-                    
-                    # Run benchmark iterations
-                    fwd_latencies = []
-                    bwd_latencies = []
-                    opt_latencies = []
-                    total_latencies = []
-                    throughputs = []
-                    memory_usages = []
-                    
-                    for i in range(self.config["benchmark_iterations"]):
-                        if timeout_event.is_set() or not self.running:
-                            # Benchmark timed out or was cancelled
-                            logger.warning(f"Training benchmark timed out or was cancelled")
-                            break
-                        
-                        # Run a single training iteration and measure performance
-                        iter_result = self._run_single_training_iteration(
-                            model, 
-                            optimizer,
-                            model_family, 
-                            batch_size, 
-                            seq_length, 
-                            tokenizer, 
-                            processor, 
-                            device
-                        )
-                        
-                        fwd_latencies.append(iter_result["forward_latency"])
-                        bwd_latencies.append(iter_result["backward_latency"])
-                        opt_latencies.append(iter_result["optimizer_latency"])
-                        total_latencies.append(iter_result["total_latency"])
-                        throughputs.append(iter_result["throughput"])
-                        memory_usages.append(iter_result["memory_usage"])
-                        
-                        if self.debug:
-                            logger.debug(f"Training iteration {i+1}/{self.config['benchmark_iterations']}: "
-                                         f"Total Latency={iter_result['total_latency']:.4f}s, "
-                                         f"Throughput={iter_result['throughput']:.2f} items/s")
-                    
-                    # Clean up timer
-                    timer.cancel()
-                    
-                    # Calculate statistics
-                    if total_latencies:
-                        avg_fwd_latency = sum(fwd_latencies) / len(fwd_latencies)
-                        avg_bwd_latency = sum(bwd_latencies) / len(bwd_latencies)
-                        avg_opt_latency = sum(opt_latencies) / len(opt_latencies) 
-                        avg_total_latency = sum(total_latencies) / len(total_latencies)
-                        avg_throughput = sum(throughputs) / len(throughputs)
-                        max_memory = max(memory_usages) if memory_usages else 0
-                        
-                        # Calculate standard deviation for latency
-                        latency_std = (sum((l - avg_total_latency) ** 2 for l in total_latencies) / len(total_latencies)) ** 0.5
-                        
-                        sequence_length_results.append({
-                            "sequence_length": seq_length,
-                            "average_forward_latency_seconds": avg_fwd_latency,
-                            "average_backward_latency_seconds": avg_bwd_latency, 
-                            "average_optimizer_latency_seconds": avg_opt_latency,
-                            "average_total_latency_seconds": avg_total_latency,
-                            "latency_std_dev": latency_std,
-                            "average_throughput_items_per_second": avg_throughput,
-                            "max_memory_usage_mb": max_memory,
-                            "iterations_completed": len(total_latencies)
-                        })
-                    else:
-                        sequence_length_results.append({
-                            "sequence_length": seq_length,
-                            "status": "failed",
-                            "error": "No iterations completed"
-                        })
-                    
-                except Exception as e:
-                    logger.error(f"Error benchmarking training sequence length {seq_length}: {str(e)}")
-                    sequence_length_results.append({
-                        "sequence_length": seq_length,
-                        "status": "error",
-                        "error": str(e)
-                    })
-            
-            # Add batch results
-            benchmark_results["batch_results"].append({
-                "batch_size": batch_size,
-                "sequence_lengths": sequence_length_results
-            })
-        
-        # Get final memory usage from resource pool
-        stats = self.pool.get_stats()
-        if "cuda_memory" in stats and hardware_platform == "cuda":
-            benchmark_results["cuda_memory_stats"] = stats["cuda_memory"]
-        
-        return benchmark_results
-    
-    def _get_model_constructor(self, model_name: str, model_family: str):
-        """Get constructor function for the model"""
-        model_class = None
-        
-        if model_family == "embedding":
-            model_class = self.transformers.AutoModel
-        elif model_family == "text_generation":
-            # Check if model is T5 or GPT-style
-            if "t5" in model_name.lower():
-                model_class = self.transformers.T5ForConditionalGeneration
+                    return next(model.parameters()).device
+                except StopIteration:
+                    return self.torch.device("cpu")
             else:
-                model_class = self.transformers.AutoModelForCausalLM
-        elif model_family == "vision":
-            # Try to determine specific model class from name
-            if "vit" in model_name.lower():
-                model_class = self.transformers.ViTForImageClassification
-            else:
-                model_class = self.transformers.AutoModelForImageClassification
-        elif model_family == "audio":
-            if "whisper" in model_name.lower():
-                model_class = self.transformers.WhisperForConditionalGeneration
-            elif "wav2vec" in model_name.lower():
-                model_class = self.transformers.Wav2Vec2ForCTC
-            else:
-                model_class = self.transformers.AutoModelForAudioClassification
-        
-        if model_class:
-            return lambda: model_class.from_pretrained(model_name)
-        else:
-            logger.error(f"Could not determine model class for {model_name} ({model_family})")
-            return None
-    
-    def _get_model_device(self, model):
-        """Get the device where the model is placed"""
-        if hasattr(model, "device"):
-            return model.device
-        elif hasattr(model, "parameters"):
-            try:
-                return next(model.parameters()).device
-            except StopIteration:
                 return self.torch.device("cpu")
-        else:
-            return self.torch.device("cpu")
-    
-    def _run_model_warmup(self, model, model_family, tokenizer, processor, device):
-        """Run warmup iterations"""
-        with self.torch.no_grad():
-            # Generate warmup inputs based on model family
-            if model_family in ["embedding", "text_generation"]:
-                batch_size = 1
-                seq_length = 32
+        
+        def _run_model_warmup(self, model, model_family, tokenizer, processor, device):
+            """Run warmup iterations"""
+            with self.torch.no_grad():
+                # Generate warmup inputs based on model family
+                if model_family in ["embedding", "text_generation"]:
+                    batch_size = 1
+                    seq_length = 32
+                    
+                    if tokenizer:
+                        # Use tokenizer if available
+                        inputs = tokenizer("Warmup text for benchmarking", 
+                                          return_tensors="pt", 
+                                          padding="max_length", 
+                                          max_length=seq_length)
+                        inputs = {k: v.to(device) for k, v in inputs.items()}
+                    else:
+                        # Generate random inputs
+                        inputs = {
+                            "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
+                            "attention_mask": self.torch.ones(batch_size, seq_length, device=device)
+                        }
+                    
+                    # Run warmup iterations
+                    for _ in range(self.config["warmup_iterations"]):
+                        if model_family == "embedding":
+                            model(**inputs)
+                        else:  # text_generation
+                            if "t5" in model.__class__.__name__.lower():
+                                # Add decoder_input_ids for encoder-decoder models
+                                decoder_inputs = {
+                                    "decoder_input_ids": self.torch.zeros((batch_size, 1), dtype=self.torch.long, device=device)
+                                }
+                                model(**inputs, **decoder_inputs)
+                            else:
+                                model(**inputs)
+                    
+                elif model_family == "vision":
+                    # Image input shape is typically [batch_size, channels, height, width]
+                    batch_size = 1
+                    
+                    if processor:
+                        # Use a dummy image if processor is available
+                        try:
+                            # Create simple dummy image
+                            from PIL import Image
+                            import numpy as np
+                            dummy_image = Image.fromarray(np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8))
+                            inputs = processor(images=dummy_image, return_tensors="pt")
+                            inputs = {k: v.to(device) for k, v in inputs.items()}
+                        except ImportError:
+                            # Fall back to random tensors
+                            inputs = {
+                                "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
+                            }
+                    else:
+                        # Generate random image inputs
+                        inputs = {
+                            "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
+                        }
+                    
+                    # Run warmup iterations
+                    for _ in range(self.config["warmup_iterations"]):
+                        model(**inputs)
+                        
+                elif model_family == "audio":
+                    batch_size = 1
+                    seq_length = 16000  # 1 second of audio at 16kHz
+                    
+                    if processor:
+                        try:
+                            # Create a dummy audio array
+                            import numpy as np
+                            dummy_audio = np.random.randn(seq_length)
+                            inputs = processor(dummy_audio, sampling_rate=16000, return_tensors="pt")
+                            inputs = {k: v.to(device) for k, v in inputs.items()}
+                        except ImportError:
+                            # Fall back to random tensors
+                            inputs = {
+                                "input_features": self.torch.rand(batch_size, 80, 3000, device=device)
+                            }
+                    else:
+                        # Different audio models might have different input shapes
+                        if "whisper" in model.__class__.__name__.lower():
+                            # Whisper takes mel spectrograms of shape [batch_size, n_mels, seq_len]
+                            inputs = {
+                                "input_features": self.torch.rand(batch_size, 80, 3000, device=device)
+                            }
+                        elif "wav2vec" in model.__class__.__name__.lower():
+                            # Wav2vec takes audio of shape [batch_size, seq_len]
+                            inputs = {
+                                "input_values": self.torch.rand(batch_size, seq_length, device=device)
+                            }
+                        else:
+                            # Generic audio input
+                            inputs = {
+                                "input_values": self.torch.rand(batch_size, seq_length, device=device)
+                            }
+                    
+                    # Run warmup iterations
+                    for _ in range(self.config["warmup_iterations"]):
+                        model(**inputs)
                 
+                else:
+                    # Generic warmup for unknown model families
+                    logger.warning(f"Unknown model family {model_family}. Using generic warmup.")
+                    inputs = {
+                        "input_ids": self.torch.randint(0, 1000, (1, 32), device=device),
+                        "attention_mask": self.torch.ones(1, 32, device=device)
+                    }
+                    
+                    for _ in range(self.config["warmup_iterations"]):
+                        try:
+                            model(**inputs)
+                        except:
+                            # Try alternative inputs if the first fails
+                            try:
+                                inputs = {
+                                    "pixel_values": self.torch.rand(1, 3, 224, 224, device=device)
+                                }
+                                model(**inputs)
+                            except:
+                                logger.error("Failed to run warmup with generic inputs")
+                                raise
+        
+        def _run_single_iteration(self, model, model_family, batch_size, seq_length, tokenizer, processor, device):
+            """Run a single inference benchmark iteration"""
+            # Clear CUDA cache before iteration if tracking memory
+            if str(device).startswith("cuda"):
+                self.torch.cuda.empty_cache()
+                memory_before = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
+            else:
+                memory_before = 0
+            
+            # Generate inputs based on model family
+            if model_family in ["embedding", "text_generation"]:
                 if tokenizer:
                     # Use tokenizer if available
-                    inputs = tokenizer("Warmup text for benchmarking", 
+                    text = "This is a sample text for benchmarking"
+                    # Repeat the text for batch processing
+                    texts = [text] * batch_size
+                    inputs = tokenizer(texts, 
                                       return_tensors="pt", 
                                       padding="max_length", 
                                       max_length=seq_length)
@@ -783,32 +937,37 @@ class BenchmarkRunner:
                         "attention_mask": self.torch.ones(batch_size, seq_length, device=device)
                     }
                 
-                # Run warmup iterations
-                for _ in range(self.config["warmup_iterations"]):
-                    if model_family == "embedding":
+                # Run the model
+                start_time = time.time()
+                
+                if model_family == "embedding":
+                    model(**inputs)
+                else:  # text_generation
+                    if "t5" in model.__class__.__name__.lower():
+                        # Add decoder_input_ids for encoder-decoder models
+                        decoder_inputs = {
+                            "decoder_input_ids": self.torch.zeros((batch_size, 1), dtype=self.torch.long, device=device)
+                        }
+                        model(**inputs, **decoder_inputs)
+                    else:
                         model(**inputs)
-                    else:  # text_generation
-                        if "t5" in model.__class__.__name__.lower():
-                            # Add decoder_input_ids for encoder-decoder models
-                            decoder_inputs = {
-                                "decoder_input_ids": self.torch.zeros((batch_size, 1), dtype=self.torch.long, device=device)
-                            }
-                            model(**inputs, **decoder_inputs)
-                        else:
-                            model(**inputs)
+                        
+                end_time = time.time()
                 
             elif model_family == "vision":
-                # Image input shape is typically [batch_size, channels, height, width]
-                batch_size = 1
-                
                 if processor:
-                    # Use a dummy image if processor is available
                     try:
-                        # Create simple dummy image
+                        # Create batch of dummy images
                         from PIL import Image
                         import numpy as np
-                        dummy_image = Image.fromarray(np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8))
-                        inputs = processor(images=dummy_image, return_tensors="pt")
+                        
+                        # Create batch of images
+                        dummy_images = []
+                        for _ in range(batch_size):
+                            dummy_image = Image.fromarray(np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8))
+                            dummy_images.append(dummy_image)
+                        
+                        inputs = processor(images=dummy_images, return_tensors="pt")
                         inputs = {k: v.to(device) for k, v in inputs.items()}
                     except ImportError:
                         # Fall back to random tensors
@@ -821,328 +980,196 @@ class BenchmarkRunner:
                         "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
                     }
                 
-                # Run warmup iterations
-                for _ in range(self.config["warmup_iterations"]):
-                    model(**inputs)
-                    
+                # Run the model
+                start_time = time.time()
+                model(**inputs)
+                end_time = time.time()
+                
             elif model_family == "audio":
-                batch_size = 1
-                seq_length = 16000  # 1 second of audio at 16kHz
+                # For audio, we use an approximate "sequence length" that represents
+                # duration in seconds × sample rate (e.g., 16000 samples per second)
+                audio_length = seq_length * 16000
                 
                 if processor:
                     try:
-                        # Create a dummy audio array
+                        # Create batch of dummy audio arrays
                         import numpy as np
-                        dummy_audio = np.random.randn(seq_length)
-                        inputs = processor(dummy_audio, sampling_rate=16000, return_tensors="pt")
+                        
+                        dummy_audios = []
+                        for _ in range(batch_size):
+                            dummy_audio = np.random.randn(audio_length)
+                            dummy_audios.append(dummy_audio)
+                        
+                        inputs = processor(dummy_audios, sampling_rate=16000, return_tensors="pt")
                         inputs = {k: v.to(device) for k, v in inputs.items()}
                     except ImportError:
                         # Fall back to random tensors
-                        inputs = {
-                            "input_features": self.torch.rand(batch_size, 80, 3000, device=device)
-                        }
+                        if "whisper" in model.__class__.__name__.lower():
+                            inputs = {
+                                "input_features": self.torch.rand(batch_size, 80, seq_length * 100, device=device)
+                            }
+                        else:
+                            inputs = {
+                                "input_values": self.torch.rand(batch_size, audio_length, device=device)
+                            }
                 else:
                     # Different audio models might have different input shapes
                     if "whisper" in model.__class__.__name__.lower():
                         # Whisper takes mel spectrograms of shape [batch_size, n_mels, seq_len]
+                        # Typically, seq_len is ~3000 for 30 seconds of audio
                         inputs = {
-                            "input_features": self.torch.rand(batch_size, 80, 3000, device=device)
+                            "input_features": self.torch.rand(batch_size, 80, seq_length * 100, device=device)
                         }
                     elif "wav2vec" in model.__class__.__name__.lower():
                         # Wav2vec takes audio of shape [batch_size, seq_len]
                         inputs = {
-                            "input_values": self.torch.rand(batch_size, seq_length, device=device)
+                            "input_values": self.torch.rand(batch_size, audio_length, device=device)
                         }
                     else:
                         # Generic audio input
                         inputs = {
-                            "input_values": self.torch.rand(batch_size, seq_length, device=device)
+                            "input_values": self.torch.rand(batch_size, audio_length, device=device)
                         }
                 
-                # Run warmup iterations
-                for _ in range(self.config["warmup_iterations"]):
-                    model(**inputs)
-            
-            else:
-                # Generic warmup for unknown model families
-                logger.warning(f"Unknown model family {model_family}. Using generic warmup.")
-                inputs = {
-                    "input_ids": self.torch.randint(0, 1000, (1, 32), device=device),
-                    "attention_mask": self.torch.ones(1, 32, device=device)
-                }
+                # Run the model
+                start_time = time.time()
+                model(**inputs)
+                end_time = time.time()
                 
-                for _ in range(self.config["warmup_iterations"]):
-                    try:
-                        model(**inputs)
-                    except:
-                        # Try alternative inputs if the first fails
-                        try:
-                            inputs = {
-                                "pixel_values": self.torch.rand(1, 3, 224, 224, device=device)
-                            }
-                            model(**inputs)
-                        except:
-                            logger.error("Failed to run warmup with generic inputs")
-                            raise
-    
-    def _run_single_iteration(self, model, model_family, batch_size, seq_length, tokenizer, processor, device):
-        """Run a single inference benchmark iteration"""
-        # Clear CUDA cache before iteration if tracking memory
-        if str(device).startswith("cuda"):
-            self.torch.cuda.empty_cache()
-            memory_before = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
-        else:
-            memory_before = 0
-        
-        # Generate inputs based on model family
-        if model_family in ["embedding", "text_generation"]:
-            if tokenizer:
-                # Use tokenizer if available
-                text = "This is a sample text for benchmarking"
-                # Repeat the text for batch processing
-                texts = [text] * batch_size
-                inputs = tokenizer(texts, 
-                                  return_tensors="pt", 
-                                  padding="max_length", 
-                                  max_length=seq_length)
-                inputs = {k: v.to(device) for k, v in inputs.items()}
             else:
-                # Generate random inputs
+                # Generic benchmark for unknown model families
+                logger.warning(f"Unknown model family {model_family}. Using generic inputs.")
                 inputs = {
                     "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
                     "attention_mask": self.torch.ones(batch_size, seq_length, device=device)
                 }
-            
-            # Run the model
-            start_time = time.time()
-            
-            if model_family == "embedding":
-                model(**inputs)
-            else:  # text_generation
-                if "t5" in model.__class__.__name__.lower():
-                    # Add decoder_input_ids for encoder-decoder models
-                    decoder_inputs = {
-                        "decoder_input_ids": self.torch.zeros((batch_size, 1), dtype=self.torch.long, device=device)
-                    }
-                    model(**inputs, **decoder_inputs)
-                else:
-                    model(**inputs)
-                    
-            end_time = time.time()
-            
-        elif model_family == "vision":
-            if processor:
+                
+                # Try to run the model
                 try:
-                    # Create batch of dummy images
-                    from PIL import Image
-                    import numpy as np
-                    
-                    # Create batch of images
-                    dummy_images = []
-                    for _ in range(batch_size):
-                        dummy_image = Image.fromarray(np.random.randint(0, 256, (224, 224, 3), dtype=np.uint8))
-                        dummy_images.append(dummy_image)
-                    
-                    inputs = processor(images=dummy_images, return_tensors="pt")
-                    inputs = {k: v.to(device) for k, v in inputs.items()}
-                except ImportError:
-                    # Fall back to random tensors
-                    inputs = {
-                        "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
-                    }
-            else:
-                # Generate random image inputs
-                inputs = {
-                    "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
-                }
-            
-            # Run the model
-            start_time = time.time()
-            model(**inputs)
-            end_time = time.time()
-            
-        elif model_family == "audio":
-            # For audio, we use an approximate "sequence length" that represents
-            # duration in seconds × sample rate (e.g., 16000 samples per second)
-            audio_length = seq_length * 16000
-            
-            if processor:
-                try:
-                    # Create batch of dummy audio arrays
-                    import numpy as np
-                    
-                    dummy_audios = []
-                    for _ in range(batch_size):
-                        dummy_audio = np.random.randn(audio_length)
-                        dummy_audios.append(dummy_audio)
-                    
-                    inputs = processor(dummy_audios, sampling_rate=16000, return_tensors="pt")
-                    inputs = {k: v.to(device) for k, v in inputs.items()}
-                except ImportError:
-                    # Fall back to random tensors
-                    if "whisper" in model.__class__.__name__.lower():
-                        inputs = {
-                            "input_features": self.torch.rand(batch_size, 80, seq_length * 100, device=device)
-                        }
-                    else:
-                        inputs = {
-                            "input_values": self.torch.rand(batch_size, audio_length, device=device)
-                        }
-            else:
-                # Different audio models might have different input shapes
-                if "whisper" in model.__class__.__name__.lower():
-                    # Whisper takes mel spectrograms of shape [batch_size, n_mels, seq_len]
-                    # Typically, seq_len is ~3000 for 30 seconds of audio
-                    inputs = {
-                        "input_features": self.torch.rand(batch_size, 80, seq_length * 100, device=device)
-                    }
-                elif "wav2vec" in model.__class__.__name__.lower():
-                    # Wav2vec takes audio of shape [batch_size, seq_len]
-                    inputs = {
-                        "input_values": self.torch.rand(batch_size, audio_length, device=device)
-                    }
-                else:
-                    # Generic audio input
-                    inputs = {
-                        "input_values": self.torch.rand(batch_size, audio_length, device=device)
-                    }
-            
-            # Run the model
-            start_time = time.time()
-            model(**inputs)
-            end_time = time.time()
-            
-        else:
-            # Generic benchmark for unknown model families
-            logger.warning(f"Unknown model family {model_family}. Using generic inputs.")
-            inputs = {
-                "input_ids": self.torch.randint(0, 1000, (batch_size, seq_length), device=device),
-                "attention_mask": self.torch.ones(batch_size, seq_length, device=device)
-            }
-            
-            # Try to run the model
-            try:
-                start_time = time.time()
-                model(**inputs)
-                end_time = time.time()
-            except:
-                # Try alternative inputs if the first fails
-                try:
-                    inputs = {
-                        "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
-                    }
                     start_time = time.time()
                     model(**inputs)
                     end_time = time.time()
                 except:
-                    logger.error("Failed to run benchmark with generic inputs")
-                    raise
-        
-        # Calculate latency and throughput
-        latency = end_time - start_time
-        throughput = batch_size / latency
-        
-        # Calculate memory usage
-        if str(device).startswith("cuda"):
-            memory_after = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
-            memory_usage = memory_after - memory_before
-        else:
-            memory_usage = 0
-        
-        return {
-            "latency": latency,
-            "throughput": throughput,
-            "memory_usage": memory_usage
-        }
-    
-    def _get_sequence_lengths(self, model_family: str) -> List[int]:
-        """Get appropriate sequence lengths for the model family"""
-        # Use sequence lengths from config
-        default_lengths = self.config["sequence_lengths"]
-        
-        # Adjust based on model family
-        if model_family == "text_generation":
-            # Generation models typically need to test with longer sequences
-            return default_lengths
-        elif model_family == "embedding":
-            # Embedding models typically use shorter sequences
-            return [l for l in default_lengths if l <= 512]
-        elif model_family == "vision":
-            # Vision models typically use fixed input sizes
-            return [1]  # Just use a single "sequence length" for images
-        elif model_family == "audio":
-            # For audio, sequence length represents seconds of audio
-            return [1, 5, 10, 30]  # Test with 1, 5, 10, and 30 seconds of audio
-        else:
-            return default_lengths
-    
-    def run_all_benchmarks(self) -> Dict[str, Any]:
-        """
-        Run all benchmarks defined in the configuration
-        
-        Returns:
-            Dictionary with all benchmark results
-        """
-        logger.info("Starting benchmark suite")
-        
-        # Import dependencies
-        if not self.import_model_dependencies():
-            return {"status": "error", "error": "Failed to import dependencies"}
-        
-        # Get hardware platforms from config
-        hardware_platforms = self.config["hardware_platforms"]
-        
-        # Run benchmarks for all models on all hardware platforms
-        for family_name, family_config in self.config["model_families"].items():
-            for model_name in family_config["models"]:
-                for platform in hardware_platforms:
-                    if not self.running:
-                        logger.info("Benchmark run cancelled")
-                        return {"status": "cancelled", "benchmarks": self.results["benchmarks"]}
-                    
-                    # Check if family-specific batch sizes are defined
-                    batch_sizes = family_config.get("batch_sizes", self.config["batch_sizes"])
-                    
+                    # Try alternative inputs if the first fails
                     try:
-                        result = self.run_benchmark(
-                            model_name=model_name,
-                            model_family=family_name,
-                            hardware_platform=platform,
-                            batch_sizes=batch_sizes
-                        )
-                        
-                        # Add result to overall results
-                        self.results["benchmarks"].append(result)
-                        
-                        # Save intermediate results after each benchmark
-                        self._save_results()
-                        
-                        # Generate model-specific report
-                        self._generate_model_report(result)
-                    except Exception as e:
-                        logger.error(f"Error benchmarking {model_name} on {platform}: {str(e)}")
-                        self.results["benchmarks"].append({
-                            "model_name": model_name,
-                            "model_family": family_name,
-                            "hardware_platform": platform,
-                            "status": "error",
-                            "error": str(e)
-                        })
+                        inputs = {
+                            "pixel_values": self.torch.rand(batch_size, 3, 224, 224, device=device)
+                        }
+                        start_time = time.time()
+                        model(**inputs)
+                        end_time = time.time()
+                    except:
+                        logger.error("Failed to run benchmark with generic inputs")
+                        raise
+            
+            # Calculate latency and throughput
+            latency = end_time - start_time
+            throughput = batch_size / latency
+            
+            # Calculate memory usage
+            if str(device).startswith("cuda"):
+                memory_after = self.torch.cuda.memory_allocated(device) / (1024 * 1024)
+                memory_usage = memory_after - memory_before
+            else:
+                memory_usage = 0
+            
+            return {
+                "latency": latency,
+                "throughput": throughput,
+                "memory_usage": memory_usage
+            }
         
-        # Generate consolidated report
-        self._generate_consolidated_report()
+        def _get_sequence_lengths(self, model_family: str) -> List[int]:
+            """Get appropriate sequence lengths for the model family"""
+            # Use sequence lengths from config
+            default_lengths = self.config["sequence_lengths"]
+            
+            # Adjust based on model family
+            if model_family == "text_generation":
+                # Generation models typically need to test with longer sequences
+                return default_lengths
+            elif model_family == "embedding":
+                # Embedding models typically use shorter sequences
+                return [l for l in default_lengths if l <= 512]
+            elif model_family == "vision":
+                # Vision models typically use fixed input sizes
+                return [1]  # Just use a single "sequence length" for images
+            elif model_family == "audio":
+                # For audio, sequence length represents seconds of audio
+                return [1, 5, 10, 30]  # Test with 1, 5, 10, and 30 seconds of audio
+            else:
+                return default_lengths
         
-        logger.info("Benchmark suite completed successfully")
-        return self.results
-    
-    def _save_results(self):
-        """Save benchmark results to file"""
-        # Get today's date for filename
-        date_str = datetime.datetime.now().strftime("%Y%m%d")
-        output_file = os.path.join(self.output_dir, f"benchmark_results_{date_str}.json")
+        def run_all_benchmarks(self) -> Dict[str, Any]:
+            """
+            Run all benchmarks defined in the configuration
+            
+            Returns:
+                Dictionary with all benchmark results
+            """
+            logger.info("Starting benchmark suite")
+            
+            # Import dependencies
+            if not self.import_model_dependencies():
+                return {"status": "error", "error": "Failed to import dependencies"}
+            
+            # Get hardware platforms from config
+            hardware_platforms = self.config["hardware_platforms"]
+            
+            # Run benchmarks for all models on all hardware platforms
+            for family_name, family_config in self.config["model_families"].items():
+                for model_name in family_config["models"]:
+                    for platform in hardware_platforms:
+                        if not self.running:
+                            logger.info("Benchmark run cancelled")
+                            return {"status": "cancelled", "benchmarks": self.results["benchmarks"]}
+                        
+                        # Check if family-specific batch sizes are defined
+                        batch_sizes = family_config.get("batch_sizes", self.config["batch_sizes"])
+                        
+                        try:
+                            result = self.run_benchmark(
+                                model_name=model_name,
+                                model_family=family_name,
+                                hardware_platform=platform,
+                                batch_sizes=batch_sizes
+                            )
+                            
+                            # Add result to overall results
+                            self.results["benchmarks"].append(result)
+                            
+                            # Save intermediate results after each benchmark
+                            self._save_results()
+                            
+                            # Generate model-specific report
+                            self._generate_model_report(result)
+                        except Exception as e:
+                            logger.error(f"Error benchmarking {model_name} on {platform}: {str(e)}")
+                            self.results["benchmarks"].append({
+                                "model_name": model_name,
+                                "model_family": family_name,
+                                "hardware_platform": platform,
+                                "status": "error",
+                                "error": str(e)
+                            })
+            
+            # Generate consolidated report
+            self._generate_consolidated_report()
+            
+            logger.info("Benchmark suite completed successfully")
+            return self.results
         
-        with open(output_file, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        def _save_results(self):
+            """Save benchmark results to file"""
+            # Get today's date for filename
+            date_str = datetime.datetime.now().strftime("%Y%m%d")
+            output_file = os.path.join(self.output_dir, f"benchmark_results_{date_str}.json")
+            
+            with open(output_file, 'w') as f:
+                json.dump(self.results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         logger.info(f"Saved benchmark results to {output_file}")
     
@@ -1481,7 +1508,12 @@ def main():
     parser.add_argument("--batch-size", type=int, help="Specific batch size to use for benchmarks")
     parser.add_argument("--batch-sizes", type=str, help="Comma-separated list of batch sizes to benchmark")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Initialize benchmark runner
     runner = BenchmarkRunner(

@@ -26,6 +26,10 @@ import uuid
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -563,69 +567,75 @@ class BenchmarkDBAPI:
         try:
             # Start a transaction for data consistency
             conn.execute("BEGIN TRANSACTION")
-            # Get or create model
-            model_id = self._ensure_model_exists(conn, result.model_name)
             
-            # Get or create hardware
-            hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
-            # Create test run if run_id not provided
-            if result.run_id:
-                # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
+            try:
+                # Get or create model
+                model_id = self._ensure_model_exists(conn, result.model_name)
                 
-                if not run_exists:
-                    logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                # Get or create hardware
+                hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
+                
+                # Create test run if run_id not provided
+                if result.run_id:
+                    # Check if run exists
+                    run_exists = conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
+                        [result.run_id]
+                    ).fetchone()[0] > 0
+                    
+                    if not run_exists:
+                        logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                        run_id = self._create_test_run(
+                            conn,
+                            f"performance_benchmark_{result.model_name}",
+                            "performance",
+                            {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                        )
+                    else:
+                        run_id = result.run_id
+                else:
                     run_id = self._create_test_run(
                         conn,
                         f"performance_benchmark_{result.model_name}",
                         "performance",
                         {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
                     )
-                else:
-                    run_id = result.run_id
-            else:
-                run_id = self._create_test_run(
-                    conn,
-                    f"performance_benchmark_{result.model_name}",
-                    "performance",
-                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                
+                # Get next result_id
+                max_id = conn.execute("SELECT MAX(result_id) FROM performance_results").fetchone()[0]
+                result_id = 1 if max_id is None else max_id + 1
+                
+                # Store performance result
+                conn.execute(
+                    """
+                    INSERT INTO performance_results (
+                        result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
+                        total_time_seconds, average_latency_ms, throughput_items_per_second,
+                        memory_peak_mb, iterations, warmup_iterations, metrics
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        result_id, run_id, model_id, hardware_id, result.test_case, result.batch_size,
+                        result.precision, result.total_time_seconds, result.latency_avg,
+                        result.throughput, result.memory_peak, result.iterations,
+                        result.warmup_iterations, json.dumps(result.metrics or {})
+                    ]
                 )
-            
-            # Get next result_id
-            max_id = conn.execute("SELECT MAX(result_id) FROM performance_results").fetchone()[0]
-            result_id = 1 if max_id is None else max_id + 1
-            
-            # Store performance result
-            conn.execute(
-                """
-                INSERT INTO performance_results (
-                    result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
-                    total_time_seconds, average_latency_ms, throughput_items_per_second,
-                    memory_peak_mb, iterations, warmup_iterations, metrics
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    result_id, run_id, model_id, hardware_id, result.test_case, result.batch_size,
-                    result.precision, result.total_time_seconds, result.latency_avg,
-                    result.throughput, result.memory_peak, result.iterations,
-                    result.warmup_iterations, json.dumps(result.metrics or {})
-                ]
-            )
-            
-            logger.info(f"Stored performance result for {result.model_name} on {result.hardware_type} (ID: {result_id})")
-            # Commit the transaction
-            conn.execute("COMMIT")
-            return str(result_id)
-            # Rollback on error
-            try:
-                conn.execute("ROLLBACK")
-            except Exception as rollback_error:
-                logger.error(f"Error rolling back transaction: {rollback_error}")
+                
+                # Commit the transaction
+                conn.execute("COMMIT")
+                logger.info(f"Stored performance result for {result.model_name} on {result.hardware_type} (ID: {result_id})")
+                return str(result_id)
+                
+            except Exception as inner_ex:
+                # Rollback on error
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception as rollback_error:
+                    logger.error(f"Error rolling back transaction: {rollback_error}")
+                # Re-raise the original exception
+                raise inner_ex
             
         except Exception as e:
             logger.error(f"Error storing performance result: {e}")
@@ -647,8 +657,6 @@ class BenchmarkDBAPI:
         if isinstance(result, dict):
             result = HardwareCompatibility(**result)
         
-            # Start a transaction for data consistency
-            conn.execute("BEGIN TRANSACTION")
         # Validate required fields
         if not result.model_name:
             raise ValueError("model_name is required")
@@ -659,64 +667,77 @@ class BenchmarkDBAPI:
         
         conn = self._get_connection()
         try:
-            # Get or create model
-            model_id = self._ensure_model_exists(conn, result.model_name)
+            # Start a transaction for data consistency
+            conn.execute("BEGIN TRANSACTION")
             
-            # Get or create hardware
-            hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
-            # Create test run if run_id not provided
-            if result.run_id:
-                # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
+            try:
+                # Get or create model
+                model_id = self._ensure_model_exists(conn, result.model_name)
                 
-                if not run_exists:
-                    logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                # Get or create hardware
+                hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
+                
+                # Create test run if run_id not provided
+                if result.run_id:
+                    # Check if run exists
+                    run_exists = conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
+                        [result.run_id]
+                    ).fetchone()[0] > 0
+                    
+                    if not run_exists:
+                        logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                        run_id = self._create_test_run(
+                            conn,
+                            f"hardware_compatibility_{result.model_name}",
+                            "hardware",
+                            {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                        )
+                    else:
+                        run_id = result.run_id
+                else:
                     run_id = self._create_test_run(
                         conn,
                         f"hardware_compatibility_{result.model_name}",
                         "hardware",
                         {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
                     )
-                else:
-                    run_id = result.run_id
-            else:
-                run_id = self._create_test_run(
-                    conn,
-                    f"hardware_compatibility_{result.model_name}",
-                    "hardware",
-                    {"source": "api", "model": result.model_name, "hardware": result.hardware_type}
+                
+                # Get next compatibility_id
+                max_id = conn.execute("SELECT MAX(compatibility_id) FROM hardware_compatibility").fetchone()[0]
+                compatibility_id = 1 if max_id is None else max_id + 1
+                
+                # Store compatibility result
+                conn.execute(
+                    """
+                    INSERT INTO hardware_compatibility (
+                        compatibility_id, run_id, model_id, hardware_id, is_compatible,
+                        detection_success, initialization_success, error_message, error_type,
+                        suggested_fix, workaround_available, compatibility_score, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        compatibility_id, run_id, model_id, hardware_id, result.is_compatible,
+                        result.detection_success, result.initialization_success, result.error_message,
+                        result.error_type, result.suggested_fix, result.workaround_available,
+                        result.compatibility_score, json.dumps(result.metadata or {})
+                    ]
                 )
-            
-            # Get next compatibility_id
-            max_id = conn.execute("SELECT MAX(compatibility_id) FROM hardware_compatibility").fetchone()[0]
-            compatibility_id = 1 if max_id is None else max_id + 1
-            
-            # Store compatibility result
-            conn.execute(
-                """
-                INSERT INTO hardware_compatibility (
-            # Commit the transaction
-            conn.execute("COMMIT")
-                    compatibility_id, run_id, model_id, hardware_id, is_compatible,
-                    detection_success, initialization_success, error_message, error_type,
-                    suggested_fix, workaround_available, compatibility_score, metadata
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    compatibility_id, run_id, model_id, hardware_id, result.is_compatible,
-                    result.detection_success, result.initialization_success, result.error_message,
-                    result.error_type, result.suggested_fix, result.workaround_available,
-                    result.compatibility_score, json.dumps(result.metadata or {})
-                ]
-            )
-            
-            logger.info(f"Stored compatibility result for {result.model_name} on {result.hardware_type} (ID: {compatibility_id})")
-            return str(compatibility_id)
+                
+                # Commit the transaction
+                conn.execute("COMMIT")
+                logger.info(f"Stored compatibility result for {result.model_name} on {result.hardware_type} (ID: {compatibility_id})")
+                return str(compatibility_id)
+                
+            except Exception as inner_ex:
+                # Rollback on error
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception as rollback_error:
+                    logger.error(f"Error rolling back transaction: {rollback_error}")
+                # Re-raise the original exception
+                raise inner_ex
             
         except Exception as e:
             logger.error(f"Error storing compatibility result: {e}")
@@ -729,8 +750,6 @@ class BenchmarkDBAPI:
         Store an integration test result in the database.
         
         Args:
-            # Start a transaction for data consistency
-            conn.execute("BEGIN TRANSACTION")
             result: Integration test result data
             
         Returns:
@@ -750,86 +769,99 @@ class BenchmarkDBAPI:
         
         conn = self._get_connection()
         try:
-            # Get model_id if model_name provided
-            model_id = None
-            if result.model_name:
-                model_id = self._ensure_model_exists(conn, result.model_name)
+            # Start a transaction for data consistency
+            conn.execute("BEGIN TRANSACTION")
             
-            # Get hardware_id if hardware_type provided
-            hardware_id = None
-            if result.hardware_type:
-                hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
-            
-            # Create test run if run_id not provided
-            if result.run_id:
-                # Check if run exists
-                run_exists = conn.execute(
-                    "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
-                    [result.run_id]
-                ).fetchone()[0] > 0
+            try:
+                # Get model_id if model_name provided
+                model_id = None
+                if result.model_name:
+                    model_id = self._ensure_model_exists(conn, result.model_name)
                 
-                if not run_exists:
-                    logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                # Get hardware_id if hardware_type provided
+                hardware_id = None
+                if result.hardware_type:
+                    hardware_id = self._ensure_hardware_exists(conn, result.hardware_type, result.device_name)
+                
+                # Create test run if run_id not provided
+                if result.run_id:
+                    # Check if run exists
+                    run_exists = conn.execute(
+                        "SELECT COUNT(*) FROM test_runs WHERE run_id = ?",
+                        [result.run_id]
+                    ).fetchone()[0] > 0
+                    
+                    if not run_exists:
+                        logger.warning(f"Test run with ID {result.run_id} not found, creating new run")
+                        run_id = self._create_test_run(
+                            conn,
+                            f"integration_test_{result.test_module}",
+                            "integration",
+                            {"source": "api", "test_module": result.test_module}
+                        )
+                    else:
+                        run_id = result.run_id
+                else:
                     run_id = self._create_test_run(
                         conn,
                         f"integration_test_{result.test_module}",
                         "integration",
                         {"source": "api", "test_module": result.test_module}
                     )
-                else:
-                    run_id = result.run_id
-            else:
-                run_id = self._create_test_run(
-                    conn,
-                    f"integration_test_{result.test_module}",
-                    "integration",
-                    {"source": "api", "test_module": result.test_module}
-                )
-            
-            # Get next test_result_id
-            max_id = conn.execute("SELECT MAX(test_result_id) FROM integration_test_results").fetchone()[0]
-            test_result_id = 1 if max_id is None else max_id + 1
-            
-            # Store integration test result
-            conn.execute(
-                """
-                INSERT INTO integration_test_results (
-                    test_result_id, run_id, test_module, test_class, test_name, status,
-                    execution_time_seconds, hardware_id, model_id, error_message, error_traceback, metadata
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    test_result_id, run_id, result.test_module, result.test_class, result.test_name,
-                    result.status, result.execution_time_seconds, hardware_id, model_id,
-                    result.error_message, result.error_traceback, json.dumps(result.metadata or {})
-                ]
-            )
-            
-            # Store assertions if provided
-            if result.assertions:
-                for i, assertion in enumerate(result.assertions):
-                    assertion_id = i + 1
-                    conn.execute(
-                        """
-                        INSERT INTO integration_test_assertions (
-                            assertion_id, test_result_id, assertion_name, passed,
-                            expected_value, actual_value, message
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        [
-                            assertion_id, test_result_id, assertion.get('name', f'assertion_{i}'),
-                            assertion.get('passed', False), assertion.get('expected', ''),
-                            assertion.get('actual', ''), assertion.get('message', '')
-                        ]
+                
+                # Get next test_result_id
+                max_id = conn.execute("SELECT MAX(test_result_id) FROM integration_test_results").fetchone()[0]
+                test_result_id = 1 if max_id is None else max_id + 1
+                
+                # Store integration test result
+                conn.execute(
+                    """
+                    INSERT INTO integration_test_results (
+                        test_result_id, run_id, test_module, test_class, test_name, status,
+                        execution_time_seconds, hardware_id, model_id, error_message, error_traceback, metadata
                     )
-            
-            logger.info(f"Stored integration test result for {result.test_module}.{result.test_name} (ID: {test_result_id})")
-            return str(test_result_id)
-            
-            # Commit the transaction
-            conn.execute("COMMIT")
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        test_result_id, run_id, result.test_module, result.test_class, result.test_name,
+                        result.status, result.execution_time_seconds, hardware_id, model_id,
+                        result.error_message, result.error_traceback, json.dumps(result.metadata or {})
+                    ]
+                )
+                
+                # Store assertions if provided
+                if result.assertions:
+                    for i, assertion in enumerate(result.assertions):
+                        assertion_id = i + 1
+                        conn.execute(
+                            """
+                            INSERT INTO integration_test_assertions (
+                                assertion_id, test_result_id, assertion_name, passed,
+                                expected_value, actual_value, message
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            [
+                                assertion_id, test_result_id, assertion.get('name', f'assertion_{i}'),
+                                assertion.get('passed', False), assertion.get('expected', ''),
+                                assertion.get('actual', ''), assertion.get('message', '')
+                            ]
+                        )
+                
+                # Commit the transaction
+                conn.execute("COMMIT")
+                logger.info(f"Stored integration test result for {result.test_module}.{result.test_name} (ID: {test_result_id})")
+                return str(test_result_id)
+                
+            except Exception as inner_ex:
+                # Rollback on error
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception as rollback_error:
+                    logger.error(f"Error rolling back transaction: {rollback_error}")
+                # Re-raise the original exception
+                raise inner_ex
+                
         except Exception as e:
             logger.error(f"Error storing integration test result: {e}")
             raise

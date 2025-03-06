@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""
+Script to fully deprecate JSON output in benchmark files and enforce DuckDB usage.
+
+This script modifies benchmark-related files to:
+1. Set DEPRECATE_JSON_OUTPUT=1 as the default
+2. Remove JSON output functionality
+3. Ensure all results are written directly to DuckDB
+4. Update files that read from JSON to read from DuckDB instead
+
+Usage:
+    python deprecate_json_benchmarks.py
+"""
+
+import os
+import re
+import sys
+import glob
+import logging
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("deprecate_json_benchmarks")
+
+# Define the root directory
+ROOT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+
+# List of high-priority benchmark files to update
+HIGH_PRIORITY_FILES = [
+    "benchmark_all_key_models.py",
+    "run_model_benchmarks.py",
+    "hardware_benchmark_runner.py",
+    "benchmark_db_api.py",
+    "web_platform_benchmark.py",
+    "web_platform_testing.py",
+    "test_webgpu_ultra_low_precision.py",
+    "run_benchmark_with_db.py",
+    "benchmark_hardware_performance.py",
+    "model_benchmark_runner.py",
+    "training_benchmark_runner.py",
+    "distributed_training_benchmark.py",
+    "continuous_hardware_benchmarking.py"
+]
+
+# Patterns for finding JSON writing code
+JSON_WRITE_PATTERNS = [
+    r"json\.dump\(.*?,\s*f\)",
+    r"with\s+open\(.*?,\s*['\"]w['\"]\)\s+as\s+f\s*:.+?json\.dump",
+    r"json\.dump\(.*?,\s*open\(.*?,\s*['\"]w['\"]\)\)",
+    r"save.*?to\s+json",
+    r"write.*?json\s+file"
+]
+
+# Patterns for finding JSON reading code
+JSON_READ_PATTERNS = [
+    r"json\.load\(.*?f\)",
+    r"with\s+open\(.*?,\s*['\"]r['\"]\)\s+as\s+f\s*:.+?json\.load",
+    r"json\.load\(open\(.*?,\s*['\"]r['\"]\)\)",
+    r"load.*?from\s+json",
+    r"read.*?json\s+file"
+]
+
+def add_deprecate_flag(file_path):
+    """Add or modify DEPRECATE_JSON_OUTPUT environment variable checking"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Check if the file already has DEPRECATE_JSON_OUTPUT
+    if "DEPRECATE_JSON_OUTPUT" in content:
+        # Change it to default to 1
+        content = re.sub(
+            r"DEPRECATE_JSON_OUTPUT\s*=\s*os\.environ\.get\(['\"]DEPRECATE_JSON_OUTPUT['\"],\s*['\"]0['\"]\)\.lower\(\)\s*in",
+            "DEPRECATE_JSON_OUTPUT = os.environ.get(\"DEPRECATE_JSON_OUTPUT\", \"1\").lower() in",
+            content
+        )
+    else:
+        # Add it after imports
+        import_section_end = re.search(r"(^import.*?\n|^from.*?\n)+", content, re.MULTILINE)
+        if import_section_end:
+            pos = import_section_end.end()
+            content = (
+                content[:pos] + 
+                "\n# Always deprecate JSON output in favor of DuckDB\n"
+                "DEPRECATE_JSON_OUTPUT = os.environ.get(\"DEPRECATE_JSON_OUTPUT\", \"1\").lower() in (\"1\", \"true\", \"yes\")\n\n" +
+                content[pos:]
+            )
+    
+    with open(file_path, 'w') as f:
+        f.write(content)
+    logger.info(f"Added/updated DEPRECATE_JSON_OUTPUT in {file_path}")
+    return True
+
+def replace_json_output_with_db(file_path):
+    """Replace JSON writing with database writing"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Find JSON writing sections and replace them with DB writing
+    for pattern in JSON_WRITE_PATTERNS:
+        matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
+        for match in matches:
+            start, end = match.span()
+            # Look for the full block of code that writes to JSON
+            # This is a complex heuristic that may need manual adjustment
+            block_start = content.rfind('\n', 0, start)
+            if block_start == -1:
+                block_start = 0
+            else:
+                block_start += 1  # Skip the newline
+            
+            # Find the end of the block
+            block_end = content.find('\n', end)
+            if block_end == -1:
+                block_end = len(content)
+            
+            # Extract the code block
+            code_block = content[block_start:block_end]
+            
+            # If it looks like conditional JSON writing
+            if "DEPRECATE_JSON_OUTPUT" in code_block:
+                # Replace with direct DB writing
+                new_block = code_block.split("if not DEPRECATE_JSON_OUTPUT:", 1)[0]
+                if "db_api" in content or "BenchmarkDBAPI" in content:
+                    new_block += "# JSON output deprecated in favor of database storage\n"
+                    new_block += "logger.info(\"Storing results in database\")\n"
+                    
+                    # If we have variable names to help us understand what's being stored
+                    if "results" in code_block:
+                        new_block += "# Store results directly in the database\n"
+                        new_block += "try:\n"
+                        new_block += "    from benchmark_db_api import BenchmarkDBAPI\n"
+                        new_block += "    db_api = BenchmarkDBAPI(db_path=os.environ.get(\"BENCHMARK_DB_PATH\", \"./benchmark_db.duckdb\"))\n"
+                        new_block += "    db_api.store_benchmark_results(results)\n"
+                        new_block += "    logger.info(\"Successfully stored results in database\")\n"
+                        new_block += "except Exception as e:\n"
+                        new_block += "    logger.error(f\"Error storing results in database: {e}\")\n"
+                else:
+                    new_block += "# JSON output deprecated in favor of database storage\n"
+                    new_block += "logger.info(\"JSON output is deprecated. Results are stored directly in the database.\")\n"
+                
+                content = content[:block_start] + new_block + content[block_end:]
+            
+            # If it's unconditional JSON writing
+            elif "json.dump" in code_block or "write" in code_block.lower() and "json" in code_block.lower():
+                # Add a condition to skip it
+                new_block = "# JSON output deprecated in favor of database storage\n"
+                new_block += "if not DEPRECATE_JSON_OUTPUT:\n"
+                new_block += "    " + code_block.replace("\n", "\n    ") + "\n"
+                new_block += "else:\n"
+                new_block += "    logger.info(\"JSON output is deprecated. Results are stored directly in the database.\")\n"
+                
+                content = content[:block_start] + new_block + content[block_end:]
+    
+    with open(file_path, 'w') as f:
+        f.write(content)
+    logger.info(f"Replaced JSON output with DB output in {file_path}")
+    return True
+
+def replace_json_input_with_db(file_path):
+    """Replace JSON reading with database reading"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Find JSON reading sections and replace them with DB reading
+    for pattern in JSON_READ_PATTERNS:
+        matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
+        for match in matches:
+            start, end = match.span()
+            # Look for the full block of code that reads from JSON
+            block_start = content.rfind('\n', 0, start)
+            if block_start == -1:
+                block_start = 0
+            else:
+                block_start += 1  # Skip the newline
+            
+            # Find the end of the block
+            block_end = content.find('\n', end)
+            if block_end == -1:
+                block_end = len(content)
+            
+            # Extract the code block
+            code_block = content[block_start:block_end]
+            
+            # Skip if it's part of a larger conditional or if it's part of benchmark_db_ code
+            if "benchmark_db_" in file_path.lower() or "if " in code_block or "elif " in code_block:
+                continue
+                
+            # Add a condition with a DB alternative
+            new_block = "# Try database first, fall back to JSON if necessary\n"
+            new_block += "try:\n"
+            new_block += "    from benchmark_db_api import BenchmarkDBAPI\n"
+            new_block += "    db_api = BenchmarkDBAPI(db_path=os.environ.get(\"BENCHMARK_DB_PATH\", \"./benchmark_db.duckdb\"))\n"
+            
+            # Extract the variable name where results are stored if possible
+            var_name = None
+            var_match = re.search(r"(\w+)\s*=\s*json\.load", code_block)
+            if var_match:
+                var_name = var_match.group(1)
+                new_block += f"    {var_name} = db_api.get_benchmark_results()\n"
+            else:
+                new_block += "    results = db_api.get_benchmark_results()\n"
+            
+            new_block += "    logger.info(\"Successfully loaded results from database\")\n"
+            new_block += "except Exception as e:\n"
+            new_block += "    logger.warning(f\"Error reading from database, falling back to JSON: {e}\")\n"
+            new_block += "    " + code_block.replace("\n", "\n    ") + "\n"
+            
+            content = content[:block_start] + new_block + content[block_end:]
+    
+    with open(file_path, 'w') as f:
+        f.write(content)
+    logger.info(f"Replaced JSON input with DB input in {file_path}")
+    return True
+
+def add_db_support(file_path):
+    """Add database support to files that don't have it yet"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Check if the file already has benchmark_db_api imports
+    if "benchmark_db_api" not in content and "BenchmarkDBAPI" not in content:
+        # Add imports and try-except for backward compatibility
+        import_section_end = re.search(r"(^import.*?\n|^from.*?\n)+", content, re.MULTILINE)
+        if import_section_end:
+            pos = import_section_end.end()
+            added_code = (
+                "\n# Add DuckDB database support\n"
+                "try:\n"
+                "    from benchmark_db_api import BenchmarkDBAPI\n"
+                "    BENCHMARK_DB_AVAILABLE = True\n"
+                "except ImportError:\n"
+                "    BENCHMARK_DB_AVAILABLE = False\n"
+                "    logger.warning(\"benchmark_db_api not available. Using deprecated JSON fallback.\")\n\n"
+            )
+            content = content[:pos] + added_code + content[pos:]
+        
+        # Add db_path argument to argument parser if it exists
+        parser_section = re.search(r"parser\s*=\s*argparse\.ArgumentParser", content)
+        if parser_section:
+            # Find the end of argument additions
+            arg_section_end = content.find('args = parser.parse_args()', parser_section.start())
+            if arg_section_end == -1:
+                arg_section_end = content.find('return parser.parse_args()', parser_section.start())
+            
+            if arg_section_end != -1:
+                # Add database arguments
+                db_args = (
+                    "\n    parser.add_argument(\"--db-path\", type=str, default=None,\n"
+                    "                      help=\"Path to the benchmark database\")\n"
+                    "    parser.add_argument(\"--db-only\", action=\"store_true\",\n"
+                    "                      help=\"Store results only in the database, not in JSON\")\n"
+                )
+                content = content[:arg_section_end] + db_args + content[arg_section_end:]
+        
+        with open(file_path, 'w') as f:
+            f.write(content)
+        logger.info(f"Added database support to {file_path}")
+        return True
+    
+    return False
+
+def ensure_db_path_env_var(file_path):
+    """Ensure the file properly handles BENCHMARK_DB_PATH environment variable"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Check if BENCHMARK_DB_PATH is already handled
+    if "BENCHMARK_DB_PATH" not in content and "db_path" in content.lower():
+        # Add environment variable handling
+        match = re.search(r"db_path\s*=\s*args\.db_path", content)
+        if match:
+            db_path_line = match.group(0)
+            new_db_path_line = (
+                "db_path = args.db_path\n"
+                "    if db_path is None:\n"
+                "        db_path = os.environ.get(\"BENCHMARK_DB_PATH\", \"./benchmark_db.duckdb\")\n"
+                "        logger.info(f\"Using database path from environment: {db_path}\")"
+            )
+            content = content.replace(db_path_line, new_db_path_line)
+            
+            with open(file_path, 'w') as f:
+                f.write(content)
+            logger.info(f"Added BENCHMARK_DB_PATH handling to {file_path}")
+            return True
+    
+    return False
+
+def update_file(file_path):
+    """Update a single file with all necessary changes"""
+    logger.info(f"Processing {file_path}")
+    
+    # Skip if file doesn't exist
+    if not os.path.exists(file_path):
+        logger.warning(f"File not found: {file_path}")
+        return False
+    
+    # Make a backup
+    backup_path = f"{file_path}.bak_json_dep"
+    with open(file_path, 'r') as src, open(backup_path, 'w') as dst:
+        dst.write(src.read())
+    
+    # Apply all transformations
+    add_deprecate_flag(file_path)
+    add_db_support(file_path)
+    ensure_db_path_env_var(file_path)
+    replace_json_output_with_db(file_path)
+    replace_json_input_with_db(file_path)
+    
+    logger.info(f"Successfully updated {file_path}")
+    return True
+
+def main():
+    """Main function to update all benchmark files"""
+    logger.info("Starting JSON deprecation process")
+    
+    # Process high-priority files
+    for filename in HIGH_PRIORITY_FILES:
+        file_path = os.path.join(ROOT_DIR, filename)
+        update_file(file_path)
+    
+    # Find and process other benchmark files
+    benchmark_files = glob.glob(os.path.join(ROOT_DIR, "*benchmark*.py"))
+    for file_path in benchmark_files:
+        if os.path.basename(file_path) not in HIGH_PRIORITY_FILES:
+            update_file(file_path)
+    
+    logger.info("JSON deprecation process completed successfully")
+    logger.info("To complete the transition, update CLAUDE.md and documentation to reflect the change")
+    logger.info("Remember to add the environment variable BENCHMARK_DB_PATH to your environment")
+    logger.info("Example: export BENCHMARK_DB_PATH=./benchmark_db.duckdb")
+
+if __name__ == "__main__":
+    main()

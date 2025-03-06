@@ -138,7 +138,8 @@ class TemplateDatabase:
             (7, 'webgpu', 'WebGPU', 'Web GPU API (browser)', 'supported'),
             (8, 'webgpu_compute', 'WebGPU Compute', 'WebGPU with Compute Shaders', 'supported'),
             (9, 'webnn_parallelized', 'WebNN Parallelized', 'WebNN with parallel loading', 'supported'),
-            (10, 'webgpu_parallelized', 'WebGPU Parallelized', 'WebGPU with parallel loading', 'supported')
+            (10, 'webgpu_parallelized', 'WebGPU Parallelized', 'WebGPU with parallel loading', 'supported'),
+            (11, 'qualcomm', 'Qualcomm', 'Qualcomm AI Engine/Hexagon DSP implementation', 'supported')
         ]
         
         # Convert to DataFrame and insert

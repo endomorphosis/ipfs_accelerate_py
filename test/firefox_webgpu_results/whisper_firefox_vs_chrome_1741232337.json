@@ -1,0 +1,45 @@
+{
+  "model": "whisper",
+  "tests": [
+    {
+      "success": true,
+      "model": "whisper",
+      "browser": "firefox",
+      "compute_shaders": true,
+      "performance": {
+        "improvement_percentage": 51.31999999999999
+      },
+      "name": "Firefox with compute shaders"
+    },
+    {
+      "success": true,
+      "model": "whisper",
+      "browser": "firefox",
+      "compute_shaders": false,
+      "performance": {
+        "improvement_percentage": 51.053333333333335
+      },
+      "name": "Firefox without compute shaders"
+    },
+    {
+      "success": true,
+      "model": "whisper",
+      "browser": "chrome",
+      "compute_shaders": true,
+      "performance": {
+        "improvement_percentage": 51.379999999999995
+      },
+      "name": "Chrome with compute shaders"
+    },
+    {
+      "success": true,
+      "model": "whisper",
+      "browser": "chrome",
+      "compute_shaders": false,
+      "performance": {
+        "improvement_percentage": 51.42333333333334
+      },
+      "name": "Chrome without compute shaders"
+    }
+  ]
+}

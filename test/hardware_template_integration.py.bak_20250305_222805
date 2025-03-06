@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+Hardware Template Integration
+
+This module provides functionality for integrating hardware templates with models.
+It helps determine which hardware template to use for each model based on its modality.
+"""
+
+# MODALITY_TYPES for proper hardware support mapping
+MODALITY_TYPES = {
+    "text": ["bert", "gpt2", "t5", "roberta", "distilbert", "bart", "llama", "mistral", "phi", 
+             "mixtral", "gemma", "qwen2", "deepseek", "falcon", "mpt", "chatglm", "bloom", 
+             "command-r", "orca3", "olmo", "starcoder", "codellama"],
+    "vision": ["vit", "deit", "swin", "convnext", "resnet", "dinov2", "detr", "sam", "segformer", 
+               "mask2former", "conditional_detr", "dino", "zoedepth", "depth-anything", "yolos"],
+    "audio": ["wav2vec2", "whisper", "hubert", "clap", "audioldm2", "musicgen", "bark", 
+              "encodec", "univnet", "speecht5", "qwen2-audio"],
+    "multimodal": ["clip", "llava", "blip", "flava", "owlvit", "git", "pali-gemma", "idefics",
+                   "llava-next", "flamingo", "blip2", "kosmos-2", "siglip", "chinese-clip", 
+                   "instructblip", "qwen2-vl", "cogvlm2", "vilt", "imagebind"],
+    "video": ["xclip", "videomae", "vivit", "movinet", "videobert", "videogpt"]
+}
+
+# Enhanced Hardware Templates - Auto-generated
+# Text Model Template (BERT, T5, LLAMA, etc.)
+text_hardware_template = """
+# Template for text models with cross-platform support
+"""
+
+# Vision Model Template (ViT, CLIP, DETR, etc.)
+vision_hardware_template = """
+# Template for vision models with cross-platform support
+"""
+
+# Audio Model Template (Whisper, WAV2VEC2, CLAP, etc.)
+audio_hardware_template = """
+# Template for audio models with cross-platform support
+"""
+
+# Multimodal Model Template (LLAVA, LLAVA-Next, etc.)
+multimodal_hardware_template = """
+# Template for multimodal models with cross-platform support
+"""
+
+# Video Model Template (XCLIP, etc.)
+video_hardware_template = """
+# Template for video models with cross-platform support
+"""
+
+# Map model categories to templates
+hardware_template_map = {
+    "text": text_hardware_template,
+    "vision": vision_hardware_template,
+    "audio": audio_hardware_template,
+    "multimodal": multimodal_hardware_template,
+    "video": video_hardware_template
+}
+
+# Key Models Map - Maps key model prefixes to proper categories
+key_models_mapping = {
+    "bert": "text", 
+    "gpt2": "text",
+    "t5": "text",
+    "llama": "text",
+    "vit": "vision",
+    "clip": "vision",
+    "whisper": "audio",
+    "wav2vec2": "audio",
+    "clap": "audio",
+    "detr": "vision",
+    "llava": "multimodal",
+    "llava_next": "multimodal",
+    "qwen2": "text",
+    "xclip": "video"
+}
+
+# Hardware support matrix for key models
+KEY_MODEL_HARDWARE_MAP = {
+    "bert": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "REAL",
+        "webgpu": "REAL"
+    },
+    "t5": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "REAL",
+        "webgpu": "REAL"
+    },
+    "llama": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "vit": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "REAL",
+        "webgpu": "REAL"
+    },
+    "clip": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "REAL",
+        "webgpu": "REAL"
+    },
+    "detr": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "clap": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "wav2vec2": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "whisper": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "llava": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "SIMULATION",
+        "mps": "SIMULATION",
+        "rocm": "SIMULATION",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "llava_next": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "SIMULATION",
+        "mps": "SIMULATION",
+        "rocm": "SIMULATION",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "xclip": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "REAL",
+        "mps": "REAL",
+        "rocm": "REAL",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    },
+    "qwen2": {
+        "cpu": "REAL",
+        "cuda": "REAL",
+        "openvino": "SIMULATION",
+        "mps": "SIMULATION",
+        "rocm": "SIMULATION",
+        "webnn": "SIMULATION",
+        "webgpu": "SIMULATION"
+    }
+}
+
+# Function to detect modality from model name
+def detect_model_modality(model_name):
+    """Detect which modality a model belongs to based on its name."""
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct mapping from key models
+    if model_base in key_models_mapping:
+        return key_models_mapping[model_base]
+    
+    # Check for common patterns in model names
+    model_lower = model_name.lower()
+    
+    # Text models
+    if any(text_model in model_lower for text_model in ['bert', 'gpt2', 't5', 'roberta', 'distilbert', 'bart', 'llama', 'mistral']):
+        return "text"
+    
+    # Vision models
+    if any(vision_model in model_lower for vision_model in ['vit', 'deit', 'swin', 'convnext', 'resnet', 'dinov2', 'detr', 'sam']):
+        return "vision"
+    
+    # Audio models
+    if any(audio_model in model_lower for audio_model in ['wav2vec2', 'whisper', 'hubert', 'clap', 'audioldm2', 'musicgen', 'bark', 'encodec']):
+        return "audio"
+    
+    # Multimodal models
+    if any(mm_model in model_lower for mm_model in ['clip', 'llava', 'blip', 'flava', 'owlvit', 'git', 'pali-gemma', 'idefics']):
+        return "multimodal"
+    
+    # Video models
+    if any(video_model in model_lower for video_model in ['xclip', 'videomae', 'vivit', 'movinet', 'videobert']):
+        return "video"
+    
+    # Default to text as fallback
+    return "text"
+
+# Function to get hardware template for a model
+def get_hardware_template_for_model(model_name):
+    """Get the appropriate hardware template for a model."""
+    modality = detect_model_modality(model_name)
+    return hardware_template_map.get(modality, text_hardware_template)
+
+# Function to get hardware map for a model
+def get_hardware_map_for_model(model_name):
+    """Get the appropriate hardware map for a model."""
+    # Check if this is a known key model
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct mapping from key models
+    if model_base in KEY_MODEL_HARDWARE_MAP:
+        return KEY_MODEL_HARDWARE_MAP[model_base]
+    
+    # If not a key model, use modality to create default map
+    modality = detect_model_modality(model_name)
+    
+    # Default hardware map based on modality
+    default_map = {
+        "text": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "REAL", "webgpu": "REAL"
+        },
+        "vision": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "REAL", "webgpu": "REAL"
+        },
+        "audio": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        },
+        "multimodal": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "SIMULATION", 
+            "mps": "SIMULATION", "rocm": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        },
+        "video": {
+            "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+            "mps": "REAL", "rocm": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"
+        }
+    }
+    
+    return default_map.get(modality, default_map["text"])

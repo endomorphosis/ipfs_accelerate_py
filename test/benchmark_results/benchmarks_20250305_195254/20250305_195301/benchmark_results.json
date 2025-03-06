@@ -1,0 +1,2460 @@
+{
+  "timestamp": "20250305_195301",
+  "models": {
+    "bert": {
+      "name": "prajjwal1/bert-tiny",
+      "family": "embedding",
+      "size": "small",
+      "modality": "text"
+    },
+    "clap": {
+      "name": "laion/clap-htsat-unfused",
+      "family": "audio",
+      "size": "base",
+      "modality": "audio"
+    },
+    "clip": {
+      "name": "openai/clip-vit-base-patch32",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "detr": {
+      "name": "facebook/detr-resnet-50",
+      "family": "vision",
+      "size": "base",
+      "modality": "vision"
+    },
+    "llama": {
+      "name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "llava": {
+      "name": "llava-hf/llava-1.5-7b-hf",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "llava_next": {
+      "name": "llava-hf/llava-v1.6-mistral-7b",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    },
+    "qwen2": {
+      "name": "Qwen/Qwen2-0.5B-Instruct",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "t5": {
+      "name": "google/t5-efficient-tiny",
+      "family": "text_generation",
+      "size": "small",
+      "modality": "text"
+    },
+    "vit": {
+      "name": "facebook/deit-tiny-patch16-224",
+      "family": "vision",
+      "size": "small",
+      "modality": "vision"
+    },
+    "wav2vec2": {
+      "name": "facebook/wav2vec2-base",
+      "family": "audio",
+      "size": "base",
+      "modality": "audio"
+    },
+    "whisper": {
+      "name": "openai/whisper-tiny",
+      "family": "audio",
+      "size": "small",
+      "modality": "audio"
+    },
+    "xclip": {
+      "name": "microsoft/xclip-base-patch32",
+      "family": "multimodal",
+      "size": "base",
+      "modality": "multimodal"
+    }
+  },
+  "functionality_verification": {
+    "cpu": {
+      "stats": {
+        "timestamp": "20250305_195309",
+        "total_tests": 13,
+        "successful_tests": 0,
+        "failed_tests": 13,
+        "models_tested": 13,
+        "hardware_platforms": [
+          "cpu"
+        ],
+        "success_rate": 0.0
+      },
+      "model_results": {
+        "clip": {
+          "cpu": false
+        },
+        "detr": {
+          "cpu": false
+        },
+        "bert": {
+          "cpu": false
+        },
+        "clap": {
+          "cpu": false
+        },
+        "llama": {
+          "cpu": false
+        },
+        "llava": {
+          "cpu": false
+        },
+        "qwen2": {
+          "cpu": false
+        },
+        "t5": {
+          "cpu": false
+        },
+        "llava_next": {
+          "cpu": false
+        },
+        "vit": {
+          "cpu": false
+        },
+        "wav2vec2": {
+          "cpu": false
+        },
+        "xclip": {
+          "cpu": false
+        },
+        "whisper": {
+          "cpu": false
+        }
+      },
+      "detailed_results": [
+        {
+          "model": "clip",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 528\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 527\n"
+        },
+        {
+          "model": "detr",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "bert",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 562\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 561\n"
+        },
+        {
+          "model": "clap",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py\", line 1012\n    def enhanced_cuda_handler(audio_input=None, text=None):\nSyntaxError: expected 'except' or 'finally' block\n"
+        },
+        {
+          "model": "llama",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "llava",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py\", line 257\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "qwen2",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 518\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 517\n"
+        },
+        {
+          "model": "t5",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 500\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 499\n"
+        },
+        {
+          "model": "llava_next",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py\", line 1002\n    def init_webgpu(self, model_name=None):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "vit",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 505\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 504\n"
+        },
+        {
+          "model": "wav2vec2",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+        },
+        {
+          "model": "xclip",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 164\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+        },
+        {
+          "model": "whisper",
+          "hardware": "cpu",
+          "success": false,
+          "return_code": 1,
+          "stdout": "",
+          "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 274\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+        }
+      ]
+    }
+  },
+  "performance_benchmarks": {
+    "embedding": {
+      "timestamp": "20250305_195321",
+      "system_info": {
+        "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "processor": "x86_64",
+        "hostname": "barberb-Hyper-V-UEFI-Release-v4-1",
+        "os": "Linux",
+        "os_release": "6.8.0-11-generic",
+        "os_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+        "architecture": "x86_64",
+        "timestamp": "2025-03-05T19:53:21.745748",
+        "cpu_count_physical": 4,
+        "cpu_count_logical": 8,
+        "total_memory_gb": 62.214195251464844,
+        "available_memory_gb": 31.426822662353516,
+        "memory_percent_used": 49.5,
+        "cuda_available": true,
+        "cuda_version": "12.4",
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory_gb": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "mps_available": false,
+        "openvino_available": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0"
+      },
+      "hardware_info": {
+        "cpu": true,
+        "cuda": true,
+        "mps": false,
+        "rocm": false,
+        "openvino": true
+      },
+      "benchmarks": {
+        "embedding": {
+          "bert-base-uncased": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "bert-base-uncased",
+              "model_class": "BertModel",
+              "family": "embedding",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.6356017589569092,
+                    0.84891676902771,
+                    0.4543600082397461,
+                    0.3148477077484131,
+                    0.34412193298339844,
+                    0.6230597496032715,
+                    0.6599020957946777,
+                    0.5675637722015381,
+                    0.14658641815185547,
+                    0.3458130359649658,
+                    0.23226118087768555,
+                    0.19898772239685059,
+                    0.15302205085754395,
+                    0.1579914093017578,
+                    0.4243183135986328,
+                    0.43057847023010254,
+                    0.36840128898620605,
+                    0.6240003108978271,
+                    0.3018529415130615,
+                    0.35360169410705566
+                  ],
+                  "avg_latency": 0.40928943157196046,
+                  "throughput": 2.443219790486661,
+                  "total_time": 8.185919284820557,
+                  "iterations": 20
+                },
+                "batch_1_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    1.2376596927642822,
+                    1.3369512557983398,
+                    1.1324403285980225,
+                    0.5119128227233887,
+                    0.4994392395019531,
+                    0.3350837230682373,
+                    1.441636323928833,
+                    0.932539701461792,
+                    0.8558356761932373,
+                    0.9356842041015625,
+                    0.8317444324493408,
+                    0.4353907108306885,
+                    0.8650391101837158,
+                    0.7704646587371826,
+                    2.1702189445495605,
+                    1.0470950603485107,
+                    0.7527844905853271,
+                    0.6732022762298584,
+                    0.7563188076019287,
+                    1.4766907691955566
+                  ],
+                  "avg_latency": 0.9499066114425659,
+                  "throughput": 1.0527282893507899,
+                  "total_time": 18.998254537582397,
+                  "iterations": 20
+                },
+                "batch_1_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    2.5368728637695312,
+                    3.663924217224121,
+                    2.928182363510132,
+                    3.1065263748168945,
+                    2.980890989303589,
+                    4.109506607055664,
+                    3.1349992752075195,
+                    3.554316520690918,
+                    2.209550142288208,
+                    1.9554402828216553,
+                    2.6646177768707275,
+                    1.7074596881866455,
+                    2.2175886631011963,
+                    2.298877716064453,
+                    4.055796146392822,
+                    3.497366428375244,
+                    2.486576557159424,
+                    2.631483316421509,
+                    2.197672128677368,
+                    3.5791962146759033
+                  ],
+                  "avg_latency": 2.8758422136306763,
+                  "throughput": 0.34772350546809055,
+                  "total_time": 57.51696300506592,
+                  "iterations": 20
+                },
+                "batch_4_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.7068135738372803,
+                    0.5048327445983887,
+                    0.5142858028411865,
+                    0.4991297721862793,
+                    0.9002685546875,
+                    0.4998900890350342,
+                    0.5449278354644775,
+                    0.5053496360778809,
+                    1.3449053764343262,
+                    0.5902423858642578,
+                    0.9555313587188721,
+                    0.6919982433319092,
+                    0.783926248550415,
+                    0.8771123886108398,
+                    1.0331809520721436,
+                    0.6009747982025146,
+                    0.5251240730285645,
+                    0.6002175807952881,
+                    1.5362591743469238,
+                    1.051034688949585
+                  ],
+                  "avg_latency": 0.7633002638816834,
+                  "throughput": 5.240351530386588,
+                  "total_time": 15.266151428222656,
+                  "iterations": 20
+                },
+                "batch_4_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    2.3691329956054688,
+                    2.9865126609802246,
+                    1.9391160011291504,
+                    1.906418800354004,
+                    2.266350507736206,
+                    1.9074065685272217,
+                    1.405318021774292,
+                    1.7698664665222168,
+                    1.7948455810546875,
+                    1.9703683853149414,
+                    2.0451784133911133,
+                    1.1718978881835938,
+                    1.0979855060577393,
+                    0.9131271839141846,
+                    1.0440611839294434,
+                    1.2192575931549072,
+                    0.8594036102294922,
+                    1.0047829151153564,
+                    1.187032699584961,
+                    0.9574825763702393
+                  ],
+                  "avg_latency": 1.5907772779464722,
+                  "throughput": 2.5144858908126024,
+                  "total_time": 31.815648794174194,
+                  "iterations": 20
+                },
+                "batch_4_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    5.734221696853638,
+                    5.74472975730896,
+                    5.843979835510254,
+                    6.379889488220215,
+                    5.727209091186523,
+                    5.793158054351807,
+                    5.6636083126068115,
+                    6.719810962677002,
+                    5.696754217147827,
+                    6.413572311401367,
+                    5.850090265274048,
+                    5.6800620555877686,
+                    5.735736131668091,
+                    5.26183295249939,
+                    4.6931257247924805,
+                    5.890936374664307,
+                    5.338251113891602,
+                    6.822132349014282,
+                    8.073670148849487,
+                    6.952240943908691
+                  ],
+                  "avg_latency": 6.000750589370727,
+                  "throughput": 0.6665826373593505,
+                  "total_time": 120.01512718200684,
+                  "iterations": 20
+                },
+                "batch_8_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    1.5892865657806396,
+                    0.8078265190124512,
+                    0.6415796279907227,
+                    0.8940443992614746,
+                    0.9214155673980713,
+                    0.7308900356292725,
+                    0.889967679977417,
+                    0.9826741218566895,
+                    1.22998046875,
+                    1.1288630962371826,
+                    1.103050947189331,
+                    1.0598070621490479,
+                    1.2297043800354004,
+                    1.1950407028198242,
+                    0.8969247341156006,
+                    1.4177289009094238,
+                    1.7585787773132324,
+                    1.0927317142486572,
+                    0.7641818523406982,
+                    0.7345342636108398
+                  ],
+                  "avg_latency": 1.0534405708312988,
+                  "throughput": 7.594124548964623,
+                  "total_time": 21.06891965866089,
+                  "iterations": 20
+                },
+                "batch_8_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    2.675966739654541,
+                    3.406221389770508,
+                    2.9042670726776123,
+                    2.697601556777954,
+                    2.8460841178894043,
+                    3.064704179763794,
+                    3.1273820400238037,
+                    3.1827688217163086,
+                    3.3187661170959473,
+                    3.502992868423462,
+                    3.944218635559082,
+                    3.715283155441284,
+                    2.7672343254089355,
+                    3.1752545833587646,
+                    3.126934051513672,
+                    2.7977936267852783,
+                    2.521070718765259,
+                    3.1756813526153564,
+                    3.0291666984558105,
+                    3.177903413772583
+                  ],
+                  "avg_latency": 3.107864773273468,
+                  "throughput": 2.5741106519621892,
+                  "total_time": 62.157390117645264,
+                  "iterations": 20
+                },
+                "batch_8_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    18.27151846885681,
+                    18.109724044799805,
+                    20.03096890449524,
+                    21.739652395248413,
+                    20.34127926826477,
+                    19.846672296524048,
+                    17.485025882720947,
+                    20.369640588760376,
+                    18.61038303375244,
+                    16.703344345092773,
+                    18.812633514404297,
+                    17.27999496459961,
+                    8.553704500198364,
+                    6.754160404205322,
+                    8.672372102737427,
+                    10.127014636993408,
+                    12.86095929145813,
+                    14.651352167129517,
+                    12.4044668674469,
+                    11.802173376083374
+                  ],
+                  "avg_latency": 15.671352052688599,
+                  "throughput": 0.5104853433434436,
+                  "total_time": 313.42721605300903,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T19:53:21.748271",
+              "model_load_time": 5.711805820465088,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.40928943157196046,
+                  "max": 15.671352052688599,
+                  "mean": 3.602502642737494,
+                  "median": 1.5907772779464722
+                },
+                "throughput": {
+                  "min": 0.34772350546809055,
+                  "max": 7.594124548964623,
+                  "mean": 2.54931246534826,
+                  "median": 2.443219790486661
+                },
+                "memory": {}
+              }
+            }
+          },
+          "distilbert-base-uncased": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "distilbert-base-uncased",
+              "model_class": "DistilBertModel",
+              "family": "embedding",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.05269002914428711,
+                    0.11420774459838867,
+                    0.08172416687011719,
+                    0.10549020767211914,
+                    0.07930946350097656,
+                    0.06919193267822266,
+                    0.15233445167541504,
+                    0.10462307929992676,
+                    0.11564373970031738,
+                    0.15069317817687988,
+                    0.13739871978759766,
+                    0.18367886543273926,
+                    0.18599319458007812,
+                    0.05910801887512207,
+                    0.046350955963134766,
+                    0.05043792724609375,
+                    0.06923079490661621,
+                    0.08728742599487305,
+                    0.11449742317199707,
+                    0.11993074417114258
+                  ],
+                  "avg_latency": 0.10399110317230224,
+                  "throughput": 9.615825851078757,
+                  "total_time": 2.079904556274414,
+                  "iterations": 20
+                },
+                "batch_1_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    0.09984588623046875,
+                    0.3828282356262207,
+                    0.591219425201416,
+                    0.30874156951904297,
+                    0.3930191993713379,
+                    0.4475224018096924,
+                    0.2825462818145752,
+                    0.32782459259033203,
+                    0.4499690532684326,
+                    0.38109707832336426,
+                    0.7309417724609375,
+                    0.37525224685668945,
+                    0.3702404499053955,
+                    0.8839149475097656,
+                    0.7606313228607178,
+                    0.7422857284545898,
+                    0.4400784969329834,
+                    0.8465266227722168,
+                    0.8546359539031982,
+                    0.6062250137329102
+                  ],
+                  "avg_latency": 0.5137673139572143,
+                  "throughput": 1.9463875456560467,
+                  "total_time": 10.275445938110352,
+                  "iterations": 20
+                },
+                "batch_1_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    1.5900022983551025,
+                    1.339034080505371,
+                    1.2563300132751465,
+                    1.5610153675079346,
+                    1.3238825798034668,
+                    1.1603856086730957,
+                    1.9210686683654785,
+                    1.9977915287017822,
+                    1.051847219467163,
+                    0.8256702423095703,
+                    0.9917287826538086,
+                    0.8721904754638672,
+                    1.2198045253753662,
+                    1.213897705078125,
+                    1.078223705291748,
+                    1.0316903591156006,
+                    0.8449997901916504,
+                    1.2674129009246826,
+                    0.9314968585968018,
+                    0.7342641353607178
+                  ],
+                  "avg_latency": 1.210636842250824,
+                  "throughput": 0.8260081218835729,
+                  "total_time": 24.212836980819702,
+                  "iterations": 20
+                },
+                "batch_4_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.17582321166992188,
+                    0.2770843505859375,
+                    0.2541463375091553,
+                    0.30695605278015137,
+                    0.6960668563842773,
+                    0.5661423206329346,
+                    0.29103755950927734,
+                    0.31143784523010254,
+                    0.40329456329345703,
+                    0.30767059326171875,
+                    0.3022341728210449,
+                    0.6534163951873779,
+                    0.38058972358703613,
+                    0.35865068435668945,
+                    0.3266284465789795,
+                    0.3173410892486572,
+                    0.3293037414550781,
+                    0.41117072105407715,
+                    0.3783841133117676,
+                    0.25223350524902344
+                  ],
+                  "avg_latency": 0.36498061418533323,
+                  "throughput": 10.95935947265106,
+                  "total_time": 7.299696683883667,
+                  "iterations": 20
+                },
+                "batch_4_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    1.0351686477661133,
+                    1.076045036315918,
+                    0.9515025615692139,
+                    0.9483757019042969,
+                    0.8125698566436768,
+                    0.8114602565765381,
+                    1.0891215801239014,
+                    1.4248507022857666,
+                    1.1182548999786377,
+                    1.4515504837036133,
+                    1.120309829711914,
+                    0.892939567565918,
+                    0.9879665374755859,
+                    1.014897108078003,
+                    1.1650218963623047,
+                    1.2071857452392578,
+                    0.8138701915740967,
+                    0.9626519680023193,
+                    0.8027234077453613,
+                    0.8567216396331787
+                  ],
+                  "avg_latency": 1.0271593809127808,
+                  "throughput": 3.8942139728248084,
+                  "total_time": 20.543298482894897,
+                  "iterations": 20
+                },
+                "batch_4_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    4.267489194869995,
+                    3.3887808322906494,
+                    3.808363437652588,
+                    3.205537796020508,
+                    3.276137590408325,
+                    3.486880302429199,
+                    3.0969698429107666,
+                    2.4961485862731934,
+                    2.238981008529663,
+                    2.8277170658111572,
+                    2.349806070327759,
+                    2.3378145694732666,
+                    2.6384592056274414,
+                    2.8703644275665283,
+                    3.061936855316162,
+                    3.0871198177337646,
+                    3.1060826778411865,
+                    2.6508209705352783,
+                    3.7248477935791016,
+                    3.412266254425049
+                  ],
+                  "avg_latency": 3.066626214981079,
+                  "throughput": 1.3043629477014917,
+                  "total_time": 61.33262228965759,
+                  "iterations": 20
+                },
+                "batch_8_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.31542253494262695,
+                    0.46318721771240234,
+                    0.5262768268585205,
+                    0.6706328392028809,
+                    0.8942909240722656,
+                    0.43721985816955566,
+                    0.7579646110534668,
+                    0.5193054676055908,
+                    0.36943817138671875,
+                    0.4219691753387451,
+                    0.339322566986084,
+                    0.4214799404144287,
+                    0.4617598056793213,
+                    0.402618408203125,
+                    0.3984365463256836,
+                    0.602910041809082,
+                    0.35543036460876465,
+                    0.3918321132659912,
+                    0.19917058944702148,
+                    0.28183698654174805
+                  ],
+                  "avg_latency": 0.46152524948120116,
+                  "throughput": 17.333646417020912,
+                  "total_time": 9.230602502822876,
+                  "iterations": 20
+                },
+                "batch_8_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    1.393831729888916,
+                    2.3854379653930664,
+                    1.3315083980560303,
+                    1.7702667713165283,
+                    1.5474207401275635,
+                    1.4587128162384033,
+                    1.5296270847320557,
+                    1.9570722579956055,
+                    2.732111692428589,
+                    2.4918055534362793,
+                    2.4003143310546875,
+                    2.188154697418213,
+                    2.4880290031433105,
+                    2.7997488975524902,
+                    1.9159646034240723,
+                    2.577530860900879,
+                    2.810410976409912,
+                    2.3237972259521484,
+                    3.2282304763793945,
+                    2.8518011569976807
+                  ],
+                  "avg_latency": 2.2090888619422913,
+                  "throughput": 3.6213917065294066,
+                  "total_time": 44.18190932273865,
+                  "iterations": 20
+                },
+                "batch_8_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    9.643310546875,
+                    9.486653327941895,
+                    7.4671854972839355,
+                    8.146125555038452,
+                    7.496710300445557,
+                    7.589495897293091,
+                    8.95887279510498,
+                    9.248043537139893,
+                    8.286482095718384,
+                    7.772544622421265,
+                    9.388821125030518,
+                    8.457983255386353,
+                    9.585301399230957,
+                    7.399559259414673,
+                    8.104649782180786,
+                    8.049370050430298,
+                    8.00872254371643,
+                    4.603069067001343,
+                    2.8704347610473633,
+                    3.6024529933929443
+                  ],
+                  "avg_latency": 7.7082894206047055,
+                  "throughput": 1.0378430327626038,
+                  "total_time": 154.16589498519897,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T20:06:59.641806",
+              "model_load_time": 0.2105574607849121,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.10399110317230224,
+                  "max": 7.7082894206047055,
+                  "mean": 1.8517850001653033,
+                  "median": 1.0271593809127808
+                },
+                "throughput": {
+                  "min": 0.8260081218835729,
+                  "max": 17.333646417020912,
+                  "mean": 5.615448785345406,
+                  "median": 3.6213917065294066
+                },
+                "memory": {}
+              }
+            }
+          },
+          "roberta-base": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "roberta-base",
+              "model_class": "RobertaModel",
+              "family": "embedding",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.24398064613342285,
+                    0.1583254337310791,
+                    0.12417888641357422,
+                    0.17464971542358398,
+                    0.15025639533996582,
+                    0.21250414848327637,
+                    0.1447596549987793,
+                    0.09894418716430664,
+                    0.1285703182220459,
+                    0.1927788257598877,
+                    0.1462538242340088,
+                    0.1651017665863037,
+                    0.19642090797424316,
+                    0.5658206939697266,
+                    0.19312596321105957,
+                    0.11511445045471191,
+                    0.07236146926879883,
+                    0.11326980590820312,
+                    0.13675832748413086,
+                    0.1468808650970459
+                  ],
+                  "avg_latency": 0.1740028142929077,
+                  "throughput": 5.746883870526638,
+                  "total_time": 3.480146884918213,
+                  "iterations": 20
+                },
+                "batch_1_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    0.33835339546203613,
+                    0.31084251403808594,
+                    0.29941844940185547,
+                    0.4506218433380127,
+                    0.5513954162597656,
+                    0.46378278732299805,
+                    0.5090060234069824,
+                    0.32608485221862793,
+                    0.3422818183898926,
+                    0.5247848033905029,
+                    0.49936771392822266,
+                    0.2678656578063965,
+                    0.3006260395050049,
+                    0.29155826568603516,
+                    0.38340282440185547,
+                    0.5340893268585205,
+                    0.7605817317962646,
+                    0.350780725479126,
+                    0.6517148017883301,
+                    0.3296072483062744
+                  ],
+                  "avg_latency": 0.4243083119392395,
+                  "throughput": 2.3567522688979685,
+                  "total_time": 8.486254692077637,
+                  "iterations": 20
+                },
+                "batch_1_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    1.0478878021240234,
+                    1.01100492477417,
+                    1.1729342937469482,
+                    1.2129089832305908,
+                    1.1849546432495117,
+                    1.30953049659729,
+                    1.2640576362609863,
+                    1.2415196895599365,
+                    1.5608067512512207,
+                    1.5069265365600586,
+                    1.279759407043457,
+                    1.1541683673858643,
+                    1.6489973068237305,
+                    1.4737911224365234,
+                    1.447234869003296,
+                    1.4494330883026123,
+                    1.4517030715942383,
+                    2.1803038120269775,
+                    1.7737879753112793,
+                    1.701491355895996
+                  ],
+                  "avg_latency": 1.4036601066589356,
+                  "throughput": 0.7124208891565756,
+                  "total_time": 28.07329249382019,
+                  "iterations": 20
+                },
+                "batch_4_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.443007230758667,
+                    0.40859007835388184,
+                    0.4373447895050049,
+                    0.4385850429534912,
+                    0.40338850021362305,
+                    0.39438509941101074,
+                    0.33106374740600586,
+                    0.46764254570007324,
+                    0.49071741104125977,
+                    0.3944978713989258,
+                    0.41706347465515137,
+                    0.3697655200958252,
+                    0.4395420551300049,
+                    0.7541401386260986,
+                    0.3646719455718994,
+                    0.4164111614227295,
+                    0.6184408664703369,
+                    0.8373744487762451,
+                    0.458024263381958,
+                    1.0496411323547363
+                  ],
+                  "avg_latency": 0.4967148661613464,
+                  "throughput": 8.052818745465038,
+                  "total_time": 9.934409618377686,
+                  "iterations": 20
+                },
+                "batch_4_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    1.3856580257415771,
+                    1.1075162887573242,
+                    2.4594810009002686,
+                    2.059298515319824,
+                    1.8000242710113525,
+                    1.1960852146148682,
+                    0.8782253265380859,
+                    1.4066870212554932,
+                    1.1623413562774658,
+                    1.1312243938446045,
+                    1.4613697528839111,
+                    0.9467244148254395,
+                    1.0263793468475342,
+                    1.0838704109191895,
+                    1.7373740673065186,
+                    2.1361591815948486,
+                    1.521655797958374,
+                    1.003648042678833,
+                    1.0041818618774414,
+                    0.8472344875335693
+                  ],
+                  "avg_latency": 1.3677569389343263,
+                  "throughput": 2.9244840124498754,
+                  "total_time": 27.355252981185913,
+                  "iterations": 20
+                },
+                "batch_4_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    5.289630889892578,
+                    5.269984483718872,
+                    4.990882635116577,
+                    5.002417802810669,
+                    4.67634654045105,
+                    4.706860780715942,
+                    6.9355645179748535,
+                    5.4641640186309814,
+                    5.852254867553711,
+                    6.210257053375244,
+                    5.879395008087158,
+                    6.6708664894104,
+                    6.797316312789917,
+                    9.031704664230347,
+                    19.60807991027832,
+                    9.959254503250122,
+                    7.311500310897827,
+                    6.499143600463867,
+                    6.709927797317505,
+                    5.372708320617676
+                  ],
+                  "avg_latency": 6.911913025379181,
+                  "throughput": 0.5787105405497164,
+                  "total_time": 138.2383668422699,
+                  "iterations": 20
+                },
+                "batch_8_seq_32": {
+                  "status": "completed",
+                  "latencies": [
+                    0.5563967227935791,
+                    0.7147114276885986,
+                    0.9394385814666748,
+                    1.108349323272705,
+                    0.4974820613861084,
+                    0.6684298515319824,
+                    1.1242704391479492,
+                    0.8149740695953369,
+                    0.9582710266113281,
+                    1.6071064472198486,
+                    1.225175380706787,
+                    0.8711235523223877,
+                    0.8067770004272461,
+                    1.3613736629486084,
+                    1.1920301914215088,
+                    0.8871335983276367,
+                    0.7142922878265381,
+                    0.5642256736755371,
+                    1.4946537017822266,
+                    1.5770604610443115
+                  ],
+                  "avg_latency": 0.9841637730598449,
+                  "throughput": 8.128683095557152,
+                  "total_time": 19.683385133743286,
+                  "iterations": 20
+                },
+                "batch_8_seq_128": {
+                  "status": "completed",
+                  "latencies": [
+                    3.4559977054595947,
+                    3.855578899383545,
+                    4.463825702667236,
+                    3.7885563373565674,
+                    3.80904483795166,
+                    3.304105281829834,
+                    3.0513787269592285,
+                    3.1979782581329346,
+                    4.181729793548584,
+                    3.2920212745666504,
+                    4.232921361923218,
+                    4.074766159057617,
+                    3.8517603874206543,
+                    3.9976980686187744,
+                    3.598639726638794,
+                    3.337057113647461,
+                    3.199982166290283,
+                    2.718456268310547,
+                    3.5219860076904297,
+                    3.610443592071533
+                  ],
+                  "avg_latency": 3.6271963834762575,
+                  "throughput": 2.205556298221171,
+                  "total_time": 72.54405617713928,
+                  "iterations": 20
+                },
+                "batch_8_seq_512": {
+                  "status": "completed",
+                  "latencies": [
+                    11.703269243240356,
+                    11.026444673538208,
+                    11.425087928771973,
+                    11.755327939987183,
+                    12.596042156219482,
+                    11.874982595443726,
+                    11.392150163650513,
+                    13.6632821559906,
+                    16.796584606170654,
+                    17.407819509506226,
+                    16.892189979553223,
+                    18.908577919006348,
+                    18.599671363830566,
+                    19.44799780845642,
+                    19.259763717651367,
+                    20.351235151290894,
+                    23.443880796432495,
+                    24.8050799369812,
+                    24.042871952056885,
+                    23.44387125968933
+                  ],
+                  "avg_latency": 16.941806542873383,
+                  "throughput": 0.47220447469449445,
+                  "total_time": 338.8362638950348,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T20:13:56.897451",
+              "model_load_time": 0.23844170570373535,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.1740028142929077,
+                  "max": 16.941806542873383,
+                  "mean": 3.592391418086158,
+                  "median": 1.3677569389343263
+                },
+                "throughput": {
+                  "min": 0.47220447469449445,
+                  "max": 8.128683095557152,
+                  "mean": 3.4642793550576254,
+                  "median": 2.3567522688979685
+                },
+                "memory": {}
+              }
+            }
+          }
+        }
+      },
+      "hardware_details": {
+        "cpu": true,
+        "cuda": true,
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "cuda_current_device": 0,
+        "cuda_arch_list": [
+          "sm_50",
+          "sm_60",
+          "sm_70",
+          "sm_75",
+          "sm_80",
+          "sm_86",
+          "sm_90"
+        ],
+        "cuda_memory_allocated": 4.76837158203125e-07,
+        "cuda_memory_reserved": 0.001953125,
+        "mps": false,
+        "mps_is_built": false,
+        "mps_error": "MPS not available in current PyTorch installation",
+        "xla_available": false,
+        "rocm": false,
+        "rocm_error": "CUDA available, but no ROCm/AMD GPU detected",
+        "openvino": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0",
+        "openvino_devices": [
+          "CPU"
+        ],
+        "openvino_device_info": {
+          "CPU": "Intel(R) Xeon(R) CPU E3-1535M v6 @ 3.10GHz"
+        },
+        "openvino_gpu_plugin": false,
+        "openvino_compilation_test_error": "cannot import name 'opset' from 'openvino.runtime' (/home/barberb/ipfs_accelerate_py/.venv/lib/python3.12/site-packages/openvino/runtime/__init__.py)",
+        "webnn": false,
+        "webnn_error": "Exception detecting WebNN: cannot access local variable 'os' where it is not associated with a value",
+        "webgpu": false,
+        "webgpu_error": "Exception detecting WebGPU: cannot access local variable 'os' where it is not associated with a value",
+        "tpu_available": false,
+        "qualcomm_ai": false,
+        "system": {
+          "platform": "Linux",
+          "platform_release": "6.8.0-11-generic",
+          "platform_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+          "architecture": "x86_64",
+          "processor": "x86_64",
+          "cpu_count": 8,
+          "python_version": "3.12.3",
+          "python_implementation": "CPython",
+          "total_memory": 62.214195251464844,
+          "available_memory": 31.426822662353516,
+          "memory_percent_used": 49.5
+        }
+      }
+    },
+    "audio": {
+      "timestamp": "20250305_202703",
+      "system_info": {
+        "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "processor": "x86_64",
+        "hostname": "barberb-Hyper-V-UEFI-Release-v4-1",
+        "os": "Linux",
+        "os_release": "6.8.0-11-generic",
+        "os_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+        "architecture": "x86_64",
+        "timestamp": "2025-03-05T20:27:03.137713",
+        "cpu_count_physical": 4,
+        "cpu_count_logical": 8,
+        "total_memory_gb": 62.214195251464844,
+        "available_memory_gb": 28.86896514892578,
+        "memory_percent_used": 53.6,
+        "cuda_available": true,
+        "cuda_version": "12.4",
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory_gb": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "mps_available": false,
+        "openvino_available": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0"
+      },
+      "hardware_info": {
+        "cpu": true,
+        "cuda": true,
+        "mps": false,
+        "rocm": false,
+        "openvino": true
+      },
+      "benchmarks": {
+        "audio": {
+          "openai/whisper-tiny": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "openai/whisper-tiny",
+              "model_class": "WhisperForConditionalGeneration",
+              "family": "audio",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_audio_5s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_1_audio_10s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_1_audio_30s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_4_audio_5s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_4_audio_10s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_4_audio_30s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_8_audio_5s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_8_audio_10s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                },
+                "batch_8_audio_30s": {
+                  "status": "failed",
+                  "error": "Warmup failed: 'dict' object has no attribute 'input_features'"
+                }
+              },
+              "timestamp": "2025-03-05T20:27:03.139058",
+              "model_load_time": 9.294859409332275,
+              "performance_summary": {
+                "latency": {},
+                "throughput": {},
+                "memory": {}
+              }
+            }
+          },
+          "facebook/wav2vec2-base": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "facebook/wav2vec2-base",
+              "model_class": "Wav2Vec2ForCTC",
+              "family": "audio",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_audio_5s": {
+                  "status": "completed",
+                  "real_time_factor": 1.6815800122433726,
+                  "latencies": [
+                    4.1111602783203125,
+                    3.7527709007263184,
+                    4.1495277881622314,
+                    4.751556396484375,
+                    3.263038158416748,
+                    1.8297877311706543,
+                    2.4104676246643066,
+                    1.7744977474212646,
+                    2.4780571460723877,
+                    2.98752498626709,
+                    2.370473861694336,
+                    3.2984023094177246,
+                    2.666628360748291,
+                    2.761806011199951,
+                    2.2320079803466797,
+                    1.3736441135406494,
+                    3.7569823265075684,
+                    1.8799328804016113,
+                    3.6364591121673584,
+                    3.983046054840088
+                  ],
+                  "avg_latency": 2.9733885884284974,
+                  "throughput": 0.33631600244867454,
+                  "total_time": 59.467880964279175,
+                  "iterations": 20
+                },
+                "batch_1_audio_10s": {
+                  "status": "completed",
+                  "real_time_factor": 2.320152012820671,
+                  "latencies": [
+                    4.984637975692749,
+                    6.965744495391846,
+                    6.068034410476685,
+                    4.7507359981536865,
+                    5.487199544906616,
+                    6.011519193649292,
+                    7.346233129501343,
+                    7.029573678970337,
+                    4.869022846221924,
+                    4.622884035110474,
+                    3.9448599815368652,
+                    2.9473202228546143,
+                    3.096053123474121,
+                    2.779172658920288,
+                    3.4822661876678467,
+                    2.9225733280181885,
+                    2.420830488204956,
+                    2.6272623538970947,
+                    2.6466193199157715,
+                    1.1985979080200195
+                  ],
+                  "avg_latency": 4.310057044029236,
+                  "throughput": 0.2320152012820671,
+                  "total_time": 86.20124840736389,
+                  "iterations": 20
+                },
+                "batch_1_audio_30s": {
+                  "status": "completed",
+                  "real_time_factor": 2.9462926581534417,
+                  "latencies": [
+                    7.460603713989258,
+                    7.894927740097046,
+                    10.402607202529907,
+                    9.819104194641113,
+                    9.420851707458496,
+                    10.1509850025177,
+                    11.514537811279297,
+                    9.226648807525635,
+                    9.182074308395386,
+                    9.053922414779663,
+                    9.950640678405762,
+                    9.65326189994812,
+                    8.662663459777832,
+                    9.139930486679077,
+                    10.248148679733276,
+                    10.746831178665161,
+                    9.977614641189575,
+                    13.059408903121948,
+                    14.664387941360474,
+                    13.416465282440186
+                  ],
+                  "avg_latency": 10.182280802726746,
+                  "throughput": 0.09820975527178138,
+                  "total_time": 203.64575743675232,
+                  "iterations": 20
+                },
+                "batch_4_audio_5s": {
+                  "status": "completed",
+                  "real_time_factor": 2.142044713380099,
+                  "latencies": [
+                    6.546624422073364,
+                    8.21004581451416,
+                    11.512187004089355,
+                    10.277650833129883,
+                    8.118482112884521,
+                    11.283630847930908,
+                    12.403685331344604,
+                    9.753084421157837,
+                    11.199729681015015,
+                    9.2395658493042,
+                    9.164062738418579,
+                    10.724306583404541,
+                    7.754983901977539,
+                    8.709852457046509,
+                    9.533618211746216,
+                    7.5915367603302,
+                    9.65111756324768,
+                    7.9464545249938965,
+                    9.332632303237915,
+                    7.78402304649353
+                  ],
+                  "avg_latency": 9.336863720417023,
+                  "throughput": 0.4284089426760197,
+                  "total_time": 186.73746514320374,
+                  "iterations": 20
+                },
+                "batch_4_audio_10s": {
+                  "status": "completed",
+                  "real_time_factor": 3.7862031052457428,
+                  "latencies": [
+                    14.701489925384521,
+                    15.505726337432861,
+                    11.73423147201538,
+                    9.508517980575562,
+                    9.559815645217896,
+                    9.040088176727295,
+                    10.658864259719849,
+                    9.755700588226318,
+                    10.963815927505493,
+                    9.459558963775635,
+                    9.55559229850769,
+                    9.88369369506836,
+                    9.434319257736206,
+                    10.531002759933472,
+                    9.054527521133423,
+                    10.04643440246582,
+                    9.857298612594604,
+                    11.863129615783691,
+                    9.906120300292969,
+                    10.273418664932251
+                  ],
+                  "avg_latency": 10.564667320251464,
+                  "throughput": 0.37862031052457423,
+                  "total_time": 211.29347205162048,
+                  "iterations": 20
+                },
+                "batch_4_audio_30s": {
+                  "status": "completed",
+                  "timeout": true,
+                  "completed_iterations": 9,
+                  "real_time_factor": 1.6582555621277675,
+                  "latencies": [
+                    39.859363079071045,
+                    37.79598355293274,
+                    50.29976224899292,
+                    62.756908893585205,
+                    74.87693452835083,
+                    97.20957636833191,
+                    98.73930931091309,
+                    97.45218229293823,
+                    92.29653286933899
+                  ],
+                  "avg_latency": 72.36517257160611,
+                  "throughput": 0.055275185404258916,
+                  "total_time": 651.2868249416351,
+                  "iterations": 9
+                },
+                "batch_8_audio_5s": {
+                  "status": "completed",
+                  "timeout": true,
+                  "completed_iterations": 15,
+                  "real_time_factor": 0.9532022701397679,
+                  "latencies": [
+                    39.69020175933838,
+                    42.660136461257935,
+                    43.88767862319946,
+                    41.1000394821167,
+                    49.509655714035034,
+                    37.4640326499939,
+                    45.954702377319336,
+                    51.66582536697388,
+                    38.101465940475464,
+                    39.93454313278198,
+                    43.09295320510864,
+                    38.40984582901001,
+                    36.97486233711243,
+                    41.04166579246521,
+                    39.96925735473633
+                  ],
+                  "avg_latency": 41.963791068394976,
+                  "throughput": 0.19064045402795357,
+                  "total_time": 629.4571664333344,
+                  "iterations": 15
+                },
+                "batch_8_audio_10s": {
+                  "status": "completed",
+                  "timeout": true,
+                  "completed_iterations": 8,
+                  "real_time_factor": 1.052067059328276,
+                  "latencies": [
+                    71.36241483688354,
+                    95.52084612846375,
+                    81.60400295257568,
+                    89.68542551994324,
+                    81.69408464431763,
+                    66.54770302772522,
+                    69.35277366638184,
+                    52.557496786117554
+                  ],
+                  "avg_latency": 76.04059344530106,
+                  "throughput": 0.1052067059328276,
+                  "total_time": 608.3262414932251,
+                  "iterations": 8
+                },
+                "batch_8_audio_30s": {
+                  "status": "completed",
+                  "timeout": true,
+                  "completed_iterations": 10,
+                  "real_time_factor": 3.6301683798288558,
+                  "latencies": [
+                    71.75032758712769,
+                    50.08294606208801,
+                    50.711352825164795,
+                    49.45650935173035,
+                    64.41632676124573,
+                    74.24187278747559,
+                    76.09211421012878,
+                    73.50036811828613,
+                    71.06488609313965,
+                    79.8093729019165
+                  ],
+                  "avg_latency": 66.11260766983033,
+                  "throughput": 0.12100561266096187,
+                  "total_time": 661.1263580322266,
+                  "iterations": 10
+                }
+              },
+              "timestamp": "2025-03-05T20:27:17.168999",
+              "model_load_time": 1.2422091960906982,
+              "performance_summary": {
+                "latency": {
+                  "min": 2.9733885884284974,
+                  "max": 76.04059344530106,
+                  "mean": 32.64993580344283,
+                  "median": 10.564667320251464
+                },
+                "throughput": {
+                  "min": 0.055275185404258916,
+                  "max": 0.4284089426760197,
+                  "mean": 0.21618868558101323,
+                  "median": 0.19064045402795357
+                },
+                "memory": {}
+              }
+            }
+          }
+        }
+      },
+      "hardware_details": {
+        "cpu": true,
+        "cuda": true,
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "cuda_current_device": 0,
+        "cuda_arch_list": [
+          "sm_50",
+          "sm_60",
+          "sm_70",
+          "sm_75",
+          "sm_80",
+          "sm_86",
+          "sm_90"
+        ],
+        "cuda_memory_allocated": 4.76837158203125e-07,
+        "cuda_memory_reserved": 0.001953125,
+        "mps": false,
+        "mps_is_built": false,
+        "mps_error": "MPS not available in current PyTorch installation",
+        "xla_available": false,
+        "rocm": false,
+        "rocm_error": "CUDA available, but no ROCm/AMD GPU detected",
+        "openvino": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0",
+        "openvino_devices": [
+          "CPU"
+        ],
+        "openvino_device_info": {
+          "CPU": "Intel(R) Xeon(R) CPU E3-1535M v6 @ 3.10GHz"
+        },
+        "openvino_gpu_plugin": false,
+        "openvino_compilation_test_error": "cannot import name 'opset' from 'openvino.runtime' (/home/barberb/ipfs_accelerate_py/.venv/lib/python3.12/site-packages/openvino/runtime/__init__.py)",
+        "webnn": false,
+        "webnn_error": "Exception detecting WebNN: cannot access local variable 'os' where it is not associated with a value",
+        "webgpu": false,
+        "webgpu_error": "Exception detecting WebGPU: cannot access local variable 'os' where it is not associated with a value",
+        "tpu_available": false,
+        "qualcomm_ai": false,
+        "system": {
+          "platform": "Linux",
+          "platform_release": "6.8.0-11-generic",
+          "platform_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+          "architecture": "x86_64",
+          "processor": "x86_64",
+          "cpu_count": 8,
+          "python_version": "3.12.3",
+          "python_implementation": "CPython",
+          "total_memory": 62.214195251464844,
+          "available_memory": 28.86896514892578,
+          "memory_percent_used": 53.6
+        }
+      }
+    },
+    "multimodal": {
+      "timestamp": "20250305_214814",
+      "system_info": {
+        "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "processor": "x86_64",
+        "hostname": "barberb-Hyper-V-UEFI-Release-v4-1",
+        "os": "Linux",
+        "os_release": "6.8.0-11-generic",
+        "os_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+        "architecture": "x86_64",
+        "timestamp": "2025-03-05T21:48:14.918633",
+        "cpu_count_physical": 4,
+        "cpu_count_logical": 8,
+        "total_memory_gb": 62.214195251464844,
+        "available_memory_gb": 32.08470153808594,
+        "memory_percent_used": 48.4,
+        "cuda_available": true,
+        "cuda_version": "12.4",
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory_gb": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "mps_available": false,
+        "openvino_available": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0"
+      },
+      "hardware_info": {
+        "cpu": true,
+        "cuda": true,
+        "openvino": true
+      },
+      "benchmarks": {
+        "multimodal": {
+          "openai/clip-vit-base-patch32": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "openai/clip-vit-base-patch32",
+              "model_class": "CLIPModel",
+              "family": "multimodal",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1": {
+                  "status": "completed",
+                  "latencies": [
+                    0.32418322563171387,
+                    0.5750236511230469,
+                    0.24914073944091797,
+                    0.6007859706878662,
+                    0.43358492851257324,
+                    0.7303552627563477,
+                    0.5311172008514404,
+                    0.6036028861999512,
+                    0.21144342422485352,
+                    0.3337399959564209,
+                    0.3437459468841553,
+                    1.1381659507751465,
+                    0.7034223079681396,
+                    0.23896193504333496,
+                    0.3447153568267822,
+                    0.534780740737915,
+                    0.37757277488708496,
+                    0.2160952091217041,
+                    0.39278340339660645,
+                    0.2659263610839844
+                  ],
+                  "avg_latency": 0.45745736360549927,
+                  "throughput": 2.185972944525888,
+                  "total_time": 9.1492440700531,
+                  "iterations": 20
+                },
+                "batch_4": {
+                  "status": "completed",
+                  "latencies": [
+                    1.2680654525756836,
+                    1.744842529296875,
+                    2.4615917205810547,
+                    2.034987688064575,
+                    1.068429946899414,
+                    3.5384981632232666,
+                    1.7646145820617676,
+                    1.019005537033081,
+                    1.6087660789489746,
+                    0.7093052864074707,
+                    1.8398253917694092,
+                    0.9299051761627197,
+                    1.8599956035614014,
+                    1.0100226402282715,
+                    3.1538422107696533,
+                    1.2677888870239258,
+                    2.158801317214966,
+                    1.9103584289550781,
+                    1.1957166194915771,
+                    1.528719186782837
+                  ],
+                  "avg_latency": 1.7036541223526,
+                  "throughput": 2.3478868912180646,
+                  "total_time": 34.07319164276123,
+                  "iterations": 20
+                },
+                "batch_8": {
+                  "status": "completed",
+                  "latencies": [
+                    2.9513094425201416,
+                    2.9452240467071533,
+                    2.3020119667053223,
+                    2.6258020401000977,
+                    1.4230363368988037,
+                    3.1284332275390625,
+                    2.0053012371063232,
+                    5.109220743179321,
+                    6.5925586223602295,
+                    4.193002223968506,
+                    3.7941770553588867,
+                    3.8179543018341064,
+                    3.5824036598205566,
+                    2.6711082458496094,
+                    3.64823842048645,
+                    3.2492921352386475,
+                    3.1201388835906982,
+                    3.0342438220977783,
+                    2.5949721336364746,
+                    1.7824671268463135
+                  ],
+                  "avg_latency": 3.2285447835922243,
+                  "throughput": 2.4778931798758808,
+                  "total_time": 64.57098364830017,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T21:48:14.945787",
+              "model_load_time": 6.590994119644165,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.45745736360549927,
+                  "max": 3.2285447835922243,
+                  "mean": 1.796552089850108,
+                  "median": 1.7036541223526
+                },
+                "throughput": {
+                  "min": 2.185972944525888,
+                  "max": 2.4778931798758808,
+                  "mean": 2.337251005206611,
+                  "median": 2.3478868912180646
+                },
+                "memory": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "vision": {
+      "timestamp": "20250305_215053",
+      "system_info": {
+        "platform": "Linux-6.8.0-11-generic-x86_64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "processor": "x86_64",
+        "hostname": "barberb-Hyper-V-UEFI-Release-v4-1",
+        "os": "Linux",
+        "os_release": "6.8.0-11-generic",
+        "os_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+        "architecture": "x86_64",
+        "timestamp": "2025-03-05T21:50:53.389252",
+        "cpu_count_physical": 4,
+        "cpu_count_logical": 8,
+        "total_memory_gb": 62.214195251464844,
+        "available_memory_gb": 31.404193878173828,
+        "memory_percent_used": 49.5,
+        "cuda_available": true,
+        "cuda_version": "12.4",
+        "cuda_device_count": 1,
+        "cuda_devices": [
+          {
+            "name": "Quadro P4000",
+            "total_memory_gb": 7.923583984375,
+            "compute_capability": "6.1",
+            "multi_processor_count": 14
+          }
+        ],
+        "mps_available": false,
+        "openvino_available": true,
+        "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0"
+      },
+      "hardware_info": {
+        "cpu": true,
+        "cuda": true,
+        "openvino": true
+      },
+      "benchmarks": {
+        "vision": {
+          "google/vit-base-patch16-224": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "google/vit-base-patch16-224",
+              "model_class": "ViTForImageClassification",
+              "family": "vision",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    2.3988099098205566,
+                    2.428257703781128,
+                    3.4386587142944336,
+                    3.2020368576049805,
+                    2.386054039001465,
+                    1.9552996158599854,
+                    1.7122619152069092,
+                    1.7804288864135742,
+                    2.428903102874756,
+                    1.8403151035308838,
+                    3.095349073410034,
+                    3.129188060760498,
+                    1.9106948375701904,
+                    2.4401602745056152,
+                    1.99861478805542,
+                    2.1389830112457275,
+                    2.9897117614746094,
+                    2.015796422958374,
+                    2.7692034244537354,
+                    0.9831130504608154
+                  ],
+                  "avg_latency": 2.3520920276641846,
+                  "throughput": 0.4251525623488583,
+                  "total_time": 47.04193687438965,
+                  "iterations": 20
+                },
+                "batch_1_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    2.196373462677002,
+                    2.947190761566162,
+                    2.4109251499176025,
+                    1.2594311237335205,
+                    2.2441165447235107,
+                    2.3216710090637207,
+                    1.405228614807129,
+                    1.530195951461792,
+                    0.5291168689727783,
+                    0.5954899787902832,
+                    0.8252618312835693,
+                    1.1121749877929688,
+                    0.5024535655975342,
+                    1.2060229778289795,
+                    1.6199626922607422,
+                    1.0688133239746094,
+                    2.5757241249084473,
+                    1.6014397144317627,
+                    2.352571487426758,
+                    0.8078556060791016
+                  ],
+                  "avg_latency": 1.5556009888648987,
+                  "throughput": 0.6428360225235317,
+                  "total_time": 31.112133264541626,
+                  "iterations": 20
+                },
+                "batch_4_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    3.1235671043395996,
+                    2.446681022644043,
+                    3.0869204998016357,
+                    2.5920207500457764,
+                    3.0911762714385986,
+                    2.898230791091919,
+                    3.977431297302246,
+                    3.7229726314544678,
+                    4.284759998321533,
+                    3.9442012310028076,
+                    3.0013957023620605,
+                    3.5370607376098633,
+                    3.53692626953125,
+                    2.614980697631836,
+                    3.134291648864746,
+                    2.7984941005706787,
+                    3.8664045333862305,
+                    4.073020696640015,
+                    3.1870434284210205,
+                    3.796292543411255
+                  ],
+                  "avg_latency": 3.335693597793579,
+                  "throughput": 1.1991488490013213,
+                  "total_time": 66.71398639678955,
+                  "iterations": 20
+                },
+                "batch_4_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    1.5674097537994385,
+                    1.3589494228363037,
+                    1.2836523056030273,
+                    1.3208043575286865,
+                    1.789292812347412,
+                    1.9847924709320068,
+                    1.6355714797973633,
+                    1.177790880203247,
+                    1.0374271869659424,
+                    0.8899343013763428,
+                    0.8203330039978027,
+                    0.93845534324646,
+                    1.045870065689087,
+                    0.7815325260162354,
+                    0.6602814197540283,
+                    0.5806941986083984,
+                    0.5777010917663574,
+                    0.5997471809387207,
+                    0.8446283340454102,
+                    0.9861764907836914
+                  ],
+                  "avg_latency": 1.0940522313117982,
+                  "throughput": 3.656117953123318,
+                  "total_time": 21.881132125854492,
+                  "iterations": 20
+                },
+                "batch_8_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    1.2115123271942139,
+                    1.2034964561462402,
+                    1.3813986778259277,
+                    1.4645042419433594,
+                    1.4436955451965332,
+                    1.8376052379608154,
+                    1.2649235725402832,
+                    1.4851009845733643,
+                    1.3061790466308594,
+                    1.7537074089050293,
+                    1.259207010269165,
+                    1.162670373916626,
+                    1.242429256439209,
+                    1.3858091831207275,
+                    1.1628873348236084,
+                    1.5195953845977783,
+                    1.2011892795562744,
+                    1.1361334323883057,
+                    1.1702795028686523,
+                    1.1440324783325195
+                  ],
+                  "avg_latency": 1.3368178367614747,
+                  "throughput": 5.9843458775407505,
+                  "total_time": 26.736422538757324,
+                  "iterations": 20
+                },
+                "batch_8_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    1.1294121742248535,
+                    1.123288631439209,
+                    1.1263563632965088,
+                    1.132136583328247,
+                    1.257817029953003,
+                    1.2305657863616943,
+                    1.1623125076293945,
+                    1.1995177268981934,
+                    1.181133508682251,
+                    1.2108280658721924,
+                    1.2229728698730469,
+                    1.1335124969482422,
+                    1.4209091663360596,
+                    1.201061725616455,
+                    1.2273783683776855,
+                    1.133331060409546,
+                    1.3076355457305908,
+                    1.1405272483825684,
+                    1.1358559131622314,
+                    1.2004313468933105
+                  ],
+                  "avg_latency": 1.1938492059707642,
+                  "throughput": 6.700994191344911,
+                  "total_time": 23.87705397605896,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T21:50:53.453531",
+              "model_load_time": 9.98050570487976,
+              "performance_summary": {
+                "latency": {
+                  "min": 1.0940522313117982,
+                  "max": 3.335693597793579,
+                  "mean": 1.81135098139445,
+                  "median": 1.5556009888648987
+                },
+                "throughput": {
+                  "min": 0.4251525623488583,
+                  "max": 6.700994191344911,
+                  "mean": 3.1014325759804486,
+                  "median": 3.656117953123318
+                },
+                "memory": {}
+              }
+            }
+          },
+          "microsoft/resnet-50": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "microsoft/resnet-50",
+              "model_class": "ResNetForImageClassification",
+              "family": "vision",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    0.10743236541748047,
+                    0.09825539588928223,
+                    0.0933387279510498,
+                    0.09270095825195312,
+                    0.09809422492980957,
+                    0.11721134185791016,
+                    0.12016701698303223,
+                    0.1043236255645752,
+                    0.11068105697631836,
+                    0.1012418270111084,
+                    0.10133147239685059,
+                    0.1198415756225586,
+                    0.10708737373352051,
+                    0.1343848705291748,
+                    0.13293147087097168,
+                    0.11798310279846191,
+                    0.10866308212280273,
+                    0.10518932342529297,
+                    0.09701180458068848,
+                    0.10095953941345215
+                  ],
+                  "avg_latency": 0.1084415078163147,
+                  "throughput": 9.221208429385205,
+                  "total_time": 2.1689131259918213,
+                  "iterations": 20
+                },
+                "batch_1_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.11226868629455566,
+                    0.10191965103149414,
+                    0.08402204513549805,
+                    0.10020327568054199,
+                    0.09502887725830078,
+                    0.09744739532470703,
+                    0.09259819984436035,
+                    0.0951387882232666,
+                    0.09510684013366699,
+                    0.09769821166992188,
+                    0.1313152313232422,
+                    0.11683344841003418,
+                    0.1538867950439453,
+                    0.14530682563781738,
+                    0.13583683967590332,
+                    0.15234994888305664,
+                    0.13201022148132324,
+                    0.12366747856140137,
+                    0.12042760848999023,
+                    0.12456989288330078
+                  ],
+                  "avg_latency": 0.11538181304931641,
+                  "throughput": 8.666520788740868,
+                  "total_time": 2.3077311515808105,
+                  "iterations": 20
+                },
+                "batch_4_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    0.2587740421295166,
+                    0.27592992782592773,
+                    0.3014078140258789,
+                    0.25704288482666016,
+                    0.35792112350463867,
+                    0.3759291172027588,
+                    0.3480076789855957,
+                    0.3592839241027832,
+                    0.3227577209472656,
+                    0.2269577980041504,
+                    0.2401566505432129,
+                    0.3492550849914551,
+                    0.2538266181945801,
+                    0.266132116317749,
+                    0.37102746963500977,
+                    0.32015275955200195,
+                    0.2619915008544922,
+                    0.25473856925964355,
+                    0.28406453132629395,
+                    0.24019813537597656
+                  ],
+                  "avg_latency": 0.29627777338027955,
+                  "throughput": 13.500690274960867,
+                  "total_time": 5.925622940063477,
+                  "iterations": 20
+                },
+                "batch_4_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.37058043479919434,
+                    0.33583617210388184,
+                    0.3099644184112549,
+                    0.24810028076171875,
+                    0.4044151306152344,
+                    0.4553835391998291,
+                    0.3436415195465088,
+                    0.38968801498413086,
+                    0.3578202724456787,
+                    0.34357213973999023,
+                    0.36767125129699707,
+                    0.4662613868713379,
+                    0.3089292049407959,
+                    0.3133368492126465,
+                    0.3055264949798584,
+                    0.38364744186401367,
+                    0.30449724197387695,
+                    0.24762916564941406,
+                    0.4138476848602295,
+                    0.37421250343322754
+                  ],
+                  "avg_latency": 0.352228057384491,
+                  "throughput": 11.356117317869485,
+                  "total_time": 7.044661283493042,
+                  "iterations": 20
+                },
+                "batch_8_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    0.9036052227020264,
+                    1.0514113903045654,
+                    0.8062179088592529,
+                    0.851402759552002,
+                    0.7778496742248535,
+                    0.7516143321990967,
+                    0.7810244560241699,
+                    0.7242324352264404,
+                    0.7717635631561279,
+                    0.7311887741088867,
+                    0.7640979290008545,
+                    0.7542948722839355,
+                    0.7770247459411621,
+                    0.9154393672943115,
+                    0.7507021427154541,
+                    0.7682900428771973,
+                    0.7376694679260254,
+                    0.7110025882720947,
+                    0.742595911026001,
+                    0.7711935043334961
+                  ],
+                  "avg_latency": 0.7921310544013977,
+                  "throughput": 10.099285132777448,
+                  "total_time": 15.842705488204956,
+                  "iterations": 20
+                },
+                "batch_8_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.6049389839172363,
+                    0.5689067840576172,
+                    0.5095312595367432,
+                    0.7719519138336182,
+                    0.7665829658508301,
+                    0.8738768100738525,
+                    0.9498021602630615,
+                    0.8540599346160889,
+                    0.7449700832366943,
+                    0.6550719738006592,
+                    0.5177860260009766,
+                    0.5825674533843994,
+                    0.5884969234466553,
+                    0.5750930309295654,
+                    0.573106050491333,
+                    0.6017844676971436,
+                    0.5112078189849854,
+                    0.5365593433380127,
+                    0.6458406448364258,
+                    0.5046288967132568
+                  ],
+                  "avg_latency": 0.6468381762504578,
+                  "throughput": 12.367782463112755,
+                  "total_time": 12.936838150024414,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T21:55:50.045933",
+              "model_load_time": 5.822378396987915,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.1084415078163147,
+                  "max": 0.7921310544013977,
+                  "mean": 0.38521639704704286,
+                  "median": 0.352228057384491
+                },
+                "throughput": {
+                  "min": 8.666520788740868,
+                  "max": 13.500690274960867,
+                  "mean": 10.86860073447444,
+                  "median": 11.356117317869485
+                },
+                "memory": {}
+              }
+            }
+          },
+          "facebook/convnext-tiny-224": {
+            "cpu": {
+              "status": "completed",
+              "model_name": "facebook/convnext-tiny-224",
+              "model_class": "ConvNextForImageClassification",
+              "family": "vision",
+              "hardware": "cpu",
+              "benchmark_results": {
+                "batch_1_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    0.11276125907897949,
+                    0.10536456108093262,
+                    0.11338138580322266,
+                    0.12232494354248047,
+                    0.11122941970825195,
+                    0.10781431198120117,
+                    0.1690375804901123,
+                    0.12088465690612793,
+                    0.11066269874572754,
+                    0.10013890266418457,
+                    0.0988156795501709,
+                    0.1048116683959961,
+                    0.09216022491455078,
+                    0.09549570083618164,
+                    0.1085503101348877,
+                    0.10781073570251465,
+                    0.1673290729522705,
+                    0.11649060249328613,
+                    0.12292814254760742,
+                    0.11049675941467285
+                  ],
+                  "avg_latency": 0.11492443084716797,
+                  "throughput": 8.700936828391958,
+                  "total_time": 2.298603057861328,
+                  "iterations": 20
+                },
+                "batch_1_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.09574460983276367,
+                    0.12200641632080078,
+                    0.09657931327819824,
+                    0.09759354591369629,
+                    0.17223381996154785,
+                    0.17723870277404785,
+                    0.1696939468383789,
+                    0.10909891128540039,
+                    0.1094980239868164,
+                    0.10808086395263672,
+                    0.10082387924194336,
+                    0.11575555801391602,
+                    0.10776853561401367,
+                    0.10938692092895508,
+                    0.10738515853881836,
+                    0.11381769180297852,
+                    0.10837793350219727,
+                    0.17354989051818848,
+                    0.11221837997436523,
+                    0.1020352840423584
+                  ],
+                  "avg_latency": 0.12044436931610107,
+                  "throughput": 8.30235483561282,
+                  "total_time": 2.4089550971984863,
+                  "iterations": 20
+                },
+                "batch_4_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    0.34357595443725586,
+                    0.34949278831481934,
+                    0.34574317932128906,
+                    0.523543119430542,
+                    0.4576287269592285,
+                    0.37752389907836914,
+                    0.3531918525695801,
+                    0.5632879734039307,
+                    0.4208519458770752,
+                    0.3457458019256592,
+                    0.353912353515625,
+                    0.39732813835144043,
+                    0.35298991203308105,
+                    0.3980700969696045,
+                    0.39095306396484375,
+                    0.366652250289917,
+                    0.3003964424133301,
+                    0.38050365447998047,
+                    0.3764305114746094,
+                    0.3711555004119873
+                  ],
+                  "avg_latency": 0.3884488582611084,
+                  "throughput": 10.297247011799117,
+                  "total_time": 7.76906681060791,
+                  "iterations": 20
+                },
+                "batch_4_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.37070178985595703,
+                    0.3624114990234375,
+                    0.38161754608154297,
+                    0.38344907760620117,
+                    0.4381225109100342,
+                    0.40213537216186523,
+                    0.3164527416229248,
+                    0.3033444881439209,
+                    0.3425421714782715,
+                    0.35212063789367676,
+                    0.37249255180358887,
+                    0.3971405029296875,
+                    0.3257303237915039,
+                    0.34963297843933105,
+                    0.3491697311401367,
+                    0.3556389808654785,
+                    0.366408109664917,
+                    0.35331273078918457,
+                    0.39296555519104004,
+                    0.41429710388183594
+                  ],
+                  "avg_latency": 0.3664843201637268,
+                  "throughput": 10.91434980421332,
+                  "total_time": 7.3297998905181885,
+                  "iterations": 20
+                },
+                "batch_8_img_224x224": {
+                  "status": "completed",
+                  "latencies": [
+                    1.1163392066955566,
+                    0.9754695892333984,
+                    0.9065344333648682,
+                    0.9143633842468262,
+                    1.6932754516601562,
+                    1.556490421295166,
+                    1.026416301727295,
+                    0.8648018836975098,
+                    0.9906070232391357,
+                    0.996551513671875,
+                    0.824913501739502,
+                    0.8990180492401123,
+                    0.9729790687561035,
+                    0.8734474182128906,
+                    0.955805778503418,
+                    0.8702483177185059,
+                    0.8533070087432861,
+                    0.9642763137817383,
+                    1.0520575046539307,
+                    1.0467548370361328
+                  ],
+                  "avg_latency": 1.0176828503608704,
+                  "throughput": 7.860952196120852,
+                  "total_time": 20.353768348693848,
+                  "iterations": 20
+                },
+                "batch_8_img_384x384": {
+                  "status": "completed",
+                  "latencies": [
+                    0.8833625316619873,
+                    0.9081695079803467,
+                    0.8696110248565674,
+                    0.9360437393188477,
+                    0.8448877334594727,
+                    0.8192152976989746,
+                    0.7707912921905518,
+                    0.846027135848999,
+                    0.6974368095397949,
+                    0.8248836994171143,
+                    0.8669884204864502,
+                    0.8860001564025879,
+                    1.553415060043335,
+                    0.9262547492980957,
+                    0.9828460216522217,
+                    0.8662827014923096,
+                    0.9370346069335938,
+                    1.2079942226409912,
+                    1.0793883800506592,
+                    1.9990341663360596
+                  ],
+                  "avg_latency": 0.985283362865448,
+                  "throughput": 8.119452022203658,
+                  "total_time": 19.705763339996338,
+                  "iterations": 20
+                }
+              },
+              "timestamp": "2025-03-05T21:57:00.374550",
+              "model_load_time": 6.627896308898926,
+              "performance_summary": {
+                "latency": {
+                  "min": 0.11492443084716797,
+                  "max": 1.0176828503608704,
+                  "mean": 0.49887803196907043,
+                  "median": 0.3884488582611084
+                },
+                "throughput": {
+                  "min": 7.860952196120852,
+                  "max": 10.91434980421332,
+                  "mean": 9.032548783056955,
+                  "median": 8.700936828391958
+                },
+                "memory": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "text_generation": {
+      "status": "error",
+      "error": "  File \"/home/barberb/ipfs_accelerate_py/test/run_benchmark_suite.py\", line 132\n    try:\nIndentationError: expected an indented block after 'with' statement on line 130\n"
+    }
+  },
+  "hardware_detected": {
+    "cpu": true,
+    "cuda": true,
+    "mps": false,
+    "openvino": true,
+    "rocm": false
+  }
+}

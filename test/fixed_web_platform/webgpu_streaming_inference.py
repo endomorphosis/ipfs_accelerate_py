@@ -369,6 +369,12 @@ class WebGPUStreamingInference:
         self._memory_pressure_detected = False
         self._memory_reduction_actions_taken = []
         
+        # Set up error handling callback functions
+        self.on_error = None
+        self.on_memory_pressure = None
+        self.on_timeout = None
+        self.on_connection_error = None
+        
         # Set up WebGPU memory monitoring callback (simulated here)
         self._setup_memory_monitoring()
     
@@ -498,6 +504,17 @@ class WebGPUStreamingInference:
         Returns:
             Action taken to reduce memory pressure
         """
+        # Check if we should use external handler
+        if self.on_memory_pressure is not None:
+            try:
+                # Try using external handler first
+                external_handled = self.on_memory_pressure()
+                if external_handled:
+                    logger.info("Memory pressure handled by external handler")
+                    return "external_handler"
+            except Exception as e:
+                logger.warning(f"External memory pressure handler failed: {e}")
+        
         # Select next action based on current action index
         action_index = self._memory_monitor["current_action_index"]
         available_actions = self._memory_monitor["memory_pressure_actions"]
@@ -649,6 +666,18 @@ class WebGPUStreamingInference:
         # Skip recursive call if we've tried all actions
         if self._memory_reduction_actions_taken and len(self._memory_reduction_actions_taken) >= len(available_actions):
             logger.warning("All memory reduction actions attempted, but memory pressure persists")
+            # Notify external error handler if available
+            if self.on_error is not None:
+                try:
+                    self.on_error({
+                        "type": "memory_pressure",
+                        "message": "All memory reduction actions attempted, but memory pressure persists",
+                        "component": "streaming", 
+                        "recoverable": False,
+                        "severity": "critical"
+                    })
+                except Exception as e:
+                    logger.error(f"Error notifying error handler: {e}")
             return None
         
         return self._handle_memory_pressure()
@@ -700,6 +729,362 @@ class WebGPUStreamingInference:
             "next_token_logits": [0.1] * 10,  # Placeholder
             "prefill_time_ms": 50 if self.config["prefill_optimized"] else 120
         }
+    
+    def _optimize_token_generation(self, model_id=None, input_tokens=None, generated_tokens=None, current_batch_size=1):
+        """
+        Optimize token generation with compute/transfer overlap.
+        
+        This implementation separates computation and transfer operations
+        to allow them to proceed in parallel, reducing effective latency.
+        
+        Args:
+            model_id: Identifier for the model
+            input_tokens: List of input token IDs
+            generated_tokens: List of already generated token IDs
+            current_batch_size: Current batch size for generation
+            
+        Returns:
+            Dictionary with optimization configuration
+        """
+        # Setup compute/transfer pipeline stages
+        compute_stage = {
+            "operation": "token_compute",
+            "buffer_size": min(current_batch_size * 2, 8),  # Double buffering with cap
+            "priority": "high",
+            "dependencies": []
+        }
+        
+        transfer_stage = {
+            "operation": "token_transfer",
+            "buffer_size": min(current_batch_size * 2, 8),
+            "priority": "high",
+            "dependencies": ["token_compute"]
+        }
+        
+        # Configure pipeline based on browser type for optimal performance
+        browser_info = {}
+        if hasattr(self, "config") and "browser_info" in self.config:
+            browser_info = self.config.get("browser_info", {})
+        
+        browser_name = browser_info.get("name", "unknown").lower()
+        
+        # Determine if this is first token generation
+        is_first_generation = generated_tokens is None or len(generated_tokens) == 0
+        
+        if browser_name == "chrome" or browser_name == "edge":
+            # Chrome/Edge optimization
+            compute_stage["workgroup_size"] = (128, 1, 1)
+            compute_stage["use_shared_memory"] = True
+            transfer_stage["use_mapped_memory"] = True
+        elif browser_name == "firefox":
+            # Firefox optimization (256x1x1 workgroups perform better for audio models)
+            compute_stage["workgroup_size"] = (256, 1, 1)
+            compute_stage["use_shared_memory"] = True
+            transfer_stage["use_mapped_memory"] = False
+        elif browser_name == "safari":
+            # Safari optimization (more conservative)
+            compute_stage["workgroup_size"] = (64, 1, 1)
+            compute_stage["use_shared_memory"] = False
+            transfer_stage["use_mapped_memory"] = False
+        else:
+            # Default settings for unknown browsers
+            compute_stage["workgroup_size"] = (128, 1, 1)
+            compute_stage["use_shared_memory"] = True
+            transfer_stage["use_mapped_memory"] = True
+            
+        # Set up prefetching based on generation state
+        if is_first_generation:
+            # First token, aggressive prefetch
+            compute_stage["prefetch_size"] = 3
+        else:
+            # Adaptive prefetch based on recent history
+            # In a real implementation, this would analyze token patterns
+            # For simulation, we'll use a simple heuristic
+            tokens_generated = len(generated_tokens) if generated_tokens else 0
+            
+            if tokens_generated < 5:
+                # Early in generation, moderate prefetch
+                compute_stage["prefetch_size"] = 2
+            elif tokens_generated < 20:
+                # Mid-generation, adaptive prefetch
+                compute_stage["prefetch_size"] = 1
+            else:
+                # Later in generation, minimal prefetch
+                compute_stage["prefetch_size"] = 1
+        
+        # Return optimization configuration
+        return {
+            "compute_stage": compute_stage,
+            "transfer_stage": transfer_stage,
+            "overlap_enabled": True,
+            "prefetch_enabled": compute_stage["prefetch_size"] > 0,
+            "browser_optimized": browser_name in ["chrome", "firefox", "safari", "edge"],
+            "browser_name": browser_name
+        }
+    
+    def _calculate_optimal_prefetch_size(self):
+        """
+        Calculate the optimal prefetch size using advanced token prediction.
+        
+        This enhanced implementation uses:
+        1. Historical token generation patterns
+        2. Language model prediction confidence
+        3. Current context analysis
+        4. Memory and performance constraints
+        5. Token generation entropy analysis
+        
+        Returns:
+            Integer representing optimal prefetch size (1-4)
+        """
+        # Initialize default prefetch size
+        default_prefetch_size = 1
+        
+        # 1. Check if we have enough history for prediction
+        if not hasattr(self, "_token_history") or len(self._token_history) < 3:
+            # Not enough history, initialize tracking and return default
+            if not hasattr(self, "_token_history"):
+                self._token_history = []
+                self._token_entropy_history = []
+                self._token_confidence_history = []
+                self._prediction_success_rate = []
+                self._last_prefetch_size = default_prefetch_size
+            return default_prefetch_size
+        
+        # 2. Analyze recent token generation performance
+        recent_latencies = self._latency_tracker[-5:] if hasattr(self, "_latency_tracker") and len(self._latency_tracker) >= 5 else []
+        avg_latency = sum(recent_latencies) / len(recent_latencies) if recent_latencies else 50  # Default 50ms
+        
+        # 3. Calculate token prediction confidence based on recent history
+        # Higher confidence = more aggressive prefetching
+        prediction_confidence = 0.5  # Default medium confidence
+        
+        if hasattr(self, "_token_confidence_history") and len(self._token_confidence_history) > 0:
+            # Use actual confidence scores from recent tokens
+            prediction_confidence = sum(self._token_confidence_history[-3:]) / min(3, len(self._token_confidence_history))
+
+        # 4. Check for memory pressure - reduce prefetch under pressure
+        memory_pressure = False
+        if hasattr(self, "_memory_pressure_detected"):
+            memory_pressure = self._memory_pressure_detected
+        
+        # 5. Analyze token entropy (predictability) from recent history
+        # Lower entropy = more predictable = more aggressive prefetching
+        token_entropy = 0.7  # Default medium entropy
+        if hasattr(self, "_token_entropy_history") and len(self._token_entropy_history) > 0:
+            token_entropy = sum(self._token_entropy_history[-3:]) / min(3, len(self._token_entropy_history))
+        
+        # 6. Check for sentence structure patterns that suggest predictable tokens
+        # e.g., After a period, likely to have space + capital letter
+        sentence_pattern_predictability = self._analyze_sentence_patterns()
+        
+        # 7. Check prediction success rate
+        prediction_success = 0.5  # Default 50% success rate
+        if hasattr(self, "_prediction_success_rate") and len(self._prediction_success_rate) > 0:
+            prediction_success = sum(self._prediction_success_rate) / len(self._prediction_success_rate)
+        
+        # 8. Determine optimal prefetch size based on all factors
+        prefetch_size = default_prefetch_size
+        
+        # Base prefetch on latency - faster system can handle more prefetching
+        if avg_latency < 20:  # Very fast (< 20ms per token)
+            prefetch_size = 3  # Aggressive prefetch
+        elif avg_latency < 40:  # Fast (20-40ms per token)
+            prefetch_size = 2  # Moderate prefetch
+        else:  # Slow (> 40ms per token)
+            prefetch_size = 1  # Conservative prefetch
+        
+        # Adjust based on prediction confidence
+        if prediction_confidence > 0.8:
+            prefetch_size += 1  # Very confident predictions
+        elif prediction_confidence < 0.3:
+            prefetch_size = max(1, prefetch_size - 1)  # Low confidence
+        
+        # Adjust for token entropy
+        if token_entropy < 0.4:  # Low entropy = highly predictable
+            prefetch_size += 1
+        elif token_entropy > 0.8:  # High entropy = unpredictable
+            prefetch_size = max(1, prefetch_size - 1)
+        
+        # Adjust for sentence patterns
+        if sentence_pattern_predictability > 0.7:  # Highly predictable pattern
+            prefetch_size += 1
+        
+        # Adjust for prediction success rate
+        if prediction_success > 0.7:  # Good success rate
+            prefetch_size += 1
+        elif prediction_success < 0.3:  # Poor success rate
+            prefetch_size = max(1, prefetch_size - 1)
+        
+        # Reduce prefetch under memory pressure
+        if memory_pressure:
+            prefetch_size = max(1, prefetch_size - 1)
+        
+        # Update prediction metrics for next calculation
+        self._update_prediction_metrics(prefetch_size)
+        
+        # Cap prefetch size to reasonable range (1-4)
+        prefetch_size = max(1, min(4, prefetch_size))
+        
+        # Store for reference
+        self._last_prefetch_size = prefetch_size
+        
+        return prefetch_size
+        
+    def _analyze_sentence_patterns(self):
+        """
+        Analyze recent tokens for predictable sentence patterns.
+        
+        Identifies patterns like:
+        - After period → space → capital letter
+        - Common word sequences
+        - List patterns
+        - Repeated phrases
+        
+        Returns:
+            Float between 0-1 indicating pattern predictability
+        """
+        if not hasattr(self, "_token_history") or len(self._token_history) < 3:
+            return 0.5  # Default medium predictability
+        
+        # Get last few tokens
+        recent_tokens = self._token_history[-5:] if len(self._token_history) >= 5 else self._token_history
+        
+        # Check for period followed by space
+        period_space_pattern = False
+        for i in range(len(recent_tokens) - 1):
+            if "." in recent_tokens[i] and " " in recent_tokens[i+1]:
+                period_space_pattern = True
+                break
+        
+        # Check for list patterns (e.g., "1. ", "2. ", etc. or "- ", "- ", etc.)
+        list_pattern = False
+        list_indicators = ["1.", "2.", "3.", "4.", "-", "•", "*"]
+        for token in recent_tokens:
+            if any(indicator in token for indicator in list_indicators):
+                list_pattern = True
+                break
+        
+        # Check for repeated phrases
+        repeated_phrase = False
+        if len(self._token_history) >= 10:
+            # Simple check for repetition in recent history
+            for i in range(len(recent_tokens) - 1):
+                if recent_tokens[i] == recent_tokens[i+1]:
+                    repeated_phrase = True
+                    break
+        
+        # Calculate overall pattern predictability
+        predictability = 0.5  # Start at medium
+        
+        if period_space_pattern:
+            predictability += 0.2  # Sentence boundary is highly predictable
+        
+        if list_pattern:
+            predictability += 0.15  # Lists have predictable patterns
+        
+        if repeated_phrase:
+            predictability += 0.1  # Repetition suggests predictable pattern
+        
+        # Cap between 0 and 1
+        return min(1.0, max(0.0, predictability))
+
+    def _update_prediction_metrics(self, current_prefetch_size):
+        """
+        Update token prediction metrics based on actual generation results.
+        
+        Args:
+            current_prefetch_size: The prefetch size being used
+        """
+        # Only update if we've processed tokens
+        if not hasattr(self, "_tokens_generated") or self._tokens_generated == 0:
+            return
+        
+        # Get the most recent actual token
+        current_token = f"token{self._tokens_generated}" if self._tokens_generated > 0 else ""
+        
+        # Store in history for pattern analysis (limit history size)
+        if hasattr(self, "_token_history"):
+            self._token_history.append(current_token)
+            if len(self._token_history) > 100:
+                self._token_history = self._token_history[-100:]
+        
+        # If we had a previous prediction, check if it was correct
+        if hasattr(self, "_token_predictions") and len(self._token_predictions) > 0:
+            expected_token = self._token_predictions[0].get("token", "")
+            expected_confidence = self._token_predictions[0].get("confidence", 0.5)
+            
+            # Check if prediction was correct
+            prediction_correct = (expected_token == current_token)
+            
+            # Record success/failure of prediction with confidence weighting
+            if hasattr(self, "_prediction_success_rate"):
+                # Weight by confidence - high confidence wrong predictions are penalized more
+                weighted_result = 1.0 if prediction_correct else (1.0 - expected_confidence)
+                self._prediction_success_rate.append(weighted_result)
+                
+                # Keep history manageable
+                if len(self._prediction_success_rate) > 20:
+                    self._prediction_success_rate = self._prediction_success_rate[-20:]
+        
+        # Generate new predictions based on current context
+        # In real implementation, this would use the model's actual output distribution
+        # For simulation, we'll create synthetic predictions
+        
+        import random
+        if hasattr(random, "random"):
+            # Simulate token prediction
+            self._token_predictions = []
+            
+            # Number of predictions to generate (based on current prefetch size)
+            num_predictions = current_prefetch_size
+            
+            for i in range(num_predictions):
+                # Generate predicted next token
+                # In real implementation, this would use the model's logits
+                next_position = self._tokens_generated + i + 1
+                
+                # Simulate different prediction patterns
+                if next_position % 10 == 0:
+                    # End of sentence prediction
+                    predicted_token = ". "
+                    # Sentence endings are usually high confidence
+                    confidence = random.uniform(0.6, 0.9)
+                    # Sentence endings have low entropy (highly predictable)
+                    entropy = random.uniform(0.1, 0.4)
+                elif next_position % 5 == 0:
+                    # Comma prediction
+                    predicted_token = ", "
+                    # Commas are medium-high confidence
+                    confidence = random.uniform(0.4, 0.7)
+                    # Commas have medium entropy
+                    entropy = random.uniform(0.3, 0.6)
+                else:
+                    # Regular token prediction
+                    predicted_token = f"token{next_position} "
+                    # Regular tokens have varied confidence
+                    confidence = random.uniform(0.2, 0.8)
+                    # Regular tokens have varied entropy
+                    entropy = random.uniform(0.4, 0.9)
+                
+                # Store prediction
+                self._token_predictions.append({
+                    "token": predicted_token,
+                    "position": next_position,
+                    "confidence": confidence,
+                    "entropy": entropy
+                })
+            
+            # Record confidence and entropy for the next token prediction
+            if self._token_predictions:
+                if hasattr(self, "_token_confidence_history"):
+                    self._token_confidence_history.append(self._token_predictions[0]["confidence"])
+                    if len(self._token_confidence_history) > 20:
+                        self._token_confidence_history = self._token_confidence_history[-20:]
+                
+                if hasattr(self, "_token_entropy_history"):
+                    self._token_entropy_history.append(self._token_predictions[0]["entropy"])
+                    if len(self._token_entropy_history) > 20:
+                        self._token_entropy_history = self._token_entropy_history[-20:]
     
     def _decode_token(self, batch_size: int = 1) -> Tuple[List[str], bool]:
         """
@@ -757,6 +1142,38 @@ class WebGPUStreamingInference:
         # Track token generation performance 
         token_start_time = time.time()
         
+        # Get optimization configuration using the compute/transfer overlap implementation
+        optimization_config = self._optimize_token_generation(
+            model_id=self._model.get("name", "unknown"),
+            input_tokens=None,  # We don't track input tokens in simulation
+            generated_tokens=[i for i in range(self._tokens_generated)],
+            current_batch_size=batch_size
+        )
+        
+        # Apply optimization configuration
+        compute_stage = optimization_config["compute_stage"]
+        transfer_stage = optimization_config["transfer_stage"]
+        use_overlap = optimization_config["overlap_enabled"]
+        use_prefetch = optimization_config["prefetch_enabled"]
+        prefetch_size = compute_stage.get("prefetch_size", 0) if use_prefetch else 0
+        
+        # Track optimization usage in metrics
+        if not hasattr(self, "_optimization_usage"):
+            self._optimization_usage = {
+                "compute_transfer_overlap": 0,
+                "prefetch": 0,
+                "browser_optimized": 0,
+                "workgroup_size": []
+            }
+        
+        self._optimization_usage["compute_transfer_overlap"] += 1 if use_overlap else 0
+        self._optimization_usage["prefetch"] += 1 if use_prefetch else 0
+        self._optimization_usage["browser_optimized"] += 1 if optimization_config["browser_optimized"] else 0
+        self._optimization_usage["workgroup_size"].append(compute_stage["workgroup_size"])
+        
+        # Store last optimization config
+        self._last_optimization_config = optimization_config
+        
         # Generate up to batch_size tokens
         for i in range(batch_size):
             # Track current token position in sequence
@@ -791,8 +1208,10 @@ class WebGPUStreamingInference:
             # This is the core integration with webgpu_kv_cache_optimization.py
             if using_optimized_kv_cache and kv_cache_module_available:
                 try:
-                    # Simulate model forward pass to get key/value states for this token
-                    # In a real implementation, these would come from the WebGPU shader computation
+                    # COMPUTE STAGE: Simulate model forward pass to get key/value states for this token
+                    # In a real implementation, this would be a WebGPU compute operation
+                    # Start tracking compute time
+                    compute_start_time = time.time()
                     
                     # Create key/value tensors for this token
                     # Shape: [batch_size, num_heads, seq_len=1, head_dim]
@@ -807,6 +1226,14 @@ class WebGPUStreamingInference:
                     # This maps the token to its position in the sequence
                     position_array = np.array([current_position], dtype=np.int32)
                     
+                    # Record compute completion time
+                    compute_time = time.time() - compute_start_time
+                    
+                    # TRANSFER STAGE: Update the KV cache (data transfer operation)
+                    # In a real implementation, this would overlap with the next compute operation
+                    # Start tracking transfer time
+                    transfer_start_time = time.time()
+                    
                     # Perform the actual KV cache update
                     # This is the integration point with webgpu_kv_cache_optimization.py
                     kv_cache_before_update = self._kv_cache.copy() if isinstance(self._kv_cache, dict) else None
@@ -818,6 +1245,27 @@ class WebGPUStreamingInference:
                         value_states,
                         position_array
                     )
+                    
+                    # Record transfer completion time
+                    transfer_time = time.time() - transfer_start_time
+                    
+                    # PREFETCH STAGE: If enabled, simulate prefetching of the next token
+                    if use_prefetch and prefetch_size > 0:
+                        # Start tracking prefetch time
+                        prefetch_start_time = time.time()
+                        
+                        # Simulate prefetching operations
+                        # In a real implementation, this would compute partial results for the next token
+                        
+                        # Fake prefetch computation
+                        for _ in range(prefetch_size):
+                            # Simulate some prefetch work
+                            _ = np.random.randn(1, num_heads, 1, head_dim).astype(np.float32)
+                            
+                        # Record prefetch completion time
+                        prefetch_time = time.time() - prefetch_start_time
+                    else:
+                        prefetch_time = 0
                     
                     # For debugging, check if the update was successful
                     if isinstance(self._kv_cache, dict) and isinstance(kv_cache_before_update, dict):
@@ -832,6 +1280,14 @@ class WebGPUStreamingInference:
                         if "current_len" in self._kv_cache:
                             if self._kv_cache["current_len"] % 100 == 0:
                                 logger.info(f"KV cache current length: {self._kv_cache['current_len']} tokens")
+                    
+                    # Track timing information
+                    self._token_timing = {
+                        "compute_time_ms": compute_time * 1000,
+                        "transfer_time_ms": transfer_time * 1000,
+                        "prefetch_time_ms": prefetch_time * 1000,
+                        "overlap_efficiency": min(1.0, compute_time / (transfer_time + 1e-6)) if use_overlap else 0.0
+                    }
                     
                 except Exception as e:
                     # Fallback if update fails - log error and continue without update
@@ -862,6 +1318,18 @@ class WebGPUStreamingInference:
             elif precision_bits == 4:
                 # 4-bit offers modest improvement
                 base_delay *= 0.85  # 15% latency reduction
+                
+        # Apply compute/transfer overlap optimization if enabled
+        if use_overlap and hasattr(self, "_token_timing"):
+            # In real implementation, the effective latency would be reduced by the overlap factor
+            overlap_efficiency = self._token_timing.get("overlap_efficiency", 0.0)
+            overlap_factor = 0.75 if optimization_config["browser_optimized"] else 0.5
+            
+            # Apply overlap factor to reduce latency
+            adjusted_delay = base_delay * (1.0 - (overlap_efficiency * overlap_factor))
+            
+            # Ensure we don't go below a reasonable minimum latency
+            base_delay = max(adjusted_delay, base_delay * 0.5)
         
         # Apply batch processing efficiency - larger batches are more efficient
         # But with diminishing returns due to memory bandwidth limitations
@@ -1540,7 +2008,69 @@ class WebGPUStreamingInference:
                 logger.info(f"Generated {self._tokens_generated} tokens in {generation_time:.2f}s "
                           f"({tokens_per_second:.2f} tokens/sec)")
             
+        except asyncio.TimeoutError as timeout_error:
+            # Handle timeout specifically
+            error_message = f"Timeout during streaming: {str(timeout_error)}"
+            logger.error(error_message)
+            
+            # Notify timeout handler if available
+            if self.on_timeout is not None:
+                try:
+                    self.on_timeout()
+                except Exception as handler_error:
+                    logger.error(f"Error in timeout handler: {handler_error}")
+            
+            # Prepare error message for client
+            error_info = {
+                "type": "timeout",
+                "message": error_message,
+                "traceback": traceback.format_exc(),
+                "tokens_generated_before_error": self._tokens_generated,
+                "recovery_attempted": self.on_timeout is not None
+            }
+            
+            # Send error message
+            try:
+                await websocket.send(json.dumps(error_info))
+            except:
+                logger.error("Failed to send timeout error message over WebSocket")
+        
+        except (websockets.exceptions.ConnectionClosedError, 
+                websockets.exceptions.ConnectionClosedOK,
+                ConnectionError) as conn_error:
+            # Handle connection errors specifically
+            error_message = f"Connection error during streaming: {str(conn_error)}"
+            logger.error(error_message)
+            
+            # Notify connection error handler if available
+            if self.on_connection_error is not None:
+                try:
+                    self.on_connection_error()
+                except Exception as handler_error:
+                    logger.error(f"Error in connection error handler: {handler_error}")
+            
+            # No need to send message since connection is closed
+        
         except Exception as e:
+            # Generic error handling
+            error_message = f"Error in WebSocket streaming: {str(e)}"
+            logger.error(error_message)
+            logger.error(traceback.format_exc())
+            
+            # Notify general error handler if available
+            if self.on_error is not None:
+                try:
+                    self.on_error({
+                        "type": "streaming_error",
+                        "message": error_message,
+                        "component": "streaming",
+                        "operation": "stream_websocket",
+                        "recoverable": False,
+                        "severity": "error"
+                    })
+                except Exception as handler_error:
+                    logger.error(f"Error in error handler: {handler_error}")
+            
             # Prepare detailed error message
             error_info = {
                 "type": "error",
@@ -1554,9 +2084,6 @@ class WebGPUStreamingInference:
                 await websocket.send(json.dumps(error_info))
             except:
                 logger.error("Failed to send error message over WebSocket")
-                
-            logger.error(f"Error in WebSocket streaming: {e}")
-            logger.error(traceback.format_exc())
             
         finally:
             # Ensure we clean up properly

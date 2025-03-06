@@ -1,0 +1,24 @@
+{
+  "batch_sizes": [
+    1,
+    4,
+    8
+  ],
+  "warmup_iterations": 5,
+  "benchmark_iterations": 20,
+  "timeout": 600,
+  "model_families": {
+    "multimodal": [
+      "openai/clip-vit-base-patch32",
+      "llava-hf/llava-1.5-7b-hf",
+      "llava-hf/llava-v1.6-mistral-7b",
+      "microsoft/xclip-base-patch32"
+    ]
+  },
+  "hardware_types": [
+    "cpu"
+  ],
+  "use_resource_pool": true,
+  "parallel": true,
+  "generate_plots": true
+}

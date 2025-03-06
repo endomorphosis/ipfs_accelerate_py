@@ -25,6 +25,9 @@ import subprocess
 import re
 import platform
 
+# Check for JSON output deprecation flag
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "0") == "1"
+
 logger = logging.getLogger(__name__)
 
 # Hardware type constants
@@ -1741,14 +1744,53 @@ if __name__ == "__main__":
     detector = HardwareDetector(cache_file="hardware_detection_cache.json")
     detector.print_summary(detailed=True)
     
-    # Export results to JSON
-    with open("hardware_detection_results.json", "w") as f:
-        json.dump({
-            "hardware": detector.get_available_hardware(),
-            "details": detector.get_hardware_details(),
-            "errors": detector.get_errors(),
-            "best_available": detector.get_best_available_hardware(),
-            "torch_device": detector.get_torch_device()
-        }, f, indent=2)
+    # Create results object
+    results = {
+        "hardware": detector.get_available_hardware(),
+        "details": detector.get_hardware_details(),
+        "errors": detector.get_errors(),
+        "best_available": detector.get_best_available_hardware(),
+        "torch_device": detector.get_torch_device()
+    }
     
-    print(f"\nResults exported to hardware_detection_results.json")
+    # If JSON output is deprecated, try to save to database
+    if DEPRECATE_JSON_OUTPUT:
+        try:
+            import duckdb
+            
+            # Connect to database or create if not exists
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            conn = duckdb.connect(db_path)
+            
+            # Create hardware_detection table if it doesn't exist
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_detection (
+                id INTEGER PRIMARY KEY,
+                timestamp TIMESTAMP,
+                system_info VARCHAR,
+                hardware_data JSON
+            )
+            """)
+            
+            # Insert detection results
+            timestamp = duckdb.sql("SELECT now()").fetchone()[0]
+            system_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
+            
+            conn.execute(
+                "INSERT INTO hardware_detection (timestamp, system_info, hardware_data) VALUES (?, ?, ?)",
+                [timestamp, system_info, json.dumps(results)]
+            )
+            
+            conn.commit()
+            conn.close()
+            print(f"\nResults saved to database ({db_path})")
+        except Exception as e:
+            print(f"\nFailed to save to database: {e}, falling back to JSON output")
+            with open("hardware_detection_results.json", "w") as f:
+                json.dump(results, f, indent=2)
+            print(f"\nResults exported to hardware_detection_results.json")
+    else:
+        # Export results to JSON
+        with open("hardware_detection_results.json", "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"\nResults exported to hardware_detection_results.json")

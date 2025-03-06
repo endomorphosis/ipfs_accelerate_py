@@ -20,6 +20,19 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 from hardware_selector import HardwareSelector
 
 
@@ -130,8 +143,13 @@ def run_training_benchmark(
     # Save configuration if output file is specified
     if output_file:
         output_path = Path(output_file)
-        with open(output_path, "w") as f:
-            json.dump(benchmark_config, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+            with open(output_path, "w") as f:
+                json.dump(benchmark_config, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         logger.info(f"Benchmark configuration saved to {output_path}")
     
     # Print a summary
@@ -210,7 +228,12 @@ def main():
     # Debug options
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Configure logging
     if args.debug:

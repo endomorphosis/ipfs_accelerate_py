@@ -1,11 +1,24 @@
 {
+  "multiplexing_endpoint_creation": "Success",
+  "usage_statistics": "Success",
+  "queue_enabled": "Success",
+  "request_queue": "Success",
+  "max_concurrent_requests": "Success",
+  "current_requests": "Success",
+  "max_retries": "Success",
+  "initial_retry_delay": "Success",
+  "backoff_factor": "Success",
+  "queue_processing": "Success",
   "endpoint_handler": "Success",
-  "test_endpoint": "Error: argument of type 'NoneType' is not iterable",
-  "post_request": "Error: API key is required",
+  "test_endpoint": "Success",
+  "test_endpoint_params": "Success",
+  "post_request": "Success",
+  "post_request_headers": "Success",
+  "request_id_tracking": "Success",
   "chat_method": "Success",
   "streaming": "Success",
   "error_handling_auth": "Success",
   "error_handling_rate_limit": "Success",
   "error_handling_400": "Success",
-  "model_compatibility": "Not implemented"
+  "model_compatibility": "Success"
 }

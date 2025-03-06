@@ -1,0 +1,28 @@
+{
+  "stats": {
+    "timestamp": "20250305_195322",
+    "total_tests": 1,
+    "successful_tests": 0,
+    "failed_tests": 1,
+    "models_tested": 1,
+    "hardware_platforms": [
+      "cpu"
+    ],
+    "success_rate": 0.0
+  },
+  "model_results": {
+    "bert": {
+      "cpu": false
+    }
+  },
+  "detailed_results": [
+    {
+      "model": "bert",
+      "hardware": "cpu",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 562\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 561\n"
+    }
+  ]
+}

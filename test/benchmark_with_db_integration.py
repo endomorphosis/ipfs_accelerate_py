@@ -21,6 +21,19 @@ import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Try to import required packages
 try:
     import duckdb
@@ -1136,7 +1149,12 @@ def main():
     parser.add_argument("--debug", action="store_true",
                        help="Enable debug logging")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Determine models to benchmark
     models = None
@@ -1161,7 +1179,10 @@ def main():
     try:
         # Create benchmark database integration
         benchmarker = BenchmarkDatabaseIntegration(
-            db_path=args.db_path,
+            db_path = args.db_path
+    if db_path is None:
+        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        logger.info(f"Using database path from environment: {db_path}"),
             use_small_models=args.small_models,
             models=models,
             hardware=hardware,

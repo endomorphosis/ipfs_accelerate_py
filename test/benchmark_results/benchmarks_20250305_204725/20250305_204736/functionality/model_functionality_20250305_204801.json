@@ -1,0 +1,160 @@
+{
+  "stats": {
+    "timestamp": "20250305_204801",
+    "total_tests": 13,
+    "successful_tests": 0,
+    "failed_tests": 13,
+    "models_tested": 13,
+    "hardware_platforms": [
+      "openvino"
+    ],
+    "success_rate": 0.0
+  },
+  "model_results": {
+    "detr": {
+      "openvino": false
+    },
+    "llama": {
+      "openvino": false
+    },
+    "bert": {
+      "openvino": false
+    },
+    "clip": {
+      "openvino": false
+    },
+    "llava": {
+      "openvino": false
+    },
+    "clap": {
+      "openvino": false
+    },
+    "qwen2": {
+      "openvino": false
+    },
+    "llava_next": {
+      "openvino": false
+    },
+    "t5": {
+      "openvino": false
+    },
+    "wav2vec2": {
+      "openvino": false
+    },
+    "vit": {
+      "openvino": false
+    },
+    "whisper": {
+      "openvino": false
+    },
+    "xclip": {
+      "openvino": false
+    }
+  },
+  "detailed_results": [
+    {
+      "model": "detr",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_detr.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "llama",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llama.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "bert",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_bert.py\", line 801\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "clip",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clip.py\", line 528\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 527\n"
+    },
+    {
+      "model": "llava",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava.py\", line 257\n    def init_rocm(self, model_name=None, device=\"hip\"):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "clap",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_clap.py\", line 1012\n    def enhanced_cuda_handler(audio_input=None, text=None):\nSyntaxError: expected 'except' or 'finally' block\n"
+    },
+    {
+      "model": "qwen2",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_qwen2.py\", line 816\n    def init_webnn(self, model_name=None):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "llava_next",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_llava_next.py\", line 1002\n    def init_webgpu(self, model_name=None):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "t5",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_t5.py\", line 500\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 499\n"
+    },
+    {
+      "model": "wav2vec2",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_wav2vec2.py\", line 268\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "vit",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_vit.py\", line 505\n    \"\"\"Test the model using OpenVINO integration.\"\"\"\n    ^\nIndentationError: expected an indented block after function definition on line 504\n"
+    },
+    {
+      "model": "whisper",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_whisper.py\", line 274\n    def init_mps(self, model_name, model_type, device_label=\"mps:0\", **kwargs):\nIndentationError: unexpected indent\n"
+    },
+    {
+      "model": "xclip",
+      "hardware": "openvino",
+      "success": false,
+      "return_code": 1,
+      "stdout": "",
+      "stderr": "  File \"/home/barberb/ipfs_accelerate_py/test/skills/test_hf_xclip.py\", line 164\n    X-CLIP_MODELS_REGISTRY = {\n    ^^^^^^^^^^^^^^^^^^^^^^\nSyntaxError: cannot assign to expression here. Maybe you meant '==' instead of '='?\n"
+    }
+  ]
+}

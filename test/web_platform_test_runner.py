@@ -1,4 +1,15 @@
 #!/usr/bin/env python
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 """
 Web Platform Test Runner for the IPFS Accelerate Python Framework.
 
@@ -1454,41 +1465,12 @@ class WebPlatformTestRunner:
                 "platform_support": support
             }
         
-        # Try to save to DuckDB database
-        try:
-            # Check if we have database integration module
-            from run_web_platform_tests_with_db import WebPlatformTestsDBIntegration
-            
-            # Get database path from environment or use default
-            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
-            
-            if os.path.exists(db_path):
-                logger.info(f"Storing results in database: {db_path}")
-                db_integration = WebPlatformTestsDBIntegration(db_path=db_path)
-                db_integration.store_results_in_db({model_key: {platform: result}})
-                
-                # Still save a local copy for reference, but mark it as a duplicate
-                result_file = model_result_dir / "result.json"
-                with open(result_file, 'w') as f:
-                    result["stored_in_db"] = True
-                    json.dump(result, f, indent=2)
-                
-                logger.info(f"Test result saved to database and {result_file}")
-            else:
-                # If database doesn't exist, fall back to JSON
-                result_file = model_result_dir / "result.json"
-                with open(result_file, 'w') as f:
-                    json.dump(result, f, indent=2)
-                
-                logger.warning(f"Database not found at {db_path}, saving to JSON only: {result_file}")
-        except ImportError:
-            # If database integration not available, fall back to JSON
-            result_file = model_result_dir / "result.json"
-            with open(result_file, 'w') as f:
-                json.dump(result, f, indent=2)
-            
-            logger.warning("Database integration not available, saving to JSON only")
-            logger.info(f"Test result saved to {result_file}")
+        # Save results to JSON only for now (database integration has syntax issues)
+        result_file = model_result_dir / "result.json"
+        with open(result_file, 'w') as f:
+            json.dump(result, f, indent=2)
+        
+        logger.info(f"Test result saved to {result_file}")
         
         return result
     
@@ -1527,55 +1509,13 @@ class WebPlatformTestRunner:
             # Small delay between tests to avoid browser issues
             time.sleep(1)
         
-        # Try to save all results to database
-        try:
-            # Check if we have database integration module
-            from run_web_platform_tests_with_db import WebPlatformTestsDBIntegration
-            
-            # Get database path from environment or use default
-            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
-            
-            if os.path.exists(db_path):
-                logger.info(f"Storing all results in database: {db_path}")
-                
-                # Format results for database integration
-                db_ready_results = {}
-                for result in results["results"]:
-                    model_key = result.get("model_key")
-                    if model_key:
-                        if model_key not in db_ready_results:
-                            db_ready_results[model_key] = {}
-                        db_ready_results[model_key][platform] = result
-                
-                # Store in database
-                db_integration = WebPlatformTestsDBIntegration(db_path=db_path)
-                db_integration.store_results_in_db(db_ready_results)
-                
-                # Still save a local copy for reference
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                results_file = self.output_dir / f"all_models_{platform}_{timestamp}.json"
-                with open(results_file, 'w') as f:
-                    results["stored_in_db"] = True
-                    json.dump(results, f, indent=2)
-                
-                logger.info(f"All model test results saved to database and {results_file}")
-            else:
-                # If database doesn't exist, fall back to JSON
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                results_file = self.output_dir / f"all_models_{platform}_{timestamp}.json"
-                with open(results_file, 'w') as f:
-                    json.dump(results, f, indent=2)
-                
-                logger.warning(f"Database not found at {db_path}, saving all results to JSON only: {results_file}")
-        except ImportError:
-            # If database integration not available, fall back to JSON
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            results_file = self.output_dir / f"all_models_{platform}_{timestamp}.json"
-            with open(results_file, 'w') as f:
-                json.dump(results, f, indent=2)
-            
-            logger.warning("Database integration not available, saving all results to JSON only")
-            logger.info(f"All model test results saved to {results_file}")
+        # Save results to JSON only for now (database integration has syntax issues)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        results_file = self.output_dir / f"all_models_{platform}_{timestamp}.json"
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        logger.info(f"All model test results saved to {results_file}")
         
         return results
     

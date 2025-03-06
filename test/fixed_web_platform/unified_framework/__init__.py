@@ -167,7 +167,8 @@ class UnifiedWebPlatform:
         try:
             self.result_formatter = ResultFormatter(
                 model_type=self.model_type,
-                format_type=self.config.get("result_format", "standard")
+                browser=browser_info.get("name") if browser_info else None,
+                include_metadata=self.config.get("include_metadata", True)
             )
         except ImportError:
             logger.warning("ResultFormatter not available, using basic result formatting")

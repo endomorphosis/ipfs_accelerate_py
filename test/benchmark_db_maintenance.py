@@ -23,6 +23,19 @@ import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -366,121 +379,126 @@ class BenchmarkDBMaintenance:
             file_name = os.path.basename(file_path)
             
             # Load JSON file
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-            
-            # Connect to database
-            conn = duckdb.connect(self.db_path)
-            
-            # Try to determine the category from the file
-            if "performance" in file_name.lower() or "benchmark" in file_name.lower():
-                # Performance data - check if records with this timestamp exist
-                if "timestamp" in data:
-                    timestamp = data["timestamp"]
-                    
-                    count = conn.execute(
-                        "SELECT COUNT(*) FROM benchmark_performance WHERE source_file = ?",
-                        [file_name]
-                    ).fetchone()[0]
-                    
-                    if count > 0:
-                        conn.close()
-                        return True
-            
-            elif "hardware" in file_name.lower():
-                # Hardware data - check if records with this device name exist
-                if "device_name" in data:
-                    device_name = data["device_name"]
-                    
-                    count = conn.execute(
-                        "SELECT COUNT(*) FROM benchmark_hardware WHERE source_file = ?",
-                        [file_name]
-                    ).fetchone()[0]
-                    
-                    if count > 0:
-                        conn.close()
-                        return True
-            
-            elif "compatibility" in file_name.lower():
-                # Compatibility data - check if records with this model/hardware exist
-                if "model" in data and "hardware_type" in data:
-                    model = data["model"]
-                    hardware_type = data["hardware_type"]
-                    
-                    count = conn.execute(
-                        "SELECT COUNT(*) FROM benchmark_compatibility WHERE source_file = ?",
-                        [file_name]
-                    ).fetchone()[0]
-                    
-                    if count > 0:
-                        conn.close()
-                        return True
-            
-            conn.close()
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error checking if file {file_path} is in database: {e}")
-            return False
-    
-    def generate_maintenance_report(self, output_file: str = "benchmark_db_maintenance_report.json") -> bool:
-        """
-        Generate a maintenance report with database statistics and recommendations.
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Connect to database
+                conn = duckdb.connect(self.db_path)
+                
+                # Try to determine the category from the file
+                if "performance" in file_name.lower() or "benchmark" in file_name.lower():
+                    # Performance data - check if records with this timestamp exist
+                    if "timestamp" in data:
+                        timestamp = data["timestamp"]
+                        
+                        count = conn.execute(
+                            "SELECT COUNT(*) FROM benchmark_performance WHERE source_file = ?",
+                            [file_name]
+                        ).fetchone()[0]
+                        
+                        if count > 0:
+                            conn.close()
+                            return True
+                
+                elif "hardware" in file_name.lower():
+                    # Hardware data - check if records with this device name exist
+                    if "device_name" in data:
+                        device_name = data["device_name"]
+                        
+                        count = conn.execute(
+                            "SELECT COUNT(*) FROM benchmark_hardware WHERE source_file = ?",
+                            [file_name]
+                        ).fetchone()[0]
+                        
+                        if count > 0:
+                            conn.close()
+                            return True
+                
+                elif "compatibility" in file_name.lower():
+                    # Compatibility data - check if records with this model/hardware exist
+                    if "model" in data and "hardware_type" in data:
+                        model = data["model"]
+                        hardware_type = data["hardware_type"]
+                        
+                        count = conn.execute(
+                            "SELECT COUNT(*) FROM benchmark_compatibility WHERE source_file = ?",
+                            [file_name]
+                        ).fetchone()[0]
+                        
+                        if count > 0:
+                            conn.close()
+                            return True
+                
+                conn.close()
+                return False
+                
+            except Exception as e:
+                logger.error(f"Error checking if file {file_path} is in database: {e}")
+                return False
         
-        Args:
-            output_file: Path to the output file
+        def generate_maintenance_report(self, output_file: str = "benchmark_db_maintenance_report.json") -> bool:
+            """
+            Generate a maintenance report with database statistics and recommendations.
             
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Validate database
-            validation_results = self.validate_database()
-            
-            # Build report
-            report = {
-                "timestamp": datetime.datetime.now().isoformat(),
-                "database_path": self.db_path,
-                "validation_results": validation_results,
-                "recommendations": []
-            }
-            
-            # Add recommendations based on validation results
-            if validation_results["status"] == "error":
-                report["recommendations"].append({
-                    "priority": "high",
-                    "message": "Database has errors that should be fixed immediately",
-                    "action": "Check error log and fix database issues"
-                })
+            Args:
+                output_file: Path to the output file
                 
-            if validation_results["warnings"]:
-                report["recommendations"].append({
-                    "priority": "medium",
-                    "message": f"Database has {len(validation_results['warnings'])} warnings",
-                    "action": "Address warnings to improve database integrity"
-                })
+            Returns:
+                True if successful, False otherwise
+            """
+            try:
+                # Validate database
+                validation_results = self.validate_database()
                 
-            # Check database size
-            db_size_mb = validation_results.get("db_size_mb", 0)
-            if db_size_mb > 1000:  # 1 GB
-                report["recommendations"].append({
-                    "priority": "medium",
-                    "message": f"Database size is large ({db_size_mb:.2f} MB)",
-                    "action": "Consider cleaning up old data or optimizing the database"
-                })
+                # Build report
+                report = {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "database_path": self.db_path,
+                    "validation_results": validation_results,
+                    "recommendations": []
+                }
                 
-            # Check row counts
-            for table_name, table_info in validation_results.get("tables", {}).items():
-                if table_info["row_count"] > 1000000:  # 1 million rows
+                # Add recommendations based on validation results
+                if validation_results["status"] == "error":
+                    report["recommendations"].append({
+                        "priority": "high",
+                        "message": "Database has errors that should be fixed immediately",
+                        "action": "Check error log and fix database issues"
+                    })
+                    
+                if validation_results["warnings"]:
                     report["recommendations"].append({
                         "priority": "medium",
-                        "message": f"Table {table_name} has {table_info['row_count']} rows",
-                        "action": "Consider cleaning up old data from this table"
+                        "message": f"Database has {len(validation_results['warnings'])} warnings",
+                        "action": "Address warnings to improve database integrity"
                     })
-            
-            # Save report
-            with open(output_file, 'w') as f:
-                json.dump(report, f, indent=2)
+                    
+                # Check database size
+                db_size_mb = validation_results.get("db_size_mb", 0)
+                if db_size_mb > 1000:  # 1 GB
+                    report["recommendations"].append({
+                        "priority": "medium",
+                        "message": f"Database size is large ({db_size_mb:.2f} MB)",
+                        "action": "Consider cleaning up old data or optimizing the database"
+                    })
+                    
+                # Check row counts
+                for table_name, table_info in validation_results.get("tables", {}).items():
+                    if table_info["row_count"] > 1000000:  # 1 million rows
+                        report["recommendations"].append({
+                            "priority": "medium",
+                            "message": f"Table {table_name} has {table_info['row_count']} rows",
+                            "action": "Consider cleaning up old data from this table"
+                        })
+                
+                # Save report
+                with open(output_file, 'w') as f:
+                    json.dump(report, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
                 
             logger.info(f"Maintenance report generated: {output_file}")
             return True
@@ -521,7 +539,12 @@ def main():
                         help="Path to the maintenance report file")
     parser.add_argument("--debug", action="store_true",
                         help="Enable debug logging")
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Create maintenance tool
     maintenance = BenchmarkDBMaintenance(db_path=args.db, debug=args.debug)

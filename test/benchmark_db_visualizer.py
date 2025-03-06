@@ -21,6 +21,19 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -295,326 +308,336 @@ class BenchmarkDBVisualizer:
                     )
                     os.makedirs(os.path.dirname(template_path), exist_ok=True)
                     
-                    with open(template_path, 'w') as f:
-                        f.write(self._get_default_html_template())
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        with open(template_path, 'w') as f:
+                            f.write(self._get_default_html_template())
+                            
+                        template = self.jinja_env.get_template('performance_report.html')
+                    
+                    # Prepare data for template
+                    template_data = {
+                        'title': 'Performance Benchmark Report',
+                        'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'performance_data': data,
+                        'models': sorted(data['models'].keys())
+                    }
+                    
+                    # Render template
+                    html_content = template.render(**template_data)
+                    
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        # Save or return
+                        if output:
+                            with open(output, 'w') as f:
+                                f.write(html_content)
+                            logger.info(f"HTML report saved to {output}")
+                            return None
+                        else:
+                            return html_content
+                            
+                    except Exception as e:
+                        logger.error(f"Error generating HTML report with Jinja2: {e}")
+                        return self._generate_basic_html_report(data, output)
+                else:
+                    return self._generate_basic_html_report(data, output)
+                    
+            def _generate_basic_html_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
+                """
+                Generate a basic HTML report without using Jinja2.
+                
+                Args:
+                    data: Performance data dictionary
+                    output: Output file path (or None for return)
+                    
+                Returns:
+                    HTML content (if output is None) or None
+                """
+                # Start building HTML
+                html = ["<!DOCTYPE html>", "<html>", "<head>",
+                        "<title>Performance Benchmark Report</title>",
+                        "<style>",
+                        "body { font-family: Arial, sans-serif; margin: 20px; }",
+                        "table { border-collapse: collapse; width: 100%; }",
+                        "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
+                        "th { background-color: #f2f2f2; }",
+                        "tr:nth-child(even) { background-color: #f9f9f9; }",
+                        "h1, h2, h3 { color: #333; }",
+                        "</style>",
+                        "</head>",
+                        "<body>",
+                        f"<h1>Performance Benchmark Report</h1>",
+                        f"<p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>"]
+                
+                # Add model results
+                for model_name, model_data in sorted(data['models'].items()):
+                    html.append(f"<h2>Model: {model_name}</h2>")
+                    html.append(f"<p>Family: {model_data.get('model_family', 'Unknown')}</p>")
+                    
+                    # Hardware results table
+                    html.append("<h3>Hardware Performance</h3>")
+                    html.append("<table>")
+                    html.append("<tr><th>Hardware</th><th>Batch Size</th><th>Precision</th><th>Latency (ms)</th><th>Throughput</th><th>Memory (MB)</th></tr>")
+                    
+                    for hw_type, hw_results in sorted(model_data['hardware_results'].items()):
+                        # Sort by batch size
+                        hw_results = sorted(hw_results, key=lambda x: x.get('batch_size', 0))
                         
-                    template = self.jinja_env.get_template('performance_report.html')
+                        for result in hw_results:
+                            html.append("<tr>")
+                            html.append(f"<td>{hw_type}</td>")
+                            html.append(f"<td>{result.get('batch_size', 'N/A')}</td>")
+                            html.append(f"<td>{result.get('precision', 'N/A')}</td>")
+                            html.append(f"<td>{result.get('latency_ms', 'N/A'):.2f}</td>")
+                            html.append(f"<td>{result.get('throughput', 'N/A'):.2f}</td>")
+                            html.append(f"<td>{result.get('memory_mb', 'N/A'):.2f}</td>")
+                            html.append("</tr>")
+                            
+                    html.append("</table>")
+                    
+                # Close HTML
+                html.append("</body>")
+                html.append("</html>")
                 
-                # Prepare data for template
-                template_data = {
-                    'title': 'Performance Benchmark Report',
-                    'timestamp': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    'performance_data': data,
-                    'models': sorted(data['models'].keys())
-                }
+                # Join and output
+                html_content = "\n".join(html)
                 
-                # Render template
-                html_content = template.render(**template_data)
-                
-                # Save or return
                 if output:
                     with open(output, 'w') as f:
                         f.write(html_content)
-                    logger.info(f"HTML report saved to {output}")
+                    logger.info(f"Basic HTML report saved to {output}")
                     return None
                 else:
                     return html_content
                     
-            except Exception as e:
-                logger.error(f"Error generating HTML report with Jinja2: {e}")
-                return self._generate_basic_html_report(data, output)
-        else:
-            return self._generate_basic_html_report(data, output)
-            
-    def _generate_basic_html_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
-        """
-        Generate a basic HTML report without using Jinja2.
-        
-        Args:
-            data: Performance data dictionary
-            output: Output file path (or None for return)
-            
-        Returns:
-            HTML content (if output is None) or None
-        """
-        # Start building HTML
-        html = ["<!DOCTYPE html>", "<html>", "<head>",
-                "<title>Performance Benchmark Report</title>",
-                "<style>",
-                "body { font-family: Arial, sans-serif; margin: 20px; }",
-                "table { border-collapse: collapse; width: 100%; }",
-                "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
-                "th { background-color: #f2f2f2; }",
-                "tr:nth-child(even) { background-color: #f9f9f9; }",
-                "h1, h2, h3 { color: #333; }",
-                "</style>",
-                "</head>",
-                "<body>",
-                f"<h1>Performance Benchmark Report</h1>",
-                f"<p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>"]
-        
-        # Add model results
-        for model_name, model_data in sorted(data['models'].items()):
-            html.append(f"<h2>Model: {model_name}</h2>")
-            html.append(f"<p>Family: {model_data.get('model_family', 'Unknown')}</p>")
-            
-            # Hardware results table
-            html.append("<h3>Hardware Performance</h3>")
-            html.append("<table>")
-            html.append("<tr><th>Hardware</th><th>Batch Size</th><th>Precision</th><th>Latency (ms)</th><th>Throughput</th><th>Memory (MB)</th></tr>")
-            
-            for hw_type, hw_results in sorted(model_data['hardware_results'].items()):
-                # Sort by batch size
-                hw_results = sorted(hw_results, key=lambda x: x.get('batch_size', 0))
-                
-                for result in hw_results:
-                    html.append("<tr>")
-                    html.append(f"<td>{hw_type}</td>")
-                    html.append(f"<td>{result.get('batch_size', 'N/A')}</td>")
-                    html.append(f"<td>{result.get('precision', 'N/A')}</td>")
-                    html.append(f"<td>{result.get('latency_ms', 'N/A'):.2f}</td>")
-                    html.append(f"<td>{result.get('throughput', 'N/A'):.2f}</td>")
-                    html.append(f"<td>{result.get('memory_mb', 'N/A'):.2f}</td>")
-                    html.append("</tr>")
+            def _get_default_html_template(self) -> str:
+                """Get a default Jinja2 HTML template for performance reports"""
+                return """<!DOCTYPE html>
+        <html>
+        <head>
+            <title>{{ title }}</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+                h1, h2, h3 { color: #333; }
+                .section { margin-bottom: 30px; }
+                .card { border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 20px; }
+                .card-header { background-color: #f2f2f2; padding: 10px; margin: -15px -15px 15px -15px; border-radius: 4px 4px 0 0; }
+                .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 15px; }
+                .tab { padding: 10px 15px; cursor: pointer; }
+                .tab.active { border: 1px solid #ddd; border-bottom: none; border-radius: 4px 4px 0 0; background-color: #fff; }
+                .tab-content { display: none; }
+                .tab-content.active { display: block; }
+            </style>
+            <script>
+                function showTab(tabId, linkElement) {
+                    // Hide all tab contents
+                    var tabContents = document.getElementsByClassName('tab-content');
+                    for (var i = 0; i < tabContents.length; i++) {
+                        tabContents[i].classList.remove('active');
+                    }
                     
-            html.append("</table>")
+                    // Deactivate all tab links
+                    var tabLinks = document.getElementsByClassName('tab');
+                    for (var i = 0; i < tabLinks.length; i++) {
+                        tabLinks[i].classList.remove('active');
+                    }
+                    
+                    // Show the selected tab content and activate the link
+                    document.getElementById(tabId).classList.add('active');
+                    linkElement.classList.add('active');
+                }
+            </script>
+        </head>
+        <body>
+            <h1>{{ title }}</h1>
+            <p>Generated: {{ timestamp }}</p>
             
-        # Close HTML
-        html.append("</body>")
-        html.append("</html>")
-        
-        # Join and output
-        html_content = "\n".join(html)
-        
-        if output:
-            with open(output, 'w') as f:
-                f.write(html_content)
-            logger.info(f"Basic HTML report saved to {output}")
-            return None
-        else:
-            return html_content
-            
-    def _get_default_html_template(self) -> str:
-        """Get a default Jinja2 HTML template for performance reports"""
-        return """<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ title }}</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; font-weight: bold; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        h1, h2, h3 { color: #333; }
-        .section { margin-bottom: 30px; }
-        .card { border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 20px; }
-        .card-header { background-color: #f2f2f2; padding: 10px; margin: -15px -15px 15px -15px; border-radius: 4px 4px 0 0; }
-        .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 15px; }
-        .tab { padding: 10px 15px; cursor: pointer; }
-        .tab.active { border: 1px solid #ddd; border-bottom: none; border-radius: 4px 4px 0 0; background-color: #fff; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-    </style>
-    <script>
-        function showTab(tabId, linkElement) {
-            // Hide all tab contents
-            var tabContents = document.getElementsByClassName('tab-content');
-            for (var i = 0; i < tabContents.length; i++) {
-                tabContents[i].classList.remove('active');
-            }
-            
-            // Deactivate all tab links
-            var tabLinks = document.getElementsByClassName('tab');
-            for (var i = 0; i < tabLinks.length; i++) {
-                tabLinks[i].classList.remove('active');
-            }
-            
-            // Show the selected tab content and activate the link
-            document.getElementById(tabId).classList.add('active');
-            linkElement.classList.add('active');
-        }
-    </script>
-</head>
-<body>
-    <h1>{{ title }}</h1>
-    <p>Generated: {{ timestamp }}</p>
-    
-    <div class="section">
-        <h2>Performance Summary</h2>
-        <p>This report contains performance data for {{ models|length }} models across different hardware platforms.</p>
-        
-        <div class="tabs">
-            <div class="tab active" onclick="showTab('tab-models', this)">By Model</div>
-            <div class="tab" onclick="showTab('tab-hardware', this)">By Hardware</div>
-        </div>
-        
-        <div id="tab-models" class="tab-content active">
-            {% for model_name in models %}
-            {% set model_data = performance_data.models[model_name] %}
-            <div class="card">
-                <div class="card-header">
-                    <h3>{{ model_name }}</h3>
-                    <p>Family: {{ model_data.model_family }}</p>
+            <div class="section">
+                <h2>Performance Summary</h2>
+                <p>This report contains performance data for {{ models|length }} models across different hardware platforms.</p>
+                
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab('tab-models', this)">By Model</div>
+                    <div class="tab" onclick="showTab('tab-hardware', this)">By Hardware</div>
                 </div>
                 
-                <table>
-                    <tr>
-                        <th>Hardware</th>
-                        <th>Batch Size</th>
-                        <th>Precision</th>
-                        <th>Latency (ms)</th>
-                        <th>Throughput</th>
-                        <th>Memory (MB)</th>
-                    </tr>
-                    {% for hw_type, hw_results in model_data.hardware_results.items() %}
-                        {% for result in hw_results %}
-                        <tr>
-                            <td>{{ hw_type }}</td>
-                            <td>{{ result.batch_size }}</td>
-                            <td>{{ result.precision }}</td>
-                            <td>{{ "%.2f"|format(result.latency_ms) }}</td>
-                            <td>{{ "%.2f"|format(result.throughput) }}</td>
-                            <td>{{ "%.2f"|format(result.memory_mb) if result.memory_mb else 'N/A' }}</td>
-                        </tr>
+                <div id="tab-models" class="tab-content active">
+                    {% for model_name in models %}
+                    {% set model_data = performance_data.models[model_name] %}
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>{{ model_name }}</h3>
+                            <p>Family: {{ model_data.model_family }}</p>
+                        </div>
+                        
+                        <table>
+                            <tr>
+                                <th>Hardware</th>
+                                <th>Batch Size</th>
+                                <th>Precision</th>
+                                <th>Latency (ms)</th>
+                                <th>Throughput</th>
+                                <th>Memory (MB)</th>
+                            </tr>
+                            {% for hw_type, hw_results in model_data.hardware_results.items() %}
+                                {% for result in hw_results %}
+                                <tr>
+                                    <td>{{ hw_type }}</td>
+                                    <td>{{ result.batch_size }}</td>
+                                    <td>{{ result.precision }}</td>
+                                    <td>{{ "%.2f"|format(result.latency_ms) }}</td>
+                                    <td>{{ "%.2f"|format(result.throughput) }}</td>
+                                    <td>{{ "%.2f"|format(result.memory_mb) if result.memory_mb else 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div id="tab-hardware" class="tab-content">
+                    {% set hardware_types = [] %}
+                    {% for model_name, model_data in performance_data.models.items() %}
+                        {% for hw_type in model_data.hardware_results.keys() %}
+                            {% if hw_type not in hardware_types %}
+                                {% do hardware_types.append(hw_type) %}
+                            {% endif %}
                         {% endfor %}
                     {% endfor %}
-                </table>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <div id="tab-hardware" class="tab-content">
-            {% set hardware_types = [] %}
-            {% for model_name, model_data in performance_data.models.items() %}
-                {% for hw_type in model_data.hardware_results.keys() %}
-                    {% if hw_type not in hardware_types %}
-                        {% do hardware_types.append(hw_type) %}
-                    {% endif %}
-                {% endfor %}
-            {% endfor %}
-            
-            {% for hw_type in hardware_types|sort %}
-            <div class="card">
-                <div class="card-header">
-                    <h3>{{ hw_type }}</h3>
-                </div>
-                
-                <table>
-                    <tr>
-                        <th>Model</th>
-                        <th>Family</th>
-                        <th>Batch Size</th>
-                        <th>Latency (ms)</th>
-                        <th>Throughput</th>
-                    </tr>
-                    {% for model_name, model_data in performance_data.models.items() %}
-                        {% if hw_type in model_data.hardware_results %}
-                            {% for result in model_data.hardware_results[hw_type] %}
-                            <tr>
-                                <td>{{ model_name }}</td>
-                                <td>{{ model_data.model_family }}</td>
-                                <td>{{ result.batch_size }}</td>
-                                <td>{{ "%.2f"|format(result.latency_ms) }}</td>
-                                <td>{{ "%.2f"|format(result.throughput) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% endif %}
-                    {% endfor %}
-                </table>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</body>
-</html>
-"""
-            
-    def _generate_markdown_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
-        """
-        Generate a markdown report from performance data.
-        
-        Args:
-            data: Performance data dictionary
-            output: Output file path (or None for return)
-            
-        Returns:
-            Markdown content (if output is None) or None
-        """
-        if not data or not data.get('models'):
-            logger.error("No data available for markdown report")
-            return None
-            
-        # Build markdown content
-        md = []
-        md.append("# Performance Benchmark Report")
-        md.append("")
-        md.append(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        md.append("")
-        
-        # Group by model family
-        models_by_family = {}
-        for model_name, model_data in data['models'].items():
-            family = model_data.get('model_family', 'Unknown')
-            if family not in models_by_family:
-                models_by_family[family] = []
-            models_by_family[family].append((model_name, model_data))
-        
-        # Process by family
-        for family, models in sorted(models_by_family.items()):
-            md.append(f"## {family.title()} Models")
-            md.append("")
-            
-            for model_name, model_data in sorted(models):
-                md.append(f"### {model_name}")
-                md.append("")
-                
-                # Hardware results table
-                md.append("#### Hardware Performance")
-                md.append("")
-                md.append("| Hardware | Batch Size | Precision | Latency (ms) | Throughput | Memory (MB) |")
-                md.append("|----------|------------|-----------|--------------|------------|-------------|")
-                
-                for hw_type, hw_results in sorted(model_data['hardware_results'].items()):
-                    # Sort by batch size
-                    hw_results = sorted(hw_results, key=lambda x: x.get('batch_size', 0))
                     
-                    for result in hw_results:
-                        md.append(f"| {hw_type} | {result.get('batch_size', 'N/A')} | {result.get('precision', 'N/A')} | {result.get('latency_ms', 0):.2f} | {result.get('throughput', 0):.2f} | {result.get('memory_mb', 0):.2f} |")
+                    {% for hw_type in hardware_types|sort %}
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>{{ hw_type }}</h3>
+                        </div>
+                        
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                                <th>Family</th>
+                                <th>Batch Size</th>
+                                <th>Latency (ms)</th>
+                                <th>Throughput</th>
+                            </tr>
+                            {% for model_name, model_data in performance_data.models.items() %}
+                                {% if hw_type in model_data.hardware_results %}
+                                    {% for result in model_data.hardware_results[hw_type] %}
+                                    <tr>
+                                        <td>{{ model_name }}</td>
+                                        <td>{{ model_data.model_family }}</td>
+                                        <td>{{ result.batch_size }}</td>
+                                        <td>{{ "%.2f"|format(result.latency_ms) }}</td>
+                                        <td>{{ "%.2f"|format(result.throughput) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% endif %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+                    
+            def _generate_markdown_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
+                """
+                Generate a markdown report from performance data.
                 
+                Args:
+                    data: Performance data dictionary
+                    output: Output file path (or None for return)
+                    
+                Returns:
+                    Markdown content (if output is None) or None
+                """
+                if not data or not data.get('models'):
+                    logger.error("No data available for markdown report")
+                    return None
+                    
+                # Build markdown content
+                md = []
+                md.append("# Performance Benchmark Report")
                 md.append("")
-        
-        # Join and output
-        md_content = "\n".join(md)
-        
-        if output:
-            with open(output, 'w') as f:
-                f.write(md_content)
-            logger.info(f"Markdown report saved to {output}")
-            return None
-        else:
-            return md_content
-            
-    def _generate_json_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
-        """
-        Generate a JSON report from performance data.
-        
-        Args:
-            data: Performance data dictionary
-            output: Output file path (or None for return)
-            
-        Returns:
-            JSON content (if output is None) or None
-        """
-        # Add report metadata
-        report_data = {
-            "report_type": "performance",
-            "generated_at": datetime.datetime.now().isoformat(),
-            "data": data
-        }
-        
-        # Convert to JSON
-        json_content = json.dumps(report_data, indent=2)
+                md.append(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                md.append("")
+                
+                # Group by model family
+                models_by_family = {}
+                for model_name, model_data in data['models'].items():
+                    family = model_data.get('model_family', 'Unknown')
+                    if family not in models_by_family:
+                        models_by_family[family] = []
+                    models_by_family[family].append((model_name, model_data))
+                
+                # Process by family
+                for family, models in sorted(models_by_family.items()):
+                    md.append(f"## {family.title()} Models")
+                    md.append("")
+                    
+                    for model_name, model_data in sorted(models):
+                        md.append(f"### {model_name}")
+                        md.append("")
+                        
+                        # Hardware results table
+                        md.append("#### Hardware Performance")
+                        md.append("")
+                        md.append("| Hardware | Batch Size | Precision | Latency (ms) | Throughput | Memory (MB) |")
+                        md.append("|----------|------------|-----------|--------------|------------|-------------|")
+                        
+                        for hw_type, hw_results in sorted(model_data['hardware_results'].items()):
+                            # Sort by batch size
+                            hw_results = sorted(hw_results, key=lambda x: x.get('batch_size', 0))
+                            
+                            for result in hw_results:
+                                md.append(f"| {hw_type} | {result.get('batch_size', 'N/A')} | {result.get('precision', 'N/A')} | {result.get('latency_ms', 0):.2f} | {result.get('throughput', 0):.2f} | {result.get('memory_mb', 0):.2f} |")
+                        
+                        md.append("")
+                
+                # Join and output
+                md_content = "\n".join(md)
+                
+                if output:
+                    with open(output, 'w') as f:
+                        f.write(md_content)
+                    logger.info(f"Markdown report saved to {output}")
+                    return None
+                else:
+                    return md_content
+                    
+            def _generate_json_report(self, data: Dict[str, Any], output: Optional[str]) -> Optional[str]:
+                """
+                Generate a JSON report from performance data.
+                
+                Args:
+                    data: Performance data dictionary
+                    output: Output file path (or None for return)
+                    
+                Returns:
+                    JSON content (if output is None) or None
+                """
+                # Add report metadata
+                report_data = {
+                    "report_type": "performance",
+                    "generated_at": datetime.datetime.now().isoformat(),
+                    "data": data
+                }
+                
+                # Convert to JSON
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
+            json_content = json.dumps(report_data, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         
         if output:
             with open(output, 'w') as f:
@@ -1248,7 +1271,12 @@ def main():
     parser.add_argument("--debug", action="store_true",
                        help="Enable debug logging")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+args = parser.parse_args()
     
     # Check if database exists
     if not os.path.exists(args.db):

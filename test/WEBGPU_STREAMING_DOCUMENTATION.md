@@ -32,6 +32,8 @@ WebGPU Streaming Inference enables token-by-token generation for large language 
 - **Adaptive batch sizing:** Dynamically adjusts batch size based on device performance
 - **Low-latency mode:** Optimized for interactive applications with minimal latency
 - **Prefill optimization:** Faster initial response with optimized prefill phase
+- **Compute/transfer overlap:** Parallel compute and transfer operations reduce latency
+- **Advanced token prediction:** Predictive prefetching based on text patterns and prediction confidence
 - **Browser-specific optimizations:** Tailored for Chrome, Firefox, and Edge
 
 ### Cross-Platform Integration
@@ -212,6 +214,50 @@ const streaming = new WebGPUStreamingInference({
   config: ultraLowConfig
 });
 ```
+
+### Configuration Validation and Auto-Correction
+
+The framework includes a robust configuration validation and auto-correction system that ensures your settings are compatible with the current browser environment:
+
+```javascript
+import { WebPlatformAccelerator, ConfigurationManager } from '@ipfs-accelerate/web-platform';
+
+// Create accelerator with auto-validation
+const accelerator = new WebPlatformAccelerator({
+  modelPath: 'models/llama-7b',
+  modelType: 'text',
+  config: {
+    quantization: "2bit",           // This will be auto-corrected for Safari
+    streamingInference: true,
+    browser: "safari"               // Safari doesn't support 2-bit quantization
+  },
+  autoDetect: true                  // Enable auto-detection and validation
+});
+
+// Configuration is automatically corrected (4-bit for Safari)
+const validatedConfig = accelerator.getConfig();
+console.log("Validated config:", validatedConfig);
+
+// Get detailed validation information using the ConfigurationManager
+const configManager = new ConfigurationManager({
+  modelType: 'text',
+  browser: 'safari',
+  autoCorrect: true
+});
+
+// Validate a configuration
+const validationResult = configManager.validateConfiguration({
+  quantization: "2bit",
+  workgroupSize: "invalid"
+});
+
+console.log("Validation result:", validationResult);
+// Shows validation errors and auto-corrected configuration
+
+// For more information, see the Configuration Validation Guide
+```
+
+For comprehensive details, see the dedicated [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md).
 
 ### Performance Optimization
 
@@ -573,8 +619,20 @@ For current implementation status and upcoming features, see [Implementation Sta
 
 ## Additional Resources
 
-- [Unified Framework Guide](UNIFIED_FRAMEWORK_WITH_STREAMING_GUIDE.md)
-- [Implementation Plan](IMPLEMENTATION_PLAN.md)
-- [WebGPU Streaming Demo](WebGPUStreamingDemo.html)
-- [Tutorial: Streaming Integration](tutorial_stream_integration.py)
-- [API Reference](API_REFERENCE.md)
+### Developer Documentation
+
+- [WebGPU Implementation Guide](docs/WEBGPU_IMPLEMENTATION_GUIDE.md) - Comprehensive guide to WebGPU integration
+- [Developer Tutorial](docs/DEVELOPER_TUTORIAL.md) - Step-by-step tutorial with working examples
+- [WebGPU Shader Precompilation Guide](docs/WEBGPU_SHADER_PRECOMPILATION.md) - Guide to shader precompilation optimization
+- [Browser-Specific Optimizations](docs/browser_specific_optimizations.md) - Tailored configurations for different browsers
+- [Error Handling Guide](docs/ERROR_HANDLING_GUIDE.md) - Comprehensive error handling strategy
+- [Model-Specific Optimization Guides](docs/model_specific_optimizations/) - Guides for different model types
+
+### Framework Resources
+
+- [Unified Framework Guide](UNIFIED_FRAMEWORK_WITH_STREAMING_GUIDE.md) - Guide to the unified web framework
+- [Implementation Plan](IMPLEMENTATION_PLAN.md) - Development roadmap and implementation status
+- [WebGPU Streaming Demo](WebGPUStreamingDemo.html) - Interactive demo of streaming capabilities
+- [Tutorial: Streaming Integration](tutorial_stream_integration.py) - Tutorial on integrating streaming
+- [API Reference](API_REFERENCE.md) - Detailed API documentation
+- [Configuration Validation Guide](CONFIGURATION_VALIDATION_GUIDE.md) - Guide to configuration validation

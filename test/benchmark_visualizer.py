@@ -31,6 +31,19 @@ import traceback
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -454,487 +467,422 @@ class BenchmarkVisualizer:
                     result_file = max(result_files, key=os.path.getmtime)
                     
                     # Load the results
-                    with open(result_file, 'r') as f:
-                        benchmark_results = json.load(f)
-                    
-                    return True, f"Successfully ran benchmark: {result_file}", benchmark_results
-                else:
-                    return False, "Benchmark command succeeded but results file not found", {}
-            else:
-                return False, f"Benchmark failed: {result.stderr}", {}
-        except Exception as e:
-            logger.error(f"Error running benchmark: {e}")
-            return False, f"Error running benchmark: {e}", {}
-    
-    def get_hardware_compatibility_matrix(self) -> Dict[str, Dict[str, str]]:
-        """Get hardware compatibility matrix for all models."""
-        try:
-            # Create matrix of model -> hardware -> compatibility status
-            compatibility_matrix = {}
-            
-            # Go through all models
-            for model_name in [m['model_name'] for m in self.models]:
-                compatibility_matrix[model_name] = {}
-                
-                # Check for benchmark results for each hardware platform
-                for hw in HARDWARE_PLATFORMS:
-                    status = "Unknown"
-                    
-                    # Check if we have benchmark results
-                    if model_name in self.latest_results and hw in self.latest_results[model_name]['hardware_results']:
-                        results = self.latest_results[model_name]['hardware_results'][hw]
-                        if results:
-                            # Simple check - if we have throughput > 0, it's compatible
-                            if any(r.get('throughput', 0) > 0 for r in results):
-                                status = "Compatible"
-                            else:
-                                # Check for errors
-                                status = "Issues"
-                    else:
-                        # Check for test file
-                        normalized_name = model_name.lower().replace('-', '_')
-                        test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                        with open(result_file, 'r') as f:
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    benchmark_results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                                benchmark_results = json.load(f)
+
                         
-                        if os.path.exists(test_file_path):
-                            # Check if file mentions this hardware platform
-                            with open(test_file_path, 'r') as f:
-                                content = f.read()
-                                if f"init_{hw}" in content:
-                                    status = "Untested"
+                        return True, f"Successfully ran benchmark: {result_file}", benchmark_results
+                    else:
+                        return False, "Benchmark command succeeded but results file not found", {}
+                else:
+                    return False, f"Benchmark failed: {result.stderr}", {}
+            except Exception as e:
+                logger.error(f"Error running benchmark: {e}")
+                return False, f"Error running benchmark: {e}", {}
+        
+        def get_hardware_compatibility_matrix(self) -> Dict[str, Dict[str, str]]:
+            """Get hardware compatibility matrix for all models."""
+            try:
+                # Create matrix of model -> hardware -> compatibility status
+                compatibility_matrix = {}
+                
+                # Go through all models
+                for model_name in [m['model_name'] for m in self.models]:
+                    compatibility_matrix[model_name] = {}
+                    
+                    # Check for benchmark results for each hardware platform
+                    for hw in HARDWARE_PLATFORMS:
+                        status = "Unknown"
+                        
+                        # Check if we have benchmark results
+                        if model_name in self.latest_results and hw in self.latest_results[model_name]['hardware_results']:
+                            results = self.latest_results[model_name]['hardware_results'][hw]
+                            if results:
+                                # Simple check - if we have throughput > 0, it's compatible
+                                if any(r.get('throughput', 0) > 0 for r in results):
+                                    status = "Compatible"
                                 else:
-                                    status = "Unsupported"
+                                    # Check for errors
+                                    status = "Issues"
                         else:
-                            status = "No Test"
-                    
-                    compatibility_matrix[model_name][hw] = status
+                            # Check for test file
+                            normalized_name = model_name.lower().replace('-', '_')
+                            test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
+                            
+                            if os.path.exists(test_file_path):
+                                # Check if file mentions this hardware platform
+                                with open(test_file_path, 'r') as f:
+                                    content = f.read()
+                                    if f"init_{hw}" in content:
+                                        status = "Untested"
+                                    else:
+                                        status = "Unsupported"
+                            else:
+                                status = "No Test"
+                        
+                        compatibility_matrix[model_name][hw] = status
+                
+                return compatibility_matrix
+            except Exception as e:
+                logger.error(f"Error getting hardware compatibility matrix: {e}")
+                return {}
+        
+        def create_dashboard(self):
+            """Create interactive Streamlit dashboard for visualizing benchmark results."""
+            if not HAS_STREAMLIT:
+                logger.error("Streamlit not installed. Dashboard can't be created.")
+                return
             
-            return compatibility_matrix
-        except Exception as e:
-            logger.error(f"Error getting hardware compatibility matrix: {e}")
-            return {}
-    
-    def create_dashboard(self):
-        """Create interactive Streamlit dashboard for visualizing benchmark results."""
-        if not HAS_STREAMLIT:
-            logger.error("Streamlit not installed. Dashboard can't be created.")
-            return
-        
-        # Basic dashboard layout
-        st.title("Hardware Benchmark Visualization Dashboard")
-        st.sidebar.header("Navigation")
-        
-        page = st.sidebar.selectbox(
-            "Select Page", 
-            ["Hardware Compatibility Matrix", "Model Performance", "Hardware Comparison", 
-             "Test Generator", "Benchmark Runner", "Historical Trends"]
-        )
-        
-        # Display appropriate page
-        if page == "Hardware Compatibility Matrix":
-            self._show_compatibility_matrix()
-        elif page == "Model Performance":
-            self._show_model_performance()
-        elif page == "Hardware Comparison":
-            self._show_hardware_comparison()
-        elif page == "Test Generator":
-            self._show_test_generator()
-        elif page == "Benchmark Runner":
-            self._show_benchmark_runner()
-        elif page == "Historical Trends":
-            self._show_historical_trends()
-    
-    def _show_compatibility_matrix(self):
-        """Show hardware compatibility matrix page."""
-        st.header("Hardware Compatibility Matrix")
-        
-        # Get compatibility matrix
-        matrix = self.get_hardware_compatibility_matrix()
-        
-        if not matrix:
-            st.warning("No compatibility data available.")
-            return
-        
-        # Convert to DataFrame for easier display
-        data = []
-        for model_name, hw_status in matrix.items():
-            row = {"Model": model_name}
-            for hw, status in hw_status.items():
-                row[hw.upper()] = status
-            data.append(row)
-        
-        df = pd.DataFrame(data)
-        
-        # Display as table with conditional formatting
-        st.dataframe(df.style.apply(
-            lambda row: [
-                'background-color: #90EE90' if cell == 'Compatible' else
-                'background-color: #FFFFE0' if cell == 'Untested' else
-                'background-color: #FFA07A' if cell == 'Issues' else
-                'background-color: #F0F0F0' if cell == 'Unsupported' else
-                'background-color: #F8F8F8' if cell == 'No Test' else
-                '' for cell in row
-            ], axis=1
-        ))
-        
-        # Add explanation
-        st.markdown("""
-        **Legend:**
-        - **Compatible**: Model has been successfully benchmarked on this hardware
-        - **Untested**: Model has test implementation but hasn't been benchmarked
-        - **Issues**: Model has been tested but encountered issues
-        - **Unsupported**: Model doesn't support this hardware platform
-        - **No Test**: No test implementation available for this model
-        """)
-        
-        # Add action buttons
-        st.subheader("Actions")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Generate tests for models without them
-            if st.button("Generate Missing Tests"):
-                models_without_tests = [model for model, hw_status in matrix.items() 
-                                      if any(status == "No Test" for status in hw_status.values())]
-                
-                if models_without_tests:
-                    st.info(f"Generating tests for {len(models_without_tests)} models...")
-                    
-                    for model in models_without_tests:
-                        success, message = self.generate_test(model)
-                        st.write(f"{model}: {message}")
-                    
-                    st.success("Test generation complete. Refresh page to see updated matrix.")
-                else:
-                    st.info("No missing tests found!")
-        
-        with col2:
-            # Run benchmarks for untested models
-            if st.button("Run Untested Benchmarks"):
-                untested_configs = []
-                
-                for model, hw_status in matrix.items():
-                    for hw, status in hw_status.items():
-                        if status == "Untested":
-                            untested_configs.append((model, hw))
-                
-                if untested_configs:
-                    st.info(f"Running benchmarks for {len(untested_configs)} model-hardware combinations...")
-                    
-                    for model, hw in untested_configs:
-                        st.write(f"Benchmarking {model} on {hw}...")
-                        success, message, _ = self.run_benchmark(model, hw)
-                        st.write(f"{model} on {hw}: {'Success' if success else 'Failed'} - {message}")
-                    
-                    st.success("Benchmarking complete. Refresh page to see updated matrix.")
-                else:
-                    st.info("No untested configurations found!")
-    
-    def _show_model_performance(self):
-        """Show model performance comparison page."""
-        st.header("Model Performance Comparison")
-        
-        # Select hardware platform
-        hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-        selected_hardware = st.selectbox("Select Hardware Platform", hardware_options)
-        
-        # Select metric
-        metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
-        selected_metric = st.selectbox("Select Performance Metric", metric_options)
-        
-        # Get metric key
-        metric_key = "throughput" if "Throughput" in selected_metric else \
-                    "latency_ms" if "Latency" in selected_metric else "memory_mb"
-        
-        # Get filtered results
-        filtered_results = {}
-        
-        for model_name, model_data in self.latest_results.items():
-            if selected_hardware in model_data.get('hardware_results', {}):
-                hw_results = model_data['hardware_results'][selected_hardware]
-                if hw_results:
-                    # Calculate average of the metric for this model/hardware
-                    values = [result.get(metric_key, 0) for result in hw_results]
-                    if values:
-                        filtered_results[model_name] = {
-                            'family': model_data.get('model_family', 'Unknown'),
-                            'value': sum(values) / len(values)
-                        }
-        
-        if not filtered_results:
-            st.warning(f"No performance data available for {selected_hardware}.")
-            return
-        
-        # Create DataFrame for visualization
-        df = pd.DataFrame([
-            {
-                'Model': model_name,
-                'Family': data['family'],
-                'Value': data['value']
-            }
-            for model_name, data in filtered_results.items()
-        ])
-        
-        # Sort by value (ascending for latency, descending for others)
-        df = df.sort_values(by='Value', ascending=("Latency" in selected_metric))
-        
-        # Show results as chart
-        fig, ax = plt.subplots(figsize=(10, max(6, len(df) * 0.3)))
-        
-        # Create color mapping by family
-        families = df['Family'].unique()
-        cmap = plt.cm.get_cmap('tab10', len(families))
-        family_colors = {family: cmap(i) for i, family in enumerate(families)}
-        
-        # Create horizontal bar chart
-        bars = ax.barh(
-            df['Model'], 
-            df['Value'],
-            color=[family_colors[family] for family in df['Family']]
-        )
-        
-        # Add value labels
-        for i, bar in enumerate(bars):
-            value = df.iloc[i]['Value']
-            ax.text(
-                value + (max(df['Value']) * 0.01),
-                bar.get_y() + bar.get_height()/2,
-                f'{value:.2f}',
-                va='center'
+            # Basic dashboard layout
+            st.title("Hardware Benchmark Visualization Dashboard")
+            st.sidebar.header("Navigation")
+            
+            page = st.sidebar.selectbox(
+                "Select Page", 
+                ["Hardware Compatibility Matrix", "Model Performance", "Hardware Comparison", 
+                 "Test Generator", "Benchmark Runner", "Historical Trends"]
             )
-        
-        # Add legend
-        legend_handles = [plt.Rectangle((0,0),1,1, color=color) for color in family_colors.values()]
-        ax.legend(legend_handles, family_colors.keys(), title="Model Family")
-        
-        # Set labels and title
-        ax.set_xlabel(selected_metric)
-        ax.set_title(f"{selected_metric} by Model on {selected_hardware.upper()}")
-        
-        # Add grid
-        ax.grid(axis='x', linestyle='--', alpha=0.7)
-        
-        # Display plot
-        st.pyplot(fig)
-        
-        # Show raw data in expandable section
-        with st.expander("Show Raw Data"):
-            st.dataframe(df)
-    
-    def _show_hardware_comparison(self):
-        """Show hardware platform comparison page."""
-        st.header("Hardware Platform Comparison")
-        
-        # Select model
-        model_options = [m["model_name"] for m in self.models]
-        selected_model = st.selectbox("Select Model", model_options)
-        
-        # Select metric
-        metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
-        selected_metric = st.selectbox("Select Performance Metric", metric_options)
-        
-        # Get metric key
-        metric_key = "throughput" if "Throughput" in selected_metric else \
-                    "latency_ms" if "Latency" in selected_metric else "memory_mb"
-        
-        # Get filtered results
-        filtered_results = {}
-        
-        if selected_model in self.latest_results:
-            model_data = self.latest_results[selected_model]
             
-            for hw_type, hw_results in model_data.get('hardware_results', {}).items():
-                if hw_results:
-                    # Calculate average of the metric for this hardware
-                    values = [result.get(metric_key, 0) for result in hw_results]
-                    if values:
-                        filtered_results[hw_type] = sum(values) / len(values)
+            # Display appropriate page
+            if page == "Hardware Compatibility Matrix":
+                self._show_compatibility_matrix()
+            elif page == "Model Performance":
+                self._show_model_performance()
+            elif page == "Hardware Comparison":
+                self._show_hardware_comparison()
+            elif page == "Test Generator":
+                self._show_test_generator()
+            elif page == "Benchmark Runner":
+                self._show_benchmark_runner()
+            elif page == "Historical Trends":
+                self._show_historical_trends()
         
-        if not filtered_results:
-            st.warning(f"No performance data available for {selected_model}.")
-            return
+        def _show_compatibility_matrix(self):
+            """Show hardware compatibility matrix page."""
+            st.header("Hardware Compatibility Matrix")
+            
+            # Get compatibility matrix
+            matrix = self.get_hardware_compatibility_matrix()
+            
+            if not matrix:
+                st.warning("No compatibility data available.")
+                return
+            
+            # Convert to DataFrame for easier display
+            data = []
+            for model_name, hw_status in matrix.items():
+                row = {"Model": model_name}
+                for hw, status in hw_status.items():
+                    row[hw.upper()] = status
+                data.append(row)
+            
+            df = pd.DataFrame(data)
+            
+            # Display as table with conditional formatting
+            st.dataframe(df.style.apply(
+                lambda row: [
+                    'background-color: #90EE90' if cell == 'Compatible' else
+                    'background-color: #FFFFE0' if cell == 'Untested' else
+                    'background-color: #FFA07A' if cell == 'Issues' else
+                    'background-color: #F0F0F0' if cell == 'Unsupported' else
+                    'background-color: #F8F8F8' if cell == 'No Test' else
+                    '' for cell in row
+                ], axis=1
+            ))
+            
+            # Add explanation
+            st.markdown("""
+            **Legend:**
+            - **Compatible**: Model has been successfully benchmarked on this hardware
+            - **Untested**: Model has test implementation but hasn't been benchmarked
+            - **Issues**: Model has been tested but encountered issues
+            - **Unsupported**: Model doesn't support this hardware platform
+            - **No Test**: No test implementation available for this model
+            """)
+            
+            # Add action buttons
+            st.subheader("Actions")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Generate tests for models without them
+                if st.button("Generate Missing Tests"):
+                    models_without_tests = [model for model, hw_status in matrix.items() 
+                                          if any(status == "No Test" for status in hw_status.values())]
+                    
+                    if models_without_tests:
+                        st.info(f"Generating tests for {len(models_without_tests)} models...")
+                        
+                        for model in models_without_tests:
+                            success, message = self.generate_test(model)
+                            st.write(f"{model}: {message}")
+                        
+                        st.success("Test generation complete. Refresh page to see updated matrix.")
+                    else:
+                        st.info("No missing tests found!")
+            
+            with col2:
+                # Run benchmarks for untested models
+                if st.button("Run Untested Benchmarks"):
+                    untested_configs = []
+                    
+                    for model, hw_status in matrix.items():
+                        for hw, status in hw_status.items():
+                            if status == "Untested":
+                                untested_configs.append((model, hw))
+                    
+                    if untested_configs:
+                        st.info(f"Running benchmarks for {len(untested_configs)} model-hardware combinations...")
+                        
+                        for model, hw in untested_configs:
+                            st.write(f"Benchmarking {model} on {hw}...")
+                            success, message, _ = self.run_benchmark(model, hw)
+                            st.write(f"{model} on {hw}: {'Success' if success else 'Failed'} - {message}")
+                        
+                        st.success("Benchmarking complete. Refresh page to see updated matrix.")
+                    else:
+                        st.info("No untested configurations found!")
         
-        # Create DataFrame for visualization
-        df = pd.DataFrame([
-            {'Hardware': hw_type, 'Value': value}
-            for hw_type, value in filtered_results.items()
-        ])
-        
-        # Sort by value (ascending for latency, descending for others)
-        df = df.sort_values(by='Value', ascending=("Latency" in selected_metric))
-        
-        # Show results as chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # Create bar chart
-        bars = ax.bar(
-            df['Hardware'].str.upper(), 
-            df['Value'],
-            color=plt.cm.viridis(np.linspace(0, 0.8, len(df)))
-        )
-        
-        # Add value labels
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(
-                bar.get_x() + bar.get_width()/2,
-                height + (max(df['Value']) * 0.01),
-                f'{height:.2f}',
-                ha='center'
+        def _show_model_performance(self):
+            """Show model performance comparison page."""
+            st.header("Model Performance Comparison")
+            
+            # Select hardware platform
+            hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
+            selected_hardware = st.selectbox("Select Hardware Platform", hardware_options)
+            
+            # Select metric
+            metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
+            selected_metric = st.selectbox("Select Performance Metric", metric_options)
+            
+            # Get metric key
+            metric_key = "throughput" if "Throughput" in selected_metric else \
+                        "latency_ms" if "Latency" in selected_metric else "memory_mb"
+            
+            # Get filtered results
+            filtered_results = {}
+            
+            for model_name, model_data in self.latest_results.items():
+                if selected_hardware in model_data.get('hardware_results', {}):
+                    hw_results = model_data['hardware_results'][selected_hardware]
+                    if hw_results:
+                        # Calculate average of the metric for this model/hardware
+                        values = [result.get(metric_key, 0) for result in hw_results]
+                        if values:
+                            filtered_results[model_name] = {
+                                'family': model_data.get('model_family', 'Unknown'),
+                                'value': sum(values) / len(values)
+                            }
+            
+            if not filtered_results:
+                st.warning(f"No performance data available for {selected_hardware}.")
+                return
+            
+            # Create DataFrame for visualization
+            df = pd.DataFrame([
+                {
+                    'Model': model_name,
+                    'Family': data['family'],
+                    'Value': data['value']
+                }
+                for model_name, data in filtered_results.items()
+            ])
+            
+            # Sort by value (ascending for latency, descending for others)
+            df = df.sort_values(by='Value', ascending=("Latency" in selected_metric))
+            
+            # Show results as chart
+            fig, ax = plt.subplots(figsize=(10, max(6, len(df) * 0.3)))
+            
+            # Create color mapping by family
+            families = df['Family'].unique()
+            cmap = plt.cm.get_cmap('tab10', len(families))
+            family_colors = {family: cmap(i) for i, family in enumerate(families)}
+            
+            # Create horizontal bar chart
+            bars = ax.barh(
+                df['Model'], 
+                df['Value'],
+                color=[family_colors[family] for family in df['Family']]
             )
-        
-        # Set labels and title
-        ax.set_xlabel("Hardware Platform")
-        ax.set_ylabel(selected_metric)
-        ax.set_title(f"{selected_metric} Comparison for {selected_model}")
-        
-        # Add grid
-        ax.grid(axis='y', linestyle='--', alpha=0.7)
-        
-        # Display plot
-        st.pyplot(fig)
-        
-        # Show raw data in expandable section
-        with st.expander("Show Raw Data"):
-            st.dataframe(df)
-        
-        # Add action button to run missing benchmarks
-        hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-        missing_hw = [hw for hw in hardware_options if hw not in filtered_results]
-        
-        if missing_hw:
-            st.subheader("Missing Hardware Benchmarks")
-            st.write(f"This model has not been benchmarked on: {', '.join(hw.upper() for hw in missing_hw)}")
             
-            selected_missing_hw = st.selectbox("Select Hardware to Benchmark", missing_hw)
+            # Add value labels
+            for i, bar in enumerate(bars):
+                value = df.iloc[i]['Value']
+                ax.text(
+                    value + (max(df['Value']) * 0.01),
+                    bar.get_y() + bar.get_height()/2,
+                    f'{value:.2f}',
+                    va='center'
+                )
             
-            if st.button(f"Run Benchmark on {selected_missing_hw.upper()}"):
-                st.info(f"Running benchmark for {selected_model} on {selected_missing_hw}...")
-                
-                success, message, results = self.run_benchmark(selected_model, selected_missing_hw)
-                
-                if success:
-                    st.success(f"Benchmark completed successfully!")
-                    st.json(results)
-                else:
-                    st.error(f"Benchmark failed: {message}")
-    
-    def _show_test_generator(self):
-        """Show test generator page."""
-        st.header("Test Generator")
+            # Add legend
+            legend_handles = [plt.Rectangle((0,0),1,1, color=color) for color in family_colors.values()]
+            ax.legend(legend_handles, family_colors.keys(), title="Model Family")
+            
+            # Set labels and title
+            ax.set_xlabel(selected_metric)
+            ax.set_title(f"{selected_metric} by Model on {selected_hardware.upper()}")
+            
+            # Add grid
+            ax.grid(axis='x', linestyle='--', alpha=0.7)
+            
+            # Display plot
+            st.pyplot(fig)
+            
+            # Show raw data in expandable section
+            with st.expander("Show Raw Data"):
+                st.dataframe(df)
         
-        # Two options: generate for existing model or create new test
-        tab1, tab2 = st.tabs(["Generate for Existing Model", "Generate New Test"])
-        
-        with tab1:
+        def _show_hardware_comparison(self):
+            """Show hardware platform comparison page."""
+            st.header("Hardware Platform Comparison")
+            
             # Select model
             model_options = [m["model_name"] for m in self.models]
-            selected_model = st.selectbox("Select Model", model_options, key="existing_model")
+            selected_model = st.selectbox("Select Model", model_options)
             
-            # Select hardware platforms
+            # Select metric
+            metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
+            selected_metric = st.selectbox("Select Performance Metric", metric_options)
+            
+            # Get metric key
+            metric_key = "throughput" if "Throughput" in selected_metric else \
+                        "latency_ms" if "Latency" in selected_metric else "memory_mb"
+            
+            # Get filtered results
+            filtered_results = {}
+            
+            if selected_model in self.latest_results:
+                model_data = self.latest_results[selected_model]
+                
+                for hw_type, hw_results in model_data.get('hardware_results', {}).items():
+                    if hw_results:
+                        # Calculate average of the metric for this hardware
+                        values = [result.get(metric_key, 0) for result in hw_results]
+                        if values:
+                            filtered_results[hw_type] = sum(values) / len(values)
+            
+            if not filtered_results:
+                st.warning(f"No performance data available for {selected_model}.")
+                return
+            
+            # Create DataFrame for visualization
+            df = pd.DataFrame([
+                {'Hardware': hw_type, 'Value': value}
+                for hw_type, value in filtered_results.items()
+            ])
+            
+            # Sort by value (ascending for latency, descending for others)
+            df = df.sort_values(by='Value', ascending=("Latency" in selected_metric))
+            
+            # Show results as chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Create bar chart
+            bars = ax.bar(
+                df['Hardware'].str.upper(), 
+                df['Value'],
+                color=plt.cm.viridis(np.linspace(0, 0.8, len(df)))
+            )
+            
+            # Add value labels
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width()/2,
+                    height + (max(df['Value']) * 0.01),
+                    f'{height:.2f}',
+                    ha='center'
+                )
+            
+            # Set labels and title
+            ax.set_xlabel("Hardware Platform")
+            ax.set_ylabel(selected_metric)
+            ax.set_title(f"{selected_metric} Comparison for {selected_model}")
+            
+            # Add grid
+            ax.grid(axis='y', linestyle='--', alpha=0.7)
+            
+            # Display plot
+            st.pyplot(fig)
+            
+            # Show raw data in expandable section
+            with st.expander("Show Raw Data"):
+                st.dataframe(df)
+            
+            # Add action button to run missing benchmarks
             hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-            selected_hardware = st.multiselect("Select Hardware Platforms", hardware_options, default=["cpu", "cuda"])
+            missing_hw = [hw for hw in hardware_options if hw not in filtered_results]
             
-            # Get model info
-            model_info = self.get_model_family_info(selected_model)
-            
-            # Display model info
-            st.subheader("Model Information")
-            st.json({
-                "model_name": model_info["model_name"],
-                "model_family": model_info["model_family"],
-                "is_key_model": model_info["is_key_model"],
-                "modality": model_info["modality"],
-                "tasks": model_info["tasks"]
-            })
-            
-            # Generate button
-            if st.button("Generate Test", key="generate_existing"):
-                st.info(f"Generating test for {selected_model} with support for: {', '.join(selected_hardware)}")
+            if missing_hw:
+                st.subheader("Missing Hardware Benchmarks")
+                st.write(f"This model has not been benchmarked on: {', '.join(hw.upper() for hw in missing_hw)}")
                 
-                success, message = self.generate_test(selected_model, selected_hardware)
+                selected_missing_hw = st.selectbox("Select Hardware to Benchmark", missing_hw)
                 
-                if success:
-                    st.success(message)
+                if st.button(f"Run Benchmark on {selected_missing_hw.upper()}"):
+                    st.info(f"Running benchmark for {selected_model} on {selected_missing_hw}...")
                     
-                    # Show test file path
-                    normalized_name = selected_model.lower().replace('-', '_')
-                    test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
+                    success, message, results = self.run_benchmark(selected_model, selected_missing_hw)
                     
-                    if os.path.exists(test_file_path):
-                        st.code(f"Test file path: {test_file_path}")
-                        
-                        # Show first few lines of the test file
-                        with open(test_file_path, 'r') as f:
-                            content = f.read()
-                            line_count = content.count('\n')
-                            
-                            st.write(f"Test file generated with {line_count} lines of code")
-                            
-                            with st.expander("View Test File"):
-                                st.code(content[:5000] + "..." if len(content) > 5000 else content)
-                else:
-                    st.error(message)
+                    if success:
+                        st.success(f"Benchmark completed successfully!")
+                        st.json(results)
+                    else:
+                        st.error(f"Benchmark failed: {message}")
         
-        with tab2:
-            # Input model name
-            new_model_name = st.text_input("Model Name", value="custom-model")
+        def _show_test_generator(self):
+            """Show test generator page."""
+            st.header("Test Generator")
             
-            # Select model family
-            family_options = list(set(m.get("model_family", "") for m in self.models if m.get("model_family")))
-            selected_family = st.selectbox("Model Family", [""] + family_options)
+            # Two options: generate for existing model or create new test
+            tab1, tab2 = st.tabs(["Generate for Existing Model", "Generate New Test"])
             
-            # Select modality
-            modality_options = ["text", "vision", "audio", "multimodal"]
-            selected_modality = st.selectbox("Modality", modality_options)
-            
-            # Select tasks based on modality
-            task_options = []
-            if selected_modality == "text":
-                task_options = ["text-generation", "fill-mask", "text-classification", "question-answering"]
-            elif selected_modality == "vision":
-                task_options = ["image-classification", "object-detection", "image-segmentation", "depth-estimation"]
-            elif selected_modality == "audio":
-                task_options = ["automatic-speech-recognition", "audio-classification", "text-to-audio"]
-            elif selected_modality == "multimodal":
-                task_options = ["visual-question-answering", "image-to-text", "text-to-image"]
-            
-            selected_tasks = st.multiselect("Tasks", task_options)
-            
-            # Select hardware platforms
-            hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-            selected_hardware = st.multiselect("Hardware Platforms", hardware_options, default=["cpu", "cuda"])
-            
-            # Generate button
-            if st.button("Generate Test", key="generate_new"):
-                if not new_model_name:
-                    st.error("Model name is required")
-                elif not selected_tasks:
-                    st.error("At least one task must be selected")
-                elif not selected_hardware:
-                    st.error("At least one hardware platform must be selected")
-                else:
-                    st.info(f"Generating test for {new_model_name} with support for: {', '.join(selected_hardware)}")
+            with tab1:
+                # Select model
+                model_options = [m["model_name"] for m in self.models]
+                selected_model = st.selectbox("Select Model", model_options, key="existing_model")
+                
+                # Select hardware platforms
+                hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
+                selected_hardware = st.multiselect("Select Hardware Platforms", hardware_options, default=["cpu", "cuda"])
+                
+                # Get model info
+                model_info = self.get_model_family_info(selected_model)
+                
+                # Display model info
+                st.subheader("Model Information")
+                st.json({
+                    "model_name": model_info["model_name"],
+                    "model_family": model_info["model_family"],
+                    "is_key_model": model_info["is_key_model"],
+                    "modality": model_info["modality"],
+                    "tasks": model_info["tasks"]
+                })
+                
+                # Generate button
+                if st.button("Generate Test", key="generate_existing"):
+                    st.info(f"Generating test for {selected_model} with support for: {', '.join(selected_hardware)}")
                     
-                    # Create model info
-                    model_info = {
-                        "model": new_model_name,
-                        "normalized_name": new_model_name.lower().replace('-', '_'),
-                        "pipeline_tasks": selected_tasks,
-                        "priority": "HIGH"
-                    }
-                    
-                    # Get existing tests
-                    existing_tests = self._get_existing_tests()
-                    
-                    # Generate test file
-                    success, message = self._generate_custom_test(model_info, existing_tests, selected_hardware)
+                    success, message = self.generate_test(selected_model, selected_hardware)
                     
                     if success:
                         st.success(message)
                         
                         # Show test file path
-                        normalized_name = new_model_name.lower().replace('-', '_')
+                        normalized_name = selected_model.lower().replace('-', '_')
                         test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
                         
                         if os.path.exists(test_file_path):
@@ -951,343 +899,422 @@ class BenchmarkVisualizer:
                                     st.code(content[:5000] + "..." if len(content) > 5000 else content)
                     else:
                         st.error(message)
-    
-    def _show_benchmark_runner(self):
-        """Show benchmark runner page."""
-        st.header("Benchmark Runner")
-        
-        # Select model
-        model_options = [m["model_name"] for m in self.models]
-        selected_model = st.selectbox("Select Model", model_options)
-        
-        # Select hardware platform
-        hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-        selected_hardware = st.selectbox("Select Hardware Platform", hardware_options)
-        
-        # Show existing results if available
-        if selected_model in self.latest_results and selected_hardware in self.latest_results[selected_model]['hardware_results']:
-            results = self.latest_results[selected_model]['hardware_results'][selected_hardware]
             
-            if results:
-                st.subheader("Existing Benchmark Results")
+            with tab2:
+                # Input model name
+                new_model_name = st.text_input("Model Name", value="custom-model")
                 
-                # Create DataFrame for display
-                df = pd.DataFrame([
-                    {
-                        'Batch Size': r.get('batch_size', 'N/A'),
-                        'Precision': r.get('precision', 'N/A'),
-                        'Latency (ms)': r.get('latency_ms', 0),
-                        'Throughput (items/s)': r.get('throughput', 0),
-                        'Memory (MB)': r.get('memory_mb', 0),
-                        'Test Case': r.get('test_case', 'N/A'),
-                        'Timestamp': r.get('timestamp', 'N/A')
-                    }
-                    for r in results
-                ])
+                # Select model family
+                family_options = list(set(m.get("model_family", "") for m in self.models if m.get("model_family")))
+                selected_family = st.selectbox("Model Family", [""] + family_options)
                 
-                st.dataframe(df)
+                # Select modality
+                modality_options = ["text", "vision", "audio", "multimodal"]
+                selected_modality = st.selectbox("Modality", modality_options)
                 
-                # Add visualization
-                metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
-                selected_metric = st.selectbox("Visualization Metric", metric_options)
+                # Select tasks based on modality
+                task_options = []
+                if selected_modality == "text":
+                    task_options = ["text-generation", "fill-mask", "text-classification", "question-answering"]
+                elif selected_modality == "vision":
+                    task_options = ["image-classification", "object-detection", "image-segmentation", "depth-estimation"]
+                elif selected_modality == "audio":
+                    task_options = ["automatic-speech-recognition", "audio-classification", "text-to-audio"]
+                elif selected_modality == "multimodal":
+                    task_options = ["visual-question-answering", "image-to-text", "text-to-image"]
                 
-                # Get metric key
-                metric_key = "throughput" if "Throughput" in selected_metric else \
-                            "latency_ms" if "Latency" in selected_metric else "memory_mb"
+                selected_tasks = st.multiselect("Tasks", task_options)
                 
-                # Check if we have batch size variation for visualization
-                batch_sizes = df['Batch Size'].unique()
+                # Select hardware platforms
+                hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
+                selected_hardware = st.multiselect("Hardware Platforms", hardware_options, default=["cpu", "cuda"])
                 
-                if len(batch_sizes) > 1:
-                    # Create batch size vs. metric plot
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    
-                    # Get data
-                    batch_values = []
-                    metric_values = []
-                    
-                    for r in results:
-                        if metric_key in r:
-                            batch_values.append(r.get('batch_size', 0))
-                            metric_values.append(r.get(metric_key, 0))
-                    
-                    # Create scatter plot with line
-                    ax.plot(batch_values, metric_values, 'o-', color='royalblue')
-                    
-                    # Add data point labels
-                    for x, y in zip(batch_values, metric_values):
-                        ax.text(x, y + (max(metric_values) * 0.02), f'{y:.2f}', ha='center')
-                    
-                    # Set labels and title
-                    ax.set_xlabel("Batch Size")
-                    ax.set_ylabel(selected_metric)
-                    ax.set_title(f"{selected_metric} vs. Batch Size for {selected_model} on {selected_hardware.upper()}")
-                    
-                    # Add grid
-                    ax.grid(linestyle='--', alpha=0.7)
-                    
-                    # Display plot
-                    st.pyplot(fig)
-                else:
-                    st.info("Only one batch size available. Run benchmarks with different batch sizes to see scaling.")
-        
-        # Run benchmark button
-        st.subheader("Run New Benchmark")
-        
-        # Batch size options
-        batch_sizes = st.text_input("Batch Sizes (comma-separated)", value="1,2,4,8")
-        
-        if st.button("Run Benchmark"):
-            batch_size_list = [int(b.strip()) for b in batch_sizes.split(",") if b.strip().isdigit()]
-            
-            if not batch_size_list:
-                st.error("Please enter at least one valid batch size")
-            else:
-                st.info(f"Running benchmark for {selected_model} on {selected_hardware} with batch sizes: {batch_size_list}")
-                
-                # Create command
-                cmd = [
-                    "python",
-                    str(CURRENT_DIR / "model_benchmark_runner.py"),
-                    "--model", selected_model.lower().replace('-', '_'),
-                    "--hardware", selected_hardware,
-                    "--batch-sizes", ",".join(map(str, batch_size_list)),
-                    "--output-dir", str(RESULTS_DIR)
-                ]
-                
-                # Execute command
-                with st.spinner("Running benchmark..."):
-                    try:
-                        result = subprocess.run(cmd, capture_output=True, text=True)
+                # Generate button
+                if st.button("Generate Test", key="generate_new"):
+                    if not new_model_name:
+                        st.error("Model name is required")
+                    elif not selected_tasks:
+                        st.error("At least one task must be selected")
+                    elif not selected_hardware:
+                        st.error("At least one hardware platform must be selected")
+                    else:
+                        st.info(f"Generating test for {new_model_name} with support for: {', '.join(selected_hardware)}")
                         
-                        if result.returncode == 0:
-                            st.success("Benchmark completed successfully!")
+                        # Create model info
+                        model_info = {
+                            "model": new_model_name,
+                            "normalized_name": new_model_name.lower().replace('-', '_'),
+                            "pipeline_tasks": selected_tasks,
+                            "priority": "HIGH"
+                        }
+                        
+                        # Get existing tests
+                        existing_tests = self._get_existing_tests()
+                        
+                        # Generate test file
+                        success, message = self._generate_custom_test(model_info, existing_tests, selected_hardware)
+                        
+                        if success:
+                            st.success(message)
                             
-                            # Look for results file
-                            normalized_name = selected_model.lower().replace('-', '_')
-                            result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{selected_hardware}*.json"))
+                            # Show test file path
+                            normalized_name = new_model_name.lower().replace('-', '_')
+                            test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
                             
-                            if result_files:
-                                # Get the most recent file
-                                result_file = max(result_files, key=os.path.getmtime)
+                            if os.path.exists(test_file_path):
+                                st.code(f"Test file path: {test_file_path}")
                                 
-                                # Load the results
-                                with open(result_file, 'r') as f:
-                                    benchmark_results = json.load(f)
-                                
-                                st.subheader("Benchmark Results")
-                                st.json(benchmark_results)
-                                
-                                # Add to database
-                                st.info("Benchmark results will be automatically added to the database.")
-                                
-                                # Reload data
-                                self._load_data()
-                                
-                                st.success("Data reloaded. You can now view the results in the visualization sections.")
-                            else:
-                                st.warning("Benchmark command succeeded but results file not found")
+                                # Show first few lines of the test file
+                                with open(test_file_path, 'r') as f:
+                                    content = f.read()
+                                    line_count = content.count('\n')
+                                    
+                                    st.write(f"Test file generated with {line_count} lines of code")
+                                    
+                                    with st.expander("View Test File"):
+                                        st.code(content[:5000] + "..." if len(content) > 5000 else content)
                         else:
-                            st.error(f"Benchmark failed: {result.stderr}")
-                    except Exception as e:
-                        st.error(f"Error running benchmark: {e}")
-    
-    def _show_historical_trends(self):
-        """Show historical performance trends page."""
-        st.header("Historical Performance Trends")
+                            st.error(message)
         
-        # Select model
-        model_options = [m["model_name"] for m in self.models]
-        selected_model = st.selectbox("Select Model", model_options)
-        
-        # Select hardware platforms
-        hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
-        selected_hardware = st.multiselect("Select Hardware Platforms", hardware_options, default=["cpu", "cuda"])
-        
-        # Select metric
-        metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
-        selected_metric = st.selectbox("Select Performance Metric", metric_options)
-        
-        # Get metric key
-        metric_key = "throughput" if "Throughput" in selected_metric else \
-                    "latency" if "Latency" in selected_metric else "memory"
-        
-        # Check if we have historical data
-        if selected_model not in self.historical_results:
-            st.warning(f"No historical data available for {selected_model}.")
-            return
-        
-        # Filter to selected hardware platforms
-        available_hw = [hw for hw in selected_hardware if hw in self.historical_results[selected_model]]
-        
-        if not available_hw:
-            st.warning(f"No historical data available for {selected_model} on selected hardware platforms.")
-            return
-        
-        # Create plot
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Add data for each hardware platform
-        for hw in available_hw:
-            hw_data = self.historical_results[selected_model][hw]
+        def _show_benchmark_runner(self):
+            """Show benchmark runner page."""
+            st.header("Benchmark Runner")
             
-            if not hw_data['timestamps'] or not hw_data[metric_key]:
-                continue
+            # Select model
+            model_options = [m["model_name"] for m in self.models]
+            selected_model = st.selectbox("Select Model", model_options)
+            
+            # Select hardware platform
+            hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
+            selected_hardware = st.selectbox("Select Hardware Platform", hardware_options)
+            
+            # Show existing results if available
+            if selected_model in self.latest_results and selected_hardware in self.latest_results[selected_model]['hardware_results']:
+                results = self.latest_results[selected_model]['hardware_results'][selected_hardware]
                 
-            # Plot line
-            ax.plot(
-                hw_data['timestamps'], 
-                hw_data[metric_key],
-                'o-',
-                label=hw.upper()
-            )
+                if results:
+                    st.subheader("Existing Benchmark Results")
+                    
+                    # Create DataFrame for display
+                    df = pd.DataFrame([
+                        {
+                            'Batch Size': r.get('batch_size', 'N/A'),
+                            'Precision': r.get('precision', 'N/A'),
+                            'Latency (ms)': r.get('latency_ms', 0),
+                            'Throughput (items/s)': r.get('throughput', 0),
+                            'Memory (MB)': r.get('memory_mb', 0),
+                            'Test Case': r.get('test_case', 'N/A'),
+                            'Timestamp': r.get('timestamp', 'N/A')
+                        }
+                        for r in results
+                    ])
+                    
+                    st.dataframe(df)
+                    
+                    # Add visualization
+                    metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
+                    selected_metric = st.selectbox("Visualization Metric", metric_options)
+                    
+                    # Get metric key
+                    metric_key = "throughput" if "Throughput" in selected_metric else \
+                                "latency_ms" if "Latency" in selected_metric else "memory_mb"
+                    
+                    # Check if we have batch size variation for visualization
+                    batch_sizes = df['Batch Size'].unique()
+                    
+                    if len(batch_sizes) > 1:
+                        # Create batch size vs. metric plot
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        
+                        # Get data
+                        batch_values = []
+                        metric_values = []
+                        
+                        for r in results:
+                            if metric_key in r:
+                                batch_values.append(r.get('batch_size', 0))
+                                metric_values.append(r.get(metric_key, 0))
+                        
+                        # Create scatter plot with line
+                        ax.plot(batch_values, metric_values, 'o-', color='royalblue')
+                        
+                        # Add data point labels
+                        for x, y in zip(batch_values, metric_values):
+                            ax.text(x, y + (max(metric_values) * 0.02), f'{y:.2f}', ha='center')
+                        
+                        # Set labels and title
+                        ax.set_xlabel("Batch Size")
+                        ax.set_ylabel(selected_metric)
+                        ax.set_title(f"{selected_metric} vs. Batch Size for {selected_model} on {selected_hardware.upper()}")
+                        
+                        # Add grid
+                        ax.grid(linestyle='--', alpha=0.7)
+                        
+                        # Display plot
+                        st.pyplot(fig)
+                    else:
+                        st.info("Only one batch size available. Run benchmarks with different batch sizes to see scaling.")
+            
+            # Run benchmark button
+            st.subheader("Run New Benchmark")
+            
+            # Batch size options
+            batch_sizes = st.text_input("Batch Sizes (comma-separated)", value="1,2,4,8")
+            
+            if st.button("Run Benchmark"):
+                batch_size_list = [int(b.strip()) for b in batch_sizes.split(",") if b.strip().isdigit()]
+                
+                if not batch_size_list:
+                    st.error("Please enter at least one valid batch size")
+                else:
+                    st.info(f"Running benchmark for {selected_model} on {selected_hardware} with batch sizes: {batch_size_list}")
+                    
+                    # Create command
+                    cmd = [
+                        "python",
+                        str(CURRENT_DIR / "model_benchmark_runner.py"),
+                        "--model", selected_model.lower().replace('-', '_'),
+                        "--hardware", selected_hardware,
+                        "--batch-sizes", ",".join(map(str, batch_size_list)),
+                        "--output-dir", str(RESULTS_DIR)
+                    ]
+                    
+                    # Execute command
+                    with st.spinner("Running benchmark..."):
+                        try:
+                            result = subprocess.run(cmd, capture_output=True, text=True)
+                            
+                            if result.returncode == 0:
+                                st.success("Benchmark completed successfully!")
+                                
+                                # Look for results file
+                                normalized_name = selected_model.lower().replace('-', '_')
+                                result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{selected_hardware}*.json"))
+                                
+                                if result_files:
+                                    # Get the most recent file
+                                    result_file = max(result_files, key=os.path.getmtime)
+                                    
+                                    # Load the results
+                                    with open(result_file, 'r') as f:
+                                        benchmark_results = json.load(f)
+                                    
+                                    st.subheader("Benchmark Results")
+                                    st.json(benchmark_results)
+                                    
+                                    # Add to database
+                                    st.info("Benchmark results will be automatically added to the database.")
+                                    
+                                    # Reload data
+                                    self._load_data()
+                                    
+                                    st.success("Data reloaded. You can now view the results in the visualization sections.")
+                                else:
+                                    st.warning("Benchmark command succeeded but results file not found")
+                            else:
+                                st.error(f"Benchmark failed: {result.stderr}")
+                        except Exception as e:
+                            st.error(f"Error running benchmark: {e}")
         
-        # Set labels and title
-        ax.set_xlabel("Date")
-        ax.set_ylabel(selected_metric)
-        ax.set_title(f"{selected_metric} Trend for {selected_model}")
-        
-        # Format x-axis for dates
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-        fig.autofmt_xdate()
-        
-        # Add legend
-        ax.legend()
-        
-        # Add grid
-        ax.grid(linestyle='--', alpha=0.7)
-        
-        # Display plot
-        st.pyplot(fig)
-        
-        # Show raw data in expandable section
-        with st.expander("Show Raw Data"):
+        def _show_historical_trends(self):
+            """Show historical performance trends page."""
+            st.header("Historical Performance Trends")
+            
+            # Select model
+            model_options = [m["model_name"] for m in self.models]
+            selected_model = st.selectbox("Select Model", model_options)
+            
+            # Select hardware platforms
+            hardware_options = [h["hardware_type"] for h in self.hardware_platforms]
+            selected_hardware = st.multiselect("Select Hardware Platforms", hardware_options, default=["cpu", "cuda"])
+            
+            # Select metric
+            metric_options = ["Throughput (items/s)", "Latency (ms)", "Memory Usage (MB)"]
+            selected_metric = st.selectbox("Select Performance Metric", metric_options)
+            
+            # Get metric key
+            metric_key = "throughput" if "Throughput" in selected_metric else \
+                        "latency" if "Latency" in selected_metric else "memory"
+            
+            # Check if we have historical data
+            if selected_model not in self.historical_results:
+                st.warning(f"No historical data available for {selected_model}.")
+                return
+            
+            # Filter to selected hardware platforms
+            available_hw = [hw for hw in selected_hardware if hw in self.historical_results[selected_model]]
+            
+            if not available_hw:
+                st.warning(f"No historical data available for {selected_model} on selected hardware platforms.")
+                return
+            
+            # Create plot
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            # Add data for each hardware platform
             for hw in available_hw:
                 hw_data = self.historical_results[selected_model][hw]
                 
-                if not hw_data['timestamps']:
+                if not hw_data['timestamps'] or not hw_data[metric_key]:
                     continue
-                
-                st.subheader(f"{hw.upper()} Data")
-                
-                # Create DataFrame
-                df = pd.DataFrame({
-                    'Timestamp': hw_data['timestamps'],
-                    'Value': hw_data[metric_key]
-                })
-                
-                st.dataframe(df)
-    
-    def _get_existing_tests(self) -> Set[str]:
-        """Get the normalized names of existing test files."""
-        try:
-            test_files = [f.stem for f in SKILLS_DIR.glob("test_hf_*.py")]
-            return set(f.replace("test_hf_", "") for f in test_files)
-        except Exception as e:
-            logger.error(f"Error getting existing tests: {e}")
-            return set()
-    
-    def _generate_custom_test(self, model_info: Dict[str, Any], existing_tests: Set[str], 
-                            hardware_platforms: List[str]) -> Tuple[bool, str]:
-        """Generate a custom test file for a new model."""
-        try:
-            # Import merged test generator
-            sys.path.insert(0, str(CURRENT_DIR))
+                    
+                # Plot line
+                ax.plot(
+                    hw_data['timestamps'], 
+                    hw_data[metric_key],
+                    'o-',
+                    label=hw.upper()
+                )
             
+            # Set labels and title
+            ax.set_xlabel("Date")
+            ax.set_ylabel(selected_metric)
+            ax.set_title(f"{selected_metric} Trend for {selected_model}")
+            
+            # Format x-axis for dates
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            fig.autofmt_xdate()
+            
+            # Add legend
+            ax.legend()
+            
+            # Add grid
+            ax.grid(linestyle='--', alpha=0.7)
+            
+            # Display plot
+            st.pyplot(fig)
+            
+            # Show raw data in expandable section
+            with st.expander("Show Raw Data"):
+                for hw in available_hw:
+                    hw_data = self.historical_results[selected_model][hw]
+                    
+                    if not hw_data['timestamps']:
+                        continue
+                    
+                    st.subheader(f"{hw.upper()} Data")
+                    
+                    # Create DataFrame
+                    df = pd.DataFrame({
+                        'Timestamp': hw_data['timestamps'],
+                        'Value': hw_data[metric_key]
+                    })
+                    
+                    st.dataframe(df)
+        
+        def _get_existing_tests(self) -> Set[str]:
+            """Get the normalized names of existing test files."""
             try:
-                from merged_test_generator import generate_test_file, KEY_MODEL_HARDWARE_MAP
-            except ImportError:
-                return False, "Could not import merged_test_generator module"
+                test_files = [f.stem for f in SKILLS_DIR.glob("test_hf_*.py")]
+                return set(f.replace("test_hf_", "") for f in test_files)
+            except Exception as e:
+                logger.error(f"Error getting existing tests: {e}")
+                return set()
+        
+        def _generate_custom_test(self, model_info: Dict[str, Any], existing_tests: Set[str], 
+                                hardware_platforms: List[str]) -> Tuple[bool, str]:
+            """Generate a custom test file for a new model."""
+            try:
+                # Import merged test generator
+                sys.path.insert(0, str(CURRENT_DIR))
+                
+                try:
+                    from merged_test_generator import generate_test_file, KEY_MODEL_HARDWARE_MAP
+                except ImportError:
+                    return False, "Could not import merged_test_generator module"
+                
+                # Create output directory if it doesn't exist
+                if not SKILLS_DIR.exists():
+                    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+                
+                # Generate the test file
+                success, message = generate_test_file(
+                    model_info,
+                    existing_tests,
+                    [m["model_name"] for m in self.models],
+                    str(SKILLS_DIR)
+                )
+                
+                return success, message
+            except Exception as e:
+                logger.error(f"Error generating custom test: {e}")
+                return False, f"Error generating custom test: {e}"
+        
+        def serve_dashboard(self, port: int = 8501):
+            """Serve the dashboard using Streamlit."""
+            if not HAS_STREAMLIT:
+                logger.error("Streamlit not installed. Dashboard can't be served.")
+                return
             
-            # Create output directory if it doesn't exist
-            if not SKILLS_DIR.exists():
-                SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+            # Create a temporary Streamlit script
+            script_path = CURRENT_DIR / "_temp_dashboard.py"
             
-            # Generate the test file
-            success, message = generate_test_file(
-                model_info,
-                existing_tests,
-                [m["model_name"] for m in self.models],
-                str(SKILLS_DIR)
-            )
-            
-            return success, message
-        except Exception as e:
-            logger.error(f"Error generating custom test: {e}")
-            return False, f"Error generating custom test: {e}"
+            with open(script_path, 'w') as f:
+                f.write(f"""
+    import os
+    import sys
+    import streamlit as st
     
-    def serve_dashboard(self, port: int = 8501):
-        """Serve the dashboard using Streamlit."""
-        if not HAS_STREAMLIT:
-            logger.error("Streamlit not installed. Dashboard can't be served.")
-            return
-        
-        # Create a temporary Streamlit script
-        script_path = CURRENT_DIR / "_temp_dashboard.py"
-        
-        with open(script_path, 'w') as f:
-            f.write(f"""
-import os
-import sys
-import streamlit as st
-
-# Add parent directory to path
-sys.path.insert(0, "{CURRENT_DIR}")
-
-# Import the visualizer
-from benchmark_visualizer import BenchmarkVisualizer
-
-# Create visualizer instance
-visualizer = BenchmarkVisualizer(db_path="{self.db_path}")
-
-# Run the dashboard
-visualizer.create_dashboard()
-""")
-        
-        # Launch Streamlit
-        try:
-            cmd = ["streamlit", "run", str(script_path), "--server.port", str(port)]
-            subprocess.run(cmd)
-        except Exception as e:
-            logger.error(f"Error launching Streamlit dashboard: {e}")
-        finally:
-            # Clean up temporary script
-            if script_path.exists():
-                os.remove(script_path)
+    # Add parent directory to path
+    sys.path.insert(0, "{CURRENT_DIR}")
     
-    def export_report(self, format: str, output: str):
-        """Export a comprehensive benchmark report."""
-        try:
-            if format == "html":
-                # Use the Dashboard Builder to create an HTML report
-                report_content = self._generate_html_report()
-                
-                with open(output, 'w') as f:
-                    f.write(report_content)
+    # Import the visualizer
+    from benchmark_visualizer import BenchmarkVisualizer
+    
+    # Create visualizer instance
+    visualizer = BenchmarkVisualizer(db_path="{self.db_path}")
+    
+    # Run the dashboard
+    visualizer.create_dashboard()
+    """)
+            
+            # Launch Streamlit
+            try:
+                cmd = ["streamlit", "run", str(script_path), "--server.port", str(port)]
+                subprocess.run(cmd)
+            except Exception as e:
+                logger.error(f"Error launching Streamlit dashboard: {e}")
+            finally:
+                # Clean up temporary script
+                if script_path.exists():
+                    os.remove(script_path)
+        
+        def export_report(self, format: str, output: str):
+            """Export a comprehensive benchmark report."""
+            try:
+                if format == "html":
+                    # Use the Dashboard Builder to create an HTML report
+                    report_content = self._generate_html_report()
                     
-                logger.info(f"HTML report saved to {output}")
-                return True
-            elif format == "markdown" or format == "md":
-                # Generate a markdown report
-                report_content = self._generate_markdown_report()
-                
-                with open(output, 'w') as f:
-                    f.write(report_content)
+                    with open(output, 'w') as f:
+                        f.write(report_content)
+                        
+                    logger.info(f"HTML report saved to {output}")
+                    return True
+                elif format == "markdown" or format == "md":
+                    # Generate a markdown report
+                    report_content = self._generate_markdown_report()
                     
-                logger.info(f"Markdown report saved to {output}")
-                return True
-            elif format == "json":
-                # Export raw data as JSON
-                report_data = {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "models": self.models,
-                    "hardware_platforms": self.hardware_platforms,
-                    "latest_results": self.latest_results,
-                    "compatibility_matrix": self.get_hardware_compatibility_matrix()
-                }
-                
-                with open(output, 'w') as f:
-                    json.dump(report_data, f, indent=2)
+                    with open(output, 'w') as f:
+                        f.write(report_content)
+                        
+                    logger.info(f"Markdown report saved to {output}")
+                    return True
+                elif format == "json":
+                    # Export raw data as JSON
+                    report_data = {
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "models": self.models,
+                        "hardware_platforms": self.hardware_platforms,
+                        "latest_results": self.latest_results,
+                        "compatibility_matrix": self.get_hardware_compatibility_matrix()
+                    }
+                    
+                    with open(output, 'w') as f:
+                        json.dump(report_data, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
                     
                 logger.info(f"JSON report saved to {output}")
                 return True
@@ -1546,7 +1573,12 @@ def parse_args():
     parser.add_argument("--run-benchmark", type=str, help="Run benchmark for a specific model")
     parser.add_argument("--benchmark-hardware", type=str, default="cpu", help="Hardware platform for benchmark")
     
-    return parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
+return parser.parse_args()
 
 def main():
     """Main function."""

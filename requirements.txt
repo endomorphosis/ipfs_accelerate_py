@@ -43,3 +43,10 @@ websocket
 websocket-client
 google-generativeai
 anthropic
+# IPFS Accelerate dependencies
+duckdb
+pandas
+asyncio
+logging
+hashlib
+multiprocessing

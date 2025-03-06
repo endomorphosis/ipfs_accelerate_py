@@ -1,0 +1,1971 @@
+#!/usr/bin/env python3
+"""
+Integrated Skillset Generator
+
+This script combines test generation with skillset implementation generation to produce
+implementation files for the ipfs_accelerate_py worker/skillset directory based on
+comprehensive test analysis and results.
+
+## Key Features:
+- Test-driven development approach for skillset implementation
+- Utilizes enhanced template generator with WebNN and WebGPU support
+- Generates implementations for all 300+ Hugging Face model types
+- Supports all hardware backends (CPU, CUDA, OpenVINO, MPS, ROCm, WebNN, WebGPU)
+- Creates Jinja2-based templates from ipfs_accelerate_py/worker/skillset/
+- Implements both test and skillset generation in a unified workflow
+- Automated validation against test expectations
+
+## Usage:
+  # Generate skillset implementation for a specific model
+  python integrated_skillset_generator.py --model bert
+  
+  # Generate for a model family
+  python integrated_skillset_generator.py --family text-embedding
+  
+  # Generate for all supported models
+  python integrated_skillset_generator.py --all
+  
+  # First run tests and then generate implementations
+  python integrated_skillset_generator.py --model bert --run-tests
+  
+  # Test implementations against expected results
+  python integrated_skillset_generator.py --validate bert
+"""
+
+import os
+import sys
+import json
+import time
+import datetime
+import argparse
+import logging
+import threading
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Union, Tuple, Set
+# Add DuckDB database support for templates
+try:
+    import duckdb
+    HAS_DUCKDB = True
+    TEMPLATE_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template_db.duckdb")
+except ImportError:
+    HAS_DUCKDB = False
+    logger.warning("duckdb not available, using in-memory templates")
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"] = HAS_QUALCOMM
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"] = HAS_QUALCOMM
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Constants for hardware platforms
+HARDWARE_PLATFORMS = ["cpu", "cuda", "openvino", "mps", "rocm", "webnn", "webgpu"]
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU, detect_all_hardware
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually later if needed
+    
+# Import template hardware detection generator if available
+try:
+    from template_hardware_detection import generate_hardware_detection_code, generate_hardware_init_methods, generate_creation_methods
+    HAS_TEMPLATE_GENERATOR = True
+except ImportError:
+    HAS_TEMPLATE_GENERATOR = False
+
+# Try to import Jinja2 for templating
+try:
+    import jinja2
+    JINJA2_AVAILABLE = True
+except ImportError:
+    JINJA2_AVAILABLE = False
+    print("Warning: jinja2 not available. Templates will use string formatting.")
+
+# Configure paths
+PROJECT_ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TEST_DIR = PROJECT_ROOT / "test"
+SKILLS_DIR = TEST_DIR / "skills"
+WORKER_SKILLSET = PROJECT_ROOT / "ipfs_accelerate_py" / "worker" / "skillset"
+OUTPUT_DIR = PROJECT_ROOT / "generated_skillsets"
+
+# For output and logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("skillset_generator")
+
+# Model and family metadata
+
+# Hardware Support Functions
+
+def init_hardware_for_model(self, model_name, hardware_type, **kwargs):
+    """Initialize hardware for the given model and hardware type."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(hardware_type.lower(), "REAL")
+    
+    # Choose appropriate initialization based on hardware type and support level
+    if hardware_type.lower() == "cpu":
+        return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.init_cuda(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "openvino" and HAS_OPENVINO:
+        if support_level == "REAL":
+            return self.init_openvino(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for OpenVINO")
+            return self.init_openvino(model_name=model_name, device="CPU", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "mps" and HAS_MPS:
+        if support_level == "REAL":
+            return self.init_mps(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for MPS")
+            return self.init_mps(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "rocm" and HAS_ROCM:
+        if support_level == "REAL":
+            return self.init_rocm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for ROCm")
+            return self.init_rocm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level == "REAL":
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for Qualcomm")
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "webnn" and HAS_WEBNN:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        if support_level == "REAL":
+            return self.init_webnn(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebNN")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, using mock mode")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    elif hardware_type.lower() == "webgpu" and HAS_WEBGPU:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level == "REAL":
+            return self.init_webgpu(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebGPU")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, using mock mode")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    else:
+        # Default to CPU
+        logger.warning(f"Hardware {hardware_type} not available or not supported for {model_name}, using CPU")
+        return self.init_cpu(model_name=model_name, **kwargs)
+
+def test_platform_for_model(self, model_name, platform, input_data):
+    """Test the specified platform for a given model."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(platform.lower(), "REAL")
+    
+    # Get model category for web platform optimizations
+    model_category = detect_model_category(model_name)
+    
+    # Choose appropriate test based on platform and support level
+    if platform.lower() == "cpu":
+        return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.test_platform(input_data, "cuda")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "openvino" and HAS_OPENVINO:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "openvino")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "mps" and HAS_MPS:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "mps")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "rocm" and HAS_ROCM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "rocm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "qualcomm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webnn" and HAS_WEBNN:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebNN")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webnn")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webgpu" and HAS_WEBGPU:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webgpu")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    else:
+        # Default to CPU
+        logger.warning(f"Platform {platform} not available or not supported for {model_name}, using CPU")
+        return self.test_platform(input_data, "cpu")
+class ModelRegistry:
+    """Registry for model metadata and transformers model information."""
+    
+    
+# Define hardware map
+
+
+
+# Define hardware map
+KEY_MODEL_HARDWARE_MAP = {'bert': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}
+
+def __init__(self):
+        self.model_types_file = TEST_DIR / "huggingface_model_types.json"
+        self.pipeline_map_file = TEST_DIR / "huggingface_model_pipeline_map.json"
+        self.model_families = {}  # Grouped by architecture family
+        self.model_tasks = {}     # Grouped by primary task
+        self.model_types = {}     # Raw model types
+        self.pipeline_map = {}    # Model to pipeline task mapping
+        self.test_results = {}    # Results from test execution
+        self._load_model_data()
+        
+    def _load_model_data(self):
+        """Load model metadata from JSON files in the test directory."""
+        # Load model types
+        if self.model_types_file.exists():
+            with open(self.model_types_file, 'r') as f:
+                self.model_types = json.load(f)
+                logger.info(f"Loaded {len(self.model_types)} model types from {self.model_types_file}")
+        else:
+            logger.warning(f"Model types file not found: {self.model_types_file}")
+            
+        # Load pipeline map
+        if self.pipeline_map_file.exists():
+            with open(self.pipeline_map_file, 'r') as f:
+                self.pipeline_map = json.load(f)
+                logger.info(f"Loaded pipeline mappings for {len(self.pipeline_map)} models")
+        else:
+            logger.warning(f"Pipeline map file not found: {self.pipeline_map_file}")
+            
+        # Group models by family
+        for model_type in self.model_types:
+            # Extract family from model name
+            family = self._extract_family(model_type)
+            if family not in self.model_families:
+                self.model_families[family] = []
+            self.model_families[family].append(model_type)
+            
+            # Group by primary task
+            primary_task = self._get_primary_task(model_type)
+            if primary_task not in self.model_tasks:
+                self.model_tasks[primary_task] = []
+            self.model_tasks[primary_task].append(model_type)
+        
+        logger.info(f"Models grouped into {len(self.model_families)} families and {len(self.model_tasks)} primary tasks")
+    
+
+        def _extract_family(self, model_type):
+            """Extract the model family from the model type name."""
+            
+            # Basic heuristic for family extraction
+            if '-' in model_type:
+                return model_type.split('-')[0]
+            else:
+                return model_type
+    
+
+        def _get_primary_task(self, model_type):
+            """Get the primary task for a model type based on pipeline mapping."""
+            if model_type in self.pipeline_map and self.pipeline_map[model_type]:
+                # Convert hyphenated task name to use underscores for valid Python syntax
+                task = self.pipeline_map[model_type][0]
+                return task.replace('-', '_')
+            return "text_generation"  # Default task
+    
+    def get_model_family(self, model_type):
+        """Get the family for a given model type."""
+        return self._extract_family(model_type)
+    
+    def get_primary_task(self, model_type):
+        """Get the primary task for a model type."""
+        return self._get_primary_task(model_type)
+    
+    def get_models_by_family(self, family):
+        """Get all models that belong to a specific family."""
+        return self.model_families.get(family, [])
+    
+    def get_models_by_task(self, task):
+        """Get all models that primarily handle a specific task."""
+        return self.model_tasks.get(task, [])
+    
+    def get_all_families(self):
+        """Get a list of all model families."""
+        return list(self.model_families.keys())
+    
+    def get_all_tasks(self):
+        """Get a list of all primary tasks."""
+        return list(self.model_tasks.keys())
+
+
+class TestAnalyzer:
+    """Analyzes test files and results to inform skillset implementation."""
+    
+    def __init__(self, registry: ModelRegistry):
+        self.registry = registry
+        self.test_files = {}
+        self.test_results = {}
+        self.hardware_compatibility = {}
+        self._scan_test_files()
+    
+    def _scan_test_files(self):
+        """Scan the skills directory for test files and map them to model types."""
+        test_files = list(SKILLS_DIR.glob("test_hf_*.py"))
+        for test_file in test_files:
+            # Extract model name from file name (test_hf_bert.py -> bert)
+            model_name = test_file.stem.replace("test_hf_", "")
+            self.test_files[model_name] = test_file
+        
+        logger.info(f"Found {len(self.test_files)} test files in {SKILLS_DIR}")
+    
+    def run_test(self, model_type: str) -> Dict:
+        """Run test for a specific model type and collect results."""
+        normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
+        test_file = self.test_files.get(normalized_name)
+        
+        if not test_file or not test_file.exists():
+            logger.warning(f"Test file not found for {model_type}")
+            return {}
+        
+        try:
+            logger.info(f"Running test for {model_type}...")
+            result = subprocess.run(
+                [sys.executable, str(test_file)],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            # Parse output for test results
+            output = result.stdout
+            # Look for JSON results in the output
+            try:
+                start_idx = output.find('{')
+                end_idx = output.rfind('}') + 1
+                if start_idx >= 0 and end_idx > start_idx:
+                    json_str = output[start_idx:end_idx]
+                    test_results = json.loads(json_str)
+                    self.test_results[model_type] = test_results
+                    return test_results
+            except json.JSONDecodeError:
+                logger.error(f"Could not parse JSON from test output for {model_type}")
+            
+            # If we couldn't parse JSON, just return text output
+            return {"stdout": output, "stderr": result.stderr, "returncode": result.returncode}
+        except Exception as e:
+            logger.error(f"Error running test for {model_type}: {e}")
+            return {"error": str(e)}
+    
+    def analyze_hardware_compatibility(self, model_type: str, test_results: Dict = None) -> Dict:
+        """Analyze hardware compatibility for a model type based on test results."""
+        if test_results is None:
+            test_results = self.test_results.get(model_type, {})
+        
+        if not test_results:
+            test_results = self.run_test(model_type)
+            
+        # Default compatibility for all platforms
+        compatibility = {
+            "cpu": True,      # All models run on CPU by default
+            "cuda": False,    # CUDA needs specific detection
+            "openvino": False, # OpenVINO needs specific detection
+            "mps": False,     # Apple Silicon (MPS) needs specific detection
+            "rocm": False,    # AMD ROCm needs specific detection
+            "webnn": False,   # WebNN needs specific detection
+            "webgpu": False   # WebGPU needs specific detection
+        }
+        
+        # If we have hardware detection module imported, initialize with detected hardware
+        if HAS_HARDWARE_DETECTION:
+            try:
+                # Use hardware_detection module to get all hardware capabilities
+                hardware_info = detect_all_hardware()
+                
+                # Update compatibility based on detected hardware
+                compatibility.update({
+                    "cuda": hardware_info["cuda"]["detected"],
+                    "rocm": hardware_info["rocm"]["detected"],
+                    "openvino": hardware_info["openvino"]["detected"],
+                    "mps": hardware_info["mps"]["detected"],
+                    "webnn": hardware_info["webnn"]["detected"],
+                    "webgpu": hardware_info["webgpu"]["detected"]
+                })
+            except Exception as e:
+                logger.warning(f"Error detecting hardware with hardware_detection module: {e}")
+                # Fall back to using the constants
+                compatibility.update({
+                    "cuda": HAS_CUDA,
+                    "rocm": HAS_ROCM,
+                    "openvino": HAS_OPENVINO,
+                    "mps": HAS_MPS,
+                    "webnn": HAS_WEBNN,
+                    "webgpu": HAS_WEBGPU
+                })
+        
+        # Model categorization for hardware compatibility
+        model_categories = {
+            "text_embedding": ["bert", "roberta", "albert", "distilbert", "electra"],
+            "text_generation": ["t5", "gpt", "llama", "qwen", "falcon", "flan", "opt", "bloom"],
+            "vision": ["vit", "clip", "deit", "convnext", "swin", "resnet", "detr"],
+            "audio": ["clap", "whisper", "wav2vec2", "hubert", "speecht5", "encodec"],
+            "vision_language": ["llava", "blip", "flava", "git", "vilt"],
+            "video": ["xclip", "videomae", "vivit"]
+        }
+        
+        # Check if this is one of the key models with enhanced hardware support
+        # These are the 13 high-priority models with special handling
+        key_models = [
+            "bert", "t5", "llama", "clip", "vit", "clap", "whisper", 
+            "wav2vec2", "llava", "llava-next", "xclip", "qwen2", "qwen3", "detr"
+        ]
+        
+        model_base = model_type.split('-')[0].lower() if '-' in model_type else model_type.lower()
+        is_key_model = model_base in key_models
+        
+        # Determine model category
+        model_category = "unknown"
+        for category, model_families in model_categories.items():
+            for family in model_families:
+                if model_base.startswith(family) or family in model_base:
+                    model_category = category
+                    break
+            if model_category != "unknown":
+                break
+        
+        # Hardware compatibility by model category - updated for full WebNN/WebGPU support
+        category_compatibility = {
+            "text_embedding": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "text_generation": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "vision": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "audio": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "vision_language": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "video": {
+                "cuda": True, "openvino": True, "mps": True, "rocm": True, "webnn": True, "webgpu": True
+            },
+            "unknown": {
+                "cuda": True, "openvino": "simulation", "mps": "simulation", "rocm": "simulation", "webnn": "simulation", "webgpu": "simulation"
+            }
+        }
+        
+        if is_key_model:
+            # Key models get enhanced hardware support
+            logger.info(f"Applying enhanced hardware compatibility for key model: {model_type}")
+            # Apply category compatibility as base level
+            compatibility.update(category_compatibility.get(model_category, category_compatibility["unknown"]))
+            
+            # Apply model-specific overrides with full web platform support
+            model_specific_overrides = {
+                "bert": {"openvino": True, "webnn": True, "webgpu": True},
+                "t5": {"openvino": True, "webnn": True, "webgpu": True},
+                "llama": {"webnn": True, "webgpu": True},
+                "clip": {"webnn": True, "webgpu": True},
+                "vit": {"webnn": True, "webgpu": True},
+                "clap": {"webnn": True, "webgpu": True},
+                "whisper": {"webnn": True, "webgpu": True},
+                "wav2vec2": {"webnn": True, "webgpu": True},
+                "llava": {"mps": True, "rocm": True, "webnn": True, "webgpu": True},
+                "llava-next": {"mps": True, "rocm": True, "webnn": True, "webgpu": True},
+                "xclip": {"webnn": True, "webgpu": True},
+                "qwen2": {"webnn": True, "webgpu": True},
+                "qwen3": {"webnn": True, "webgpu": True},
+                "detr": {"webnn": True, "webgpu": True}
+            }
+            
+            if model_base in model_specific_overrides:
+                compatibility.update(model_specific_overrides[model_base])
+        else:
+            # Apply category-based compatibility for non-key models
+            if model_category != "unknown":
+                logger.info(f"Applying category-based hardware compatibility for {model_type} (category: {model_category})")
+                compatibility.update(category_compatibility[model_category])
+            
+            # For non-key models, also try to extract compatibility from test results
+            if "status" in test_results:
+                status = test_results.get("status", {})
+                
+                # Look for hardware platform results in test status
+                for platform in HARDWARE_PLATFORMS:
+                    if platform == "cpu":
+                        continue  # CPU is always enabled
+                    
+                    # Check platform test results
+                    platform_key = f"{platform}_handler"
+                    platform_init = f"{platform}_init"
+                    platform_test = f"{platform}_tests"
+                    
+                    # Success can be marked in different ways
+                    if (
+                        platform_key in status and "Success" in str(status[platform_key]) or
+                        platform_init in status and "Success" in str(status[platform_init]) or
+                        platform_test in status and "Success" in str(status[platform_test])
+                    ):
+                        compatibility[platform] = True
+                    
+                    # Check for simulated or mock implementation
+                    elif (
+                        platform_key in status and ("MOCK" in str(status[platform_key]).upper() or 
+                                                  "SIMULATION" in str(status[platform_key]).upper() or
+                                                  "ENHANCED" in str(status[platform_key]).upper())
+                    ):
+                        compatibility[platform] = "simulation"
+            
+            # Also look in examples
+            if "examples" in test_results and test_results["examples"]:
+                for example in test_results["examples"]:
+                    platform = example.get("platform", "").lower()
+                    impl_type = example.get("implementation_type", "").lower()
+                    
+                    if platform in compatibility:
+                        if "real" in impl_type:
+                            compatibility[platform] = True
+                        elif "simulation" in impl_type or "mock" in impl_type or "enhanced" in impl_type:
+                            compatibility[platform] = "simulation"
+        
+        # Store compatibility information for later use
+        self.hardware_compatibility[model_type] = compatibility
+        return compatibility
+    
+    def extract_model_metadata(self, model_type: str, test_results: Dict = None) -> Dict:
+        """Extract model metadata from test results for template variables."""
+        if test_results is None:
+            test_results = self.test_results.get(model_type, {})
+        
+        if not test_results:
+            test_results = self.run_test(model_type)
+        
+        # Extract important model metadata
+        metadata = {
+            "model_type": model_type,
+            "primary_task": self.registry.get_primary_task(model_type),
+            "family": self.registry.get_model_family(model_type),
+            "hardware_compatibility": self.analyze_hardware_compatibility(model_type, test_results),
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        
+        # Make sure primary_task has underscores instead of hyphens for valid Python syntax
+        if "primary_task" in metadata:
+            metadata["primary_task"] = metadata["primary_task"].replace('-', '_')
+        
+        # Extract additional metadata from examples
+        if "examples" in test_results and test_results["examples"]:
+            first_example = test_results["examples"][0]
+            
+            # Check for model_info in first example
+            if "model_info" in first_example:
+                model_info = first_example["model_info"]
+                metadata.update({
+                    "input_format": model_info.get("input_format", "text"),
+                    "output_format": model_info.get("output_format", "text"),
+                    "helper_functions": model_info.get("helper_functions", []),
+                    "required_dependencies": model_info.get("required_dependencies", [])
+                })
+                
+            # Check for tensor_types info
+            if "tensor_types" in first_example:
+                tensor_types = first_example["tensor_types"]
+                metadata.update({
+                    "embedding_dim": tensor_types.get("embedding_dim", 768),
+                    "sequence_length": tensor_types.get("sequence_length", 512),
+                    "supports_half": tensor_types.get("supports_half", True),
+                    "precision": tensor_types.get("precision", "float32")
+                })
+                
+            # Check for precision info
+            if "precision" in first_example:
+                metadata["precision"] = first_example["precision"]
+        
+        return metadata
+
+
+class TemplateEngine:
+    """Template engine for generating skillset implementations."""
+    
+    def __init__(self, use_jinja2=JINJA2_AVAILABLE):
+        self.use_jinja2 = use_jinja2
+        self.env = None
+        self.template_cache = {}
+        
+        if self.use_jinja2:
+            # Set up Jinja2 environment
+            self.env = jinja2.Environment(
+                loader=jinja2.FileSystemLoader(WORKER_SKILLSET),
+                trim_blocks=True,
+                lstrip_blocks=True
+            )
+    
+    def _load_reference_implementation(self, model_family: str) -> Optional[str]:
+        """Load a reference implementation file for a model family."""
+        # Try to find existing reference implementations
+        reference_models = {
+            "bert": "bert",
+            "t5": "t5",
+            "gpt": "gpt2",
+            "llama": "llama",
+            "vit": "vit",
+            "whisper": "whisper",
+            "wav2vec2": "wav2vec2",
+            "clip": "clip",
+            "clap": "clap",
+            "llava": "llava"
+        }
+        
+        # Find the best match
+        best_match = None
+        for family, ref_model in reference_models.items():
+            if model_family.startswith(family):
+                best_match = ref_model
+                break
+                
+        if best_match:
+            reference_file = WORKER_SKILLSET / f"hf_{best_match}.py"
+            if reference_file.exists():
+                with open(reference_file, 'r') as f:
+                    return f.read()
+        
+        # If no reference found, use a generic template
+        default_reference = WORKER_SKILLSET / "hf_bert.py"
+        if default_reference.exists():
+            with open(default_reference, 'r') as f:
+                return f.read()
+        
+        return None
+    
+    def _create_template_from_reference(self, reference_code: str, model_metadata: Dict) -> str:
+        """Create a template from reference implementation, replacing model-specific elements."""
+        # Replace model-specific elements
+        template = reference_code
+        
+        # Replace old model name with new model name
+        old_model_name = self._extract_model_name_from_reference(reference_code)
+        new_model_name = model_metadata["model_type"]
+        normalized_new_name = new_model_name.replace('-', '_').replace('.', '_').lower()
+        
+        if old_model_name:
+            # Replace class name and related strings
+            template = template.replace(f"hf_{old_model_name}", f"hf_{normalized_new_name}")
+            template = template.replace(f"'{old_model_name}'", f"'{new_model_name}'")
+            
+            # Replace documentation
+            template = template.replace(f"{old_model_name.upper()}", f"{new_model_name.upper()}")
+            template = template.replace(f"{old_model_name.capitalize()}", f"{new_model_name.capitalize()}")
+            
+        # Replace task-specific code if task is different
+        old_task = self._extract_task_from_reference(reference_code)
+        new_task = model_metadata["primary_task"]
+        
+        # Ensure task names use underscores instead of hyphens
+        if old_task:
+            old_task = old_task.replace('-', '_')
+        if new_task:
+            new_task = new_task.replace('-', '_')
+        
+        if old_task and old_task != new_task:
+            template = template.replace(f"_{old_task}_", f"_{new_task}_")
+        
+        # Replace any remaining hyphenated method names with underscored versions
+        # This is critical for valid Python syntax
+        import re
+        # Find all instances of "create_X_task-name_Y" patterns and replace hyphens
+        method_pattern = re.compile(r'(create_[a-z]+_)([a-z\-]+)(_endpoint_handler)')
+        template = method_pattern.sub(lambda m: f"{m.group(1)}{m.group(2).replace('-', '_')}{m.group(3)}", template)
+        
+        # Also fix self assignments with hyphens
+        assign_pattern = re.compile(r'(self\.create_[a-z]+_)([a-z\-]+)(_endpoint_handler)')
+        template = assign_pattern.sub(lambda m: f"{m.group(1)}{m.group(2).replace('-', '_')}{m.group(3)}", template)
+        
+        return template
+    
+    def _extract_model_name_from_reference(self, reference_code: str) -> Optional[str]:
+        """Extract the model name from a reference implementation."""
+        # Look for class definition
+        for line in reference_code.split('\n'):
+            if line.startswith("class hf_"):
+                # Extract model name from class definition (class hf_bert: -> bert)
+                return line.split("class hf_")[1].split('(')[0].split(':')[0].strip()
+        return None
+    
+    def _extract_task_from_reference(self, reference_code: str) -> Optional[str]:
+        """Extract the primary task from a reference implementation."""
+        for line in reference_code.split('\n'):
+            if "create_cpu_" in line and "endpoint_handler" in line:
+                # Extract task from handler method (create_cpu_text_embedding_endpoint_handler -> text_embedding)
+                parts = line.split("create_cpu_")[1].split("_endpoint_handler")
+                if parts:
+                    return parts[0]
+        return None
+    
+    def render_template(self, model_type: str, model_metadata: Dict) -> str:
+        """Render a template for a model type using either Jinja2 or string formatting."""
+        # Get the appropriate reference implementation
+        model_family = model_metadata["family"]
+        reference_code = self._load_reference_implementation(model_family)
+        
+        if not reference_code:
+            logger.error(f"Could not load reference implementation for {model_type}")
+            return ""
+        
+        # Create template from reference
+        template_str = self._create_template_from_reference(reference_code, model_metadata)
+        
+        if self.use_jinja2:
+            # Use Jinja2 for template rendering
+            template = self.env.from_string(template_str)
+            return template.render(**model_metadata)
+        else:
+            # Simple string formatting for template rendering
+            try:
+                return template_str.format(**model_metadata)
+            except KeyError as e:
+                logger.error(f"Missing key in template variables: {e}")
+                return template_str
+
+
+class SkillsetGenerator:
+    """Main generator class for skillset implementations."""
+    
+    def __init__(self):
+        self.registry = ModelRegistry()
+        self.analyzer = TestAnalyzer(self.registry)
+        self.template_engine = TemplateEngine()
+        
+        # Create output directory if it doesn't exist
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        
+    def generate_skillset(self, model_type: str, output_dir: Path = OUTPUT_DIR, 
+                         run_tests: bool = False, force: bool = False,
+                         hardware_platforms: List[str] = None,
+                         cross_platform: bool = False) -> Path:
+        """
+        Generate a skillset implementation for a specific model.
+        
+        Args:
+            model_type: The model type to generate implementation for
+            output_dir: Directory to save the implementation
+            run_tests: Whether to run tests before generation
+            force: Whether to overwrite existing files
+            hardware_platforms: List of hardware platforms to focus on
+            cross_platform: Ensure full cross-platform compatibility
+            
+        Returns:
+            Path to the generated implementation file
+        """
+        normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
+        output_file = output_dir / f"hf_{normalized_name}.py"
+        
+        # Check if file already exists and we're not forcing overwrite
+        if output_file.exists() and not force:
+            logger.info(f"Skillset file already exists: {output_file}. Use --force to overwrite.")
+            return output_file
+        
+        # Run tests if requested
+        if run_tests:
+            logger.info(f"Running tests for {model_type}...")
+            test_results = self.analyzer.run_test(model_type)
+        else:
+            test_results = self.analyzer.test_results.get(model_type, {})
+        
+        # Extract model metadata for template variables
+        logger.info(f"Extracting metadata for {model_type}...")
+        model_metadata = self.analyzer.extract_model_metadata(model_type, test_results)
+        
+        # Filter or enhance hardware compatibility based on args
+        if hardware_platforms:
+            # If specific platforms were requested, prioritize those
+            hardware_compat = model_metadata.get("hardware_compatibility", {})
+            
+            if "all" not in hardware_platforms:
+                # Keep only the specified platforms plus CPU
+                filtered_compat = {"cpu": True}  # CPU is always included
+                for platform in hardware_platforms:
+                    if platform in hardware_compat:
+                        filtered_compat[platform] = hardware_compat[platform]
+                
+                model_metadata["hardware_compatibility"] = filtered_compat
+            
+            # If cross-platform is requested, ensure all platforms are enabled with real implementations
+            if cross_platform and "all" in hardware_platforms:
+                # Enable full real implementation support for all platforms
+                for platform in HARDWARE_PLATFORMS:
+                    # CPU is always True
+                    if platform == "cpu":
+                        continue
+                        
+                    # Set to REAL implementation for everything
+                    hardware_compat[platform] = "real"
+                
+                model_metadata["hardware_compatibility"] = hardware_compat
+                logger.info(f"Enhanced cross-platform REAL implementation support for {model_type}")
+        
+        # Render the template
+        logger.info(f"Generating skillset implementation for {model_type}...")
+        implementation = self.template_engine.render_template(model_type, model_metadata)
+        
+        # Save the implementation to the output file
+        with open(output_file, 'w') as f:
+            f.write(implementation)
+            
+        logger.info(f"Generated skillset implementation: {output_file}")
+        return output_file
+    
+    def generate_for_family(self, family: str, output_dir: Path = OUTPUT_DIR,
+                           run_tests: bool = False, force: bool = False,
+                           hardware_platforms: List[str] = None,
+                           cross_platform: bool = False) -> List[Path]:
+        """
+        Generate skillset implementations for all models in a family.
+        
+        Args:
+            family: Model family to generate implementations for
+            output_dir: Directory to save implementations
+            run_tests: Whether to run tests before generation
+            force: Whether to overwrite existing files
+            hardware_platforms: List of hardware platforms to focus on
+            cross_platform: Ensure full cross-platform compatibility
+            
+        Returns:
+            List of paths to generated implementation files
+        """
+        logger.info(f"Generating implementations for {family} family...")
+        models = self.registry.get_models_by_family(family)
+        
+        if not models:
+            logger.warning(f"No models found for family: {family}")
+            return []
+        
+        output_files = []
+        for model_type in models:
+            try:
+                output_file = self.generate_skillset(
+                    model_type, 
+                    output_dir=output_dir, 
+                    run_tests=run_tests, 
+                    force=force,
+                    hardware_platforms=hardware_platforms,
+                    cross_platform=cross_platform
+                )
+                output_files.append(output_file)
+            except Exception as e:
+                logger.error(f"Error generating implementation for {model_type}: {e}")
+                
+        logger.info(f"Generated {len(output_files)} implementations for {family} family")
+        return output_files
+    
+    def generate_for_task(self, task: str, output_dir: Path = OUTPUT_DIR,
+                         run_tests: bool = False, force: bool = False,
+                         hardware_platforms: List[str] = None,
+                         cross_platform: bool = False) -> List[Path]:
+        """
+        Generate skillset implementations for all models with a specific primary task.
+        
+        Args:
+            task: Task to generate implementations for
+            output_dir: Directory to save implementations
+            run_tests: Whether to run tests before generation
+            force: Whether to overwrite existing files
+            hardware_platforms: List of hardware platforms to focus on
+            cross_platform: Ensure full cross-platform compatibility
+            
+        Returns:
+            List of paths to generated implementation files
+        """
+        logger.info(f"Generating implementations for {task} task...")
+        models = self.registry.get_models_by_task(task)
+        
+        if not models:
+            logger.warning(f"No models found for task: {task}")
+            return []
+        
+        output_files = []
+        for model_type in models:
+            try:
+                output_file = self.generate_skillset(
+                    model_type, 
+                    output_dir=output_dir, 
+                    run_tests=run_tests, 
+                    force=force,
+                    hardware_platforms=hardware_platforms,
+                    cross_platform=cross_platform
+                )
+                output_files.append(output_file)
+            except Exception as e:
+                logger.error(f"Error generating implementation for {model_type}: {e}")
+                
+        logger.info(f"Generated {len(output_files)} implementations for {task} task")
+        return output_files
+    
+    def generate_all(self, output_dir: Path = OUTPUT_DIR, 
+                    run_tests: bool = False, force: bool = False,
+                    max_workers: int = 10,
+                    hardware_platforms: List[str] = None,
+                    cross_platform: bool = False) -> List[Path]:
+        """
+        Generate skillset implementations for all supported models.
+        
+        Args:
+            output_dir: Directory to save implementations
+            run_tests: Whether to run tests before generation
+            force: Whether to overwrite existing files
+            max_workers: Maximum number of worker threads for parallel generation
+            hardware_platforms: List of hardware platforms to focus on
+            cross_platform: Ensure full cross-platform compatibility
+            
+        Returns:
+            List of paths to generated implementation files
+        """
+        logger.info("Generating implementations for all supported models...")
+        model_types = list(self.registry.model_types.keys())
+        
+        output_files = []
+        with ThreadPoolExecutor(max_workers="max_workers") as executor:
+            future_to_model = {
+                executor.submit(
+                    self.generate_skillset, 
+                    model_type, 
+                    output_dir, 
+                    run_tests, 
+                    force,
+                    hardware_platforms,
+                    cross_platform
+                ): model_type
+                for model_type in model_types
+            }
+            
+            for future in as_completed(future_to_model):
+                model_type = future_to_model[future]
+                try:
+                    output_file = future.result()
+                    output_files.append(output_file)
+                    logger.info(f"Completed implementation for {model_type}")
+                except Exception as e:
+                    logger.error(f"Error generating implementation for {model_type}: {e}")
+        
+        logger.info(f"Generated {len(output_files)} implementations for all supported models")
+        return output_files
+    
+    def validate_implementation(self, model_type: str, implementation_path: Optional[Path] = None) -> bool:
+        """Validate a generated implementation against test expectations."""
+        logger.info(f"Validating implementation for {model_type}...")
+        
+        if implementation_path is None:
+            # Try to find the implementation in the output directory
+            normalized_name = model_type.replace('-', '_').replace('.', '_').lower()
+            implementation_path = OUTPUT_DIR / f"hf_{normalized_name}.py"
+        
+        if not implementation_path.exists():
+            logger.error(f"Implementation file not found: {implementation_path}")
+            return False
+        
+        # Run the tests
+        test_results = self.analyzer.run_test(model_type)
+        
+        # Get the hardware compatibility for this model
+        hardware_compatibility = self.analyzer.analyze_hardware_compatibility(model_type, test_results)
+        
+        # Basic validation: ensure implementation has the necessary components
+        try:
+            with open(implementation_path, 'r') as f:
+                code = f.read()
+                
+            # First check for syntactic correctness
+            try:
+                import ast
+                ast.parse(code)  # This will raise SyntaxError if code has syntax errors
+            except SyntaxError as e:
+                logger.error(f"Syntax error in implementation: {e}")
+                return False
+
+            # Check for key components
+            validations = {
+                "class_declaration": f"class hf_{model_type.replace('-', '_').replace('.', '_').lower()}",
+                "init_method": "def __init__",
+                "cpu_handler": "create_cpu_",
+                "cuda_handler": "create_cuda_",
+                "hardware_detection": "_detect_hardware",
+            }
+            
+            # Add checks for hardware platform handlers
+            for platform in HARDWARE_PLATFORMS:
+                if platform == "cpu":
+                    continue  # CPU handler is checked separately
+                
+                platform_support = hardware_compatibility.get(platform, False)
+                if platform_support:
+                    # Should have a handler if platform is supported
+                    validations[f"{platform}_handler"] = f"create_{platform}_"
+                    # Should have initialization method
+                    validations[f"{platform}_init"] = f"init_{platform}"
+                    
+            validation_results = {key: component in code for key, component in validations.items()}
+            
+            # Web platform validation
+            if hardware_compatibility.get("webnn", False) or hardware_compatibility.get("webgpu", False):
+                validations["web_support"] = "webnn" in code or "webgpu" in code
+                validation_results["web_support"] = "webnn" in code or "webgpu" in code
+            
+            # Check if all validations passed
+            all_passed = all(validation_results.values())
+            
+            # Log validation results
+            if all_passed:
+                logger.info(f"Validation passed for {model_type}")
+            else:
+                # Find which validations failed
+                failed_validations = {k: v for k, v in validation_results.items() if not v}
+                logger.warning(f"Validation failed for {model_type}: {failed_validations}")
+                
+            return all_passed
+            
+        except Exception as e:
+            logger.error(f"Error validating implementation for {model_type}: {e}")
+            return False
+
+
+
+# Define key models that need special handling with hardware backends
+, 't5': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'llama': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'vit': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'clip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'detr': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'clap': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'wav2vec2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'whisper': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'llava': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'llava_next': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'xclip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'qwen2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}}
+
+# Database integration
+try:
+    from integrated_improvements.database_integration import (
+        get_db_connection,
+        store_test_result,
+        store_performance_result,
+        create_test_run,
+        complete_test_run,
+        get_or_create_model,
+        get_or_create_hardware_platform,
+        DEPRECATE_JSON_OUTPUT
+    )
+    HAS_DB_INTEGRATION = True
+except ImportError:
+    logger.warning("Database integration not available")
+    HAS_DB_INTEGRATION = False
+    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
+
+# Improved hardware detection
+try:
+    from integrated_improvements.improved_hardware_detection import (
+        detect_available_hardware,
+        check_web_optimizations,
+        HARDWARE_PLATFORMS,
+        HAS_CUDA,
+        HAS_ROCM,
+        HAS_MPS,
+        HAS_OPENVINO,
+        HAS_WEBNN,
+        HAS_WEBGPU
+    )
+    HAS_HARDWARE_MODULE = True
+except ImportError:
+    logger.warning("Improved hardware detection not available")
+    HAS_HARDWARE_MODULE = False
+# Configure logging level
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    
+    # Create output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize the generator
+    generator = SkillsetGenerator()
+    
+    # Process the requested action
+    try:
+        if args.list_families:
+            # List all available model families
+            families = generator.registry.get_all_families()
+            print("\nAvailable Model Families:")
+            for family in sorted(families):
+                model_count = len(generator.registry.get_models_by_family(family))
+                print(f"  {family} ({model_count} models)")
+            sys.exit(0)
+            
+        elif args.list_tasks:
+            # List all available tasks
+            tasks = generator.registry.get_all_tasks()
+            print("\nAvailable Model Tasks:")
+            for task in sorted(tasks):
+                model_count = len(generator.registry.get_models_by_task(task))
+                print(f"  {task} ({model_count} models)")
+            sys.exit(0)
+            
+        elif args.validate:
+            # Validate implementation for a specific model
+            success = generator.validate_implementation(args.validate)
+            sys.exit(0 if success else 1)
+            
+        elif args.model:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = [p.strip().lower() for p in args.hardware.split(",")]
+            
+            # Generate implementation for a specific model
+            generator.generate_skillset(
+                args.model, 
+                output_dir=output_dir,
+                run_tests=args.run_tests,
+                force=args.force,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        elif args.family:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = [p.strip().lower() for p in args.hardware.split(",")]
+            
+            # Generate implementations for a model family
+            generator.generate_for_family(
+                args.family,
+                output_dir=output_dir,
+                run_tests=args.run_tests,
+                force=args.force,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        elif args.task:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = [p.strip().lower() for p in args.hardware.split(",")]
+            
+            # Generate implementations for models with a specific task
+            generator.generate_for_task(
+                args.task,
+                output_dir=output_dir,
+                run_tests=args.run_tests,
+                force=args.force,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        elif args.all:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = [p.strip().lower() for p in args.hardware.split(",")]
+            
+            # Generate implementations for all supported models
+            generator.generate_all(
+                output_dir=output_dir,
+                run_tests=args.run_tests,
+                force=args.force,
+                max_workers=args.max_workers,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        sys.exit(0)
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        sys.exit(1)
+
+
+
+def load_template_from_db(model_type, template_type='base', platform=None):
+    """Load template from the DuckDB template database.
+    
+    Args:
+        model_type: The model type (bert, vit, etc.)
+        template_type: The template type (base, hardware_platform, etc.)
+        platform: Optional platform name for hardware platform templates
+        
+    Returns:
+        Template string or None if not found
+    """
+    if not HAS_DUCKDB or not os.path.exists(TEMPLATE_DB_PATH):
+        return None
+    
+    try:
+        conn = duckdb.connect(TEMPLATE_DB_PATH)
+        
+        # Build query based on parameters
+        query = "SELECT template FROM templates WHERE model_type = ? AND template_type = ?"
+        params = [model_type, template_type]
+        
+        if platform:
+            query += " AND platform = ?"
+            params.append(platform)
+        
+        # Try exact match first
+        result = conn.execute(query, params).fetchone()
+        
+        if not result:
+            # Try fallback to similar models within same category
+            for category, models in MODEL_CATEGORIES.items():
+                if model_type in models:
+                    # Try another model in the same category
+                    category_query = f"SELECT template FROM templates WHERE model_type IN ({','.join(['?'] * len(models))}) AND template_type = ?"
+                    category_params = models + [template_type]
+                    
+                    if platform:
+                        category_query += " AND platform = ?"
+                        category_params.append(platform)
+                    
+                    category_result = conn.execute(category_query, category_params).fetchone()
+                    if category_result:
+                        logger.debug(f"Using template from same category for {model_type}")
+                        return category_result[0]
+        
+        conn.close()
+        
+        if result:
+            return result[0]
+        return None
+    
+    except Exception as e:
+        logger.error(f"Error loading template from database: {e}")
+        return None
+
+def get_hardware_map_for_model(model_name):
+    """Get hardware support map for a specific model."""
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct lookup in key models
+    if model_base in KEY_MODEL_HARDWARE_CONFIG:
+        return KEY_MODEL_HARDWARE_CONFIG[model_base]
+    
+    # Check which category this model belongs to
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_name.lower() for model in models):
+            # Create default map based on category
+            if category == "text" or category == "vision":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"
+                }
+            elif category == "audio":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"  # Now REAL with March 2025 optimization
+                }
+            elif category == "multimodal":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+            elif category == "video":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+    
+    # Default to text configuration if unknown
+    return {
+        "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+        "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+        "webnn": "REAL", "webgpu": "REAL"
+    }
+
+def detect_model_category(model_name):
+    """Detect model category based on model name."""
+    model_lower = model_name.lower()
+    
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_lower
+    
+    # Check by model family name patterns
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_lower for model in models):
+            return category
+    
+    # Default to text if unknown
+    return "text"
+def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Generate skillset implementations based on model tests")
+    parser.add_argument("--model", type=str, help="Model to generate implementation for")
+    parser.add_argument("--family", type=str, help="Model family to generate implementation for")
+    parser.add_argument("--all", action="store_true", help="Generate implementations for all models")
+    parser.add_argument("--validate", type=str, help="Validate implementation for a specific model")
+    parser.add_argument("--run-tests", action="store_true", help="Run tests before generating implementations")
+    parser.add_argument("--list-models", action="store_true", help="List available models")
+    parser.add_argument("--list-families", action="store_true", help="List available model families")
+    parser.add_argument("--list-tasks", action="store_true", help="List available model tasks")
+    parser.add_argument("--hardware", type=str, help="Hardware platforms to generate tests for (comma-separated or 'all')")
+    parser.add_argument("--cross-platform", action="store_true", help="Ensure cross-platform compatibility in tests")
+    parser.add_argument("--db-path", type=str, 
+                      help="Path to database for storing results",
+                      default=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    
+    args = parser.parse_args()
+    
+    # Initialize the generator
+    generator = SkillsetGenerator()
+    
+    # Process the requested action
+    try:
+        if args.list_families:
+            # List all available model families
+            families = generator.registry.get_all_families()
+            print("\nAvailable Model Families:")
+            for family in sorted(families):
+                model_count = len(generator.registry.get_models_by_family(family))
+                print(f"  {family} ({model_count} models)")
+            sys.exit(0)
+            
+        elif args.list_tasks:
+            # List all available tasks
+            tasks = generator.registry.get_all_tasks()
+            print("\nAvailable Model Tasks:")
+            for task in sorted(tasks):
+                model_count = len(generator.registry.get_models_by_task(task))
+                print(f"  {task} ({model_count} models)")
+            sys.exit(0)
+            
+        elif args.validate:
+            # Validate implementation for a specific model
+            success = generator.validate_implementation(args.validate)
+            sys.exit(0 if success else 1)
+            
+        elif args.model:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = args.hardware.split(",")
+            
+            # Generate implementation for a specific model
+            generator.generate_implementation(
+                model_name=args.model,
+                run_tests=args.run_tests,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        elif args.family:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = args.hardware.split(",")
+            
+            # Generate implementations for a model family
+            generator.generate_for_family(
+                family=args.family,
+                run_tests=args.run_tests,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        elif args.all:
+            # Process hardware platforms if specified
+            hardware_platforms = None
+            if args.hardware:
+                if args.hardware.lower() == "all":
+                    hardware_platforms = ["all"]
+                else:
+                    hardware_platforms = args.hardware.split(",")
+            
+            # Generate implementations for all models
+            generator.generate_all(
+                run_tests=args.run_tests,
+                hardware_platforms=hardware_platforms,
+                cross_platform=args.cross_platform
+            )
+            
+        sys.exit(0)
+        
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

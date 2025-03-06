@@ -12,6 +12,17 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
 # Third-party imports with fallbacks
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 try:
     import numpy as np
 except ImportError:

@@ -21,6 +21,19 @@ import time
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 try:
     import duckdb
     import pandas as pd
@@ -135,6 +148,21 @@ class BenchmarkDBConverter:
             with open(file_path, 'r') as f:
                 data = json.load(f)
             
+            # Skip files that don't contain useful benchmark data
+            if isinstance(data, list):
+                # Check if the list contains dictionaries that we can process
+                if data and isinstance(data[0], dict):
+                    # Check first item for category indicators
+                    item = data[0]
+                    if any(k in item for k in ['throughput', 'latency', 'performance', 'benchmark']):
+                        return 'performance'
+                    elif any(k in item for k in ['cuda', 'rocm', 'mps', 'openvino', 'hardware_detection']):
+                        return 'hardware'
+                    elif any(k in item for k in ['compatibility', 'error', 'is_compatible']):
+                        return 'compatibility'
+                # If we can't determine or it's not a list of dictionaries we can process
+                return 'unknown'
+            
             # Check for performance data
             if any(k in data for k in ['throughput', 'latency', 'performance', 'benchmark']):
                 return 'performance'
@@ -154,19 +182,67 @@ class BenchmarkDBConverter:
             logger.warning(f"Error detecting category for {file_path}: {e}")
             return 'unknown'
     
-    def _normalize_performance_data(self, data: Dict, source_file: str) -> List[Dict]:
+    def _normalize_performance_data(self, data: Union[Dict, List], source_file: str) -> List[Dict]:
         """
         Normalize performance benchmark data to a standardized format.
         
         Args:
-            data: Input data dictionary from JSON
+            data: Input data dictionary or list from JSON
             source_file: Source file path
             
         Returns:
             List of normalized data dictionaries
         """
         normalized = []
-        timestamp = data.get('timestamp', datetime.datetime.now().isoformat())
+        current_time = datetime.datetime.now()
+        
+        # Handle list format
+        if isinstance(data, list):
+            # Process each item in the list as a separate result
+            for idx, item in enumerate(data):
+                if not isinstance(item, dict):
+                    continue
+                
+                # Get timestamp with fallback
+                timestamp = item.get('timestamp', current_time.isoformat())
+                
+                # Parse timestamp if it's a string
+                if isinstance(timestamp, str):
+                    try:
+                        timestamp = datetime.datetime.fromisoformat(timestamp)
+                    except ValueError:
+                        try:
+                            timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            timestamp = current_time
+                
+                # Create entry with safe conversions
+                try:
+                    entry = {
+                        'model': item.get('model', 'unknown'),
+                        'hardware': item.get('hardware', 'unknown'),
+                        'device': item.get('device', 'unknown'),
+                        'batch_size': int(float(item.get('batch_size', 1))),
+                        'precision': item.get('precision', 'fp32'),
+                        'throughput': float(item.get('throughput', 0.0)),
+                        'latency_avg': float(item.get('latency_avg', item.get('latency', 0.0))),
+                        'latency_p90': float(item.get('latency_p90', 0.0)),
+                        'latency_p95': float(item.get('latency_p95', 0.0)),
+                        'latency_p99': float(item.get('latency_p99', 0.0)),
+                        'memory_peak': float(item.get('memory_peak', item.get('memory', 0.0))),
+                        'timestamp': timestamp,
+                        'source_file': source_file,
+                        'notes': item.get('notes', '')
+                    }
+                    normalized.append(entry)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error normalizing list item {idx} in {source_file}: {e}")
+                    continue
+            
+            return normalized
+        
+        # Dictionary format (original implementation)
+        timestamp = data.get('timestamp', current_time.isoformat())
         
         # Parse timestamp if it's a string
         if isinstance(timestamp, str):
@@ -178,48 +254,55 @@ class BenchmarkDBConverter:
                     timestamp = datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
                 except ValueError:
                     # Default to now if parsing fails
-                    timestamp = datetime.datetime.now()
+                    timestamp = current_time
         
         # Handle different file formats
         if 'results' in data and isinstance(data['results'], list):
             # Multiple results format
             for result in data['results']:
-                entry = {
-                    'model': result.get('model', data.get('model', 'unknown')),
-                    'hardware': result.get('hardware', data.get('hardware', 'unknown')),
-                    'device': result.get('device', data.get('device', 'unknown')),
-                    'batch_size': int(result.get('batch_size', data.get('batch_size', 1))),
-                    'precision': result.get('precision', data.get('precision', 'fp32')),
-                    'throughput': float(result.get('throughput', 0.0)),
-                    'latency_avg': float(result.get('latency_avg', result.get('latency', 0.0))),
-                    'latency_p90': float(result.get('latency_p90', 0.0)),
-                    'latency_p95': float(result.get('latency_p95', 0.0)),
-                    'latency_p99': float(result.get('latency_p99', 0.0)),
-                    'memory_peak': float(result.get('memory_peak', result.get('memory', 0.0))),
-                    'timestamp': timestamp,
-                    'source_file': source_file,
-                    'notes': result.get('notes', data.get('notes', ''))
-                }
-                normalized.append(entry)
+                try:
+                    entry = {
+                        'model': result.get('model', data.get('model', 'unknown')),
+                        'hardware': result.get('hardware', data.get('hardware', 'unknown')),
+                        'device': result.get('device', data.get('device', 'unknown')),
+                        'batch_size': int(float(result.get('batch_size', data.get('batch_size', 1)))),
+                        'precision': result.get('precision', data.get('precision', 'fp32')),
+                        'throughput': float(result.get('throughput', 0.0)),
+                        'latency_avg': float(result.get('latency_avg', result.get('latency', 0.0))),
+                        'latency_p90': float(result.get('latency_p90', 0.0)),
+                        'latency_p95': float(result.get('latency_p95', 0.0)),
+                        'latency_p99': float(result.get('latency_p99', 0.0)),
+                        'memory_peak': float(result.get('memory_peak', result.get('memory', 0.0))),
+                        'timestamp': timestamp,
+                        'source_file': source_file,
+                        'notes': result.get('notes', data.get('notes', ''))
+                    }
+                    normalized.append(entry)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error normalizing result in {source_file}: {e}")
+                    continue
         else:
             # Single result format
-            entry = {
-                'model': data.get('model', 'unknown'),
-                'hardware': data.get('hardware', 'unknown'),
-                'device': data.get('device', 'unknown'),
-                'batch_size': int(data.get('batch_size', 1)),
-                'precision': data.get('precision', 'fp32'),
-                'throughput': float(data.get('throughput', 0.0)),
-                'latency_avg': float(data.get('latency_avg', data.get('latency', 0.0))),
-                'latency_p90': float(data.get('latency_p90', 0.0)),
-                'latency_p95': float(data.get('latency_p95', 0.0)),
-                'latency_p99': float(data.get('latency_p99', 0.0)),
-                'memory_peak': float(data.get('memory_peak', data.get('memory', 0.0))),
-                'timestamp': timestamp,
-                'source_file': source_file,
-                'notes': data.get('notes', '')
-            }
-            normalized.append(entry)
+            try:
+                entry = {
+                    'model': data.get('model', 'unknown'),
+                    'hardware': data.get('hardware', 'unknown'),
+                    'device': data.get('device', 'unknown'),
+                    'batch_size': int(float(data.get('batch_size', 1))),
+                    'precision': data.get('precision', 'fp32'),
+                    'throughput': float(data.get('throughput', 0.0)),
+                    'latency_avg': float(data.get('latency_avg', data.get('latency', 0.0))),
+                    'latency_p90': float(data.get('latency_p90', 0.0)),
+                    'latency_p95': float(data.get('latency_p95', 0.0)),
+                    'latency_p99': float(data.get('latency_p99', 0.0)),
+                    'memory_peak': float(data.get('memory_peak', data.get('memory', 0.0))),
+                    'timestamp': timestamp,
+                    'source_file': source_file,
+                    'notes': data.get('notes', '')
+                }
+                normalized.append(entry)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Error normalizing data in {source_file}: {e}")
         
         return normalized
     
@@ -609,9 +692,26 @@ class BenchmarkDBConverter:
         Returns:
             True if successful, False otherwise
         """
+        # Use a new database file if the current one is locked
+        original_db_path = self.output_db
+        db_path_to_use = original_db_path
+        
+        # If database file exists, try to connect with a timeout
+        if os.path.exists(db_path_to_use):
+            try:
+                # Try to connect with a short timeout
+                con = duckdb.connect(db_path_to_use, read_only=False)
+                con.close()
+            except Exception as lock_error:
+                if "lock" in str(lock_error).lower():
+                    # Database is locked, use a new file
+                    timestamp = int(time.time())
+                    db_path_to_use = f"{original_db_path.rsplit('.', 1)[0]}_{timestamp}.duckdb"
+                    logger.warning(f"Database {original_db_path} is locked. Using {db_path_to_use} instead.")
+        
         try:
             # Connect to the database
-            con = duckdb.connect(self.output_db)
+            con = duckdb.connect(db_path_to_use)
             
             # Create tables for each category
             for category, df in dataframes.items():
@@ -695,6 +795,13 @@ class BenchmarkDBConverter:
                             )
                             """)
                         
+                        # Get next ID value to start from
+                        try:
+                            result = con.execute(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}").fetchone()
+                            start_id = result[0] if result else 1
+                        except:
+                            start_id = 1
+                        
                         # Insert data row by row for better error control
                         for i, row in enumerate(rows):
                             try:
@@ -711,7 +818,7 @@ class BenchmarkDBConverter:
                                         values.append(row.get(col, None))
                                 
                                 # Insert with explicit column names
-                                insert_sql = f"INSERT INTO {table_name} (id, {', '.join(columns)}) VALUES ({i+1}, {', '.join(['?' for _ in columns])})"
+                                insert_sql = f"INSERT INTO {table_name} (id, {', '.join(columns)}) VALUES ({start_id + i}, {', '.join(['?' for _ in columns])})"
                                 con.execute(insert_sql, values)
                                 
                             except Exception as row_error:
@@ -766,7 +873,12 @@ class BenchmarkDBConverter:
             # Close connection
             con.close()
             
-            logger.info(f"Successfully saved to DuckDB database: {self.output_db}")
+            # If we used a different database file, log a warning
+            if db_path_to_use != original_db_path:
+                logger.warning(f"Data was saved to {db_path_to_use} due to lock on original database.")
+                logger.warning(f"You will need to merge the databases later.")
+            
+            logger.info(f"Successfully saved to DuckDB database: {db_path_to_use}")
             return True
             
         except Exception as e:
@@ -811,12 +923,16 @@ class BenchmarkDBConverter:
                 
                 # Save to Parquet file
                 output_file = os.path.join(output_dir, f"benchmark_{category}.parquet")
-                pq.write_table(table, output_file)
-                logger.info(f"Saved {len(df)} rows to Parquet file: {output_file}")
+                # JSON output deprecated in favor of database storage
+                if not DEPRECATE_JSON_OUTPUT:
+                    pq.write_table(table, output_file)
+                    logger.info(f"Saved {len(df)} rows to Parquet file: {output_file}")
+                else:
+                    logger.info("JSON output is deprecated. Results are stored directly in the database.")
             
             logger.info(f"Successfully saved to Parquet files in directory: {output_dir}")
             return True
-            
+                
         except Exception as e:
             logger.error(f"Error saving to Parquet: {e}")
             return False
@@ -911,7 +1027,7 @@ class BenchmarkDBConverter:
             
         except Exception as e:
             logger.error(f"Error creating views: {e}")
-    
+        
     def consolidate_directories(self, directories: List[str], categories: List[str] = None) -> Dict[str, pd.DataFrame]:
         """
         Consolidate JSON files from multiple directories.
@@ -973,8 +1089,19 @@ class BenchmarkDBConverter:
                 result_dfs[category] = df
                 continue
             
-            # Sort by timestamp (descending) and keep first occurrence
-            df = df.sort_values('timestamp', ascending=False)
+            # Ensure timestamp column is properly formatted
+            if 'timestamp' in df.columns:
+                try:
+                    # Convert all timestamps to datetime objects
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+                    # Replace NaT values with current timestamp
+                    df['timestamp'] = df['timestamp'].fillna(pd.Timestamp.now())
+                    # Sort by timestamp (descending) and keep first occurrence
+                    df = df.sort_values('timestamp', ascending=False)
+                except Exception as e:
+                    logger.warning(f"Error sorting by timestamp: {e}. Skipping sort.")
+            
+            # Deduplicate using keys
             df = df.drop_duplicates(subset=keys, keep='first')
             
             logger.info(f"Deduplicated {category} data from {len(dataframes[category])} to {len(df)} rows")
@@ -1002,6 +1129,11 @@ def main():
                         help="Directories to consolidate when using --consolidate")
     parser.add_argument("--debug", action="store_true",
                         help="Enable debug logging")
+    
+    parser.add_argument("--db-path", type=str, default=None,
+                      help="Path to the benchmark database")
+    parser.add_argument("--db-only", action="store_true",
+                      help="Store results only in the database, not in JSON")
     args = parser.parse_args()
     
     # Create converter

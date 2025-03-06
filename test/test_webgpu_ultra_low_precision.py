@@ -38,7 +38,7 @@ except ImportError:
     print("Warning: benchmark_db_api not available. Using deprecated JSON output.")
 
 # Check for environment variable to explicitly disable JSON output
-DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "0").lower() in ("1", "true", "yes")
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
 
 # Import the ultra-low precision module
 try:
@@ -453,7 +453,10 @@ def main():
         # Store results in database if enabled
         if args.store_db and BENCHMARK_DB_AVAILABLE:
             try:
-                db_api = BenchmarkDBAPI(db_path=args.db_path)
+                db_api = BenchmarkDBAPI(db_path = args.db_path
+    if db_path is None:
+        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        logger.info(f"Using database path from environment: {db_path}"))
                 
                 # Generate run_id if not provided - use integer for better database compatibility
                 run_id = None  # Let the database API handle run_id creation
@@ -500,8 +503,13 @@ def main():
                 logger.warning("JSON output is deprecated. Use database storage instead.")
                 logger.warning("Set --db-path to specify database path.")
             else:
-                with open(args.output, 'w') as f:
-                    json.dump(results, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+                    with open(args.output, 'w') as f:
+                        json.dump(results, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
                 logger.info(f"Results saved to {args.output}")
         
         logger.info("All tests completed successfully!")

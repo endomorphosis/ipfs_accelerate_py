@@ -1,6 +1,21 @@
 {
   "total_files": 3,
-  "files_fixed": 0,
-  "total_issues_fixed": 0,
-  "files_details": []
+  "files_fixed": 1,
+  "total_issues_fixed": 7,
+  "files_details": [
+    {
+      "file": "test_hf_bert.py",
+      "model_name": "bert",
+      "issues_fixed": 7,
+      "fixed_issues": [
+        "Fixed method indentation",
+        "Added cpu hardware platform support",
+        "Added cuda hardware platform support",
+        "Added mps hardware platform support",
+        "Added AMD precision handling for ROCm",
+        "Integrated WebNN testing",
+        "Integrated WebGPU testing"
+      ]
+    }
+  ]
 }

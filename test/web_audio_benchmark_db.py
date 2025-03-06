@@ -17,6 +17,10 @@ import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -148,7 +152,16 @@ class WebAudioBenchmarkDB:
         try:
             # Load the results file
             with open(file_path, 'r') as f:
-                test_data = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    test_data = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                    test_data = json.load(f)
+
             
             # Process based on file format
             if "model_type" in test_data:

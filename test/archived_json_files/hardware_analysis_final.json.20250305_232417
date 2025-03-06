@@ -1,0 +1,389 @@
+{
+  "total_files": 11,
+  "files_with_issues": 11,
+  "files_analyzed": [
+    {
+      "file": "test_hf_bert.py",
+      "model_name": "bert",
+      "issues": 14,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": true,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "mps"
+      ],
+      "integration_issues": [
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing"
+      ]
+    },
+    {
+      "file": "test_hf_clip.py",
+      "model_name": "clip",
+      "issues": 17,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": true,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "mps"
+      ],
+      "integration_issues": [
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
+      ]
+    },
+    {
+      "file": "test_hf_t5_small.py",
+      "model_name": "t5_small",
+      "issues": 16,
+      "hardware_methods": {
+        "init_cpu": true,
+        "test_with_cpu": false,
+        "init_cuda": true,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": false,
+        "init_mps": true,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [],
+      "integration_issues": [
+        "Has init_cpu method but missing test_with_cpu method",
+        "Has init_cuda method but missing test_with_cuda method",
+        "Has init_openvino method but missing test_with_openvino method",
+        "Has init_mps method but missing test_with_mps method",
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing"
+      ]
+    },
+    {
+      "file": "test_hf_llama.py",
+      "model_name": "llama",
+      "issues": 10,
+      "hardware_methods": {
+        "init_cpu": true,
+        "test_with_cpu": false,
+        "init_cuda": true,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": false,
+        "init_mps": true,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [],
+      "integration_issues": [
+        "Has init_cpu method but missing test_with_cpu method",
+        "Has init_cuda method but missing test_with_cuda method",
+        "Has init_openvino method but missing test_with_openvino method",
+        "Has init_mps method but missing test_with_mps method",
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing"
+      ]
+    },
+    {
+      "file": "test_hf_bert_base_uncased.py",
+      "model_name": "bert_base_uncased",
+      "issues": 7,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": false,
+        "test_with_openvino": false,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": false,
+        "test_with_rocm": false,
+        "init_webnn": false,
+        "test_with_webnn": false,
+        "init_webgpu": false,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "openvino",
+        "mps",
+        "rocm",
+        "webnn",
+        "webgpu"
+      ],
+      "integration_issues": []
+    },
+    {
+      "file": "test_hf_bert_generation.py",
+      "model_name": "bert_generation",
+      "issues": 7,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": false,
+        "test_with_openvino": true,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": false,
+        "test_with_rocm": false,
+        "init_webnn": false,
+        "test_with_webnn": false,
+        "init_webgpu": false,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "openvino",
+        "mps",
+        "rocm",
+        "webnn",
+        "webgpu"
+      ],
+      "integration_issues": []
+    },
+    {
+      "file": "test_hf_whisper.py",
+      "model_name": "whisper",
+      "issues": 12,
+      "hardware_methods": {
+        "init_cpu": true,
+        "test_with_cpu": false,
+        "init_cuda": true,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": false,
+        "init_mps": true,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [],
+      "integration_issues": [
+        "Has init_cpu method but missing test_with_cpu method",
+        "Has init_cuda method but missing test_with_cuda method",
+        "Has init_openvino method but missing test_with_openvino method",
+        "Has init_mps method but missing test_with_mps method",
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing",
+        "Audio model missing WebGPU compute shader support",
+        "Audio model missing Firefox-specific optimizations"
+      ]
+    },
+    {
+      "file": "test_hf_clip_vision_model.py",
+      "model_name": "clip_vision_model",
+      "issues": 16,
+      "hardware_methods": {
+        "init_cpu": true,
+        "test_with_cpu": false,
+        "init_cuda": true,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": false,
+        "init_mps": true,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [],
+      "integration_issues": [
+        "Has init_cpu method but missing test_with_cpu method",
+        "Has init_cuda method but missing test_with_cuda method",
+        "Has init_openvino method but missing test_with_openvino method",
+        "Has init_mps method but missing test_with_mps method",
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
+      ]
+    },
+    {
+      "file": "test_hf_t5.py",
+      "model_name": "t5",
+      "issues": 14,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": true,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "mps"
+      ],
+      "integration_issues": [
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing"
+      ]
+    },
+    {
+      "file": "test_hf_clip_text_model.py",
+      "model_name": "clip_text_model",
+      "issues": 7,
+      "hardware_methods": {
+        "init_cpu": false,
+        "test_with_cpu": false,
+        "init_cuda": false,
+        "test_with_cuda": false,
+        "init_openvino": false,
+        "test_with_openvino": true,
+        "init_mps": false,
+        "test_with_mps": false,
+        "init_rocm": false,
+        "test_with_rocm": false,
+        "init_webnn": false,
+        "test_with_webnn": false,
+        "init_webgpu": false,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [
+        "cpu",
+        "cuda",
+        "openvino",
+        "mps",
+        "rocm",
+        "webnn",
+        "webgpu"
+      ],
+      "integration_issues": []
+    },
+    {
+      "file": "test_hf_clipseg.py",
+      "model_name": "clipseg",
+      "issues": 16,
+      "hardware_methods": {
+        "init_cpu": true,
+        "test_with_cpu": false,
+        "init_cuda": true,
+        "test_with_cuda": false,
+        "init_openvino": true,
+        "test_with_openvino": false,
+        "init_mps": true,
+        "test_with_mps": false,
+        "init_rocm": true,
+        "test_with_rocm": false,
+        "init_webnn": true,
+        "test_with_webnn": false,
+        "init_webgpu": true,
+        "test_with_webgpu": false
+      },
+      "missing_hardware": [],
+      "integration_issues": [
+        "Has init_cpu method but missing test_with_cpu method",
+        "Has init_cuda method but missing test_with_cuda method",
+        "Has init_openvino method but missing test_with_openvino method",
+        "Has init_mps method but missing test_with_mps method",
+        "Has init_rocm method but missing test_with_rocm method",
+        "Has init_webnn method but missing test_with_webnn method",
+        "Has init_webgpu method but missing test_with_webgpu method",
+        "Has ROCm support but missing AMD precision handling",
+        "Has WebNN method but not integrated in testing",
+        "Has WebGPU method but not integrated in testing",
+        "Multimodal model missing parallel loading optimization",
+        "Multimodal model missing 4-bit quantization support",
+        "Multimodal model missing KV-cache optimization"
+      ]
+    }
+  ],
+  "total_issues": 136,
+  "issue_types": {
+    "missing_hardware": 30,
+    "integration_issues": 79,
+    "indentation_issues": 27,
+    "asyncio_issues": 0
+  }
+}

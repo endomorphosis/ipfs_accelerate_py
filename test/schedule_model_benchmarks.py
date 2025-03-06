@@ -17,6 +17,19 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
+# Add DuckDB database support
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -69,8 +82,13 @@ def run_scheduled_benchmark(
     }
     
     metadata_file = output_path / "schedule_metadata.json"
-    with open(metadata_file, 'w') as f:
-        json.dump(metadata, f, indent=2)
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
     
     # Construct benchmark command
     cmd = [
@@ -173,10 +191,37 @@ def compare_with_previous_runs(output_dir: str, current_run_path: Path):
     
     try:
         with open(current_results_file, 'r') as f:
-            current_results = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+        db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+
+    current_results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                current_results = json.load(f)
+
         
-        with open(previous_results_file, 'r') as f:
-            previous_results = json.load(f)
+# Try database first, fall back to JSON if necessary
+try:
+    from benchmark_db_api import BenchmarkDBAPI
+    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+    previous_results = db_api.get_benchmark_results()
+    logger.info("Successfully loaded results from database")
+except Exception as e:
+    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+            with open(previous_results_file, 'r') as f:
+                previous_results = json.load(f)
+
         
         # Create comparison report
         comparison_report = {
@@ -318,155 +363,165 @@ def compare_with_previous_runs(output_dir: str, current_run_path: Path):
         
         # Save comparison report
         comparison_file = current_run_path / "comparison_report.json"
-        with open(comparison_file, 'w') as f:
-            json.dump(comparison_report, f, indent=2)
-        
-        # Generate human-readable report
-        markdown_report = current_run_path / "comparison_report.md"
-        with open(markdown_report, 'w') as f:
-            f.write("# Benchmark Comparison Report\n\n")
-            f.write(f"Comparing current run ({comparison_report['current_timestamp']}) ")
-            f.write(f"with previous run ({comparison_report['previous_timestamp']})\n\n")
+# JSON output deprecated in favor of database storage
+if not DEPRECATE_JSON_OUTPUT:
+            with open(comparison_file, 'w') as f:
+                json.dump(comparison_report, f, indent=2)
             
-            # Functionality changes
-            f.write("## Functionality Changes\n\n")
-            
-            if not comparison_report["functionality_changes"]:
-                f.write("No functionality changes detected.\n\n")
-            else:
-                for hw_type, changes in comparison_report["functionality_changes"].items():
-                    f.write(f"### {hw_type}\n\n")
-                    
-                    regressions = [c for c in changes if c.get("regression", False)]
-                    improvements = [c for c in changes if not c.get("regression", False)]
-                    
-                    if regressions:
-                        f.write("#### Regressions\n\n")
-                        f.write("| Model | Previous | Current |\n")
-                        f.write("|-------|----------|--------|\n")
+            # Generate human-readable report
+            markdown_report = current_run_path / "comparison_report.md"
+            with open(markdown_report, 'w') as f:
+                f.write("# Benchmark Comparison Report\n\n")
+                f.write(f"Comparing current run ({comparison_report['current_timestamp']}) ")
+                f.write(f"with previous run ({comparison_report['previous_timestamp']})\n\n")
+                
+                # Functionality changes
+                f.write("## Functionality Changes\n\n")
+                
+                if not comparison_report["functionality_changes"]:
+                    f.write("No functionality changes detected.\n\n")
+                else:
+                    for hw_type, changes in comparison_report["functionality_changes"].items():
+                        f.write(f"### {hw_type}\n\n")
                         
-                        for regression in regressions:
-                            f.write(f"| {regression['model']} | {regression['previous_status']} | {regression['current_status']} |\n")
+                        regressions = [c for c in changes if c.get("regression", False)]
+                        improvements = [c for c in changes if not c.get("regression", False)]
                         
-                        f.write("\n")
-                    
-                    if improvements:
-                        f.write("#### Improvements\n\n")
-                        f.write("| Model | Previous | Current |\n")
-                        f.write("|-------|----------|--------|\n")
+                        if regressions:
+                            f.write("#### Regressions\n\n")
+                            f.write("| Model | Previous | Current |\n")
+                            f.write("|-------|----------|--------|\n")
+                            
+                            for regression in regressions:
+                                f.write(f"| {regression['model']} | {regression['previous_status']} | {regression['current_status']} |\n")
+                            
+                            f.write("\n")
                         
-                        for improvement in improvements:
-                            f.write(f"| {improvement['model']} | {improvement['previous_status']} | {improvement['current_status']} |\n")
+                        if improvements:
+                            f.write("#### Improvements\n\n")
+                            f.write("| Model | Previous | Current |\n")
+                            f.write("|-------|----------|--------|\n")
+                            
+                            for improvement in improvements:
+                                f.write(f"| {improvement['model']} | {improvement['previous_status']} | {improvement['current_status']} |\n")
+                            
+                            f.write("\n")
+                
+                # Performance changes
+                f.write("## Performance Changes\n\n")
+                
+                if not comparison_report["performance_changes"]:
+                    f.write("No significant performance changes detected.\n\n")
+                else:
+                    # Group by family
+                    for family, changes in comparison_report["performance_changes"].items():
+                        f.write(f"### {family}\n\n")
                         
-                        f.write("\n")
-            
-            # Performance changes
-            f.write("## Performance Changes\n\n")
-            
-            if not comparison_report["performance_changes"]:
-                f.write("No significant performance changes detected.\n\n")
-            else:
-                # Group by family
-                for family, changes in comparison_report["performance_changes"].items():
-                    f.write(f"### {family}\n\n")
-                    
-                    regressions = [c for c in changes if c.get("regression", False)]
-                    improvements = [c for c in changes if not c.get("regression", False)]
-                    
-                    if regressions:
-                        f.write("#### Regressions\n\n")
-                        f.write("| Model | Hardware | Metric | Previous | Current | Change |\n")
-                        f.write("|-------|----------|--------|----------|---------|--------|\n")
+                        regressions = [c for c in changes if c.get("regression", False)]
+                        improvements = [c for c in changes if not c.get("regression", False)]
                         
-                        for regression in regressions:
-                            f.write(f"| {regression['model']} | {regression['hardware']} | {regression['metric']} | ")
-                            f.write(f"{regression['previous']:.4f} | {regression['current']:.4f} | {regression['change_percent']:.2f}% |\n")
+                        if regressions:
+                            f.write("#### Regressions\n\n")
+                            f.write("| Model | Hardware | Metric | Previous | Current | Change |\n")
+                            f.write("|-------|----------|--------|----------|---------|--------|\n")
+                            
+                            for regression in regressions:
+                                f.write(f"| {regression['model']} | {regression['hardware']} | {regression['metric']} | ")
+                                f.write(f"{regression['previous']:.4f} | {regression['current']:.4f} | {regression['change_percent']:.2f}% |\n")
+                            
+                            f.write("\n")
                         
-                        f.write("\n")
-                    
-                    if improvements:
-                        f.write("#### Improvements\n\n")
-                        f.write("| Model | Hardware | Metric | Previous | Current | Change |\n")
-                        f.write("|-------|----------|--------|----------|---------|--------|\n")
-                        
-                        for improvement in improvements:
-                            f.write(f"| {improvement['model']} | {improvement['hardware']} | {improvement['metric']} | ")
-                            f.write(f"{improvement['previous']:.4f} | {improvement['current']:.4f} | {improvement['change_percent']:.2f}% |\n")
-                        
-                        f.write("\n")
+                        if improvements:
+                            f.write("#### Improvements\n\n")
+                            f.write("| Model | Hardware | Metric | Previous | Current | Change |\n")
+                            f.write("|-------|----------|--------|----------|---------|--------|\n")
+                            
+                            for improvement in improvements:
+                                f.write(f"| {improvement['model']} | {improvement['hardware']} | {improvement['metric']} | ")
+                                f.write(f"{improvement['previous']:.4f} | {improvement['current']:.4f} | {improvement['change_percent']:.2f}% |\n")
+                            
+                            f.write("\n")
+                
+                # Summary
+                f.write("## Summary\n\n")
+                
+                total_regressions = sum(len([c for c in changes if c.get("regression", False)]) 
+                                      for changes in comparison_report["functionality_changes"].values())
+                total_regressions += sum(len([c for c in changes if c.get("regression", False)]) 
+                                       for changes in comparison_report["performance_changes"].values())
+                
+                total_improvements = sum(len([c for c in changes if not c.get("regression", False)]) 
+                                       for changes in comparison_report["functionality_changes"].values())
+                total_improvements += sum(len([c for c in changes if not c.get("regression", False)]) 
+                                        for changes in comparison_report["performance_changes"].values())
+                
+                f.write(f"- Total regressions: {total_regressions}\n")
+                f.write(f"- Total improvements: {total_improvements}\n")
+                
+                if total_regressions > 0:
+                    f.write("\n⚠️ **WARNING**: Regressions detected! Please investigate.\n")
+                else:
+                    f.write("\n✅ No regressions detected.\n")
             
-            # Summary
-            f.write("## Summary\n\n")
+            logger.info(f"Comparison report generated: {markdown_report}")
             
-            total_regressions = sum(len([c for c in changes if c.get("regression", False)]) 
-                                  for changes in comparison_report["functionality_changes"].values())
-            total_regressions += sum(len([c for c in changes if c.get("regression", False)]) 
-                                   for changes in comparison_report["performance_changes"].values())
+            # Check for regressions
+            has_regressions = False
             
-            total_improvements = sum(len([c for c in changes if not c.get("regression", False)]) 
-                                   for changes in comparison_report["functionality_changes"].values())
-            total_improvements += sum(len([c for c in changes if not c.get("regression", False)]) 
-                                    for changes in comparison_report["performance_changes"].values())
-            
-            f.write(f"- Total regressions: {total_regressions}\n")
-            f.write(f"- Total improvements: {total_improvements}\n")
-            
-            if total_regressions > 0:
-                f.write("\n⚠️ **WARNING**: Regressions detected! Please investigate.\n")
-            else:
-                f.write("\n✅ No regressions detected.\n")
-        
-        logger.info(f"Comparison report generated: {markdown_report}")
-        
-        # Check for regressions
-        has_regressions = False
-        
-        for changes in comparison_report["functionality_changes"].values():
-            if any(c.get("regression", False) for c in changes):
-                has_regressions = True
-                break
-        
-        if not has_regressions:
-            for changes in comparison_report["performance_changes"].values():
+            for changes in comparison_report["functionality_changes"].values():
                 if any(c.get("regression", False) for c in changes):
                     has_regressions = True
                     break
+            
+            if not has_regressions:
+                for changes in comparison_report["performance_changes"].values():
+                    if any(c.get("regression", False) for c in changes):
+                        has_regressions = True
+                        break
+            
+            if has_regressions:
+                logger.warning("⚠️ REGRESSIONS DETECTED! Please investigate.")
+            else:
+                logger.info("✅ No regressions detected.")
+            
+            return has_regressions
         
-        if has_regressions:
-            logger.warning("⚠️ REGRESSIONS DETECTED! Please investigate.")
-        else:
-            logger.info("✅ No regressions detected.")
-        
-        return has_regressions
+        except Exception as e:
+            logger.error(f"Error comparing benchmark runs: {e}")
+            return False
     
-    except Exception as e:
-        logger.error(f"Error comparing benchmark runs: {e}")
-        return False
-
-def main():
-    """Main function for scheduling model benchmarks"""
-    parser = argparse.ArgumentParser(description="Schedule model benchmarking runs")
-    parser.add_argument("--output-dir", type=str, default=DEFAULT_BENCHMARK_DIR, help="Output directory for benchmark results")
-    parser.add_argument("--models-set", choices=["key", "small", "custom"], default=DEFAULT_MODELS_SET, help="Which model set to use")
-    parser.add_argument("--hardware", type=str, nargs="+", help="Hardware platforms to test (defaults to all available)")
-    parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_DAYS, help="Interval in days between benchmark runs")
-    parser.add_argument("--notification-email", type=str, help="Email to send notification when benchmark completes")
-    parser.add_argument("--no-compare", action="store_true", help="Disable comparison with previous benchmark runs")
-    parser.add_argument("--run-now", action="store_true", help="Run a benchmark immediately instead of scheduling")
-    parser.add_argument("--install-cron", action="store_true", help="Install cron job for scheduled benchmarking")
+    def main():
+        """Main function for scheduling model benchmarks"""
+        parser = argparse.ArgumentParser(description="Schedule model benchmarking runs")
+        parser.add_argument("--output-dir", type=str, default=DEFAULT_BENCHMARK_DIR, help="Output directory for benchmark results")
+        parser.add_argument("--models-set", choices=["key", "small", "custom"], default=DEFAULT_MODELS_SET, help="Which model set to use")
+        parser.add_argument("--hardware", type=str, nargs="+", help="Hardware platforms to test (defaults to all available)")
+        parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_DAYS, help="Interval in days between benchmark runs")
+        parser.add_argument("--notification-email", type=str, help="Email to send notification when benchmark completes")
+        parser.add_argument("--no-compare", action="store_true", help="Disable comparison with previous benchmark runs")
+        parser.add_argument("--run-now", action="store_true", help="Run a benchmark immediately instead of scheduling")
+        parser.add_argument("--install-cron", action="store_true", help="Install cron job for scheduled benchmarking")
+        
+        parser.add_argument("--db-path", type=str, default=None,
+                          help="Path to the benchmark database")
+        parser.add_argument("--db-only", action="store_true",
+                          help="Store results only in the database, not in JSON")
     args = parser.parse_args()
-    
-    # Create output directory
-    output_path = Path(args.output_dir)
-    output_path.mkdir(exist_ok=True, parents=True)
-    
-    # Save schedule configuration
-    schedule_config = {
-        "output_dir": args.output_dir,
-        "models_set": args.models_set,
-        "hardware": args.hardware,
-        "interval_days": args.interval,
-        "notification_email": args.notification_email,
+        
+        # Create output directory
+        output_path = Path(args.output_dir)
+        output_path.mkdir(exist_ok=True, parents=True)
+        
+        # Save schedule configuration
+        schedule_config = {
+            "output_dir": args.output_dir,
+            "models_set": args.models_set,
+            "hardware": args.hardware,
+            "interval_days": args.interval,
+            "notification_email": args.notification_email,
+else:
+    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+
         "compare_with_previous": not args.no_compare
     }
     

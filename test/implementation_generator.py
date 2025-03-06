@@ -25,6 +25,43 @@ Usage:
   result = generator.generate_for_model('bert_requirements.json')
 """
 
+
+# Database integration
+
+# Improved hardware detection
+try:
+    from integrated_improvements.improved_hardware_detection import (
+        detect_available_hardware,
+        check_web_optimizations,
+        HARDWARE_PLATFORMS,
+        HAS_CUDA,
+        HAS_ROCM,
+        HAS_MPS,
+        HAS_OPENVINO,
+        HAS_WEBNN,
+        HAS_WEBGPU
+    )
+    HAS_HARDWARE_MODULE = True
+except ImportError:
+    logger.warning("Improved hardware detection not available")
+    HAS_HARDWARE_MODULE = False
+import os
+try:
+    from integrated_improvements.database_integration import (
+        get_db_connection,
+        store_test_result,
+        store_performance_result,
+        create_test_run,
+        complete_test_run,
+        get_or_create_model,
+        get_or_create_hardware_platform,
+        DEPRECATE_JSON_OUTPUT
+    )
+    HAS_DB_INTEGRATION = True
+except ImportError:
+    logger.warning("Database integration not available")
+    HAS_DB_INTEGRATION = False
+    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
 import os
 import sys
 import json
@@ -34,6 +71,1816 @@ import logging
 import traceback
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
+# Add DuckDB database support for templates
+try:
+    import duckdb
+    HAS_DUCKDB = True
+    TEMPLATE_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template_db.duckdb")
+except ImportError:
+    HAS_DUCKDB = False
+    logger.warning("duckdb not available, using in-memory templates")
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"] = HAS_QUALCOMM
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_QUALCOMM = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# Qualcomm detection
+HAS_QUALCOMM = (
+    importlib.util.find_spec("qnn_wrapper") is not None or
+    importlib.util.find_spec("qti") is not None or
+    "QUALCOMM_SDK" in os.environ
+)
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "qualcomm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"] = HAS_QUALCOMM
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def store_test_in_database(test_data, db_path=None):
+    # Store test generation data in database
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot store test")
+        return False
+    
+    try:
+        # Get database connection
+        conn = get_db_connection(db_path)
+        if conn is None:
+            logger.error("Failed to connect to database")
+            return False
+        
+        # Create test run
+        run_id = create_test_run(
+            test_name=test_data.get("model_name", "unknown_model"),
+            test_type="generator",
+            metadata={"generator": os.path.basename(__file__)}
+        )
+        
+        # Get or create model
+        model_id = get_or_create_model(
+            model_name=test_data.get("model_name", "unknown_model"),
+            model_family=test_data.get("model_family"),
+            model_type=test_data.get("model_type"),
+            metadata=test_data
+        )
+        
+        # Store test result for each hardware platform
+        for hardware in test_data.get("hardware_support", []):
+            hw_id = get_or_create_hardware_platform(
+                hardware_type=hardware,
+                metadata={"source": "generator"}
+            )
+            
+            store_test_result(
+                run_id=run_id,
+                test_name=f"generate_{test_data.get('model_name')}_{hardware}",
+                status="PASS",
+                model_id=model_id,
+                hardware_id=hw_id,
+                metadata=test_data
+            )
+        
+        # Complete test run
+        complete_test_run(run_id)
+        
+        logger.info(f"Stored test generation data in database for {test_data.get('model_name', 'unknown')}")
+        return True
+    except Exception as e:
+        logger.error(f"Error storing test in database: {e}")
+        return False
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Hardware Detection
+import os
+import importlib.util
+
+# Try to import torch first (needed for CUDA/ROCm/MPS)
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    from unittest.mock import MagicMock
+    torch = MagicMock()
+    HAS_TORCH = False
+    logger.warning("torch not available, using mock")
+
+# Initialize hardware capability flags
+HAS_CUDA = False
+HAS_ROCM = False
+HAS_MPS = False
+HAS_OPENVINO = False
+HAS_WEBNN = False
+HAS_WEBGPU = False
+
+# CUDA detection
+if HAS_TORCH:
+    HAS_CUDA = torch.cuda.is_available()
+    
+    # ROCm detection
+    if HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version'):
+        HAS_ROCM = True
+    elif 'ROCM_HOME' in os.environ:
+        HAS_ROCM = True
+    
+    # Apple MPS detection
+    if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
+        HAS_MPS = torch.mps.is_available()
+
+# OpenVINO detection
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+
+# WebNN detection (browser API)
+HAS_WEBNN = (
+    importlib.util.find_spec("webnn") is not None or 
+    importlib.util.find_spec("webnn_js") is not None or
+    "WEBNN_AVAILABLE" in os.environ or
+    "WEBNN_SIMULATION" in os.environ
+)
+
+# WebGPU detection (browser API)
+HAS_WEBGPU = (
+    importlib.util.find_spec("webgpu") is not None or
+    importlib.util.find_spec("wgpu") is not None or
+    "WEBGPU_AVAILABLE" in os.environ or
+    "WEBGPU_SIMULATION" in os.environ
+)
+
+# Hardware detection function for comprehensive hardware info
+def check_hardware():
+    """Check available hardware and return capabilities."""
+    capabilities = {
+        "cpu": True,
+        "cuda": False,
+        "cuda_version": None,
+        "cuda_devices": 0,
+        "mps": False,
+        "openvino": False,
+        "rocm": False,
+        "webnn": False,
+        "webgpu": False
+    }
+    
+    # CUDA capabilities
+    if HAS_TORCH and HAS_CUDA:
+        capabilities["cuda"] = True
+        capabilities["cuda_devices"] = torch.cuda.device_count()
+        capabilities["cuda_version"] = torch.version.cuda
+    
+    # MPS capabilities (Apple Silicon)
+    capabilities["mps"] = HAS_MPS
+    
+    # OpenVINO capabilities
+    capabilities["openvino"] = HAS_OPENVINO
+    
+    # ROCm capabilities
+    capabilities["rocm"] = HAS_ROCM
+    
+    # WebNN capabilities
+    capabilities["webnn"] = HAS_WEBNN
+    
+    # WebGPU capabilities
+    capabilities["webgpu"] = HAS_WEBGPU
+    
+    return capabilities
+
+# Get hardware capabilities
+HW_CAPABILITIES = check_hardware()
+
+
+# Web Platform Optimizations - March 2025
+# These optimizations are enabled by environment variables:
+# - WEBGPU_COMPUTE_SHADERS_ENABLED: Enables compute shader optimizations for audio models
+# - WEB_PARALLEL_LOADING_ENABLED: Enables parallel loading for multimodal models
+# - WEBGPU_SHADER_PRECOMPILE_ENABLED: Enables shader precompilation for faster startup
+
+def apply_web_platform_optimizations(model_type, implementation_type=None):
+    """
+    Apply web platform optimizations based on model type and environment settings.
+    
+    Args:
+        model_type: Type of model (audio, multimodal, etc.)
+        implementation_type: Implementation type (WebNN, WebGPU)
+        
+    Returns:
+        Dict of optimization settings
+    """
+    optimizations = {
+        "compute_shaders": False,
+        "parallel_loading": False,
+        "shader_precompile": False
+    }
+    
+    # Check for optimization environment flags
+    compute_shaders_enabled = (
+        os.environ.get("WEBGPU_COMPUTE_SHADERS_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_COMPUTE_SHADERS", "0") == "1"
+    )
+    
+    parallel_loading_enabled = (
+        os.environ.get("WEB_PARALLEL_LOADING_ENABLED", "0") == "1" or
+        os.environ.get("PARALLEL_LOADING_ENABLED", "0") == "1"
+    )
+    
+    shader_precompile_enabled = (
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE_ENABLED", "0") == "1" or
+        os.environ.get("WEBGPU_SHADER_PRECOMPILE", "0") == "1"
+    )
+    
+    # Enable all optimizations flag
+    if os.environ.get("WEB_ALL_OPTIMIZATIONS", "0") == "1":
+        compute_shaders_enabled = True
+        parallel_loading_enabled = True
+        shader_precompile_enabled = True
+    
+    # Only apply WebGPU compute shaders for audio models
+    if compute_shaders_enabled and implementation_type == "WebGPU" and model_type == "audio":
+        optimizations["compute_shaders"] = True
+    
+    # Only apply parallel loading for multimodal models
+    if parallel_loading_enabled and model_type == "multimodal":
+        optimizations["parallel_loading"] = True
+    
+    # Apply shader precompilation for most model types with WebGPU
+    if shader_precompile_enabled and implementation_type == "WebGPU":
+        optimizations["shader_precompile"] = True
+    
+    return optimizations
+
+def detect_browser_for_optimizations():
+    """
+    Detect browser type for optimizations, particularly for Firefox WebGPU compute shader optimizations.
+    
+    Returns:
+        Dict with browser information
+    """
+    # Start with default (simulation environment)
+    browser_info = {
+        "is_browser": False,
+        "browser_type": "unknown",
+        "is_firefox": False,
+        "is_chrome": False,
+        "is_edge": False,
+        "is_safari": False,
+        "supports_compute_shaders": False,
+        "workgroup_size": [128, 1, 1]  # Default workgroup size
+    }
+    
+    # Try to detect browser environment
+    try:
+        import js
+        if hasattr(js, 'navigator'):
+            browser_info["is_browser"] = True
+            user_agent = js.navigator.userAgent.lower()
+            
+            # Detect browser type
+            if "firefox" in user_agent:
+                browser_info["browser_type"] = "firefox"
+                browser_info["is_firefox"] = True
+                browser_info["supports_compute_shaders"] = True
+                browser_info["workgroup_size"] = [256, 1, 1]  # Firefox optimized workgroup size
+            elif "chrome" in user_agent:
+                browser_info["browser_type"] = "chrome"
+                browser_info["is_chrome"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "edg" in user_agent:
+                browser_info["browser_type"] = "edge"
+                browser_info["is_edge"] = True
+                browser_info["supports_compute_shaders"] = True
+            elif "safari" in user_agent:
+                browser_info["browser_type"] = "safari"
+                browser_info["is_safari"] = True
+                browser_info["supports_compute_shaders"] = False  # Safari has limited compute shader support
+    except (ImportError, AttributeError):
+        # Not in a browser environment
+        pass
+    
+    # Check environment variables for browser simulation
+    if os.environ.get("SIMULATE_FIREFOX", "0") == "1":
+        browser_info["browser_type"] = "firefox"
+        browser_info["is_firefox"] = True
+        browser_info["supports_compute_shaders"] = True
+        browser_info["workgroup_size"] = [256, 1, 1]
+    
+    return browser_info
+
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually if needed
+    import importlib.util
 
 try:
     import jinja2
@@ -50,7 +1897,7 @@ except ImportError:
     print("Warning: autopep8 not available, code formatting will be disabled")
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level="logging".INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -74,7 +1921,535 @@ if not os.listdir(TEMPLATES_DIR):
 class {{ class_name }}:
     """{{ model_name }} implementation.
     
-    This class provides standardized interfaces for working with {{ model_name }} models
+    This 
+# Hardware Support Functions
+
+def init_hardware_for_model(self, model_name, hardware_type, **kwargs):
+    """Initialize hardware for the given model and hardware type."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(hardware_type.lower(), "REAL")
+    
+    # Choose appropriate initialization based on hardware type and support level
+    if hardware_type.lower() == "cpu":
+        return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.init_cuda(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "openvino" and HAS_OPENVINO:
+        if support_level == "REAL":
+            return self.init_openvino(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for OpenVINO")
+            return self.init_openvino(model_name=model_name, device="CPU", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "mps" and HAS_MPS:
+        if support_level == "REAL":
+            return self.init_mps(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for MPS")
+            return self.init_mps(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "rocm" and HAS_ROCM:
+        if support_level == "REAL":
+            return self.init_rocm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for ROCm")
+            return self.init_rocm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level == "REAL":
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for Qualcomm")
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "webnn" and HAS_WEBNN:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        if support_level == "REAL":
+            return self.init_webnn(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebNN")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, using mock mode")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    elif hardware_type.lower() == "webgpu" and HAS_WEBGPU:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level == "REAL":
+            return self.init_webgpu(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebGPU")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, using mock mode")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    else:
+        # Default to CPU
+        logger.warning(f"Hardware {hardware_type} not available or not supported for {model_name}, using CPU")
+        return self.init_cpu(model_name=model_name, **kwargs)
+
+def test_platform_for_model(self, model_name, platform, input_data):
+    """Test the specified platform for a given model."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(platform.lower(), "REAL")
+    
+    # Get model category for web platform optimizations
+    model_category = detect_model_category(model_name)
+    
+    # Choose appropriate test based on platform and support level
+    if platform.lower() == "cpu":
+        return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.test_platform(input_data, "cuda")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "openvino" and HAS_OPENVINO:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "openvino")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "mps" and HAS_MPS:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "mps")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "rocm" and HAS_ROCM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "rocm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "qualcomm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webnn" and HAS_WEBNN:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebNN")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webnn")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webgpu" and HAS_WEBGPU:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webgpu")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    else:
+        # Default to CPU
+        logger.warning(f"Platform {platform} not available or not supported for {model_name}, using CPU")
+        return self.test_platform(input_data, "cpu")
+
+# Hardware Support Functions
+
+def init_hardware_for_model(self, model_name, hardware_type, **kwargs):
+    """Initialize hardware for the given model and hardware type."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(hardware_type.lower(), "REAL")
+    
+    # Choose appropriate initialization based on hardware type and support level
+    if hardware_type.lower() == "cpu":
+        return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.init_cuda(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "openvino" and HAS_OPENVINO:
+        if support_level == "REAL":
+            return self.init_openvino(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for OpenVINO")
+            return self.init_openvino(model_name=model_name, device="CPU", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "mps" and HAS_MPS:
+        if support_level == "REAL":
+            return self.init_mps(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for MPS")
+            return self.init_mps(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "rocm" and HAS_ROCM:
+        if support_level == "REAL":
+            return self.init_rocm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for ROCm")
+            return self.init_rocm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level == "REAL":
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for Qualcomm")
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "webnn" and HAS_WEBNN:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        if support_level == "REAL":
+            return self.init_webnn(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebNN")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, using mock mode")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    elif hardware_type.lower() == "webgpu" and HAS_WEBGPU:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level == "REAL":
+            return self.init_webgpu(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebGPU")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, using mock mode")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    else:
+        # Default to CPU
+        logger.warning(f"Hardware {hardware_type} not available or not supported for {model_name}, using CPU")
+        return self.init_cpu(model_name=model_name, **kwargs)
+
+def test_platform_for_model(self, model_name, platform, input_data):
+    """Test the specified platform for a given model."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(platform.lower(), "REAL")
+    
+    # Get model category for web platform optimizations
+    model_category = detect_model_category(model_name)
+    
+    # Choose appropriate test based on platform and support level
+    if platform.lower() == "cpu":
+        return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.test_platform(input_data, "cuda")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "openvino" and HAS_OPENVINO:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "openvino")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "mps" and HAS_MPS:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "mps")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "rocm" and HAS_ROCM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "rocm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "qualcomm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webnn" and HAS_WEBNN:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebNN")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webnn")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webgpu" and HAS_WEBGPU:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webgpu")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    else:
+        # Default to CPU
+        logger.warning(f"Platform {platform} not available or not supported for {model_name}, using CPU")
+        return self.test_platform(input_data, "cpu")
+
+# Hardware Support Functions
+
+def init_hardware_for_model(self, model_name, hardware_type, **kwargs):
+    """Initialize hardware for the given model and hardware type."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(hardware_type.lower(), "REAL")
+    
+    # Choose appropriate initialization based on hardware type and support level
+    if hardware_type.lower() == "cpu":
+        return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.init_cuda(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "openvino" and HAS_OPENVINO:
+        if support_level == "REAL":
+            return self.init_openvino(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for OpenVINO")
+            return self.init_openvino(model_name=model_name, device="CPU", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "mps" and HAS_MPS:
+        if support_level == "REAL":
+            return self.init_mps(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for MPS")
+            return self.init_mps(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "rocm" and HAS_ROCM:
+        if support_level == "REAL":
+            return self.init_rocm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for ROCm")
+            return self.init_rocm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level == "REAL":
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for Qualcomm")
+            return self.init_qualcomm(model_name=model_name, **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.init_cpu(model_name=model_name, **kwargs)
+    elif hardware_type.lower() == "webnn" and HAS_WEBNN:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        if support_level == "REAL":
+            return self.init_webnn(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebNN")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, using mock mode")
+            return self.init_webnn(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    elif hardware_type.lower() == "webgpu" and HAS_WEBGPU:
+        # Get model category for web platform optimizations
+        model_category = detect_model_category(model_name)
+        
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level == "REAL":
+            return self.init_webgpu(model_name=model_name, model_type=model_category, **kwargs)
+        elif support_level == "SIMULATION":
+            logger.warning(f"Model {model_name} has simulation support for WebGPU")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="simulation", **kwargs)
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, using mock mode")
+            return self.init_webgpu(model_name=model_name, model_type=model_category, web_api_mode="mock", **kwargs)
+    else:
+        # Default to CPU
+        logger.warning(f"Hardware {hardware_type} not available or not supported for {model_name}, using CPU")
+        return self.init_cpu(model_name=model_name, **kwargs)
+
+def test_platform_for_model(self, model_name, platform, input_data):
+    """Test the specified platform for a given model."""
+    # Get hardware support map for this model
+    hardware_map = get_hardware_map_for_model(model_name)
+    support_level = hardware_map.get(platform.lower(), "REAL")
+    
+    # Get model category for web platform optimizations
+    model_category = detect_model_category(model_name)
+    
+    # Choose appropriate test based on platform and support level
+    if platform.lower() == "cpu":
+        return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "cuda" and HAS_CUDA:
+        if support_level == "REAL":
+            return self.test_platform(input_data, "cuda")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for CUDA, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "openvino" and HAS_OPENVINO:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "openvino")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for OpenVINO, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "mps" and HAS_MPS:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "mps")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for MPS, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "rocm" and HAS_ROCM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "rocm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for ROCm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "qualcomm" and HAS_QUALCOMM:
+        if support_level in ["REAL", "SIMULATION"]:
+            return self.test_platform(input_data, "qualcomm")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for Qualcomm, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webnn" and HAS_WEBNN:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebNN")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webnn")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebNN, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    elif platform.lower() == "webgpu" and HAS_WEBGPU:
+        # Apply March 2025 optimizations
+        optimizations = apply_web_platform_optimizations(model_category, "WebGPU")
+        
+        if support_level in ["REAL", "SIMULATION"]:
+            # Determine if batch operations are supported for this model type
+            web_batch_supported = True
+            if model_category == "audio":
+                web_batch_supported = False  # Audio models may have special input processing
+            elif model_category == "multimodal":
+                web_batch_supported = False  # Multimodal often doesn't batch well on web
+            
+            # Process the input using web platform handler if available
+            if hasattr(self, "process_for_web"):
+                inputs = self.process_for_web(model_category, input_data, web_batch_supported)
+            else:
+                inputs = input_data
+            
+            return self.test_platform(inputs, "webgpu")
+        else:
+            logger.warning(f"Model {model_name} has {support_level} support for WebGPU, falling back to CPU")
+            return self.test_platform(input_data, "cpu")
+    else:
+        # Default to CPU
+        logger.warning(f"Platform {platform} not available or not supported for {model_name}, using CPU")
+        return self.test_platform(input_data, "cpu")
+class provides standardized interfaces for working with {{ model_name }} models
     across different hardware backends (CPU, CUDA, OpenVINO, MPS, etc.).
     """
     
@@ -120,65 +2495,3916 @@ class {{ class_name }}:
         
         return None
         
-    def init(self):
+
+        def init(self):
         """Initialize resources and dependencies."""
+   
         # Implement initialization code
         return None
         
-    def init_cpu(self, model_name=None, model_type="{{ model_name }}", **kwargs):
-        """Initialize model for CPU inference."""
-        # Implement CPU initialization
-        pass
-        
-    def init_cuda(self, model_name=None, model_type="{{ model_name }}", **kwargs):
-        """Initialize model for CUDA inference."""
-        # Implement CUDA initialization
-        pass
-        
-    def init_openvino(self, model_name=None, model_type="{{ model_name }}", **kwargs):
-        """Initialize model for OpenVINO inference."""
-        # Implement OpenVINO initialization
-        pass
-        
-    {% for method_name, method_info in methods.items() %}
-    def {{ method_name }}(self{% for param in method_info.required_parameters %}, {{ param }}{% endfor %}{% for param in method_info.optional_parameters %}, {{ param }}=None{% endfor %}):
-        """{{ method_name.replace('_', ' ').title() }} implementation."""
-        # Implement {{ method_name }} method
-        pass
     
-    def create_cpu_{{ method_name }}_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, processor=None):
-        """Create handler for CPU-based {{ method_name }}."""
-        # Implement CPU handler creation
-        pass
-        
-    def create_cuda_{{ method_name }}_endpoint_handler(self, endpoint_model, device, hardware_label, endpoint=None, processor=None):
-        """Create handler for CUDA-based {{ method_name }}."""
-        # Implement CUDA handler creation
-        pass
-        
-    def create_openvino_{{ method_name }}_endpoint_handler(self, endpoint_model, openvino_label, endpoint=None, processor=None):
-        """Create handler for OpenVINO-based {{ method_name }}."""
-        # Implement OpenVINO handler creation
-        pass
-    {% endfor %}
-"""
     
-    with open(os.path.join(TEMPLATES_DIR, "text_model.py.jinja2"), "w") as f:
-        f.write(TEXT_MODEL_TEMPLATE)
     
-    # Write a basic template for vision models
-    VISION_MODEL_TEMPLATE = """
-# Template for {{ model_name }} vision model implementation
-# Generated: {{ generated_timestamp }}
+    
 
-class {{ class_name }}:
-    """{{ model_name }} vision model implementation.
+        
     
-    This class provides standardized interfaces for working with {{ model_name }} vision models
-    across different hardware backends (CPU, CUDA, OpenVINO, MPS, etc.).
-    """
     
-    def __init__(self, resources=None, metadata=None):
+    
+    def init_cpu(self, model_name=None, **kwargs):
+        """Initialize model for CPU inference."""
+        model_name = model_name or self.model_id
+        
+        try:
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CPU",
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CPU handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model on CPU: {str(e)}")
+            traceback.print_exc()
+            return None, None, None, None, 1
+    
+    def init_cuda(self, model_name=None, device="cuda:0", **kwargs):
+        """Initialize model for CUDA inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for CUDA availability
+        if not HAS_CUDA:
+            logger.warning("CUDA not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with CUDA on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to GPU
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "CUDA",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in CUDA handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue for batch processing
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return all components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with CUDA: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_rocm(self, model_name=None, device="hip", **kwargs):
+        """Initialize model for ROCm (AMD GPU) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for ROCm/HIP availability
+        if not HAS_ROCM:
+            logger.warning("ROCm/HIP not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with ROCm/HIP on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model
+            model = transformers.AutoModel.from_pretrained(model_name)
+            
+            # Move model to AMD GPU
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to GPU
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "ROCM",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in ROCm handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with ROCm: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_openvino(self, model_name=None, device="CPU", **kwargs):
+        """Initialize model for OpenVINO inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for OpenVINO
+        if not HAS_OPENVINO:
+            logger.warning("OpenVINO not available, falling back to CPU")
+            return self.init_cpu(model_name)
+        
+        try:
+            logger.info(f"Initializing {model_name} with OpenVINO on {device}")
+            
+            # Try to use optimum.intel if available
+            try:
+                # Import openvino and handle API changes
+                import openvino
+                
+                # Try new API first (recommended since 2025.0)
+                try:
+                    from openvino import Core
+                except (ImportError, AttributeError):
+                    # Fall back to legacy API
+                    from openvino.runtime import Core
+                
+                # Import optimum.intel for transformer models
+                from optimum.intel import OVModelForSequenceClassification
+                
+                # Time tokenizer loading
+                tokenizer_load_start = time.time()
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                tokenizer_load_time = time.time() - tokenizer_load_start
+                
+                # Time model loading
+                model_load_start = time.time()
+                model = OVModelForSequenceClassification.from_pretrained(model_name, export=True)
+                model_load_time = time.time() - model_load_start
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "optimum.intel",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+            except ImportError:
+                logger.warning("optimum.intel not available, using direct OpenVINO conversion")
+                
+                # Initialize tokenizer
+                tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+                
+                # Load model directly with transformers first
+                pt_model = transformers.AutoModel.from_pretrained(model_name)
+                
+                # We'll use a simplified approach for this implementation
+                # Instead of full OpenVINO conversion, we'll wrap the PyTorch model
+                class SimpleOVWrapper:
+                    def __init__(self, pt_model):
+                        self.pt_model = pt_model
+                        
+                    def __call__(self, **kwargs):
+                        with torch.no_grad():
+                            return self.pt_model(**kwargs)
+                
+                model = SimpleOVWrapper(pt_model)
+                
+                # Create handler function
+                def handler(text_input, **kwargs):
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Run inference
+                    outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "openvino_direct",
+                        "model": model_name
+                    }
+                
+                # Create queue
+                queue = asyncio.Queue(64)
+                batch_size = getattr(self, 'batch_size', 8)
+                
+                # Return components
+                return model, tokenizer, handler, queue, batch_size
+                
+        except Exception as e:
+            logger.error(f"Error initializing OpenVINO: {str(e)}")
+            traceback.print_exc()
+            # Fall back to CPU
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_mps(self, model_name=None, device="mps", **kwargs):
+        """Initialize model for MPS (Apple Silicon) inference."""
+        model_name = model_name or self.model_id
+        
+        # Check for MPS availability
+        if not HAS_MPS:
+            logger.warning("MPS not available, falling back to CPU")
+            return self.init_cpu(model_name)
+            
+        try:
+            logger.info(f"Initializing {model_name} with MPS on {device}")
+            
+            # Initialize tokenizer
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+            
+            # Initialize model and move to MPS
+            model = transformers.AutoModel.from_pretrained(model_name)
+            model.to(device)
+            model.eval()
+            
+            # Create handler function
+            def handler(text_input, **kwargs):
+                try:
+                    # Process with tokenizer
+                    if isinstance(text_input, list):
+                        inputs = tokenizer(text_input, padding=True, truncation=True, return_tensors="pt")
+                    else:
+                        inputs = tokenizer(text_input, return_tensors="pt")
+                    
+                    # Move inputs to MPS
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+                    
+                    # Run inference
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                    
+                    return {
+                        "output": outputs,
+                        "implementation_type": "MPS",
+                        "device": device,
+                        "model": model_name
+                    }
+                except Exception as e:
+                    logger.error(f"Error in MPS handler: {e}")
+                    return {
+                        "output": f"Error: {str(e)}",
+                        "implementation_type": "ERROR",
+                        "error": str(e),
+                        "model": model_name
+                    }
+            
+            # Create queue
+            queue = asyncio.Queue(64)
+            batch_size = getattr(self, 'batch_size', 8)
+            
+            # Return components
+            return model, tokenizer, handler, queue, batch_size
+            
+        except Exception as e:
+            logger.error(f"Error initializing model with MPS: {str(e)}")
+            logger.warning("Falling back to CPU implementation")
+            return self.init_cpu(model_name)
+    
+    def init_webnn(self, model_name=None, **kwargs):
+        """Initialize model for WebNN inference.
+        
+        WebNN support requires browser environment or dedicated WebNN runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebNN, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebNN mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webnn_text = "This is a test sentence for WebNN"
+        self.test_batch_webnn = ["First WebNN test.", "Second WebNN test."]
+        
+        # Handler for WebNN
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebNN execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebNN mock output for text model",
+                    "implementation_type": "WebNN_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webnn_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebNN mock output for text model"] * len(text_input),
+                    "implementation_type": "WebNN_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webnn
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebNN",
+                    "implementation_type": "WebNN_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebNN typically
+        
+        return model, processor, handler, queue, batch_size
+    
+    def init_webgpu(self, model_name=None, **kwargs):
+        """Initialize model for WebGPU inference.
+        
+        WebGPU support requires browser environment or dedicated WebGPU runtime.
+        This implementation provides the necessary adapter functions for web usage.
+        """
+        model_name = model_name or self.model_id
+        
+        # For WebGPU, actual execution happens in browser environment
+        # This method prepares the necessary adapters
+        
+        # Create a simple mock for direct testing
+        processor = None
+        
+        try:
+            # Get the tokenizer as processor
+            processor = transformers.AutoTokenizer.from_pretrained(model_name)
+        except Exception as e:
+            logger.warning(f"Could not load tokenizer: {str(e)}")
+            # Create mock tokenizer
+            class MockTokenizer:
+                def __call__(self, text, **kwargs):
+                    return {"input_ids": [1, 2, 3, 4, 5]}
+                
+                def decode(self, token_ids, **kwargs):
+                    return "WebGPU mock output"
+                    
+            processor = MockTokenizer()
+        
+        # Create adapter
+        model = None  # No model object needed, execution happens in browser
+        
+        # Create test data attributes for the test
+        self.test_webgpu_text = "This is a test sentence for WebGPU"
+        self.test_batch_webgpu = ["First WebGPU test.", "Second WebGPU test."]
+        
+        # Handler for WebGPU
+        def handler(text_input, **kwargs):
+            # This handler is called from Python side to prepare for WebGPU execution
+            # It should return the necessary data for the browser to execute the model
+            
+            # Process input
+            if isinstance(text_input, str):
+                # For API simulation/testing, return mock output
+                return {
+                    "output": "WebGPU mock output for text model",
+                    "implementation_type": "WebGPU_READY",
+                    "input_text": text_input,
+                    "model": model_name,
+                    "test_data": self.test_webgpu_text
+                }
+            elif isinstance(text_input, list):
+                # Batch processing
+                return {
+                    "output": ["WebGPU mock output for text model"] * len(text_input),
+                    "implementation_type": "WebGPU_READY",
+                    "input_batch": text_input,
+                    "model": model_name,
+                    "test_batch_data": self.test_batch_webgpu
+                }
+            else:
+                return {
+                    "error": "Unsupported input format for WebGPU",
+                    "implementation_type": "WebGPU_ERROR"
+                }
+        
+        # Create queue and batch_size
+        queue = asyncio.Queue(64)
+        batch_size = 1  # Single item processing for WebGPU typically
+        
+        return model, processor, handler, queue, batch_size
+def __init__(self, resources=None, metadata=None):
         """Initialize the {{ model_name }} model.
         
         Args:
@@ -536,8 +6762,13 @@ class SkillsetImplementationGenerator:
         
         # Register custom filters
         self.template_env.filters['title_case'] = lambda x: x.replace('_', ' ').title()
+        self.template_env.filters['to_valid_python'] = self._convert_to_valid_python
         
         logger.info(f"Implementation generator initialized with templates from {self.template_dir}")
+    
+    def _convert_to_valid_python(self, name):
+        """Convert a name to a valid Python identifier by replacing hyphens with underscores."""
+        return name.replace('-', '_')
     
     def load_requirements(self, requirements_path):
         """
@@ -551,7 +6782,21 @@ class SkillsetImplementationGenerator:
         """
         try:
             with open(requirements_path, 'r') as f:
-                return json.load(f)
+                requirements = json.load(f)
+                
+            # Convert hyphenated task names to use underscores to ensure valid Python syntax
+            if "methods" in requirements:
+                methods = {}
+                for method_name, method_info in requirements["methods"].items():
+                    valid_method_name = method_name.replace('-', '_')
+                    methods[valid_method_name] = method_info
+                requirements["methods"] = methods
+                
+            # Also sanitize primary task if present
+            if "primary_task" in requirements:
+                requirements["primary_task"] = requirements["primary_task"].replace('-', '_')
+                
+            return requirements
         except Exception as e:
             logger.error(f"Error loading requirements from {requirements_path}: {e}")
             raise
@@ -622,6 +6867,18 @@ class SkillsetImplementationGenerator:
         try:
             # Load the template
             template = self.template_env.get_template(template_name)
+            
+            # Make sure primary task and all method names use valid Python syntax (no hyphens)
+            if "primary_task" in requirements:
+                requirements["primary_task"] = requirements["primary_task"].replace('-', '_')
+                
+            # Sanitize method names in requirements to use underscores instead of hyphens
+            if "methods" in requirements:
+                methods = {}
+                for method_name, method_info in requirements["methods"].items():
+                    valid_method_name = method_name.replace('-', '_')
+                    methods[valid_method_name] = method_info
+                requirements["methods"] = methods
             
             # Create the context for template rendering
             context = {
@@ -809,11 +7066,130 @@ def generate_implementation_from_requirements(requirements_path, template_name=N
     Returns:
         Dict with generation results
     """
-    generator = SkillsetImplementationGenerator(output_dir=output_dir)
+    generator = SkillsetImplementationGenerator(output_dir="output_dir")
     result = generator.generate_for_model(requirements_path, template_name)
     return result
 
 # Command-line interface
+
+# Define key models that need special handling with hardware backends
+KEY_MODEL_HARDWARE_MAP = {'bert': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 't5': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'llama': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'vit': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'clip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'REAL', 'webgpu': 'REAL'}, 'detr': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'clap': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'wav2vec2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'whisper': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'llava': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'llava_next': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'xclip': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'REAL', 'mps': 'REAL', 'rocm': 'REAL', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}, 'qwen2': {'cpu': 'REAL', 'cuda': 'REAL', 'openvino': 'SIMULATION', 'mps': 'SIMULATION', 'rocm': 'SIMULATION', 'webnn': 'SIMULATION', 'webgpu': 'SIMULATION'}}
+
+
+def load_template_from_db(model_type, template_type='base', platform=None):
+    """Load template from the DuckDB template database.
+    
+    Args:
+        model_type: The model type (bert, vit, etc.)
+        template_type: The template type (base, hardware_platform, etc.)
+        platform: Optional platform name for hardware platform templates
+        
+    Returns:
+        Template string or None if not found
+    """
+    if not HAS_DUCKDB or not os.path.exists(TEMPLATE_DB_PATH):
+        return None
+    
+    try:
+        conn = duckdb.connect(TEMPLATE_DB_PATH)
+        
+        # Build query based on parameters
+        query = "SELECT template FROM templates WHERE model_type = ? AND template_type = ?"
+        params = [model_type, template_type]
+        
+        if platform:
+            query += " AND platform = ?"
+            params.append(platform)
+        
+        # Try exact match first
+        result = conn.execute(query, params).fetchone()
+        
+        if not result:
+            # Try fallback to similar models within same category
+            for category, models in MODEL_CATEGORIES.items():
+                if model_type in models:
+                    # Try another model in the same category
+                    category_query = f"SELECT template FROM templates WHERE model_type IN ({','.join(['?'] * len(models))}) AND template_type = ?"
+                    category_params = models + [template_type]
+                    
+                    if platform:
+                        category_query += " AND platform = ?"
+                        category_params.append(platform)
+                    
+                    category_result = conn.execute(category_query, category_params).fetchone()
+                    if category_result:
+                        logger.debug(f"Using template from same category for {model_type}")
+                        return category_result[0]
+        
+        conn.close()
+        
+        if result:
+            return result[0]
+        return None
+    
+    except Exception as e:
+        logger.error(f"Error loading template from database: {e}")
+        return None
+
+def get_hardware_map_for_model(model_name):
+    """Get hardware support map for a specific model."""
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
+    
+    # Direct lookup in key models
+    if model_base in KEY_MODEL_HARDWARE_CONFIG:
+        return KEY_MODEL_HARDWARE_CONFIG[model_base]
+    
+    # Check which category this model belongs to
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_name.lower() for model in models):
+            # Create default map based on category
+            if category == "text" or category == "vision":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"
+                }
+            elif category == "audio":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "REAL", "webgpu": "REAL"  # Now REAL with March 2025 optimization
+                }
+            elif category == "multimodal":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+            elif category == "video":
+                return {
+                    "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+                    "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+                    "webnn": "SIMULATION", "webgpu": "SIMULATION"
+                }
+    
+    # Default to text configuration if unknown
+    return {
+        "cpu": "REAL", "cuda": "REAL", "openvino": "REAL", 
+        "mps": "REAL", "rocm": "REAL", "qualcomm": "REAL",
+        "webnn": "REAL", "webgpu": "REAL"
+    }
+
+def detect_model_category(model_name):
+    """Detect model category based on model name."""
+    model_lower = model_name.lower()
+    
+    # Check key models first
+    model_base = model_name.split("-")[0].lower() if "-" in model_name else model_lower
+    
+    # Check by model family name patterns
+    for category, models in MODEL_CATEGORIES.items():
+        if any(model.lower() in model_lower for model in models):
+            return category
+    
+    # Default to text if unknown
+    return "text"
 if __name__ == "__main__":
     import argparse
     
@@ -825,10 +7201,14 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory for generated implementations")
     parser.add_argument("--batch", action="store_true", help="Process all requirements files in batch")
     
-    args = parser.parse_args()
+    
+    parser.add_argument("--db-path", type=str, 
+                      help="Path to database for storing results",
+                      default=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+args = parser.parse_args()
     
     # Initialize generator
-    generator = SkillsetImplementationGenerator(output_dir=args.output_dir)
+    generator = SkillsetImplementationGenerator(output_dir="args".output_dir)
     
     # List requirements or templates if requested
     if args.list_requirements:

@@ -178,4 +178,16 @@ python test/test_web_platform_optimizations.py --model llama --precision 4 --pro
 python test/test_web_platform_optimizations.py --compare-browsers --models bert,whisper,clip
 ```
 
-For comprehensive details, refer to the [Web Platform Integration Guide](../web_platform_integration_guide.md) and [Web Platform Integration Quick Reference](../web_platform_integration_quick_reference.md).
+## Next Steps and Additional Resources
+
+For more detailed information, refer to these guides:
+
+- **[Web Platform Integration Guide](WEB_PLATFORM_INTEGRATION_GUIDE.md)** - Comprehensive guide for integrating web platform capabilities
+- **[WebGPU Implementation Guide](WEBGPU_IMPLEMENTATION_GUIDE.md)** - Detailed guide to WebGPU integration
+- **[WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRECOMPILATION.md)** - Guide to 30-45% faster first inference with shader precompilation
+- **[Browser-Specific Optimizations](browser_specific_optimizations.md)** - Tailored configurations for different browsers
+- **[Firefox Audio Optimization Guide](WEB_PLATFORM_FIREFOX_AUDIO_GUIDE.md)** - Special optimizations for audio models in Firefox (~20% better performance)
+- **[Developer Tutorial](DEVELOPER_TUTORIAL.md)** - Step-by-step tutorials with complete working examples
+- **[Error Handling Guide](ERROR_HANDLING_GUIDE.md)** - Comprehensive error handling strategies
+
+For a complete list of all documentation, see the [Documentation Index](DOCUMENTATION_INDEX.md).

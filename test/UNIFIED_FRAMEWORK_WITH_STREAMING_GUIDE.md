@@ -219,6 +219,10 @@ The streaming inference pipeline enables token-by-token generation, providing a 
 
 5. **Memory-Efficient KV Cache**: Optimized attention cache for long generations.
 
+6. **Compute/Transfer Overlap**: Parallel computation and data transfer operations to reduce latency.
+
+7. **Advanced Token Prediction**: Predictive prefetching based on text patterns and confidence scoring.
+
 ### Implementation Options
 
 #### 1. Callback-Based Streaming
@@ -229,7 +233,12 @@ The simplest approach using a callback function for each token:
 // Create streaming handler
 const streaming = new WebGPUStreamingInference({
   modelPath: 'models/llama-7b',
-  config: { quantization: "int4" }
+  config: { 
+    quantization: "int4",
+    computeTransferOverlap: true,  // Enable compute/transfer overlap
+    tokenPredictionEnabled: true,  // Enable advanced token prediction
+    adaptiveBatchSize: true        // Dynamically adjust batch size
+  }
 });
 
 // Define callback
@@ -550,6 +559,8 @@ The unified framework is designed to work across major browsers, with fallback m
 | Compute Shaders | ✅ Full | ✅ Full | ✅ Full | ⚠️ Limited | ✅ Full | ⚠️ Limited |
 | Shader Precompilation | ✅ Full | ✅ Full | ⚠️ Limited | ❌ None | ✅ Full | ❌ None |
 | Ultra-Low Precision | ✅ Full | ✅ Full | ✅ Full | ⚠️ Limited | ✅ Full | ⚠️ Limited |
+| Compute/Transfer Overlap | ✅ Full | ✅ Full | ✅ Full | ⚠️ Limited | ✅ Full | ⚠️ Limited |
+| Advanced Token Prediction | ✅ Full | ✅ Full | ✅ Full | ⚠️ Limited | ✅ Full | ⚠️ Limited |
 | WebAssembly SIMD | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 | WebSockets | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
 | 2-bit/3-bit Precision | ✅ Full | ✅ Full | ✅ Full | ⚠️ Limited | ✅ Full | ⚠️ Limited |
@@ -721,6 +732,8 @@ const multimodalConfig = {
   parallelLoading: true,      // Load components in parallel
   progressiveLoading: true,   // Critical for multimodal
   optimizeKVCache: true,
+  computeTransferOverlap: true,  // Enable compute/transfer overlap
+  tokenPredictionEnabled: true,  // Enable advanced token prediction
   visionModelPath: "models/clip-vit-base"  // Vision encoder
 };
 

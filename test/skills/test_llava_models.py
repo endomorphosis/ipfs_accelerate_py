@@ -1,4 +1,15 @@
 """
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 This script searches for LLaVA models on HuggingFace and tests whether they require API tokens.
 It will help identify suitable models for the hf_llava and hf_llava_next test files.
 """

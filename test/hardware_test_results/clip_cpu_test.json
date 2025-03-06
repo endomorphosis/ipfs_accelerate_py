@@ -1,0 +1,34 @@
+{
+  "results": {
+    "cpu": {
+      "init": "Success",
+      "handler_created": "Success",
+      "execution_time": 1.202348232269287,
+      "output_type": "<class 'dict'>",
+      "implementation_type": "REAL_CPU",
+      "logits_shape": "(1, 2)",
+      "top_label": "a photo of a dog",
+      "success": true
+    }
+  },
+  "examples": [
+    {
+      "platform": "CPU",
+      "input": "Test image",
+      "output_type": "<class 'dict'>",
+      "implementation_type": "REAL_CPU",
+      "execution_time": 1.202348232269287,
+      "timestamp": "2025-03-05T19:33:43.210575"
+    }
+  ],
+  "metadata": {
+    "model_id": "openai/clip-vit-base-patch32",
+    "model_path": "openai/clip-vit-base-patch32",
+    "model_config": {
+      "description": "CLIP ViT-Base-Patch32 model",
+      "class": "CLIPModel",
+      "vision_model": "ViT"
+    },
+    "timestamp": "2025-03-05T19:33:43.226534"
+  }
+}

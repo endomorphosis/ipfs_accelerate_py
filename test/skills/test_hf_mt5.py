@@ -9,6 +9,17 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 
 # Use direct import with the absolute path
+
+# Import hardware detection capabilities if available
+try:
+    from hardware_detection import (
+        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+        detect_all_hardware
+    )
+    HAS_HARDWARE_DETECTION = True
+except ImportError:
+    HAS_HARDWARE_DETECTION = False
+    # We'll detect hardware manually as fallback
 sys.path.insert(0, "/home/barberb/ipfs_accelerate_py")
 from ipfs_accelerate_py.worker.skillset.hf_t5 import hf_t5
 

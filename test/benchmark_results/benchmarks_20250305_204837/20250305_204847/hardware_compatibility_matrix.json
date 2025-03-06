@@ -1,0 +1,120 @@
+{
+  "timestamp": "20250305_204847",
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "openvino"
+  ],
+  "model_families": {
+    "vision": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "openvino": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "multimodal": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "openvino": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "text_generation": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "openvino": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "embedding": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "openvino": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "bert-base-uncased": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "distilbert-base-uncased": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "roberta-base": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    },
+    "audio": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "cuda": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        },
+        "openvino": {
+          "compatible": false,
+          "performance_rating": null,
+          "benchmark_results": []
+        }
+      }
+    }
+  }
+}

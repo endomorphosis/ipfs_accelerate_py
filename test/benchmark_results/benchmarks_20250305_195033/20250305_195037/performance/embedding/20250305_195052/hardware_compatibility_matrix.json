@@ -1,0 +1,87 @@
+{
+  "model_families": {
+    "embedding": {
+      "hardware_compatibility": {
+        "cpu": {
+          "compatible": true,
+          "performance_rating": "medium",
+          "benchmark_results": [
+            {
+              "mean_latency": 4.016110922230615,
+              "mean_throughput": 3.4365417486113126,
+              "timestamp": "2025-03-05T20:30:42.530283",
+              "model_name": "bert-base-uncased"
+            },
+            {
+              "mean_latency": 2.160513791773054,
+              "mean_throughput": 4.485847029879039,
+              "timestamp": "2025-03-05T20:30:42.530318",
+              "model_name": "distilbert-base-uncased"
+            },
+            {
+              "mean_latency": 4.470579489072164,
+              "mean_throughput": 2.3705026243032616,
+              "timestamp": "2025-03-05T20:30:42.530327",
+              "model_name": "roberta-base"
+            }
+          ]
+        },
+        "openvino": {
+          "compatible": true,
+          "performance_rating": "medium",
+          "benchmark_results": [
+            {
+              "mean_latency": 4.030713416470422,
+              "mean_throughput": 3.3907946671990925,
+              "timestamp": "2025-03-05T20:30:42.530299",
+              "model_name": "bert-base-uncased"
+            },
+            {
+              "mean_latency": 2.1750576602088083,
+              "mean_throughput": 4.425270568811708,
+              "timestamp": "2025-03-05T20:30:42.530322",
+              "model_name": "distilbert-base-uncased"
+            },
+            {
+              "mean_latency": 4.499276905589634,
+              "mean_throughput": 2.3565867769957487,
+              "timestamp": "2025-03-05T20:30:42.530336",
+              "model_name": "roberta-base"
+            }
+          ]
+        },
+        "cuda": {
+          "compatible": true,
+          "performance_rating": "medium",
+          "benchmark_results": [
+            {
+              "mean_latency": 4.057369462649027,
+              "mean_throughput": 3.3931774086904776,
+              "timestamp": "2025-03-05T20:30:42.530307",
+              "model_name": "bert-base-uncased"
+            },
+            {
+              "mean_latency": 2.1486764828364056,
+              "mean_throughput": 4.437068072864111,
+              "timestamp": "2025-03-05T20:30:42.530313",
+              "model_name": "distilbert-base-uncased"
+            },
+            {
+              "mean_latency": 4.494130663077036,
+              "mean_throughput": 2.3778762257999606,
+              "timestamp": "2025-03-05T20:30:42.530332",
+              "model_name": "roberta-base"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "hardware_types": [
+    "cpu",
+    "cuda",
+    "mps",
+    "rocm",
+    "openvino"
+  ]
+}

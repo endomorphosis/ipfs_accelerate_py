@@ -1,0 +1,60 @@
+{
+  "cpu": true,
+  "cuda": true,
+  "cuda_device_count": 1,
+  "cuda_devices": [
+    {
+      "name": "Quadro P4000",
+      "total_memory": 7.923583984375,
+      "compute_capability": "6.1",
+      "multi_processor_count": 14
+    }
+  ],
+  "cuda_current_device": 0,
+  "cuda_arch_list": [
+    "sm_50",
+    "sm_60",
+    "sm_70",
+    "sm_75",
+    "sm_80",
+    "sm_86",
+    "sm_90"
+  ],
+  "cuda_memory_allocated": 4.76837158203125e-07,
+  "cuda_memory_reserved": 0.001953125,
+  "mps": false,
+  "mps_is_built": false,
+  "mps_error": "MPS not available in current PyTorch installation",
+  "xla_available": false,
+  "rocm": false,
+  "rocm_error": "CUDA available, but no ROCm/AMD GPU detected",
+  "openvino": true,
+  "openvino_version": "2025.0.0-17942-1f68be9f594-releases/2025/0",
+  "openvino_devices": [
+    "CPU"
+  ],
+  "openvino_device_info": {
+    "CPU": "Intel(R) Xeon(R) CPU E3-1535M v6 @ 3.10GHz"
+  },
+  "openvino_gpu_plugin": false,
+  "openvino_compilation_test_error": "cannot import name 'opset' from 'openvino.runtime' (/home/barberb/ipfs_accelerate_py/.venv/lib/python3.12/site-packages/openvino/runtime/__init__.py)",
+  "webnn": false,
+  "webnn_error": "Exception detecting WebNN: cannot access local variable 'os' where it is not associated with a value",
+  "webgpu": false,
+  "webgpu_error": "Exception detecting WebGPU: cannot access local variable 'os' where it is not associated with a value",
+  "tpu_available": false,
+  "qualcomm_ai": false,
+  "system": {
+    "platform": "Linux",
+    "platform_release": "6.8.0-11-generic",
+    "platform_version": "#11-Ubuntu SMP PREEMPT_DYNAMIC Wed Feb 14 00:29:05 UTC 2024",
+    "architecture": "x86_64",
+    "processor": "x86_64",
+    "cpu_count": 8,
+    "python_version": "3.12.3",
+    "python_implementation": "CPython",
+    "total_memory": 62.214195251464844,
+    "available_memory": 18.46567153930664,
+    "memory_percent_used": 70.3
+  }
+}
