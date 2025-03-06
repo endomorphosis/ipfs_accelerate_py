@@ -1,5 +1,9 @@
 # Benchmark Database System Guide
 
+> **Status Update (March 5, 2025)**: The database implementation is 100% complete. All scripts have been migrated to use the database system. JSON file output is now fully deprecated. See [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md) for details.
+>
+> **Current Implementation Approach**: The system now exclusively uses the DuckDB database for all storage, with JSON output completely deprecated. This approach significantly reduces context window usage and provides much more efficient storage, querying, and analysis capabilities. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts.
+
 ## Overview
 
 The Benchmark Database System is a comprehensive solution for storing, querying, and analyzing benchmark results in a structured and efficient manner. This system replaces the previous approach of storing results in individual JSON files, providing better performance, data consistency, and analytical capabilities.
@@ -259,6 +263,25 @@ The benchmark database uses a structured schema with the following key tables:
    - model_id (Foreign Key)
    - error_message
 
+4. **power_metrics**: Stores detailed power and thermal metrics (new in March 2025)
+   - metric_id (Primary Key)
+   - test_result_id (Foreign Key)
+   - run_id (Foreign Key)
+   - model_id (Foreign Key)
+   - hardware_id (Foreign Key)
+   - hardware_type
+   - power_consumption_mw (milliwatts)
+   - energy_consumption_mj (millijoules)
+   - temperature_celsius
+   - monitoring_duration_ms
+   - average_power_mw
+   - peak_power_mw
+   - idle_power_mw
+   - device_name
+   - sdk_type (for specialized hardware like Qualcomm)
+   - sdk_version
+   - metadata (JSON)
+
 ## API Reference
 
 ### Benchmark DB API
@@ -368,6 +391,76 @@ python test/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --models-set
 
 # Run without database storage
 python test/run_model_benchmarks.py --no-db-store
+
+# Run with Qualcomm hardware and store power metrics
+export TEST_QUALCOMM=1
+python test/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --hardware qualcomm --models-set small
+```
+
+#### Power and Thermal Metrics Analysis (Enhanced March 2025)
+
+The database now stores detailed power and thermal metrics with enhanced capabilities for mobile and edge devices. The March 2025 update adds new metrics for energy efficiency, thermal throttling detection, and battery impact estimation:
+
+```bash
+# Query basic power consumption metrics
+python test/scripts/benchmark_db_query.py --sql "SELECT model_name, hardware_type, model_type, AVG(power_consumption_mw) as avg_power_mw, AVG(temperature_celsius) as avg_temp_c FROM power_metrics GROUP BY model_name, hardware_type, model_type" --format table
+
+# Compare energy efficiency across hardware platforms
+python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_consumption_mj) as avg_energy, AVG(energy_efficiency_items_per_joule) as avg_efficiency, COUNT(*) as count FROM power_metrics GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output energy_comparison.png
+
+# Find most power-efficient models on Qualcomm hardware
+python test/scripts/benchmark_db_query.py --sql "SELECT model_name, model_type, AVG(energy_efficiency_items_per_joule) as efficiency, AVG(battery_impact_percent_per_hour) as battery_impact, COUNT(*) as count FROM power_metrics WHERE hardware_type = 'qualcomm' GROUP BY model_name, model_type ORDER BY efficiency DESC LIMIT 10" --format html --output efficient_models.html
+
+# Compare model types by power efficiency on Qualcomm hardware
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency, AVG(battery_impact_percent_per_hour) as avg_battery_impact, COUNT(*) as model_count FROM power_metrics WHERE hardware_type = 'qualcomm' GROUP BY model_type ORDER BY avg_efficiency DESC" --format chart --output model_type_efficiency.png
+
+# Generate power efficiency comprehensive report
+python test/scripts/benchmark_db_query.py --report power_efficiency --format html --output power_report.html
+
+# Visualize thermal behavior and throttling occurrence by model type
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, AVG(temperature_celsius) as avg_temp, MAX(temperature_celsius) as max_temp, (SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) as throttling_percentage FROM power_metrics GROUP BY model_type ORDER BY avg_temp DESC" --format chart --type bar --output thermal_analysis.png
+
+# Analyze battery impact by model type for mobile applications
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, AVG(battery_impact_percent_per_hour) as battery_impact, AVG(power_consumption_mw) as power_draw FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY battery_impact" --format chart --output battery_impact.png
+
+# Compare throughput metrics across hardware platforms
+python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, model_type, AVG(throughput) as avg_throughput, throughput_units FROM power_metrics WHERE throughput IS NOT NULL GROUP BY hardware_type, model_type, throughput_units ORDER BY hardware_type, model_type" --format table
+
+# Generate efficiency summary by hardware platform and model type
+python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, model_type, COUNT(*) as tests, ROUND(AVG(energy_efficiency_items_per_joule),2) as efficiency, ROUND(AVG(battery_impact_percent_per_hour),2) as battery_pct_per_hour, ROUND(AVG(temperature_celsius),1) as avg_temp_c, ROUND(AVG(power_consumption_mw),1) as avg_power_mw FROM power_metrics GROUP BY hardware_type, model_type ORDER BY hardware_type, efficiency DESC" --format html --output efficiency_matrix.html
+```
+
+### Enhanced Mobile Power Analysis (March 2025)
+
+The enhanced Qualcomm metrics provide valuable insights for mobile deployment:
+
+```bash
+# Analyze thermal throttling occurrence for different model types
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as tests, SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) as throttled_tests, ROUND(SUM(CASE WHEN thermal_throttling_detected=true THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as throttling_pct FROM power_metrics WHERE hardware_type='qualcomm' GROUP BY model_type ORDER BY throttling_pct DESC" --format table --output throttling_analysis.txt
+
+# Battery drain estimation for one-hour usage of different model types
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, ROUND(AVG(battery_impact_percent_per_hour),1) as battery_pct_per_hour, ROUND(60/AVG(battery_impact_percent_per_hour),1) as est_hours_to_drain_battery FROM power_metrics WHERE hardware_type='qualcomm' AND battery_impact_percent_per_hour > 0 GROUP BY model_type ORDER BY battery_pct_per_hour" --format html --output battery_drain.html
+
+# Comprehensive efficiency dashboard with enhanced metrics
+python test/scripts/benchmark_db_query.py --report mobile_power_efficiency --format html --output mobile_dashboard.html
+
+# Analyze power-performance ratio for different model types
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, AVG(energy_efficiency_items_per_joule) as efficiency, AVG(throughput) as throughput, AVG(power_consumption_mw) as power_draw, AVG(throughput)/AVG(power_consumption_mw) as throughput_per_mw FROM power_metrics WHERE hardware_type='qualcomm' AND throughput IS NOT NULL GROUP BY model_type ORDER BY throughput_per_mw DESC" --format chart --output power_performance.png
+```
+
+### Thermal Analysis Tools (March 2025)
+
+Thermal analysis is critical for edge AI applications:
+
+```bash
+# Analyze temperature patterns for different model sizes
+python test/scripts/benchmark_db_query.py --sql "WITH model_sizes AS (SELECT model_name, CASE WHEN model_name LIKE '%tiny%' THEN 'tiny' WHEN model_name LIKE '%small%' THEN 'small' WHEN model_name LIKE '%base%' THEN 'base' WHEN model_name LIKE '%large%' THEN 'large' ELSE 'medium' END as size FROM power_metrics GROUP BY model_name) SELECT ms.size, AVG(pm.temperature_celsius) as avg_temp, MAX(pm.temperature_celsius) as max_temp, AVG(pm.power_consumption_mw) as avg_power FROM power_metrics pm JOIN model_sizes ms ON pm.model_name = ms.model_name WHERE pm.hardware_type='qualcomm' GROUP BY ms.size ORDER BY avg_temp DESC" --format chart --output thermal_by_model_size.png
+
+# Analyze throttling patterns and impact on performance
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, CASE WHEN thermal_throttling_detected=true THEN 'Throttled' ELSE 'Normal' END as throttle_state, AVG(throughput) as avg_throughput, COUNT(*) as count FROM power_metrics WHERE hardware_type='qualcomm' AND throughput IS NOT NULL GROUP BY model_type, throttle_state ORDER BY model_type, throttle_state" --format chart --output throttling_impact.png
+
+# Generate thermal profile for prolonged inference sessions
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, monitoring_duration_ms/1000.0 as duration_seconds, temperature_celsius, power_consumption_mw FROM power_metrics WHERE hardware_type='qualcomm' AND monitoring_duration_ms > 10000 ORDER BY model_type, duration_seconds" --format chart --output thermal_profile.png
 ```
 
 #### Using run_benchmark_with_db.py
@@ -674,6 +767,129 @@ For more information, refer to the following resources:
 - [Benchmark DB API Documentation](./API_DOCUMENTATION.md)
 - [Testing Framework Documentation](./TESTING_FRAMEWORK_README.md)
 
+## Comprehensive HuggingFace Model Testing Integration
+
+The database system has been extended to support comprehensive testing of all 300+ HuggingFace model architectures across all hardware platforms.
+
+### Using the Database with test_comprehensive_hardware_coverage.py
+
+The `test_comprehensive_hardware_coverage.py` tool integrates directly with the database for storing and analyzing test results:
+
+```bash
+# Run comprehensive tests with database integration
+python test/test_comprehensive_hardware_coverage.py --all-models --hardware cuda --db-path ./benchmark_db.duckdb
+
+# Analyze test coverage gaps across all models
+python test/test_comprehensive_hardware_coverage.py --analyze-coverage --db-path ./benchmark_db.duckdb
+
+# Generate coverage improvement plan based on database analysis
+python test/test_comprehensive_hardware_coverage.py --generate-coverage-plan --db-path ./benchmark_db.duckdb --output coverage_plan.md
+
+# Generate performance comparison report from database
+python test/test_comprehensive_hardware_coverage.py --comparative-report --models bert,t5,vit --hardware all --db-path ./benchmark_db.duckdb
+```
+
+### Extended Database Schema for Comprehensive Testing
+
+The database schema has been extended with additional tables for tracking comprehensive model testing:
+
+```sql
+-- Table for tracking model architecture coverage
+CREATE TABLE model_architecture_coverage (
+    architecture_id INTEGER PRIMARY KEY,
+    architecture_name TEXT NOT NULL,
+    huggingface_category TEXT,
+    model_count INTEGER,
+    implementation_date DATE,
+    test_status TEXT,
+    functional_score FLOAT,
+    performance_score FLOAT,
+    last_tested TIMESTAMP
+);
+
+-- Table for hardware compatibility matrix
+CREATE TABLE hardware_compatibility_matrix (
+    id INTEGER PRIMARY KEY,
+    architecture_id INTEGER,
+    hardware_id INTEGER,
+    compatibility_status TEXT,
+    compatibility_score FLOAT,
+    implementation_type TEXT,
+    failure_reason TEXT,
+    optimization_level TEXT,
+    last_updated TIMESTAMP,
+    FOREIGN KEY (architecture_id) REFERENCES model_architecture_coverage(architecture_id),
+    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(id)
+);
+
+-- Table for tracking generator improvements
+CREATE TABLE generator_improvements (
+    id INTEGER PRIMARY KEY,
+    timestamp TIMESTAMP,
+    generator_file TEXT,
+    change_description TEXT,
+    affected_models TEXT,
+    affected_hardware TEXT,
+    improvement_percentage FLOAT,
+    implemented_by TEXT
+);
+```
+
+### Querying Comprehensive Test Results
+
+The database system provides specialized queries for analyzing comprehensive test results:
+
+```bash
+# Generate matrix of model architecture coverage by hardware platform
+python test/benchmark_db_query.py --sql "
+    SELECT 
+        mac.huggingface_category, 
+        COUNT(DISTINCT mac.architecture_id) as model_count,
+        SUM(CASE WHEN hcm.hardware_id = 1 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as cpu_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 2 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as cuda_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 3 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as rocm_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 4 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as mps_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 5 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as openvino_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 6 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as webnn_coverage,
+        SUM(CASE WHEN hcm.hardware_id = 7 AND hcm.compatibility_status = 'compatible' THEN 1 ELSE 0 END) / COUNT(DISTINCT mac.architecture_id)::FLOAT * 100 as webgpu_coverage
+    FROM 
+        model_architecture_coverage mac
+    LEFT JOIN 
+        hardware_compatibility_matrix hcm ON mac.architecture_id = hcm.architecture_id
+    GROUP BY 
+        mac.huggingface_category
+    ORDER BY 
+        model_count DESC
+"
+```
+
+### Visualizing Comprehensive Testing Results
+
+The database provides specialized visualization for comprehensive test results:
+
+```bash
+# Generate heat map of model architecture compatibility
+python test/benchmark_db_visualizer.py --comprehensive-matrix --output comprehensive_matrix.html
+
+# Compare coverage between hardware platforms
+python test/benchmark_db_visualizer.py --coverage-comparison --output coverage_comparison.png
+
+# Analyze performance across model architectures
+python test/benchmark_db_visualizer.py --architecture-performance --output architecture_performance.html
+```
+
+### Integration with Test Generators
+
+The database system integrates with the test generator improvements tracking:
+
+```bash
+# Track test generator improvements in the database
+python test/test_comprehensive_hardware_coverage.py --patch-generators --coverage-targets "qualcomm,apple,webnn" --db-path ./benchmark_db.duckdb --track-improvements
+
+# Analyze generator improvement impact from database
+python test/benchmark_db_query.py --report generator-improvements --format html --output generator_improvements.html
+```
+
 ## Current Status and Roadmap
 
 ### Current Status (March 2025)
@@ -686,8 +902,9 @@ The core database system is now functional with essential components implemented
 - ✅ Testing Framework Integration (100% complete)
 - ✅ Database Maintenance and Backup (100% complete)
 - ✅ Database Fix Tools (100% complete)
-- ⏱️ Advanced Analytics (Planned for future)
-- ⏱️ CI/CD Integration (In progress)
+- ✅ Comprehensive HuggingFace Model Testing Integration (100% complete)
+- ✅ Advanced Analytics (Implemented for comprehensive testing)
+- ✅ CI/CD Integration (100% complete)
 
 ### Completed Milestones
 
