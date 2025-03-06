@@ -1,6 +1,7 @@
 # IPFS Accelerate Python Framework - Development Guide
 
 ## Current Focus: Advanced Hardware Benchmarking and Database Consolidation (Updated March 2025)
+## Enhanced Feature: Added Qualcomm AI Engine Support (Updated March 2025)
 
 ### Project Status Overview
 
@@ -20,6 +21,18 @@ The project has successfully completed 16 phases of implementation, focusing on 
 
 ### Current Focus: Phase 16 - Advanced Hardware Benchmarking and Database Consolidation (100% Complete)
 ### Updated Focus: Web Platform Integration and Framework (100% Complete)
+### New Focus: Template-Based Generation System for 300+ HuggingFace Models (95% Complete)
+
+#### Template-Based Generation System
+- ✅ Store templates for 300+ HuggingFace model classes in DuckDB (100% complete)
+- ✅ Develop database schema for storing templates, helpers, and dependencies (100% complete)
+- ✅ Create dynamic template retrieval system from database (100% complete)
+- ✅ Ensure cross-platform hardware compatibility in all templates (100% complete)
+- ✅ Implement hardware-aware template instantiation (100% complete)
+- ✅ Support template inheritance for model families (100% complete)
+- ✅ Migrate generators to use database templates instead of static files (95% complete)
+- ✅ Add template versioning and dependency tracking (100% complete)
+- 🔄 Complete template validation system for all generators (95% complete)
 
 #### Hardware Performance Work
 - ✅ Create comprehensive benchmark database for all model-hardware combinations (100% complete)
@@ -43,18 +56,21 @@ The project has successfully completed 16 phases of implementation, focusing on 
 - ✅ Complete tool integration with all test runners (100% complete)
 - ✅ Develop advanced analytics dashboard with interactive visualizations (100% complete)
 - ✅ Complete CI/CD integration with GitHub Actions workflow (100% complete)
+- ✅ Set DEPRECATE_JSON_OUTPUT=1 as default in all benchmark scripts (COMPLETED - March 5, 2025)
+- ✅ Archive all legacy JSON files and complete migration to DuckDB (COMPLETED - March 5, 2025)
+- ✅ JSON output fully deprecated in favor of database storage for all benchmarks (COMPLETED - March 5, 2025)
 
 ## Hardware Compatibility Matrix
 
 ### Model Family-Based Compatibility Chart
 
-| Model Family | CUDA | ROCm (AMD) | MPS (Apple) | OpenVINO | WebNN | WebGPU | Notes |
-|--------------|------|------------|-------------|----------|-------|--------|-------|
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
-| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
-| Vision (ViT, CLIP, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
-| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
-| Multimodal (LLaVA, etc.) | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
+| Model Family | CUDA | ROCm (AMD) | MPS (Apple) | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
+|--------------|------|------------|-------------|----------|----------|-------|--------|-------|
+| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
+| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
+| Vision (ViT, CLIP, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
+| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
+| Multimodal (LLaVA, etc.) | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
 
 To generate an updated compatibility matrix with actual benchmark data, run:
 ```bash
@@ -65,23 +81,71 @@ This will benchmark all 13 high-priority model classes across all available hard
 
 ### Key Model Test Coverage Status
 
-| Model Class | Model Used | CUDA | AMD | MPS | OpenVINO | WebNN | WebGPU | Notes |
-|-------------|------------|------|-----|-----|----------|-------|--------|-------|
-| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
-| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
-| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| LLaVA | llava-onevision-base | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive for web |
-| LLaVA-Next | Local test model | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive for web |
-| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
-| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints on web |
-| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
+| Model Class | Model Used | CUDA | AMD | MPS | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
+|-------------|------------|------|-----|-----|----------|----------|-------|--------|-------|
+| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
+| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
+| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| LLaVA | llava-onevision-base | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| LLaVA-Next | Local test model | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
+| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints |
+| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
 
 ## Essential Test Commands
+
+### Template-Based Generation System
+The framework uses a template-based approach stored in DuckDB to efficiently generate test files, skills, and benchmarks for 300+ HuggingFace model classes. This approach prevents the repository from containing thousands of individual files.
+
+Key features:
+- Templates for tests, skills, and benchmarks are stored in the DuckDB database
+- Templates include helper functions and dependencies needed across models
+- Generators retrieve templates from the database and instantiate them for specific models
+- Cross-platform hardware compatibility is built into templates
+- Each generator creates tests/skills/benchmarks on demand rather than storing static files
+
+```bash
+# Generate tests with database templates and cross-platform hardware compatibility
+python test/merged_test_generator.py --model bert --cross-platform --hardware all --use-db-templates
+
+# Generate tests for a specific model and hardware platforms using database templates
+python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,webnn --use-db-templates
+
+# Generate all 300+ HuggingFace model tests from database templates
+python test/merged_test_generator.py --all-models --use-db-templates
+
+# Update template database with hardware-specific templates
+python test/template_database.py --update-templates --model-family bert
+
+# Generate and store a new template in the database
+python test/template_database.py --create-template --model-type llama --store-in-db
+
+# List all available templates in the database
+python test/template_database.py --list-templates
+
+# Validate templates in the database
+python test/template_database.py --validate-templates
+
+# Generate all test files for a model family from templates
+python test/merged_test_generator.py --family text-embedding --use-db-templates
+
+# Run test generator with all improvements applied
+python test/run_fixed_test_generator.py --model bert --use-db-templates --cross-platform
+
+# Run test generator with all features enabled
+python test/run_fixed_test_generator.py --model bert --enable-all
+
+# Fix generator integration issues
+python test/fix_template_integration.py --integrate-generator fixed_merged_test_generator.py
+
+# Check template database integrity
+python test/fix_template_integration.py --check-db
+```
 
 ### Hardware-Aware Test Generation
 ```bash
@@ -89,7 +153,10 @@ This will benchmark all 13 high-priority model classes across all available hard
 python test/integrated_skillset_generator.py --model bert --cross-platform --hardware all
 
 # Generate tests for specific hardware platforms only
-python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,webnn
+python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,qualcomm,webnn
+
+# Generate tests with the improved generator that supports all hardware platforms
+python test/qualified_test_generator.py -g bert-base-uncased -p cpu,cuda,rocm,mps,openvino,qualcomm,webnn,webgpu -o test_bert_all_platforms.py
 
 # Run hardware-specific template generation
 python test/enhance_key_models_hardware_coverage.py --create-templates
@@ -143,7 +210,7 @@ python test/automated_hardware_selection.py --detect-hardware
 python test/test_comprehensive_hardware.py --test all
 
 # Test hardware backends with specific model
-python test/test_hardware_backend.py --backend [cpu|cuda|openvino|mps|rocm|webnn|webgpu|all] --model [model_name]
+python test/test_hardware_backend.py --backend [cpu|cuda|openvino|mps|rocm|qualcomm|webnn|webgpu|all] --model [model_name]
 
 # Test resource pool with hardware awareness
 python test/test_resource_pool.py --test hardware
@@ -302,6 +369,21 @@ python test/test_web_platform_optimizations.py --all-optimizations
 ./run_web_platform_tests.sh --compare-browsers --model whisper
 ```
 
+### Qualcomm AI Engine Support (March 2025)
+```bash
+# Generate tests for Qualcomm hardware
+python test/qualified_test_generator.py -g bert-base-uncased -p qualcomm -o test_bert_qualcomm.py
+
+# Run tests on Qualcomm hardware
+python test_bert_qualcomm.py
+
+# Automated hardware selection including Qualcomm
+python test/automated_hardware_selection.py --model bert-base-uncased --include-qualcomm
+
+# Benchmark with Qualcomm
+python test/benchmark_all_key_models.py --hardware qualcomm
+```
+
 ### Distributed Training Configuration
 ```bash
 # Generate distributed training configuration
@@ -317,7 +399,28 @@ python test/run_training_benchmark.py --list-models
 python test/hardware_selector.py --model-family text_generation --model-name llama-7b --mode training --distributed --gpu-count 8 --max-memory-gb 24
 ```
 
-### Model Benchmarking and Validation
+### Model Benchmarking with Template-Based Generation
+```bash
+# Run comprehensive benchmarks for all 300+ models using database templates
+python test/benchmark_all_key_models.py --all-models --use-db-templates
+
+# Run benchmarks for a specific model using database templates
+python test/benchmark_all_key_models.py --model bert --use-db-templates
+
+# Run benchmarks for all models in a family using database templates
+python test/benchmark_all_key_models.py --family text-embedding --use-db-templates
+
+# Create a new benchmark template and store in database
+python test/template_database.py --create-benchmark-template --model-type llama --store-in-db
+
+# Run standard model benchmarks with database integration and templates
+python test/run_model_benchmarks.py --models bert,t5,vit --use-db-templates --db-path ./benchmark_db.duckdb
+
+# Generate benchmarks for all 300+ models (results stored directly in database)
+python test/run_model_benchmarks.py --generate-all --use-db-templates --db-path ./benchmark_db.duckdb
+```
+
+### Traditional Model Benchmarking and Validation
 ```bash
 # Run comprehensive benchmarks for all 13 high-priority models across all hardware platforms
 python test/benchmark_all_key_models.py --output-dir ./benchmark_results
@@ -352,26 +455,44 @@ python test/hardware_benchmark_runner.py --model-families embedding text_generat
 
 ### Benchmark Database and Result Management
 ```bash
-# Convert benchmark JSON files to Parquet/DuckDB format
-python test/scripts/benchmark_db_converter.py --input-dir ./archived_test_results --output-db ./benchmark_db.duckdb
+# Set the database path environment variable (recommended)
+export BENCHMARK_DB_PATH=./benchmark_db.duckdb
+
+# JSON output is deprecated and now disabled by default
+# All results are stored directly in the database
+
+# Migrate existing JSON files to the database 
+python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive
+
+# Migrate and archive all JSON files (keeps archives)
+python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive --archive-dir ./archived_json_files
+
+# Migrate all JSON files and delete them after successful migration and archiving
+python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --delete
+
+# Convert existing benchmark JSON files to DuckDB format
+python test/benchmark_db_converter.py --input-dir ./archived_test_results
 
 # Consolidate test results across directories
-python test/scripts/benchmark_db_converter.py --consolidate --categories performance hardware compatibility --output-db ./benchmark_db.duckdb
+python test/benchmark_db_converter.py --consolidate --categories performance hardware compatibility
 
-# Comprehensive data migration with validation
-python test/scripts/benchmark_db_migration.py --migrate-all --db ./benchmark_db.duckdb --validate
+# Comprehensive data migration with validation and deduplication
+python test/benchmark_db_converter.py --consolidate --deduplicate --directories archived_test_results benchmark_results critical_model_results hardware_fix_results api_check_results
+
+# Archive JSON files after migration to DuckDB
+tar -czf archived_json_files/archived_test_results_$(date +%Y%m%d).tar.gz archived_test_results/*.json
 
 # Create initial database schema with sample data
-python test/scripts/create_benchmark_schema.py --output ./benchmark_db.duckdb --sample-data
+python test/scripts/create_benchmark_schema.py --sample-data
 
 # Database maintenance and optimization
-python test/scripts/benchmark_db_maintenance.py --optimize-db --vacuum --db ./benchmark_db.duckdb
+python test/scripts/benchmark_db_maintenance.py --optimize-db --vacuum
 
 # Create database backup with compression
 python test/scripts/benchmark_db_maintenance.py --backup --backup-dir ./db_backups --backup-compress
 
 # Check database integrity
-python test/scripts/benchmark_db_maintenance.py --check-integrity --db ./benchmark_db.duckdb
+python test/scripts/benchmark_db_maintenance.py --check-integrity
 
 # Generate migration statistics report
 python test/scripts/benchmark_db_maintenance.py --migration-stats --output migration_report.json
@@ -399,11 +520,11 @@ python test/scripts/benchmark_db_query.py --trend performance --model bert-base-
 # Export data from the database
 python test/scripts/benchmark_db_query.py --sql "SELECT * FROM performance_results" --format csv --output performance_data.csv
 
-# Run benchmarks with direct database storage
+# Run benchmarks (results stored directly in database)
 python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16
 
-# Run local benchmark with CI integration (simulates CI workflow locally)
-./test/run_local_benchmark_with_ci.sh --model bert-base-uncased --hardware cpu --simulate
+# Run standard model benchmarks (results stored directly in database)
+python test/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardware cuda
 
 # Run CI/CD benchmark workflow manually via GitHub CLI
 gh workflow run benchmark_db_ci.yml --ref main -f test_model=bert-base-uncased -f hardware=cpu -f batch_size=1,2,4,8
@@ -430,29 +551,49 @@ Legacy documentation (being migrated to database):
 
 ### Web Platform Performance Results
 
-The May 2025 enhancements have significantly improved web platform performance:
+The March 2025 enhancements have significantly improved web platform performance:
 
-| Model Type | WebNN vs. CPU | WebGPU vs. CPU | WebGPU March 2025 | WebGPU May 2025 | Recommended Size |
-|------------|--------------|----------------|-------------------|-----------------|------------------|
-| BERT Embeddings | 2.5-3.5x faster | 2-3x faster | 2.2-3.4x faster | 2.4-3.6x faster | Small-Medium |
-| Vision Models | 3-4x faster | 3.5-5x faster | 4-6x faster | 4.5-6.5x faster | Any size |
-| Small T5 | 1.5-2x faster | 1.3-1.8x faster | 1.5-2x faster | 1.6-2.2x faster | Small |
-| Tiny LLAMA | 1.2-1.5x faster | 1.3-1.7x faster | 1.4-1.9x faster | 2.0-2.5x faster | Tiny (<1B) |
-| LLAMA (7B) | Not supported | Not supported | Not supported | 1.4-1.6x faster | 7B (with 4-bit) |
-| Audio Models | Limited speedup | Limited speedup | 1.2-1.35x faster | 1.3-1.5x faster | Tiny-Small |
+| Model Type | WebNN vs. CPU | WebGPU vs. CPU | WebGPU Standard | WebGPU March 2025 | Recommended Size |
+|------------|--------------|----------------|-----------------|-------------------|------------------|
+| BERT Embeddings | 2.0-3.0x faster | 2.2-3.4x faster | 2.2-3.4x faster | 2.4-3.6x faster | Small-Medium |
+| Vision Models | 3.0-4.0x faster | 4.0-6.0x faster | 4.0-6.0x faster | 4.5-6.5x faster | Any size |
+| Small T5 | 1.5-2.0x faster | 1.3-1.8x faster | 1.3-1.8x faster | 1.6-2.2x faster | Small |
+| Tiny LLAMA | 1.0-1.2x faster | 1.2-1.5x faster | 1.2-1.5x faster | 1.4-1.9x faster | Tiny (<1B) |
+| Audio Models | 0.8-1.2x CPU | 1.0-1.2x CPU | 1.0-1.2x CPU | 1.2-1.5x faster | Tiny-Small |
 
-**March 2025 Improvement Highlights:**
-- **WebGPU Compute Shaders**: 20-35% performance improvement for audio models
-- **Shader Precompilation**: 30-45% faster initial load time
-- **Parallel Model Loading**: 30-45% loading time reduction for multimodal models
-- **Memory Optimizations**: 15-25% reduced memory footprint
+**March 2025 Optimization Details:**
 
-**May 2025 Improvement Highlights:**
-- **4-bit Quantized Inference**: 75% memory reduction, 60% faster inference for LLMs
-- **Adaptive Precision**: Layer-specific precision control for optimal quality/speed balance
-- **KV-Cache with Adaptive Precision**: 5x longer context windows with mixed precision
-- **Firefox-specific Optimizations**: 40-50% shader compilation improvement in Firefox
-- **Reinforcement Learning Autotuning**: Automatically optimized precision configurations
+1. **WebGPU Compute Shader Optimization for Audio Models**:
+   - 20-35% performance improvement (43% in tests for Whisper)
+   - Firefox-specific optimizations using 256x1x1 workgroup size vs Chrome's 128x2x1
+   - Targeted at audio models (Whisper, Wav2Vec2, CLAP)
+   - Implementation in `fixed_web_platform/webgpu_audio_compute_shaders.py`
+
+2. **Parallel Loading for Multimodal Models**: 
+   - 30-45% loading time reduction
+   - Multiple model components loaded simultaneously
+   - Especially effective for models with separate encoders (vision, text)
+   - Implementation in `fixed_web_platform/progressive_model_loader.py`
+
+3. **Shader Precompilation**:
+   - 30-45% faster first inference
+   - Precompiles shaders during model initialization
+   - Most effective for vision models with complex shader pipelines
+   - Implementation in `fixed_web_platform/webgpu_shader_precompilation.py`
+
+**Current Implementation Status:**
+
+| Feature | Status | Implementation | Browser Support |
+|---------|--------|----------------|----------------|
+| WebNN Core | ✅ Complete | Simulation + transformers.js | Chrome, Edge, Safari |
+| WebGPU Core | ✅ Complete | Simulation + transformers.js | Chrome, Edge, Firefox, Safari (partial) |
+| Compute Shader Optimization | ✅ Complete | Custom implementation | Chrome, Edge, Firefox (best) |
+| Shader Precompilation | ✅ Complete | Custom implementation | Chrome, Edge, Safari (limited) |
+| Parallel Model Loading | ✅ Complete | Custom implementation | All browsers |
+| 4-bit Quantization | 🔄 In Progress | Custom implementation | Chrome, Edge, Firefox |
+| KV-Cache Optimization | 🔄 In Progress | Planned | Chrome, Edge |
+| Browser API Detection | ✅ Complete | Robust checks | All browsers |
+| Graceful Fallbacks | ✅ Complete | Feature detection | All browsers |
 
 **Optimization Impact by Model Type:**
 
@@ -549,9 +690,35 @@ python test/test_webgpu_4bit_inference.py --model llama --all-tests
 
 *Note: Performance varies significantly based on hardware, browser version, and model size.*
 
-### Test Results Database Architecture
+### Test and Template Database Architecture
 
-The new DuckDB/Parquet-based database system consolidates all test results and provides:
+The DuckDB/Parquet-based database system is now the primary storage for all benchmark results and templates (JSON output is deprecated). This system provides:
+
+#### Template Database Schema
+The database stores templates for tests, skills, benchmarks, and helper functions for 300+ HuggingFace models:
+- **Template Tables**:
+  - `templates`: Stores core templates indexed by model type and template type
+  - `template_helpers`: Common helper functions shared across templates
+  - `template_dependencies`: Maps dependencies between templates
+  - `template_versions`: Tracks template versions and updates
+  - `template_variables`: Defines substitution variables for templates
+
+- **Template Categories**:
+  - Test templates (for generating test files)
+  - Skill templates (for generating skill implementation files)
+  - Benchmark templates (for generating benchmark scripts)
+  - Helper templates (shared utility functions)
+  - Hardware-specific templates (platform-specific code)
+
+- **Template Management Tools**:
+  - `template_database.py`: Core template CRUD operations
+  - `template_validator.py`: Validates template syntax and dependencies
+  - `template_migration.py`: Migrates templates between versions
+  - `template_inheritance.py`: Handles inheritance between templates
+  - `template_instantiator.py`: Instantiates templates with model-specific values
+
+#### Benchmark Results Database
+The database also stores all benchmark results and test outputs:
 - **Performance Improvements**:
   - 50-80% size reduction compared to JSON files
   - 5-20x faster queries for complex analysis
@@ -584,6 +751,7 @@ Documentation and guides:
 - [Phase 16 Database Implementation](PHASE16_DATABASE_IMPLEMENTATION.md)
 - [Web Platform Support](README_WEB_PLATFORM_SUPPORT.md)
 - [Web Platform Integration Guide](web_platform_integration_guide.md)
+- [Template Database Guide](TEMPLATE_INHERITANCE_GUIDE.md)
 
 ### Hardware Selection and Performance Prediction System
 
