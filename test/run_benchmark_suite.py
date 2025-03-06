@@ -38,7 +38,7 @@ DEFAULT_WARMUP_ITERATIONS = 5
 DEFAULT_BENCHMARK_ITERATIONS = 20
 DEFAULT_TIMEOUT = 600  # seconds
 DEFAULT_MODEL_FAMILIES = ["embedding", "text_generation", "vision", "audio", "multimodal"]
-DEFAULT_HARDWARE_TYPES = ["cpu", "cuda", "mps", "openvino"]
+DEFAULT_HARDWARE_TYPES = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 
 # Example benchmark configuration
 EXAMPLE_CONFIG = {

@@ -47,7 +47,7 @@ except ImportError:
 
 # Other hardware detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
+HAS_QNN = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
 HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
 HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
 
@@ -270,7 +270,7 @@ HAS_CUDA = torch.cuda.is_available()
 HAS_ROCM = (HAS_CUDA and hasattr(torch, '_C') and hasattr(torch._C, '_rocm_version')) or ('ROCM_HOME' in os.environ)
 HAS_MPS = hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available()
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
+HAS_QNN = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
 HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
 HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
 
@@ -301,7 +301,7 @@ class Test{model_name.replace("-", "").title()}Models(unittest.TestCase):
                 "rocm": HAS_ROCM,
                 "mps": HAS_MPS,
                 "openvino": HAS_OPENVINO,
-                "qualcomm": HAS_QUALCOMM,
+                "qnn": HAS_QNN,
                 "webnn": HAS_WEBNN,
                 "webgpu": HAS_WEBGPU
             }}
@@ -500,8 +500,8 @@ def detect_available_hardware():
         hardware.append("mps")
     if HAS_OPENVINO:
         hardware.append("openvino")
-    if HAS_QUALCOMM:
-        hardware.append("qualcomm")
+    if HAS_QNN:
+        hardware.append("qnn")
     if HAS_WEBNN:
         hardware.append("webnn")
     if HAS_WEBGPU:

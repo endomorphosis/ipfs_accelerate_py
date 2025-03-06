@@ -21,10 +21,10 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
 - Designed system for tracking compatibility changes over time
 - Integrated with hardware recommendation system
 
-✅ **Qualcomm AI Engine Support**
-- Added full support for Qualcomm hardware
+✅ **QNN (Qualcomm Neural Networks) Support**
+- Added full support for QNN hardware
 - Implemented power and thermal monitoring for mobile/edge devices
-- Created specialized quantization tools for Qualcomm deployment
+- Created specialized quantization tools for QNN deployment
 - Integrated with test system for automatic hardware detection
 - Documented performance benefits (2.5-3.8x faster than CPU)
 
@@ -443,7 +443,7 @@ Our focus for the remainder of March:
    - Priority: MEDIUM (COMPLETED - March 31, 2025)
 
 3. **Extended Mobile/Edge Support Expansion**
-   - Assess current Qualcomm support coverage (COMPLETED April 2, 2025)
+   - Assess current QNN support coverage (COMPLETED April 2, 2025)
    - Identify and prioritize models for mobile optimization (COMPLETED April 5, 2025)
    - Design comprehensive battery impact analysis methodology (COMPLETED April 8, 2025)
    - Create specialized mobile test harnesses for on-device testing (COMPLETED April 12, 2025)

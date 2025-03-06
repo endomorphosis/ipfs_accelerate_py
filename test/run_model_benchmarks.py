@@ -85,6 +85,7 @@ try:
         HAS_ROCM,
         HAS_MPS,
         HAS_OPENVINO,
+        HAS_QUALCOMM,
         HAS_WEBNN,
         HAS_WEBGPU
     )
@@ -126,7 +127,7 @@ SMALL_MODEL_SET = {
 }
 
 # Hardware platforms to test
-DEFAULT_HARDWARE_TYPES = ["cpu", "cuda", "mps", "openvino", "rocm"]
+DEFAULT_HARDWARE_TYPES = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 
 # Benchmark parameters
 DEFAULT_BATCH_SIZES = [1, 4, 8]

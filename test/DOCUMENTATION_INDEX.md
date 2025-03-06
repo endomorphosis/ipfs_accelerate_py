@@ -123,6 +123,8 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md) - Model registry integration system
 - [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Mobile/edge support expansion plan
 - [BATTERY_IMPACT_ANALYSIS.md](BATTERY_IMPACT_ANALYSIS.md) - Battery impact analysis methodology
+- [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps (March 2025)
+- [NEXT_STEPS.md](NEXT_STEPS.md) - Next steps and roadmap for the framework
 
 ### Implementation Files
 
@@ -130,6 +132,8 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [test_ipfs_accelerate.py](test_ipfs_accelerate.py) - IPFS acceleration testing implementation with DuckDB integration
 - [model_registry_integration.py](model_registry_integration.py) - Model registry integration implementation
 - [mobile_edge_expansion_plan.py](mobile_edge_expansion_plan.py) - Mobile/edge support expansion implementation
+- [test_model_registry_integration.py](test_model_registry_integration.py) - Test script for model registry integration
+- [test_mobile_edge_expansion.py](test_mobile_edge_expansion.py) - Test script for mobile/edge support expansion
 
 ## API and Integration Documentation
 

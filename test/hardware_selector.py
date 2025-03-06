@@ -143,6 +143,11 @@ class HardwareSelector:
                     "cost_factor": 0.9,
                     "availability_factor": 0.4,
                     "power_factor": 0.6
+                },
+                "qualcomm": {
+                    "cost_factor": 0.8,
+                    "availability_factor": 0.5,
+                    "power_factor": 0.9
                 }
             },
             "batch_size_thresholds": {
@@ -167,6 +172,7 @@ class HardwareSelector:
                 "rocm",
                 "mps",
                 "openvino",
+                "qualcomm",
                 "cpu",
                 "webgpu",
                 "webnn"
@@ -756,11 +762,11 @@ class HardwareSelector:
             "scaler": None,
             "fallback": True,
             "fallback_rules": {
-                "embedding": {"cpu": 0.5, "cuda": 0.8, "rocm": 0.7, "mps": 0.7, "openvino": 0.6, "webnn": 0.5, "webgpu": 0.5},
-                "text_generation": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.8, "mps": 0.6, "openvino": 0.4, "webnn": 0.2, "webgpu": 0.3},
-                "vision": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.8, "mps": 0.7, "openvino": 0.7, "webnn": 0.6, "webgpu": 0.6},
-                "audio": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.7, "mps": 0.6, "openvino": 0.5, "webnn": 0.3, "webgpu": 0.4},
-                "multimodal": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.7, "mps": 0.5, "openvino": 0.4, "webnn": 0.2, "webgpu": 0.3}
+                "embedding": {"cpu": 0.5, "cuda": 0.8, "rocm": 0.7, "mps": 0.7, "openvino": 0.6, "qualcomm": 0.7, "webnn": 0.5, "webgpu": 0.5},
+                "text_generation": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.8, "mps": 0.6, "openvino": 0.4, "qualcomm": 0.5, "webnn": 0.2, "webgpu": 0.3},
+                "vision": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.8, "mps": 0.7, "openvino": 0.7, "qualcomm": 0.8, "webnn": 0.6, "webgpu": 0.6},
+                "audio": {"cpu": 0.4, "cuda": 0.9, "rocm": 0.7, "mps": 0.6, "openvino": 0.5, "qualcomm": 0.7, "webnn": 0.3, "webgpu": 0.4},
+                "multimodal": {"cpu": 0.3, "cuda": 0.9, "rocm": 0.7, "mps": 0.5, "openvino": 0.4, "qualcomm": 0.5, "webnn": 0.2, "webgpu": 0.3}
             }
         }
     
@@ -949,8 +955,9 @@ class HardwareSelector:
             "rocm": 2.0,
             "mps": 3.0,
             "openvino": 4.0,
-            "webnn": 5.0,
-            "webgpu": 6.0
+            "qualcomm": 5.0, 
+            "webnn": 6.0,
+            "webgpu": 7.0
         }
         return types.get(hw_type, 0.0)
         
@@ -982,6 +989,7 @@ class HardwareSelector:
                 "rocm": 0.7,
                 "mps": 0.6,
                 "openvino": 0.6,
+                "qualcomm": 0.7,
                 "webnn": 0.5,
                 "webgpu": 0.5
             },
@@ -991,6 +999,7 @@ class HardwareSelector:
                 "rocm": 0.8,
                 "mps": 0.7,
                 "openvino": 0.6,
+                "qualcomm": 0.7,
                 "webnn": 0.4,
                 "webgpu": 0.5
             },
@@ -1000,6 +1009,7 @@ class HardwareSelector:
                 "rocm": 0.6,
                 "mps": 0.7,
                 "openvino": 0.7,
+                "qualcomm": 0.8,
                 "webnn": 0.8,
                 "webgpu": 0.7
             }
@@ -1113,7 +1123,7 @@ class HardwareSelector:
         
         # Use all hardware if not specified
         if available_hardware is None:
-            available_hardware = ["cpu", "cuda", "rocm", "mps", "openvino", "webnn", "webgpu"]
+            available_hardware = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
         
         # Check hardware availability in compatibility matrix
         compatible_hardware = []

@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import framework components with graceful degradation
 try:
-    from hardware_detection import detect_hardware_with_comprehensive_checks, CPU, CUDA, MPS, ROCM, OPENVINO, WEBNN, WEBGPU
+    from hardware_detection import detect_hardware_with_comprehensive_checks, CPU, CUDA, MPS, ROCM, OPENVINO, QUALCOMM, WEBNN, WEBGPU
     from model_family_classifier import classify_model, ModelFamilyClassifier
     from resource_pool import get_global_resource_pool
     HAS_ALL_COMPONENTS = True
@@ -129,7 +129,7 @@ class HardwareBenchmarkRunner:
                 hardware_info = detect_hardware_with_comprehensive_checks()
                 
                 # Extract available hardware platforms
-                for hw_type in [CPU, CUDA, MPS, ROCM, OPENVINO]:
+                for hw_type in [CPU, CUDA, MPS, ROCM, OPENVINO, QUALCOMM]:
                     self.available_hardware[hw_type] = hardware_info.get(hw_type, False)
                 
                 # Include web platforms if requested

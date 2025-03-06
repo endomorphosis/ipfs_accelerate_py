@@ -195,7 +195,7 @@ class AutomatedHardwareSelection:
         # Default matrix
         return {
             "timestamp": str(datetime.datetime.now().isoformat()),
-            "hardware_types": ["cpu", "cuda", "rocm", "mps", "openvino", "webnn", "webgpu"],
+            "hardware_types": ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"],
             "model_families": {
                 "embedding": {
                     "hardware_compatibility": {
@@ -204,6 +204,7 @@ class AutomatedHardwareSelection:
                         "rocm": {"compatible": True, "performance_rating": "high"},
                         "mps": {"compatible": True, "performance_rating": "high"},
                         "openvino": {"compatible": True, "performance_rating": "medium"},
+                        "qualcomm": {"compatible": True, "performance_rating": "high"},
                         "webnn": {"compatible": True, "performance_rating": "high"},
                         "webgpu": {"compatible": True, "performance_rating": "medium"}
                     }
@@ -215,6 +216,7 @@ class AutomatedHardwareSelection:
                         "rocm": {"compatible": True, "performance_rating": "medium"},
                         "mps": {"compatible": True, "performance_rating": "medium"},
                         "openvino": {"compatible": True, "performance_rating": "low"},
+                        "qualcomm": {"compatible": True, "performance_rating": "medium"},
                         "webnn": {"compatible": False, "performance_rating": "unknown"},
                         "webgpu": {"compatible": True, "performance_rating": "low"}
                     }
@@ -226,6 +228,7 @@ class AutomatedHardwareSelection:
                         "rocm": {"compatible": True, "performance_rating": "medium"},
                         "mps": {"compatible": True, "performance_rating": "high"},
                         "openvino": {"compatible": True, "performance_rating": "high"},
+                        "qualcomm": {"compatible": True, "performance_rating": "high"},
                         "webnn": {"compatible": True, "performance_rating": "medium"},
                         "webgpu": {"compatible": True, "performance_rating": "medium"}
                     }
@@ -237,6 +240,7 @@ class AutomatedHardwareSelection:
                         "rocm": {"compatible": True, "performance_rating": "medium"},
                         "mps": {"compatible": True, "performance_rating": "medium"},
                         "openvino": {"compatible": True, "performance_rating": "medium"},
+                        "qualcomm": {"compatible": True, "performance_rating": "medium"},
                         "webnn": {"compatible": False, "performance_rating": "unknown"},
                         "webgpu": {"compatible": False, "performance_rating": "unknown"}
                     }
@@ -248,6 +252,7 @@ class AutomatedHardwareSelection:
                         "rocm": {"compatible": False, "performance_rating": "unknown"},
                         "mps": {"compatible": False, "performance_rating": "unknown"},
                         "openvino": {"compatible": False, "performance_rating": "unknown"},
+                        "qualcomm": {"compatible": True, "performance_rating": "medium"},
                         "webnn": {"compatible": False, "performance_rating": "unknown"},
                         "webgpu": {"compatible": False, "performance_rating": "unknown"}
                     }
@@ -390,15 +395,15 @@ class AutomatedHardwareSelection:
         
         # Simple hardware preference lists by model family
         preferences = {
-            "embedding": ["cuda", "mps", "rocm", "openvino", "cpu"],
-            "text_generation": ["cuda", "rocm", "mps", "cpu"],
-            "vision": ["cuda", "openvino", "rocm", "mps", "cpu"],
-            "audio": ["cuda", "cpu", "mps", "rocm"],
-            "multimodal": ["cuda", "cpu"]
+            "embedding": ["cuda", "mps", "rocm", "openvino", "qualcomm", "cpu"],
+            "text_generation": ["cuda", "rocm", "mps", "qualcomm", "cpu"],
+            "vision": ["cuda", "openvino", "rocm", "mps", "qualcomm", "cpu"],
+            "audio": ["cuda", "qualcomm", "cpu", "mps", "rocm"],
+            "multimodal": ["cuda", "qualcomm", "cpu"]
         }
         
         # Get preferences for this family
-        family_preferences = preferences.get(model_family, ["cuda", "cpu"])
+        family_preferences = preferences.get(model_family, ["cuda", "qualcomm", "cpu"])
         
         # Filter by available hardware
         compatible_hw = [hw for hw in family_preferences if hw in available_hardware]

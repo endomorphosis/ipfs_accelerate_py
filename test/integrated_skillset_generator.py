@@ -38,7 +38,7 @@ except ImportError:
 
 # Other hardware detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
+HAS_QNN = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
 HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
 HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
 
@@ -156,7 +156,7 @@ def generate_skill_file(model_name, platform=None, output_dir=None, use_db_templ
     model_base = model_name.split("-")[0].lower() if "-" in model_name else model_name.lower()
     
     # Default to all platforms if none specified
-    platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
+    platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
     if platform and platform != "all":
         platforms = [p.strip() for p in platform.split(",")]
         
@@ -318,8 +318,8 @@ def detect_available_hardware():
         hardware.append("mps")
     if HAS_OPENVINO:
         hardware.append("openvino")
-    if HAS_QUALCOMM:
-        hardware.append("qualcomm")
+    if HAS_QNN:
+        hardware.append("qnn")
     if HAS_WEBNN:
         hardware.append("webnn")
     if HAS_WEBGPU:

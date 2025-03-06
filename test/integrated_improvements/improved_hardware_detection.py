@@ -35,6 +35,7 @@ HAS_CUDA = False
 HAS_ROCM = False
 HAS_MPS = False
 HAS_OPENVINO = False
+HAS_QUALCOMM = False
 HAS_WEBNN = False
 HAS_WEBGPU = False
 
@@ -46,7 +47,7 @@ def detect_all_hardware() -> Dict[str, Any]:
     Returns:
         Dict with hardware detection results for all platforms
     """
-    global HAS_CUDA, HAS_ROCM, HAS_MPS, HAS_OPENVINO, HAS_WEBNN, HAS_WEBGPU
+    global HAS_CUDA, HAS_ROCM, HAS_MPS, HAS_OPENVINO, HAS_QUALCOMM, HAS_WEBNN, HAS_WEBGPU
     
     # Initialize capabilities dictionary
     capabilities = {
@@ -55,6 +56,7 @@ def detect_all_hardware() -> Dict[str, Any]:
         "rocm": {"detected": False, "version": None, "devices": 0},
         "mps": {"detected": False, "version": None, "devices": 0},
         "openvino": {"detected": False, "version": None, "devices": 0},
+        "qualcomm": {"detected": False, "version": None, "devices": 0},
         "webnn": {"detected": False, "version": None, "simulation": False},
         "webgpu": {"detected": False, "version": None, "simulation": False}
     }
@@ -116,6 +118,23 @@ def detect_all_hardware() -> Dict[str, Any]:
             capabilities["webnn"]["detected"] = True
             capabilities["webnn"]["simulation"] = "WEBNN_SIMULATION" in os.environ
         
+        # Qualcomm AI Engine detection
+        qualcomm_available = (
+            importlib.util.find_spec("qnn_wrapper") is not None or
+            importlib.util.find_spec("qti") is not None or
+            "QUALCOMM_SDK" in os.environ
+        )
+        HAS_QUALCOMM = qualcomm_available
+        
+        if qualcomm_available:
+            capabilities["qualcomm"]["detected"] = True
+            # Try to get version information
+            try:
+                import qti
+                capabilities["qualcomm"]["version"] = getattr(qti, "__version__", "unknown")
+            except (ImportError, AttributeError):
+                pass
+
         # WebGPU detection (browser API or simulation)
         webgpu_available = (
             importlib.util.find_spec("webgpu") is not None or

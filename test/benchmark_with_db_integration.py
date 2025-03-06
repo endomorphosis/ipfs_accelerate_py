@@ -82,7 +82,7 @@ except ImportError:
     }
 
 # All hardware platforms to test
-ALL_HARDWARE_PLATFORMS = ["cpu", "cuda", "rocm", "mps", "openvino", "webnn", "webgpu"]
+ALL_HARDWARE_PLATFORMS = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 
 class BenchmarkDatabaseIntegration:
     """

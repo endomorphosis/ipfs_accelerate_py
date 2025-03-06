@@ -103,17 +103,17 @@ For detailed documentation, see [Time-Series Performance Tracking Guide](TIME_SE
 
 ### Model Family-Based Compatibility Chart
 
-| Model Family | CUDA | ROCm (AMD) | MPS (Apple) | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
-|--------------|------|------------|-------------|----------|----------|-------|--------|-------|
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
-| Text Generation (LLMs) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
-| Vision (ViT, CLIP, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
-| Audio (Whisper, etc.) | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
-| Multimodal (LLaVA, etc.) | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
+| Model Family | CPU | CUDA | ROCm | MPS | OpenVINO | QNN | WebNN | WebGPU | Notes |
+|--------------|-----|------|------|-----|----------|-----|-------|--------|-------|
+| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
+| Text Generation (LLMs) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
+| Vision (ViT, CLIP, etc.) | ✅ Medium | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
+| Audio (Whisper, etc.) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
+| Multimodal (LLaVA, etc.) | ⚠️ Limited | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
 
 ### IPFS Acceleration Testing Features (Updated March 2025)
 
-The framework now includes comprehensive IPFS acceleration testing with enhanced DuckDB integration and WebGPU support:
+The framework now includes comprehensive IPFS acceleration testing with enhanced DuckDB integration, Qualcomm QNN, and WebGPU support:
 
 1. **Database-First Storage**: Complete integration with DuckDB for efficient and reliable test results storage:
    ```bash
@@ -124,33 +124,53 @@ The framework now includes comprehensive IPFS acceleration testing with enhanced
    python test_ipfs_accelerate.py --db-path ./custom_benchmark.duckdb --models "bert-base-uncased"
    ```
 
-2. **WebGPU Support and Analysis**: Test and analyze browser-based GPU acceleration:
+2. **Qualcomm AI Engine Support**: Test with Qualcomm QNN hardware acceleration:
+   ```bash
+   # Test with Qualcomm QNN acceleration
+   python test_ipfs_accelerate.py --qnn --models "bert-base-uncased"
+   
+   # Run with specific Qualcomm precision settings
+   python test_ipfs_accelerate.py --qnn --precision int8 --models "bert-base-uncased"
+   
+   # Generate Qualcomm performance comparison report
+   python test_ipfs_accelerate.py --qnn-analysis --models "bert-base-uncased,whisper-tiny" --format html
+   ```
+
+3. **WebGPU Support and Analysis**: Test and analyze browser-based GPU acceleration:
    ```bash
    # Test with WebGPU acceleration
    python test_ipfs_accelerate.py --webgpu --models "bert-base-uncased"
    
    # Generate WebGPU analysis report with shader metrics
-   python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics
+   python test_ipfs_accelerate.py --webgpu-analysis --browser firefox --shader-metrics --format html
+   
+   # Generate comprehensive WebGPU performance analysis across browsers
+   python test_ipfs_accelerate.py --webgpu-analysis --format html
+   
+   # Analyze compute shader optimizations (especially for audio models)
+   python test_ipfs_accelerate.py --webgpu-analysis --compute-shader-optimization --browser firefox --format html
    ```
 
-3. **Real-Time Database Integration**: Test results stored in database as they're generated:
+4. **Real-Time Database Integration**: Test results stored in database as they're generated:
    ```bash
    # Test multiple platforms with real-time database integration
-   python test_ipfs_accelerate.py --models "bert-base-uncased" --qualcomm --webnn --webgpu --db-only
+   python test_ipfs_accelerate.py --models "bert-base-uncased" --qnn --webnn --webgpu --db-only
    ```
 
-4. **Enhanced Visualization and Reporting**:
+5. **Enhanced Visualization and Reporting**:
    - Interactive Plotly charts for performance comparisons
    - WebGPU shader compilation metrics visualization
    - Browser-specific WebGPU performance analysis
    - Model-specific optimization recommendations
    - Hardware compatibility heatmaps
+   - Qualcomm power efficiency metrics for mobile/edge devices
 
-5. **Comprehensive Reporting Options**:
+6. **Comprehensive Reporting Options**:
    - General report: `--report`
    - IPFS acceleration report: `--ipfs-acceleration-report`
    - Acceleration comparison report: `--comparison-report` 
-   - WebGPU analysis report: `--webgpu-analysis` (NEW!)
+   - WebGPU analysis report: `--webgpu-analysis` 
+   - Qualcomm performance report: `--qnn-analysis` (NEW!)
 
 For detailed documentation on these features, see [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md).
 
@@ -163,21 +183,21 @@ This will benchmark all 13 high-priority model classes across all available hard
 
 ### Key Model Test Coverage Status
 
-| Model Class | Model Used | CUDA | AMD | MPS | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
-|-------------|------------|------|-----|-----|----------|----------|-------|--------|-------|
-| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
-| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
-| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
-| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
-| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| LLaVA | llava-onevision-base | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
-| LLaVA-Next | Local test model | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
-| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
-| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints |
-| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
+| Model Class | Model Used | CPU | CUDA | ROCm | MPS | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
+|-------------|------------|-----|------|------|-----|----------|----------|-------|--------|-------|
+| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
+| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
+| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| LLaVA | llava-onevision-base | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| LLaVA-Next | Local test model | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
+| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints |
+| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
 
 ## Essential Test Commands
 
@@ -265,10 +285,10 @@ python test/fix_template_integration.py --check-db
 python test/integrated_skillset_generator.py --model bert --cross-platform --hardware all
 
 # Generate tests for specific hardware platforms only
-python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,qualcomm,webnn
+python test/integrated_skillset_generator.py --model bert --hardware cuda,openvino,qnn,webnn
 
 # Generate tests with the improved generator that supports all hardware platforms
-python test/qualified_test_generator.py -g bert-base-uncased -p cpu,cuda,rocm,mps,openvino,qualcomm,webnn,webgpu -o test_bert_all_platforms.py
+python test/qualified_test_generator.py -g bert-base-uncased -p cpu,cuda,rocm,mps,openvino,qnn,webnn,webgpu -o test_bert_all_platforms.py
 
 # Run hardware-specific template generation
 python test/enhance_key_models_hardware_coverage.py --create-templates
@@ -322,7 +342,7 @@ python test/automated_hardware_selection.py --detect-hardware
 python test/test_comprehensive_hardware.py --test all
 
 # Test hardware backends with specific model
-python test/test_hardware_backend.py --backend [cpu|cuda|openvino|mps|rocm|qualcomm|webnn|webgpu|all] --model [model_name]
+python test/test_hardware_backend.py --backend [cpu|cuda|rocm|mps|openvino|qualcomm|webnn|webgpu|all] --model [model_name]
 
 # Test resource pool with hardware awareness
 python test/test_resource_pool.py --test hardware
@@ -481,63 +501,63 @@ python test/test_web_platform_optimizations.py --all-optimizations
 ./run_web_platform_tests.sh --compare-browsers --model whisper
 ```
 
-### Qualcomm AI Engine Support and Advanced Quantization (March 2025)
+### QNN (Qualcomm Neural Networks) Support and Advanced Quantization (March 2025)
 ```bash
-# Generate tests for Qualcomm hardware
-python test/qualified_test_generator.py -g bert-base-uncased -p qualcomm -o test_bert_qualcomm.py
+# Generate tests for QNN hardware
+python test/qualified_test_generator.py -g bert-base-uncased -p qnn -o test_bert_qnn.py
 
-# Run tests on Qualcomm hardware
-python test_bert_qualcomm.py
+# Run tests on QNN hardware
+python test_bert_qnn.py
 
-# Run comprehensive Qualcomm integration test suite (stores results in DuckDB)
-python test/test_qualcomm_integration.py --db-path ./benchmark_db.duckdb
+# Run comprehensive QNN integration test suite (stores results in DuckDB)
+python test/test_qnn_integration.py --db-path ./benchmark_db.duckdb
 
 # Run test suite with specific models
-python test/test_qualcomm_integration.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny
+python test/test_qnn_integration.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny
 
 # Run test suite with comprehensive model set
-python test/test_qualcomm_integration.py --models all
+python test/test_qnn_integration.py --models all
 
-# Generate Qualcomm performance visualizations from test data
-python test/visualize_qualcomm_performance.py --db-path ./benchmark_db.duckdb --output ./reports
+# Generate QNN performance visualizations from test data
+python test/visualize_qnn_performance.py --db-path ./benchmark_db.duckdb --output ./reports
 
-# Automated hardware selection including Qualcomm
-python test/automated_hardware_selection.py --model bert-base-uncased --include-qualcomm
+# Automated hardware selection including QNN
+python test/automated_hardware_selection.py --model bert-base-uncased --include-qnn
 
-# Benchmark with Qualcomm hardware
-python test/benchmark_all_key_models.py --hardware qualcomm
+# Benchmark with QNN hardware
+python test/benchmark_all_key_models.py --hardware qnn
 
-# Test power efficiency metrics for mobile/edge devices (Qualcomm)
-python test/test_hardware_backend.py --backend qualcomm --model bert-tiny --power-metrics
+# Test power efficiency metrics for mobile/edge devices (QNN)
+python test/test_hardware_backend.py --backend qnn --model bert-tiny --power-metrics
 
-# Compare Qualcomm vs other hardware platforms using DuckDB data
-python test/scripts/benchmark_db_query.py --report qualcomm_comparison --format html --output qualcomm_report.html
+# Compare QNN vs other hardware platforms using DuckDB data
+python test/scripts/benchmark_db_query.py --report qnn_comparison --format html --output qnn_report.html
 
-# Extract device and SDK information for Qualcomm
-python test/test_qualcomm_integration.py --device-info-only
+# Extract device and SDK information for QNN
+python test/test_qnn_integration.py --device-info-only
 
 # Basic Quantization Usage
 # ========================
 
-# Quantize a model for Qualcomm hardware
-python test/qualcomm_quantization_support.py quantize \
+# Quantize a model for QNN hardware
+python test/qnn_quantization_support.py quantize \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased.qnn \
   --method int8 \
   --model-type text
 
 # Compare different quantization methods
-python test/qualcomm_quantization_support.py compare \
+python test/qnn_quantization_support.py compare \
   --model-path models/bert-base-uncased.onnx \
   --output-dir ./quantized_models \
   --model-type text \
   --report-path ./reports/quantization_comparison.md
 
-# List available quantization methods for Qualcomm
-python test/qualcomm_quantization_support.py list
+# List available quantization methods for QNN
+python test/qnn_quantization_support.py list
 
 # Run a complete quantization example
-python test/test_examples/qualcomm_quantization_example.py \
+python test/test_examples/qnn_quantization_example.py \
   --model-path models/bert-base-uncased.onnx \
   --model-type text \
   --mock
@@ -546,7 +566,7 @@ python test/test_examples/qualcomm_quantization_example.py \
 # =========================================
 
 # Weight Clustering Quantization
-python test/qualcomm_advanced_quantization.py cluster \
+python test/qnn_advanced_quantization.py cluster \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased-clustered.qnn \
   --clusters 16 \
@@ -554,7 +574,7 @@ python test/qualcomm_advanced_quantization.py cluster \
   --optimize-for hexagon
 
 # Hybrid/Mixed Precision Quantization
-python test/qualcomm_advanced_quantization.py hybrid \
+python test/qnn_advanced_quantization.py hybrid \
   --model-path models/llama-7b.onnx \
   --output-path models/llama-7b-hybrid.qnn \
   --attention-precision int8 \
@@ -563,13 +583,13 @@ python test/qualcomm_advanced_quantization.py hybrid \
   --optimize-for mobile
 
 # Per-Channel Quantization
-python test/qualcomm_advanced_quantization.py per-channel \
+python test/qnn_advanced_quantization.py per-channel \
   --model-path models/clip-vit.onnx \
   --output-path models/clip-vit-perchannel.qnn \
   --model-type vision
 
 # Learned Quantization Parameters (QAT)
-python test/qualcomm_advanced_quantization.py qat \
+python test/qnn_advanced_quantization.py qat \
   --model-path models/bert-base-uncased.onnx \
   --output-path models/bert-base-uncased-qat.qnn \
   --train-dataset glue/mrpc \
@@ -578,7 +598,7 @@ python test/qualcomm_advanced_quantization.py qat \
   --model-type text
 
 # Sparse Quantization with Pruning
-python test/qualcomm_advanced_quantization.py sparse \
+python test/qnn_advanced_quantization.py sparse \
   --model-path models/whisper-small.onnx \
   --output-path models/whisper-small-sparse.qnn \
   --sparsity 0.5 \
@@ -600,21 +620,21 @@ python test/quantization_comparison_tools.py visualize \
   --plot-type radar
 
 # Hardware-Specific Optimizations for Quantized Models
-python test/qualcomm_hardware_optimizations.py optimize \
+python test/qnn_hardware_optimizations.py optimize \
   --model-path models/bert-base-uncased-int8.qnn \
   --output-path models/bert-base-uncased-int8-optimized.qnn \
   --device sm8550 \
   --optimize memory,power,latency
 
 # Memory Bandwidth Optimization
-python test/qualcomm_hardware_optimizations.py memory-optimize \
+python test/qnn_hardware_optimizations.py memory-optimize \
   --model-path models/llama-7b-int4.qnn \
   --output-path models/llama-7b-int4-memopt.qnn \
   --cache-config aggressive \
   --tiling-strategy optimal
 
 # Power State Management Integration
-python test/qualcomm_hardware_optimizations.py power-optimize \
+python test/qnn_hardware_optimizations.py power-optimize \
   --model-path models/whisper-small-int8.qnn \
   --output-path models/whisper-small-int8-poweropt.qnn \
   --battery-mode efficient \
@@ -855,11 +875,12 @@ CREATE TABLE IF NOT EXISTS cross_platform_compatibility (
     model_name VARCHAR,
     model_type VARCHAR,
     model_size VARCHAR,
+    cpu_support BOOLEAN,
     cuda_support BOOLEAN,
     rocm_support BOOLEAN,
     mps_support BOOLEAN,
     openvino_support BOOLEAN,
-    qualcomm_support BOOLEAN,     -- Qualcomm support
+    qnn_support BOOLEAN,          -- Qualcomm Neural Networks support
     webnn_support BOOLEAN,
     webgpu_support BOOLEAN,
     recommended_platform VARCHAR, 
@@ -874,7 +895,7 @@ For working with the schema:
 python test/scripts/benchmark_db_query.py --sql "SELECT * FROM hardware_capabilities" --format html --output capabilities.html
 
 # Check cross-platform compatibility by model type
-python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as total, SUM(CASE WHEN qualcomm_support THEN 1 ELSE 0 END) as qualcomm_compatible, ROUND(SUM(CASE WHEN qualcomm_support THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as compatibility_rate FROM cross_platform_compatibility GROUP BY model_type ORDER BY compatibility_rate DESC" --format markdown
+python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as total, SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) as qnn_compatible, ROUND(SUM(CASE WHEN qnn_support THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as compatibility_rate FROM cross_platform_compatibility GROUP BY model_type ORDER BY compatibility_rate DESC" --format markdown
 
 # Compare power efficiency across hardware platforms
 python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency FROM performance_comparison GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output power_efficiency.png
@@ -898,23 +919,23 @@ Legacy documentation (being migrated to database):
 - Web platform audio tests: `test/WEB_PLATFORM_AUDIO_TESTING_GUIDE.md`
 - Hardware selection system: `test/HARDWARE_SELECTION_GUIDE.md`
 - Web platform support: `test/README_WEB_PLATFORM_SUPPORT.md`
-- Qualcomm implementation: `test/QUALCOMM_IMPLEMENTATION_SUMMARY.md`
+- QNN implementation: `test/QNN_IMPLEMENTATION_SUMMARY.md`
 
-### Qualcomm AI Engine Performance
+### QNN (Qualcomm Neural Networks) Performance
 
-The Qualcomm AI Engine integration (March 2025) provides specialized support for Snapdragon SoCs and mobile/edge devices:
+The QNN integration (March 2025) provides specialized support for Snapdragon SoCs and mobile/edge devices:
 
-| Model Type | Model Size | Qualcomm vs CPU | Power Efficiency | Key Metric |
-|------------|------------|----------------|------------------|------------|
+| Model Type | Model Size | QNN vs CPU | Power Efficiency | Key Metric |
+|------------|------------|------------|------------------|------------|
 | Embedding | Small | 2.5-3.8x faster | 4.0-5.5x better | 78% lower power consumption |
 | Text Generation | Tiny (<1B) | 1.8-2.2x faster | 3.0-4.0x better | Optimal for battery life |
 | Vision | Small-Medium | 3.0-5.0x faster | 3.5-4.5x better | Great for mobile vision |
 | Audio | Tiny | 2.0-3.0x faster | 3.0-4.0x better | Suitable for voice assistants |
 | Multimodal | Tiny-Small | 1.5-2.0x faster | 2.5-3.5x better | Limited by memory |
 
-Performance varies by hardware generation and specific Snapdragon model. Benchmarks were conducted on Snapdragon 8 Gen 3 hardware with the latest Qualcomm AI SDK (QNN 2.10).
+Performance varies by hardware generation and specific Snapdragon model. Benchmarks were conducted on Snapdragon 8 Gen 3 hardware with the latest QNN SDK (version 2.10).
 
-**Qualcomm Implementation Features:**
+**QNN Implementation Features:**
 - Model conversion pipeline (PyTorch → ONNX → QNN format)
 - Support for both QNN and QTI SDKs
 - Power and thermal measurement capabilities
@@ -923,11 +944,11 @@ Performance varies by hardware generation and specific Snapdragon model. Benchma
 - Fallback mechanisms for unsupported operations
 - Mock implementations for testing without physical hardware
 
-For detailed Qualcomm performance testing and reports, run:
+For detailed QNN performance testing and reports, run:
 ```bash
-# Run comprehensive Qualcomm test suite and generate reports
-python test/test_qualcomm_integration.py --models all
-python test/visualize_qualcomm_performance.py --output ./reports
+# Run comprehensive QNN test suite and generate reports
+python test/test_qnn_integration.py --models all
+python test/visualize_qnn_performance.py --output ./reports
 ```
 
 ### Web Platform Performance Results
@@ -1166,7 +1187,7 @@ The framework now includes a comprehensive hardware selection and performance pr
 
 - **Hardware Selection**: Automatically determines the best hardware platform for a given model and task
 - **Performance Prediction**: Predicts throughput, latency, and memory usage for any model-hardware combination
-- **Cross-Platform Support**: Covers all supported hardware platforms including CUDA, ROCm, MPS, OpenVINO, WebNN, and WebGPU
+- **Cross-Platform Support**: Covers all supported hardware platforms including CPU, CUDA, ROCm, MPS, OpenVINO, QNN, WebNN, and WebGPU
 - **Precision-Aware**: Considers different precision formats (fp32, fp16, int8) in recommendations
 - **Visualization Tools**: Generates comparative visualizations for hardware performance analysis
 

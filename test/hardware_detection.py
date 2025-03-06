@@ -968,7 +968,7 @@ class HardwareDetector:
     
     def get_best_available_hardware(self) -> str:
         """Get the best available hardware platform for inference"""
-        # Priority order: CUDA > ROCm > MPS > OpenVINO > CPU
+        # Priority order: CUDA > ROCm > MPS > OpenVINO > Qualcomm > CPU
         if self.is_available(CUDA):
             return CUDA
         elif self.is_available(ROCM):
@@ -977,6 +977,8 @@ class HardwareDetector:
             return MPS
         elif self.is_available(OPENVINO):
             return OPENVINO
+        elif self.is_available(QUALCOMM):
+            return QUALCOMM
         else:
             return CPU
     
@@ -1092,9 +1094,9 @@ class HardwareDetector:
         Returns:
             The best available hardware type from the priority list
         """
-        # Default priority: CUDA > ROCm > MPS > OpenVINO > CPU
+        # Default priority: CUDA > ROCm > MPS > OpenVINO > Qualcomm > CPU
         if priority_list is None:
-            priority_list = [CUDA, ROCM, MPS, OPENVINO, CPU]
+            priority_list = [CUDA, ROCM, MPS, OPENVINO, QUALCOMM, CPU]
         
         logger.debug(f"Selecting hardware using priority list: {priority_list}")
         

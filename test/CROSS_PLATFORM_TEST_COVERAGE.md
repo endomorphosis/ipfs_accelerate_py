@@ -4,8 +4,8 @@ This document provides a comprehensive overview of the test coverage implementat
 
 ## Current Hardware Coverage Matrix
 
-| Model Class | CPU | CUDA | OpenVINO | MPS (Apple) | ROCm (AMD) | Qualcomm | WebNN | WebGPU | Implementation Status |
-|-------------|-----|------|----------|-------------|------------|---------|-------|--------|----------------------|
+| Model Class | CPU | CUDA | ROCm | MPS | OpenVINO | QNN | WebNN | WebGPU | Implementation Status |
+|-------------|-----|------|------|-----|----------|-----|-------|--------|----------------------|
 | BERT        | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
 | T5          | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* | ✅* | Complete |
 | LLAMA       | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅* | ✅* | Complete |
@@ -41,10 +41,10 @@ All 13 high-priority models now have implementation for all hardware platforms w
    - LLaVA and LLaVA-Next now have optimized implementations with half-precision and MPS synchronization
    - Specialized handling for multimodal models on Apple Silicon with fallback mechanisms
 
-3. **Qualcomm AI Engine Support Status**:
-   - 9 of 13 models have full Qualcomm support (70% complete)
+3. **QNN (Qualcomm Neural Networks) Support Status**:
+   - 9 of 13 models have full QNN support (70% complete)
    - 4 memory-intensive models (LLAMA, LLaVA, LLaVA-Next, Qwen2) use partial implementation with fallbacks
-   - All models have test implementations with conversion pipeline to Qualcomm formats
+   - All models have test implementations with conversion pipeline to QNN formats
    - Integration with both QNN and QTI SDKs is complete
 
 4. **Web Platform Implementation Status**:

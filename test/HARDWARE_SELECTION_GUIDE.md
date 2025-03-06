@@ -6,7 +6,7 @@ The Hardware Selection System is a key component of the IPFS Accelerate Python F
 
 > **March 2025 Update**: This guide includes information about the latest enhancements to the hardware selection system, including improved reliability, robust fallback mechanisms, and the new Enhanced Hardware Benchmark Runner.
 
-> **Qualcomm Integration Update (March 2025)**: Full Qualcomm AI Engine/Hexagon DSP support has been integrated into the hardware selection and benchmarking system. All templates have been updated to support Qualcomm hardware acceleration. See the [Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md) for details.
+> **QNN Integration Update (March 2025)**: Full QNN (Qualcomm Neural Networks)/Hexagon DSP support has been integrated into the hardware selection and benchmarking system. All templates have been updated to support QNN hardware acceleration. See the [QNN Integration Guide](QNN_INTEGRATION_GUIDE.md) for details.
 
 ## Key Features
 
@@ -20,7 +20,7 @@ The Hardware Selection System is a key component of the IPFS Accelerate Python F
 - **Enhanced Reliability**: Robust error handling and fallback mechanisms
 - **Automated Benchmarking**: Integrated benchmark runner with hardware auto-selection
 - **Database Integration**: Direct storage of benchmark results in DuckDB database
-- **Comprehensive Hardware Support**: Support for CPU, CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, and WebGPU
+- **Comprehensive Hardware Support**: Support for CPU, CUDA, ROCm, MPS, OpenVINO, QNN, WebNN, and WebGPU
 
 ## Installation
 
@@ -259,7 +259,7 @@ Example compatibility matrix:
 ```json
 {
   "timestamp": "2025-03-01T00:00:00Z",
-  "hardware_types": ["cpu", "cuda", "rocm", "mps", "openvino", "webnn", "webgpu"],
+  "hardware_types": ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"],
   "model_families": {
     "embedding": {
       "hardware_compatibility": {
@@ -430,6 +430,12 @@ The system works even when scikit-learn is not available, using rule-based fallb
   - Intel CPU/GPU optimization
   - Vision models
   - Edge deployment scenarios
+
+- **QNN**:
+  - Qualcomm Snapdragon devices
+  - Mobile and edge deployment
+  - Power-efficient inference
+  - Specialized for on-device AI
 
 - **WebNN**:
   - Browser-based deployment

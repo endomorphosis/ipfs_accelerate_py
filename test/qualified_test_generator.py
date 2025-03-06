@@ -8,7 +8,7 @@ This generator supports all hardware platforms including:
 - ROCm: AMD GPU acceleration 
 - MPS: Apple Silicon GPU acceleration
 - OpenVINO: Intel hardware acceleration
-- Qualcomm: Qualcomm AI Engine
+- QNN: Qualcomm Neural Networks
 - WebNN: Web Neural Network API support
 - WebGPU: Web Graphics Processing Unit support
 """
@@ -178,7 +178,7 @@ HAS_CUDA = False
 HAS_ROCM = False
 HAS_MPS = False
 HAS_OPENVINO = False
-HAS_QUALCOMM = False
+HAS_QNN = False
 HAS_WEBNN = False
 HAS_WEBGPU = False
 

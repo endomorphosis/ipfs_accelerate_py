@@ -19,7 +19,7 @@ The `hardware_benchmark_runner.py` script provides the core benchmarking functio
 
 ### Features
 
-- **Comprehensive Hardware Support**: Tests across CPU, CUDA, MPS (Apple Silicon), ROCm (AMD), OpenVINO, Qualcomm AI Engine, WebNN, and WebGPU
+- **Comprehensive Hardware Support**: Tests across CPU, CUDA, ROCm, MPS, OpenVINO, QNN (Qualcomm Neural Networks), WebNN, and WebGPU
 - **Model Family Coverage**: Supports embedding, text generation, vision, audio, and multimodal models
 - **Flexible Configuration**: Configurable batch sizes, sequence lengths, and iteration counts
 - **Detailed Metrics**: Measures latency, throughput, memory usage, and hardware-specific statistics
@@ -35,7 +35,7 @@ The `hardware_benchmark_runner.py` script provides the core benchmarking functio
 python hardware_benchmark_runner.py
 
 # Benchmark specific model families on specific hardware
-python hardware_benchmark_runner.py --model-families embedding text_generation --hardware cuda cpu qualcomm
+python hardware_benchmark_runner.py --model-families embedding text_generation --hardware cuda cpu qnn
 
 # Customize batch sizes and iterations
 python hardware_benchmark_runner.py --batch-sizes 1 4 16 --warmup 10 --iterations 50
@@ -437,28 +437,28 @@ python hardware_benchmark_runner.py --model-families embedding
 python run_benchmark_suite.py --check
 ```
 
-### Qualcomm AI Engine Benchmarking
+### QNN (Qualcomm Neural Networks) Benchmarking
 
-The framework now includes full support for benchmarking on Qualcomm AI Engine and Hexagon DSP hardware:
+The framework now includes full support for benchmarking on QNN and Hexagon DSP hardware:
 
 ```bash
-# Run benchmarks on Qualcomm hardware only
-python hardware_benchmark_runner.py --hardware qualcomm
+# Run benchmarks on QNN hardware only
+python hardware_benchmark_runner.py --hardware qnn
 
-# Compare Qualcomm performance with other hardware platforms
-python hardware_benchmark_runner.py --hardware cuda cpu qualcomm --model-families embedding vision
+# Compare QNN performance with other hardware platforms
+python hardware_benchmark_runner.py --hardware cuda cpu qnn --model-families embedding vision
 
-# Benchmark small models on Qualcomm
-python hardware_benchmark_runner.py --hardware qualcomm --small-models-only
+# Benchmark small models on QNN
+python hardware_benchmark_runner.py --hardware qnn --small-models-only
 
-# Benchmark on Qualcomm with environment variable configuration
-QUALCOMM_SDK=/path/to/sdk QUALCOMM_DEBUG=1 python hardware_benchmark_runner.py --hardware qualcomm
+# Benchmark on QNN with environment variable configuration
+QNN_SDK=/path/to/sdk QNN_DEBUG=1 python hardware_benchmark_runner.py --hardware qnn
 ```
 
-The Qualcomm benchmark process:
-1. Detects available Qualcomm AI Engine SDKs (QNN or QTI)
-2. Converts models to Qualcomm formats via ONNX
-3. Runs inference on Qualcomm hardware
+The QNN benchmark process:
+1. Detects available QNN SDKs (QNN or QTI)
+2. Converts models to QNN formats via ONNX
+3. Runs inference on QNN hardware
 4. Collects and reports performance metrics
 
 Results are integrated into the hardware compatibility matrix and used by the hardware selection system to make intelligent recommendations.

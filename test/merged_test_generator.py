@@ -30,7 +30,7 @@ except ImportError:
 
 # Other hardware detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
-HAS_QUALCOMM = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
+HAS_QNN = importlib.util.find_spec("qnn_wrapper") is not None or importlib.util.find_spec("qti") is not None
 HAS_WEBNN = importlib.util.find_spec("webnn") is not None or "WEBNN_AVAILABLE" in os.environ
 HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE" in os.environ
 
@@ -53,18 +53,18 @@ MODEL_REGISTRY = {
 
 # Define key model hardware support
 KEY_MODEL_HARDWARE_MAP = {
-    "bert": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "t5": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "vit": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "clip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "REAL", "webgpu": "REAL"},
-    "whisper": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "wav2vec2": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "clap": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "llama": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "llava": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "xclip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "detr": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
-    "qwen2": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"}
+    "bert": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "REAL", "webgpu": "REAL"},
+    "t5": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "REAL", "webgpu": "REAL"},
+    "vit": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "REAL", "webgpu": "REAL"},
+    "clip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "REAL", "webgpu": "REAL"},
+    "whisper": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "wav2vec2": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "clap": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "llama": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "llava": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "qnn": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "xclip": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "detr": {"cpu": "REAL", "cuda": "REAL", "rocm": "REAL", "mps": "REAL", "openvino": "REAL", "qnn": "REAL", "webnn": "SIMULATION", "webgpu": "SIMULATION"},
+    "qwen2": {"cpu": "REAL", "cuda": "REAL", "rocm": "SIMULATION", "mps": "SIMULATION", "openvino": "SIMULATION", "qnn": "SIMULATION", "webnn": "SIMULATION", "webgpu": "SIMULATION"}
 }
 
 def detect_model_modality(model_name):

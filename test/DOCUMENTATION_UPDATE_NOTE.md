@@ -4,6 +4,27 @@
 
 ### New Documentation Added
 
+#### March 6, 2025: Next Steps Implementation Guide
+
+1. **NEXT_STEPS_IMPLEMENTATION.md**: Comprehensive implementation guide for the next steps in the roadmap:
+   - Detailed documentation for Enhanced Model Registry Integration
+   - Comprehensive guide for Extended Mobile/Edge Support
+   - Command-line interfaces for all components
+   - Python API usage examples
+   - Integration with existing framework components
+   - Step-by-step implementation instructions
+   - Examples and best practices
+
+2. **Test Scripts for Next Steps Implementation**:
+   - **test_model_registry_integration.py**: Test script for model registry integration
+   - **test_mobile_edge_expansion.py**: Test script for mobile/edge support expansion
+   - Complete testing capabilities for all components
+   - Schema creation and database integration
+   - Model version management and hardware recommendations
+   - Mobile test harness skeleton generation
+   - Battery impact analysis and schema generation
+   - Documentation index updates with new content
+
 #### Time-Series Performance Tracking Documentation
 
 1. **TIME_SERIES_PERFORMANCE_GUIDE.md**: Comprehensive documentation on the time-series performance tracking system:

@@ -28,7 +28,7 @@ logger = logging.getLogger("auto_detect")
 
 # Global constants
 PRECISION_TYPES = ["fp32", "fp16", "bf16", "int8", "int4", "uint4", "fp8", "fp4"]
-HARDWARE_TYPES = ["cpu", "cuda", "amd", "mps", "openvino", "qualcomm"]
+HARDWARE_TYPES = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn", "webnn", "webgpu"]
 
 @dataclass
 class HardwareInfo:
