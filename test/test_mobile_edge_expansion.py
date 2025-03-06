@@ -126,6 +126,74 @@ def design_battery_methodology() -> Dict[str, Any]:
     
     return methodology
 
+def test_edge_accelerator_support() -> Dict[str, Any]:
+    """
+    Test edge AI accelerator support.
+    
+    Returns:
+        Dict containing test results
+    """
+    logger.info("Testing edge AI accelerator support...")
+    analysis = BatteryImpactAnalysis()
+    
+    # Test hardware support
+    supported_hardware = []
+    for hardware_type in ['qualcomm', 'mediatek', 'samsung']:
+        support_details = analysis.get_hardware_support_details(hardware_type)
+        if support_details['supported']:
+            supported_hardware.append(hardware_type)
+            details = support_details['details']
+            logger.info(f"Hardware: {details['name']}")
+            logger.info(f"  Versions: {details['versions']}")
+            logger.info(f"  Supported models: {details['supported_models']}")
+            logger.info(f"  Supported precisions: {details['supported_precisions']}")
+    
+    # Test model compatibility
+    model_compatibility = []
+    for hardware_type in supported_hardware:
+        for model_name in ['bert-base-uncased', 'llama-7b', 'clip-base', 'whisper-small']:
+            compatibility = analysis.check_model_compatibility(model_name, hardware_type)
+            if compatibility.get('compatible', False):
+                logger.info(f"Model {model_name} is compatible with {hardware_type}")
+                logger.info(f"  Recommended precision: {compatibility['precision_recommendation']}")
+                logger.info(f"  Estimated throughput: {compatibility['performance_estimate']['throughput_relative_to_cpu']}x CPU")
+                if compatibility['optimization_tips']:
+                    logger.info(f"  Optimization tips: {compatibility['optimization_tips']}")
+                model_compatibility.append({
+                    'model': model_name,
+                    'hardware': hardware_type,
+                    'compatibility': compatibility
+                })
+    
+    # Test accelerator configuration
+    configs = []
+    test_cases = [
+        {'hardware': 'qualcomm', 'model': 'bert-base-uncased', 'optimize_for': 'performance'},
+        {'hardware': 'mediatek', 'model': 'clip-base', 'optimize_for': 'efficiency'},
+        {'hardware': 'samsung', 'model': 'whisper-small', 'optimize_for': 'balanced'}
+    ]
+    
+    for test_case in test_cases:
+        config = analysis.create_accelerator_config(
+            test_case['hardware'], 
+            test_case['model'], 
+            optimize_for=test_case['optimize_for']
+        )
+        
+        if config.get('success', False):
+            logger.info(f"Created accelerator config for {test_case['model']} on {test_case['hardware']}")
+            logger.info(f"  SDK version: {config['sdk_version']}")
+            logger.info(f"  Precision: {config['precision']}")
+            logger.info(f"  Optimization target: {config['optimization_target']}")
+            logger.info(f"  Special optimizations: {config['special_optimizations']}")
+            configs.append(config)
+    
+    return {
+        'supported_hardware': supported_hardware,
+        'model_compatibility': model_compatibility,
+        'accelerator_configs': configs
+    }
+
 def create_test_harness_specification() -> Dict[str, Any]:
     """
     Create specifications for mobile test harnesses.
@@ -808,6 +876,10 @@ def main():
     skeleton_parser = subparsers.add_parser('generate-skeleton', help='Generate mobile test harness skeleton')
     skeleton_parser.add_argument('--output', help='Output path for skeleton code')
     
+    # Test edge accelerator support command
+    edge_parser = subparsers.add_parser('test-edge-accelerators', help='Test edge AI accelerator support')
+    edge_parser.add_argument('--output-json', help='Output JSON file for test results')
+    
     # Parse arguments
     args = parser.parse_args()
     
@@ -874,6 +946,14 @@ def main():
         
         if not args.output:
             print(skeleton_code)
+            
+    elif args.command == 'test-edge-accelerators':
+        test_results = test_edge_accelerator_support()
+        
+        if args.output_json:
+            with open(args.output_json, 'w') as f:
+                json.dump(test_results, f, indent=2)
+            logger.info(f"Edge accelerator test results saved to {args.output_json}")
     
     else:
         parser.print_help()

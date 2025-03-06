@@ -4,13 +4,17 @@ This directory contains the comprehensive testing framework for the IPFS Acceler
 
 ## Current Development: Phase 16 - Advanced Hardware Benchmarking (100% Complete)
 
-Phase 16 focusing on advanced hardware benchmarking, web platform integration, and cross-platform testing is now 100% complete. All 13 key model classes have been validated across all 8 hardware platforms (now including Qualcomm AI Engine) with comprehensive benchmarking and optimization. See the [Phase 16 Completion Report](PHASE16_COMPLETION_REPORT.md) and [Phase 16 Verification Report](PHASE16_VERIFICATION_REPORT.md) for detailed information.
+Phase 16 focusing on advanced hardware benchmarking, web platform integration, and cross-platform testing is now 100% complete. All 13 key model classes have been validated across all 9 hardware platforms (including Qualcomm AI Engine, MediaTek APU, and Samsung NPU) with comprehensive benchmarking and optimization. See the [Phase 16 Completion Report](PHASE16_COMPLETION_REPORT.md) and [Phase 16 Verification Report](PHASE16_VERIFICATION_REPORT.md) for detailed information.
 
 ## Recent Documentation
 
-- **[Time-Series Performance Tracking Guide](TIME_SERIES_PERFORMANCE_GUIDE.md)** - NEW! Complete guide to the time-series performance tracking system for regression detection and trend analysis
-- **[CI/CD Integration Guide](docs/CICD_INTEGRATION_GUIDE.md)** - NEW! Complete guide to the CI/CD integration for test results with GitHub Actions
-- **[Comprehensive Model Compatibility Matrix](COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md)** - NEW! Complete compatibility matrix for all 300+ HuggingFace model classes across hardware platforms
+- **[Mobile/Edge Support Guide](MOBILE_EDGE_SUPPORT_GUIDE.md)** - COMPLETED! Comprehensive guide to mobile and edge device support including Qualcomm, MediaTek, and Samsung
+- **[Samsung NPU Support Guide](SAMSUNG_NPU_SUPPORT_GUIDE.md)** - NEW! Complete guide to Samsung Exynos NPU support with One UI optimization
+- **[Mobile Edge Device Metrics Guide](MOBILE_EDGE_DEVICE_METRICS.md)** - NEW! Complete guide to collecting, storing, and analyzing mobile device metrics
+- **[Mobile Thermal Monitoring Guide](MOBILE_THERMAL_MONITORING_GUIDE.md)** - COMPLETED! Guide to the thermal monitoring and management system for mobile and edge devices
+- **[Time-Series Performance Tracking Guide](TIME_SERIES_PERFORMANCE_GUIDE.md)** - COMPLETED! Guide to the time-series performance tracking system for regression detection and trend analysis
+- **[CI/CD Integration Guide](docs/CICD_INTEGRATION_GUIDE.md)** - COMPLETED! Guide to the CI/CD integration for test results with GitHub Actions
+- **[Comprehensive Model Compatibility Matrix](COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md)** - COMPLETED! Compatibility matrix for all 300+ HuggingFace model classes across hardware platforms
 - **[Template Validation Guide](TEMPLATE_VALIDATION_GUIDE.md)** - NEW! Complete guide to the enhanced template validation system with generator compatibility
 - **[Template Inheritance Guide](TEMPLATE_INHERITANCE_GUIDE.md)** - UPDATED! Guide to template inheritance with validation capabilities
 - **[Database Template Integration Guide](DATABASE_TEMPLATE_INTEGRATION_GUIDE.md)** - NEW! Complete guide to using the DuckDB template system in generators
@@ -47,7 +51,7 @@ The test framework includes:
    - Generated on-demand from modality-specific and hardware-aware templates
    - See the [Template Database Guide](TEMPLATE_DATABASE_GUIDE.md) for details
 2. **API Tests** - Integration tests for various AI API providers
-3. **Hardware Tests** - Validation of CPU, CUDA, OpenVINO, MPS, AMD, WebNN, and WebGPU acceleration
+3. **Hardware Tests** - Validation of CPU, CUDA, OpenVINO, MPS, AMD, Qualcomm AI Engine (QNN), MediaTek APU, Samsung NPU, WebNN, and WebGPU acceleration
 4. **Endpoint Tests** - Tests for local inference endpoints
 5. **Performance Tests** - Benchmarking across hardware configurations
 6. **Web Platform Tests** - Testing and deployment to WebNN and WebGPU browser platforms

@@ -15,6 +15,17 @@ import os
 import sys
 import json
 import logging
+# Import comprehensive benchmark timing report generator
+try:
+    from benchmark_timing_report import BenchmarkTimingReport
+except ImportError:
+    # Try relative import as fallback
+    try:
+        sys.path.append(str(Path(__file__).parent.parent))
+        from benchmark_timing_report import BenchmarkTimingReport
+    except ImportError:
+        logger.warning("BenchmarkTimingReport could not be imported. Timing report generation will not be available.")
+
 import argparse
 import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -1263,6 +1274,33 @@ class BenchmarkDBQuery:
         
         logger.info(f"Generated performance trend plot: {output_file}")
         return output_file
+
+
+def generate_timing_report(conn, args):
+    """Generate a comprehensive timing report for all models and hardware platforms."""
+    logger.info("Generating comprehensive benchmark timing report...")
+    
+    # Create report generator with the same database connection
+    try:
+        report_gen = BenchmarkTimingReport(db_path=args.db_path)
+        
+        # Generate the report
+        output_path = args.output or f"benchmark_timing_report.{args.format}"
+        report_path = report_gen.generate_timing_report(
+            output_format=args.format,
+            output_path=output_path,
+            days_lookback=args.days or 30
+        )
+        
+        if report_path:
+            logger.info(f"Timing report generated: {report_path}")
+            return {"status": "success", "output": report_path}
+        else:
+            logger.error("Failed to generate timing report")
+            return {"status": "error", "message": "Failed to generate timing report"}
+    except Exception as e:
+        logger.error(f"Error generating timing report: {str(e)}")
+        return {"status": "error", "message": str(e)}
 
 def main():
     """Command-line interface for the benchmark database query tool."""

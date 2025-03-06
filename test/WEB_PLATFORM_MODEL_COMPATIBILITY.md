@@ -40,17 +40,19 @@ Also included are the established capabilities from previous releases:
 
 ### Browser Support Matrix (August 2025)
 
-| Browser | WebNN | WebGPU | 4-bit | 2-bit/3-bit | WASM | WebSocket | Metal API | Cross-origin | Unified API | Streaming |
-|---------|-------|--------|-------|-------------|------|-----------|-----------|--------------|------------|-----------|
-| Chrome 125+ Desktop | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full |
-| Chrome 125+ Mobile | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full |
-| Edge 125+ Desktop | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full |
-| Edge 125+ Mobile | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full |
-| Firefox 132+ Desktop | ❌ None | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full |
-| Firefox 132+ Mobile | ❌ None | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Limited |
-| Safari 18+ Desktop | ✅ Limited | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Limited |
-| Safari 18+ Mobile | ✅ Limited | ✅ Full | ✅ Limited | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ⚠️ Limited |
-| Samsung Internet 25+ | ✅ Limited | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Limited | ✅ Limited |
+| Browser | WebNN | WebGPU | 4-bit | 2-bit/3-bit | WASM | WebSocket | Metal API | Cross-origin | Unified API | Streaming | Audio Opt |
+|---------|-------|--------|-------|-------------|------|-----------|-----------|--------------|------------|-----------|-----------|
+| Chrome 125+ Desktop | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full | ⚠️ Good |
+| Chrome 125+ Mobile | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full | ⚠️ Good |
+| Edge 125+ Desktop | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full | ⚠️ Good |
+| Edge 125+ Mobile | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full | ⚠️ Good |
+| Firefox 132+ Desktop | ❌ None | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Full | ✅ Best |
+| Firefox 132+ Mobile | ❌ None | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Full | ✅ Limited | ✅ Best |
+| Safari 18+ Desktop | ✅ Limited | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ✅ Limited | ⚠️ Limited |
+| Safari 18+ Mobile | ✅ Limited | ✅ Full | ✅ Limited | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full | ✅ Full | ✅ Limited | ⚠️ Limited | ⚠️ Limited |
+| Samsung Internet 25+ | ✅ Limited | ✅ Full | ✅ Full | ✅ Limited | ✅ Full | ✅ Full | N/A | ✅ Full | ✅ Limited | ✅ Limited | ⚠️ Good |
+
+*Note: Audio Opt refers to audio model optimizations with specialized compute shaders. Firefox offers ~20% better performance for audio models due to optimized workgroup configurations (256x1x1 vs Chrome's 128x2x1).*
 
 ## Ultra-Low Precision Quantization (June-August 2025)
 
@@ -166,61 +168,112 @@ The new cross-platform comparison tools provide insights into relative performan
 
 ## Implementation Considerations
 
-### 4-bit Quantization Implementation
+### 4-bit Quantization and Model-Specific Optimizations
 
-To implement 4-bit quantization for your models:
+The April 2025 update includes comprehensive platform-specific optimizations for each model type:
 
-1. **Model Preparation**:
-   ```python
-   from fixed_web_platform.webgpu_quantization import quantize_model_weights
-   
-   # Quantize model weights to 4-bit precision
-   quantized_weights = quantize_model_weights(
-       model_path="models/llama-3-8b",
-       bits=4,
-       scheme="symmetric",
-       group_size=128,
-       mixed_precision=True
-   )
-   ```
+#### 1. Audio Models (Whisper, Wav2Vec2, CLAP)
 
-2. **Inference Setup**:
-   ```python
-   from fixed_web_platform.webgpu_quantization import setup_4bit_inference
-   
-   # Create 4-bit inference handler
-   handler = setup_4bit_inference(
-       model_path="models/llama-3-8b",
-       model_type="text",
-       config={
-           "bits": 4,
-           "mixed_precision": True,
-           "use_specialized_kernels": True
-       }
-   )
-   
-   # Run inference
-   result = handler("Input text to process")
-   ```
+```python
+from fixed_web_platform.webgpu_audio_compute_shaders import optimize_audio_model
 
-3. **Layer-Specific Configuration**:
-   ```python
-   # Configure per-layer precision based on sensitivity
-   per_layer_config = {
-       "embeddings.weight": 8,               # 8-bit for embeddings
-       "layer.0.attention.query.weight": 8,  # 8-bit for first layer attention
-       "layer.0.attention.key.weight": 8,
-       "layer.0.attention.value.weight": 8,
-       "lm_head.weight": 8                   # 8-bit for output projection
-   }
-   
-   # Use in quantization
-   quantized_weights = quantize_model_weights(
-       model_path="models/llama-3-8b",
-       bits=4,
-       per_layer_config=per_layer_config
-   )
-   ```
+# Configure audio model with browser-specific optimizations
+audio_config = optimize_audio_model(
+    model_path="models/whisper-tiny",
+    browser="firefox",  # Optimal for audio models
+    config={
+        "precision": "int8",             # Higher precision for audio quality
+        "temporal_chunking": True,       # Process long audio in chunks
+        "chunk_duration_seconds": 15,    # 15-second chunks
+        "workgroup_size": [256, 1, 1],   # Firefox-optimized workgroup
+        "compute_shaders": True,         # Enable compute shader optimization
+        "use_spectrogram_optimization": True,  # Audio-specific optimizations
+        "fallback_to_webgl": True        # Fallback for Safari
+    }
+)
+
+# Run inference
+result = audio_config.process_audio("audio.mp3")
+```
+
+#### 2. Large Language Models (LLAMA, Qwen2)
+
+```python
+from fixed_web_platform.webgpu_quantization import setup_llm_inference
+from fixed_web_platform.model_sharding import configure_model_sharding
+
+# Configure LLM with ultra-low precision and sharding
+llm_config = setup_llm_inference(
+    model_path="models/llama-3-8b",
+    config={
+        "bits": 4,                     # 4-bit quantization
+        "kv_cache_optimization": True, # Memory-efficient KV cache
+        "sliding_window_size": 2048,   # Use sliding window attention
+        "per_layer_precision": {
+            "embeddings.weight": 8,    # 8-bit for embeddings
+            "lm_head.weight": 8        # 8-bit for output projection
+        }
+    }
+)
+
+# Configure model sharding for very large models (>10B)
+if model_size > 10:
+    sharding_config = configure_model_sharding(
+        num_shards=3,                  # Split across 3 browser tabs
+        shard_type="layer",            # Layer-based sharding
+        communication="broadcast_channel"  # Browser tab communication
+    )
+    llm_config.enable_sharding(sharding_config)
+
+# Run inference
+result = llm_config.generate("Input text to process")
+```
+
+#### 3. Multimodal Models (LLaVA, CLIP)
+
+```python
+from fixed_web_platform.progressive_model_loader import MultimodalModelLoader
+
+# Configure multimodal model with parallel loading
+multimodal_config = MultimodalModelLoader(
+    model_path="models/llava-7b",
+    config={
+        "parallel_loading": True,      # Load components in parallel
+        "component_precision": {
+            "vision_encoder": "int8",  # Higher precision for vision
+            "text_decoder": "int4"     # Lower precision for text
+        },
+        "progressive_loading": True,   # Memory-efficient loading
+        "offload_inactive": True       # Offload unused components
+    }
+)
+
+# Run inference
+result = multimodal_config.process_image_text("image.jpg", "Describe this image")
+```
+
+#### 4. Vision Detection Models (DETR)
+
+```python
+from fixed_web_platform.webgpu_compute_shaders import optimize_detection_model
+
+# Configure detection model
+detection_config = optimize_detection_model(
+    model_path="models/detr-resnet-50",
+    config={
+        "precision": "int8",           # Precision for accuracy
+        "simplified_nms": True,        # Client-side post-processing
+        "max_detections": 50,          # Limit for performance
+        "detection_thresholds": {
+            "score": 0.5,              # Confidence threshold
+            "iou": 0.45                # Overlap threshold
+        }
+    }
+)
+
+# Run inference
+result = detection_config.detect_objects("image.jpg")
+```
 
 ### Memory-Efficient KV-Cache Implementation
 

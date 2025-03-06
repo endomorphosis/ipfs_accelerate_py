@@ -103,13 +103,13 @@ For detailed documentation, see [Time-Series Performance Tracking Guide](TIME_SE
 
 ### Model Family-Based Compatibility Chart
 
-| Model Family | CPU | CUDA | ROCm | MPS | OpenVINO | QNN | WebNN | WebGPU | Notes |
-|--------------|-----|------|------|-----|----------|-----|-------|--------|-------|
-| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
-| Text Generation (LLMs) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
-| Vision (ViT, CLIP, etc.) | ✅ Medium | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
-| Audio (Whisper, etc.) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
-| Multimodal (LLaVA, etc.) | ⚠️ Limited | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
+| Model Family | CPU | CUDA | ROCm | MPS | OpenVINO | QNN | Samsung | WebNN | WebGPU | Notes |
+|--------------|-----|------|------|-----|----------|-----|---------|-------|--------|-------|
+| Embedding (BERT, etc.) | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Fully supported on all hardware |
+| Text Generation (LLMs) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ⚠️ Limited | ⚠️ Limited | Memory requirements critical |
+| Vision (ViT, CLIP, etc.) | ✅ Medium | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | ✅ High | Full cross-platform support |
+| Audio (Whisper, etc.) | ✅ Medium | ✅ High | ✅ Medium | ✅ Medium | ✅ Medium | ✅ Medium | ✅ High | ⚠️ Limited | ⚠️ Limited | CUDA preferred, Web simulation added |
+| Multimodal (LLaVA, etc.) | ⚠️ Limited | ✅ High | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited | CUDA for production, others are limited |
 
 ### IPFS Acceleration Testing Features (Updated March 2025)
 
@@ -183,21 +183,21 @@ This will benchmark all 13 high-priority model classes across all available hard
 
 ### Key Model Test Coverage Status
 
-| Model Class | Model Used | CPU | CUDA | ROCm | MPS | OpenVINO | Qualcomm | WebNN | WebGPU | Notes |
-|-------------|------------|-----|------|------|-----|----------|----------|-------|--------|-------|
-| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
-| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
-| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
-| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
-| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
-| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
-| LLaVA | llava-onevision-base | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
-| LLaVA-Next | Local test model | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
-| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
-| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints |
-| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
+| Model Class | Model Used | CPU | CUDA | ROCm | MPS | OpenVINO | Qualcomm | Samsung | WebNN | WebGPU | Notes |
+|-------------|------------|-----|------|------|-----|----------|----------|---------|-------|--------|-------|
+| BERT | bert-base-uncased, bert-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| T5 | t5-small, t5-efficient-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage (March 6) |
+| LLAMA | opt-125m | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | WebNN/WebGPU limited by memory |
+| CLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| ViT | vit-base | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete coverage |
+| CLAP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web has limited audio support |
+| Whisper | whisper-tiny | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| Wav2Vec2 | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Web audio challenges |
+| LLaVA | llava-onevision-base | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| LLaVA-Next | Local test model | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory intensive |
+| XCLIP | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited video support in web |
+| Qwen2/3 | qwen2, qwen3, qwen2_vl, qwen3_vl | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Memory constraints |
+| DETR | Local test model | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | Limited detection support |
 
 ## Essential Test Commands
 

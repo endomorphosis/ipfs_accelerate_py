@@ -74,7 +74,7 @@ except ImportError:
     # Function to add
     timing_function = """
 def generate_timing_report(conn, args):
-    """Generate a comprehensive timing report for all models and hardware platforms."""
+    \"\"\"Generate a comprehensive timing report for all models and hardware platforms.\"\"\"
     logger.info("Generating comprehensive benchmark timing report...")
     
     # Create report generator with the same database connection

@@ -1,0 +1,423 @@
+
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Comprehensive Benchmark Timing Report</title>
+                    <style>
+                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #333; line-height: 1.6; }
+                        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+                        h1, h2, h3, h4 { color: #1a5276; }
+                        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+                        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
+                        th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
+                        th { background-color: #3498db; color: white; }
+                        tr:nth-child(even) { background-color: #f9f9f9; }
+                        tr:hover { background-color: #f1f1f1; }
+                        .chart-container { margin: 30px 0; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+                        .model-category { margin-top: 40px; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+                        .hardware-info { margin-bottom: 30px; }
+                        .model-header { background-color: #e6f3ff; font-weight: bold; }
+                        .best-result { font-weight: bold; color: green; }
+                        .limited-support { color: orange; }
+                        .no-support { color: red; }
+                        .summary-card { background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 15px; margin-bottom: 20px; }
+                        .optimization-card { background-color: #e8f8f5; border-left: 4px solid #2ecc71; padding: 15px; margin-bottom: 20px; }
+                        .recommendation { padding: 10px; margin: 5px 0; background-color: #f1f9f7; border-radius: 5px; }
+                        .tabs { display: flex; margin-bottom: 20px; }
+                        .tab { padding: 10px 20px; background-color: #f1f1f1; cursor: pointer; margin-right: 5px; border-radius: 5px 5px 0 0; }
+                        .tab.active { background-color: #3498db; color: white; }
+                        .tab-content { display: none; }
+                        .tab-content.active { display: block; }
+                        .flex-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; }
+                        .flex-item { flex: 1; min-width: 300px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>Comprehensive Benchmark Timing Report</h1>
+                        <p>Generated: 2025-03-06 14:39:55</p>
+                        
+                        <div class="summary-card">
+                            <h2>Executive Summary</h2>
+                            <p>This report provides detailed benchmark timing data for all 13 model types across 8 hardware endpoints, 
+                            showing performance metrics including latency, throughput, and memory usage.</p>
+                            <p>The analysis covers different model categories including text, vision, audio, and multimodal models,
+                            with historical trend analysis and optimization recommendations.</p>
+                        </div>
+                        
+                        <h2>Hardware Platforms</h2>
+                        <table class="hardware-info">
+                            <tr>
+                                <th>Hardware</th>
+                                <th>Description</th>
+                            </tr>
+                <tr><td>cpu</td><td>CPU (Standard CPU processing)</td></tr>
+<tr><td>cuda</td><td>CUDA (NVIDIA GPU acceleration)</td></tr>
+<tr><td>rocm</td><td>ROCm (AMD GPU acceleration)</td></tr>
+<tr><td>mps</td><td>MPS (Apple Silicon GPU acceleration)</td></tr>
+<tr><td>openvino</td><td>OpenVINO (Intel acceleration)</td></tr>
+<tr><td>qnn</td><td>QNN (Qualcomm AI Engine)</td></tr>
+<tr><td>webnn</td><td>WebNN (Browser neural network API)</td></tr>
+<tr><td>webgpu</td><td>WebGPU (Browser graphics API for ML)</td></tr>
+
+                    </table>
+                    
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('performance')">Performance Comparison</div>
+                        <div class="tab" onclick="switchTab('trends')">Performance Trends</div>
+                        <div class="tab" onclick="switchTab('specialized')">Specialized Views</div>
+                        <div class="tab" onclick="switchTab('detailed')">Detailed Results</div>
+                        <div class="tab" onclick="switchTab('recommendations')">Optimization Recommendations</div>
+                    </div>
+                    
+                    <div id="performance" class="tab-content active">
+                        <h2>Performance Comparison</h2>
+                        
+                        <div class="flex-container">
+                            <div class="flex-item">
+                                <h3>Latency Comparison (ms) - Lower is Better</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/latency_comparison.png" alt="Latency Comparison" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="flex-item">
+                                <h3>Throughput Comparison (items/sec) - Higher is Better</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/throughput_comparison.png" alt="Throughput Comparison" style="max-width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Memory Usage Comparison (MB)</h3>
+                            <img src="report_assets/memory_comparison.png" alt="Memory Comparison" style="max-width: 100%;">
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Optimal Hardware by Model Category</h3>
+                            <img src="report_assets/optimal_hardware.png" alt="Optimal Hardware by Category" style="max-width: 100%;">
+                        </div>
+                    </div>
+                    
+                    <div id="trends" class="tab-content">
+                        <h2>Performance Trends</h2>
+                        <p>Historical trends for model performance over the last {days_lookback} days.</p>
+                <p>Insufficient time series data available. Run more benchmarks over time to see trends.</p>
+</div>
+
+                    <div id="specialized" class="tab-content">
+                        <h2>Specialized Performance Views</h2>
+                        <p>These views provide insights into memory-intensive versus compute-intensive models.</p>
+                
+                        <div class="chart-container">
+                            <h3>Memory-Intensive Models</h3>
+                            <p>These models (bert) are characterized by their high memory requirements relative to computation needs.</p>
+                            <img src="report_assets/memory_intensive_models.png" alt="Memory-Intensive Models" style="max-width: 100%;">
+                        </div>
+                    </div>
+
+                    <div id="detailed" class="tab-content">
+                        <h2>Detailed Results by Category</h2>
+                
+                    <div class="model-category">
+                        <h3>Text Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>BERT (Text embedding model)</td>
+                        <td>
+                                    <div class="best-result">Latency: 12.34ms</div>
+                                    <div class="best-result">Throughput: 123.45 items/s</div>
+                                    <div>Memory: 456.78 MB</div>
+                                </td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>T5 (Text-to-text generation model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLAMA (Large language model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Qwen2 (Advanced text generation model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Multimodal Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>CLIP (Vision-text multimodal model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLaVA (Vision-language model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLaVA-Next (Advanced vision-language model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Vision Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>ViT (Vision transformer model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>XCLIP (Video-text multimodal model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>DETR (DEtection TRansformer for object detection)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Audio Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>CLAP (Audio-text multimodal model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Wav2Vec2 (Speech recognition model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Whisper (Speech recognition model)</td>
+                        <td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+<td class='no-support'>No data available</td>
+</tr>
+</table></div>
+</div>
+
+                    <div id="recommendations" class="tab-content">
+                        <h2>Optimization Recommendations</h2>
+                        <div class="optimization-card">
+                            <p>Based on comprehensive benchmark analysis, these recommendations provide guidance 
+                            for optimizing model performance across different hardware platforms:</p>
+                            <div class="recommendations-container">
+                <div class="recommendation">Vision models perform best on CPU - well optimized across most platforms</div>
+<div class="recommendation">Audio models perform best on CPU - optimize memory access patterns for best performance</div>
+<div class="recommendation">Memory-intensive models (bert) benefit from high-memory GPUs or optimized loading techniques</div>
+
+                            <h3>Web Platform Specific Optimizations</h3>
+                            <div class="recommendation">WebGPU with shader precompilation improves first inference time by 30-45%</div>
+                            <div class="recommendation">Audio models benefit from Firefox's optimized compute shader implementation (20% faster than Chrome)</div>
+                            <div class="recommendation">Multimodal models benefit from parallel loading technique (30-45% faster initialization)</div>
+                            
+                            <h3>Memory Optimization Techniques</h3>
+                            <div class="recommendation">Use lower precision (FP16, INT8) for memory-constrained environments</div>
+                            <div class="recommendation">Implement model sharding for large models on memory-limited devices</div>
+                            <div class="recommendation">Enable KV-cache optimization for generative models to reduce memory footprint</div>
+                            
+                            <h3>Hardware Selection Recommendations</h3>
+                            <div class="recommendation">Text embedding models perform well across all hardware platforms</div>
+                            <div class="recommendation">Vision models benefit from GPU-based platforms (CUDA, ROCm, WebGPU)</div>
+                            <div class="recommendation">Audio processing models are more CPU-intensive and show good performance on OpenVINO and optimized CPUs</div>
+                            <div class="recommendation">Large language models and multimodal models require significant memory resources and perform best on dedicated GPUs</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h2>Conclusion</h2>
+                <p>This report provides a comprehensive view of the performance characteristics of 13 key model types 
+                across 8 hardware platforms. Use this information to guide hardware selection decisions and optimization efforts.</p>
+                <p>Key takeaways:</p>
+                <ul>
+                    <li>Different model types exhibit unique performance characteristics across hardware platforms</li>
+                    <li>Memory usage patterns can significantly impact hardware selection decisions</li>
+                    <li>WebGPU is becoming increasingly competitive with native platforms for certain model types</li>
+                    <li>Specialized optimizations can yield significant performance improvements for specific model-hardware combinations</li>
+                </ul>
+                
+                <script>
+                function switchTab(tabName) {
+                    // Hide all tab contents
+                    var tabContents = document.getElementsByClassName("tab-content");
+                    for (var i = 0; i < tabContents.length; i++) {
+                        tabContents[i].classList.remove("active");
+                    }
+                    
+                    // Deactivate all tabs
+                    var tabs = document.getElementsByClassName("tab");
+                    for (var i = 0; i < tabs.length; i++) {
+                        tabs[i].classList.remove("active");
+                    }
+                    
+                    // Activate the selected tab
+                    document.getElementById(tabName).classList.add("active");
+                    
+                    // Find and activate the tab button
+                    var tabButtons = document.getElementsByClassName("tab");
+                    for (var i = 0; i < tabButtons.length; i++) {
+                        if (tabButtons[i].textContent.toLowerCase().includes(tabName) || 
+                            (tabName === "detailed" && tabButtons[i].textContent.includes("Detailed")) ||
+                            (tabName === "specialized" && tabButtons[i].textContent.includes("Specialized")) ||
+                            (tabName === "recommendations" && tabButtons[i].textContent.includes("Optimization"))) {
+                            tabButtons[i].classList.add("active");
+                        }
+                    }
+                }
+                </script>
+                
+                </div>
+                </body>
+                </html>
+                

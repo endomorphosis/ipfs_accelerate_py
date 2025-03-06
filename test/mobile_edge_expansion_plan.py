@@ -492,7 +492,29 @@ class BatteryImpactAnalysis:
     
     def __init__(self):
         """Initialize the battery impact analysis."""
-        pass
+        self.supported_hardware = {
+            'qualcomm': {
+                'name': 'Qualcomm AI Engine',
+                'versions': ['1.0', '2.0', '2.10'],
+                'supported_models': ['Snapdragon 8 Gen 1', 'Snapdragon 8 Gen 2', 'Snapdragon 8 Gen 3'],
+                'supported_precisions': ['FP32', 'FP16', 'INT8', 'INT4', 'mixed'],
+                'sdk_versions': ['2.5', '2.9', '2.10', '2.11']
+            },
+            'mediatek': {
+                'name': 'MediaTek APU',
+                'versions': ['2.0', '3.0', '3.5'],
+                'supported_models': ['Dimensity 8200', 'Dimensity 9000', 'Dimensity 9200', 'Dimensity 9300'],
+                'supported_precisions': ['FP32', 'FP16', 'INT8', 'INT4', 'mixed'],
+                'sdk_versions': ['1.5', '2.0', '2.1']
+            },
+            'samsung': {
+                'name': 'Samsung NPU',
+                'versions': ['1.0', '2.0'],
+                'supported_models': ['Exynos 2200', 'Exynos 2300', 'Exynos 2400'],
+                'supported_precisions': ['FP32', 'FP16', 'INT8', 'mixed'],
+                'sdk_versions': ['1.0', '1.5', '2.0']
+            }
+        }
     
     def design_methodology(self) -> Dict[str, Any]:
         """
@@ -795,6 +817,240 @@ class BatteryImpactAnalysis:
         
         return specification
     
+    def get_hardware_support_details(self, hardware_type: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a specific hardware type.
+        
+        Args:
+            hardware_type: The hardware type to get details for
+            
+        Returns:
+            Dict containing hardware support details
+        """
+        if hardware_type.lower() not in self.supported_hardware:
+            return {
+                'supported': False,
+                'error': f"Hardware type '{hardware_type}' not supported"
+            }
+        
+        return {
+            'supported': True,
+            'details': self.supported_hardware[hardware_type.lower()]
+        }
+    
+    def check_model_compatibility(self, model_name: str, hardware_type: str) -> Dict[str, Any]:
+        """
+        Check if a model is compatible with a specific hardware type.
+        
+        Args:
+            model_name: Name of the model to check
+            hardware_type: The hardware type to check against
+            
+        Returns:
+            Dict containing compatibility information
+        """
+        hardware_info = self.get_hardware_support_details(hardware_type)
+        if not hardware_info['supported']:
+            return {
+                'compatible': False,
+                'error': hardware_info['error']
+            }
+        
+        # In a real implementation, this would query a database of tested models
+        # For now, we'll use some heuristics based on model name
+        compatibility = {
+            'compatible': True,
+            'hardware': hardware_info['details'],
+            'precision_recommendation': 'INT8',
+            'performance_estimate': {
+                'throughput_relative_to_cpu': 3.5,
+                'latency_reduction_percent': 65,
+                'memory_usage_reduction_percent': 75
+            },
+            'known_issues': [],
+            'optimization_tips': []
+        }
+        
+        # Model specific checks
+        if 'bert' in model_name.lower():
+            compatibility['precision_recommendation'] = 'INT8'
+            compatibility['performance_estimate']['throughput_relative_to_cpu'] = 3.5
+            compatibility['optimization_tips'].append("Use attention fusion for better performance")
+        elif 'llama' in model_name.lower() or 'gpt' in model_name.lower():
+            compatibility['precision_recommendation'] = 'INT4'
+            compatibility['performance_estimate']['throughput_relative_to_cpu'] = 2.0
+            compatibility['performance_estimate']['memory_usage_reduction_percent'] = 85
+            compatibility['known_issues'].append("KV cache can cause memory pressure, use tensor offloading")
+            compatibility['optimization_tips'].append("Use greedy decoding for best performance")
+        elif 'clip' in model_name.lower() or 'vit' in model_name.lower():
+            compatibility['precision_recommendation'] = 'INT8' 
+            compatibility['performance_estimate']['throughput_relative_to_cpu'] = 4.0
+            compatibility['optimization_tips'].append("Fuse normalization operations with convolutions")
+        elif 'whisper' in model_name.lower() or 'wav2vec' in model_name.lower():
+            compatibility['precision_recommendation'] = 'INT8'
+            compatibility['performance_estimate']['throughput_relative_to_cpu'] = 3.0
+            compatibility['known_issues'].append("Audio preprocessing can be CPU intensive")
+            compatibility['optimization_tips'].append("Batch audio processing for better efficiency")
+        
+        # Hardware specific checks
+        if hardware_type.lower() == 'qualcomm':
+            compatibility['sdk_recommendation'] = '2.11'
+            compatibility['optimization_tips'].append("Use Hexagon DSP for audio models")
+            if 'mixed' in compatibility['precision_recommendation']:
+                compatibility['performance_estimate']['throughput_relative_to_cpu'] += 0.5
+        elif hardware_type.lower() == 'mediatek':
+            compatibility['sdk_recommendation'] = '2.1'
+            compatibility['optimization_tips'].append("Enable APU boost mode for vision models")
+            if 'clip' in model_name.lower():
+                compatibility['performance_estimate']['throughput_relative_to_cpu'] += 0.7
+        elif hardware_type.lower() == 'samsung':
+            compatibility['sdk_recommendation'] = '2.0'
+            compatibility['optimization_tips'].append("Use Samsung One UI optimization API for best battery life")
+            if 'bert' in model_name.lower():
+                compatibility['performance_estimate']['throughput_relative_to_cpu'] += 0.4
+        
+        return compatibility
+    
+    def create_accelerator_config(self, hardware_type: str, model_name: str, 
+                                 precision: str = None, optimize_for: str = 'balanced') -> Dict[str, Any]:
+        """
+        Create a configuration for a specific edge AI accelerator.
+        
+        Args:
+            hardware_type: The hardware type to configure
+            model_name: Name of the model to configure for
+            precision: Optional precision to use (auto-select if None)
+            optimize_for: Optimization target ('performance', 'efficiency', or 'balanced')
+            
+        Returns:
+            Dict containing accelerator configuration
+        """
+        compatibility = self.check_model_compatibility(model_name, hardware_type)
+        if not compatibility.get('compatible', False):
+            return {
+                'success': False,
+                'error': compatibility.get('error', 'Model not compatible with this hardware')
+            }
+        
+        # Use recommended precision if not specified
+        if precision is None:
+            precision = compatibility['precision_recommendation']
+        
+        # Check if the precision is supported
+        hardware_details = self.get_hardware_support_details(hardware_type)['details']
+        if precision not in hardware_details['supported_precisions']:
+            return {
+                'success': False,
+                'error': f"Precision '{precision}' not supported by {hardware_details['name']}"
+            }
+        
+        # Create configuration
+        config = {
+            'success': True,
+            'hardware_type': hardware_type,
+            'hardware_name': hardware_details['name'],
+            'model_name': model_name,
+            'precision': precision,
+            'sdk_version': compatibility.get('sdk_recommendation', hardware_details['sdk_versions'][-1]),
+            'optimization_target': optimize_for,
+            'performance_settings': {},
+            'memory_settings': {},
+            'power_settings': {},
+            'special_optimizations': []
+        }
+        
+        # Add optimization settings based on target
+        if optimize_for == 'performance':
+            config['performance_settings'] = {
+                'enable_boost_mode': True,
+                'priority': 'high',
+                'latency_optimization': True,
+                'allow_tensor_caching': True
+            }
+            config['memory_settings'] = {
+                'max_memory_usage_mb': 2048,
+                'buffer_size_mb': 256,
+                'enable_memory_compression': False
+            }
+            config['power_settings'] = {
+                'power_mode': 'performance',
+                'allow_thermal_throttling': True,
+                'cpu_affinity': 'big_cores'
+            }
+        elif optimize_for == 'efficiency':
+            config['performance_settings'] = {
+                'enable_boost_mode': False,
+                'priority': 'normal',
+                'latency_optimization': False,
+                'allow_tensor_caching': False
+            }
+            config['memory_settings'] = {
+                'max_memory_usage_mb': 1024,
+                'buffer_size_mb': 128,
+                'enable_memory_compression': True
+            }
+            config['power_settings'] = {
+                'power_mode': 'efficiency',
+                'allow_thermal_throttling': True,
+                'cpu_affinity': 'little_cores'
+            }
+        else:  # balanced
+            config['performance_settings'] = {
+                'enable_boost_mode': False,
+                'priority': 'normal',
+                'latency_optimization': True,
+                'allow_tensor_caching': True
+            }
+            config['memory_settings'] = {
+                'max_memory_usage_mb': 1536,
+                'buffer_size_mb': 192,
+                'enable_memory_compression': False
+            }
+            config['power_settings'] = {
+                'power_mode': 'balanced',
+                'allow_thermal_throttling': True,
+                'cpu_affinity': 'mixed'
+            }
+        
+        # Add hardware-specific optimizations
+        if hardware_type.lower() == 'qualcomm':
+            config['special_optimizations'].extend([
+                'hexagon_dsp_acceleration',
+                'tensor_accelerator_offloading',
+                'adreno_gpu_compute'
+            ])
+            if precision == 'INT4' or precision == 'INT8':
+                config['special_optimizations'].append('symmetric_quantization')
+        elif hardware_type.lower() == 'mediatek':
+            config['special_optimizations'].extend([
+                'apu_acceleration',
+                'dynamic_tensor_allocation',
+                'mali_gpu_compute'
+            ])
+            if 'vision' in model_name.lower() or 'clip' in model_name.lower():
+                config['special_optimizations'].append('vision_pipeline_optimization')
+        elif hardware_type.lower() == 'samsung':
+            config['special_optimizations'].extend([
+                'one_ui_optimization',
+                'exynos_npu_acceleration',
+                'game_mode_prevention'
+            ])
+            if precision == 'mixed':
+                config['special_optimizations'].append('adaptive_precision')
+        
+        # Add model-specific optimizations
+        if 'bert' in model_name.lower():
+            config['special_optimizations'].append('attention_fusion')
+        elif 'llama' in model_name.lower() or 'gpt' in model_name.lower():
+            config['special_optimizations'].append('kv_cache_optimization')
+            config['special_optimizations'].append('greedy_decoding_optimization')
+        elif 'clip' in model_name.lower() or 'vit' in model_name.lower():
+            config['special_optimizations'].append('normalization_fusion')
+        elif 'whisper' in model_name.lower() or 'wav2vec' in model_name.lower():
+            config['special_optimizations'].append('audio_preprocessing_optimization')
+        
+        return config
+        
     def create_benchmark_suite_specification(self) -> Dict[str, Any]:
         """
         Create specifications for a mobile benchmark suite.
@@ -839,6 +1095,16 @@ class BatteryImpactAnalysis:
                         'App switching latency'
                     ],
                     'reporting': 'User experience score (0-100)'
+                },
+                'edge_accelerator_efficiency': {
+                    'description': 'Measures efficiency of edge AI accelerators',
+                    'metrics': [
+                        'Throughput relative to CPU',
+                        'Accelerator utilization',
+                        'Precision impact on accuracy',
+                        'SDK feature utilization'
+                    ],
+                    'reporting': 'Accelerator efficiency score (0-100)'
                 }
             },
             'execution': {

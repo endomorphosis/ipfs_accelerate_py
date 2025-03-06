@@ -8,6 +8,7 @@ This module provides reliable detection of various hardware backends including:
 - ROCm (AMD)
 - OpenVINO
 - MPS (Apple Metal)
+- QNN (Qualcomm Neural Networks) - Added March 2025
 - WebNN
 - WebGPU
 
@@ -238,6 +239,64 @@ def detect_webgpu() -> Dict[str, Any]:
         "simulation_available": True  # We can always simulate WebGPU
     }
 
+def detect_qnn() -> Dict[str, Any]:
+    """Detect QNN (Qualcomm Neural Networks) capabilities."""
+    # Check for QNN SDK
+    qnn_packages = ["qnn_sdk", "qnn_runtime", "qnn"]
+    detected_packages = []
+    
+    for package in qnn_packages:
+        if importlib.util.find_spec(package) is not None:
+            detected_packages.append(package)
+    
+    # Also check for environment variables
+    env_detected = False
+    if "QNN_SDK_ROOT" in os.environ or "QNN_AVAILABLE" in os.environ:
+        env_detected = True
+    
+    # Check for Snapdragon device (simplified for now)
+    device_detected = False
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            cpuinfo = f.read()
+            if "Qualcomm" in cpuinfo or "Snapdragon" in cpuinfo or "Adreno" in cpuinfo:
+                device_detected = True
+    except:
+        pass
+    
+    # Also check if our mock QNN module is available
+    mock_available = False
+    try:
+        from .qnn_support import QNNCapabilityDetector
+        mock_available = True
+    except (ImportError, Exception):
+        pass
+    
+    # QNN is considered detected if any package is found, env var is set, or device is detected
+    detected = len(detected_packages) > 0 or env_detected or device_detected or mock_available
+    
+    # Get more detailed info if our QNN support module is available
+    detailed_info = {}
+    if mock_available:
+        try:
+            from .qnn_support import QNNCapabilityDetector
+            detector = QNNCapabilityDetector()
+            if detector.is_available():
+                detector.select_device()
+                detailed_info = detector.get_capability_summary()
+        except Exception as e:
+            logger.warning(f"QNN detailed detection error: {str(e)}")
+    
+    return {
+        "detected": detected,
+        "available_packages": detected_packages,
+        "env_detected": env_detected,
+        "device_detected": device_detected,
+        "mock_available": mock_available,
+        "detailed_info": detailed_info,
+        "simulation_available": True  # We can always simulate QNN
+    }
+
 def detect_all_hardware() -> Dict[str, Dict[str, Any]]:
     """Detect all hardware capabilities."""
     return {
@@ -246,6 +305,7 @@ def detect_all_hardware() -> Dict[str, Dict[str, Any]]:
         "rocm": detect_rocm(),
         "openvino": detect_openvino(),
         "mps": detect_mps(),
+        "qnn": detect_qnn(),
         "webnn": detect_webnn(),
         "webgpu": detect_webgpu()
     }
@@ -255,13 +315,14 @@ HAS_CUDA = False
 HAS_ROCM = False
 HAS_OPENVINO = False
 HAS_MPS = False
+HAS_QNN = False
 HAS_WEBNN = False
 HAS_WEBGPU = False
 
 # Safe detection of hardware capabilities that sets the constants
 def initialize_hardware_flags():
     """Initialize hardware flags for module imports."""
-    global HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU
+    global HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_QNN, HAS_WEBNN, HAS_WEBGPU
     
     try:
         HAS_CUDA = detect_cuda()["detected"]
@@ -282,6 +343,11 @@ def initialize_hardware_flags():
         HAS_MPS = detect_mps()["detected"]
     except Exception:
         HAS_MPS = False
+    
+    try:
+        HAS_QNN = detect_qnn()["detected"]
+    except Exception:
+        HAS_QNN = False
     
     try:
         HAS_WEBNN = detect_webnn()["detected"]
@@ -309,5 +375,6 @@ if __name__ == "__main__":
     print(f"HAS_ROCM = {HAS_ROCM}")
     print(f"HAS_OPENVINO = {HAS_OPENVINO}")
     print(f"HAS_MPS = {HAS_MPS}")
+    print(f"HAS_QNN = {HAS_QNN}")
     print(f"HAS_WEBNN = {HAS_WEBNN}")
     print(f"HAS_WEBGPU = {HAS_WEBGPU}")

@@ -74,8 +74,8 @@ if HAS_TORCH:
 # OpenVINO detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
 
-# Qualcomm detection
-HAS_QUALCOMM = (
+# QNN detection
+HAS_QNN = (
     importlib.util.find_spec("qnn_wrapper") is not None or
     importlib.util.find_spec("qti") is not None or
     "QUALCOMM_SDK" in os.environ
@@ -199,8 +199,8 @@ if HAS_TORCH:
 # OpenVINO detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
 
-# Qualcomm detection
-HAS_QUALCOMM = (
+# QNN detection
+HAS_QNN = (
     importlib.util.find_spec("qnn_wrapper") is not None or
     importlib.util.find_spec("qti") is not None or
     "QUALCOMM_SDK" in os.environ
@@ -239,7 +239,7 @@ class {model_class_name}Test(unittest.TestCase):
             self.skipTest("MPS not available")
         elif "{platform}" == "openvino" and not HAS_OPENVINO:
             self.skipTest("OpenVINO not available")
-        elif "{platform}" == "qualcomm" and not HAS_QUALCOMM:
+        elif "{platform}" == "qnn" and not HAS_QUALCOMM:
             self.skipTest("Qualcomm AI SDK not available")
         elif "{platform}" == "webnn" and not HAS_WEBNN:
             self.skipTest("WebNN not available")
@@ -407,7 +407,7 @@ def generate_test_file(model_name: str, platforms: List[str], output_path: Optio
             self.skipTest("MPS not available")
         elif "{platform}" == "openvino" and not HAS_OPENVINO:
             self.skipTest("OpenVINO not available")
-        elif "{platform}" == "qualcomm" and not HAS_QUALCOMM:
+        elif "{platform}" == "qnn" and not HAS_QUALCOMM:
             self.skipTest("Qualcomm AI SDK not available")
         elif "{platform}" == "webnn" and not HAS_WEBNN:
             self.skipTest("WebNN not available")
