@@ -1,723 +1,368 @@
-#!/usr/bin/env python3
+#\!/usr/bin/env python3
 """
-Cleanup Stale Reports
+Cleanup stale benchmark reports and mark them with appropriate warnings.
 
-This script identifies, marks, or removes stale benchmark reports and JSON files
-that may contain misleading information about simulated vs. real hardware results.
-
-Created March 2025 to address the issue of misleading benchmark reports.
-
-Usage:
-    python cleanup_stale_reports.py --scan               # Scan for problematic files
-    python cleanup_stale_reports.py --mark               # Mark problematic files with warnings
-    python cleanup_stale_reports.py --remove             # Remove problematic files
-    python cleanup_stale_reports.py --archive            # Archive problematic files
-    python cleanup_stale_reports.py --fix-report-py      # Add validation to report generators
+This script:
+1. Scans for benchmark reports with potentially misleading data
+2. Adds clear warnings to reports containing simulated data
+3. Checks for outdated simulation methods in code files
+4. Provides options to mark, archive, or fix problematic files
 """
 
 import os
-import sys
-import argparse
-import logging
-import json
 import re
+import sys
+import glob
 import shutil
+import argparse
+import json
 import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Set, Optional, Tuple
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("cleanup_stale_reports.log")
+
+def add_simulation_warning(file_path, is_html=False):
+    """Add a simulation warning to the top of a file."""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Skip if warning already exists
+    if "SIMULATION WARNING" in content:
+        return False
+        
+    current_date = datetime.datetime.now().strftime("%B %d, %Y")
+    
+    if is_html:
+        warning = f"""
+<div style="background-color: #FFEBEE; border: 2px solid #F44336; padding: 10px; margin: 10px 0; border-radius: 5px;">
+  <h3 style="color: #D32F2F; margin-top: 0;">⚠️ SIMULATION WARNING - ADDED {current_date}</h3>
+  <p style="margin-bottom: 0;">This report may contain <strong>simulated benchmark data</strong> that does not represent actual hardware measurements. The results shown here should be treated as approximations and should <strong>not</strong> be used for critical decision-making without verification on real hardware.</p>
+  <p>This warning has been automatically added to reports generated before the simulation detection improvements were implemented. For accurate benchmark data, please refer to reports generated after April 2025 with explicit simulation status indicators.</p>
+</div>
+
+"""
+    else:
+        warning = f"""
+# ⚠️ SIMULATION WARNING - ADDED {current_date}
+
+**This report may contain simulated benchmark data that does not represent actual hardware measurements.**
+**The results shown here should be treated as approximations and should NOT be used for critical decision-making without verification on real hardware.**
+
+This warning has been automatically added to reports generated before the simulation detection improvements were implemented.
+For accurate benchmark data, please refer to reports generated after April 2025 with explicit simulation status indicators.
+
+"""
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(warning + content)
+    
+    return True
+
+def scan_for_problematic_reports(directory, check_json=False):
+    """
+    Scan for benchmark reports that might contain misleading data.
+    """
+    problematic_files = []
+    
+    # Patterns to look for in reports
+    simulation_patterns = [
+        r'hardware_\w+_results',
+        r'benchmark_\w+_results\.json',
+        r'performance_report_\w+\.md',
+        r'model_hardware_report_\d+\.md',
+        r'hardware_compatibility_matrix\.json'
     ]
-)
-logger = logging.getLogger(__name__)
-
-# Define directories to scan
-DIRS_TO_SCAN = [
-    "benchmark_results",
-    "api_check_results",
-    "archived_test_results",
-    "critical_model_results", 
-    "hardware_fix_results"
-]
-
-class StaleReportCleaner:
-    """Identifies and cleans up stale benchmark reports and JSON files."""
     
-    def __init__(self, root_dir: str = "."):
-        """
-        Initialize the cleaner with a root directory.
-        
-        Args:
-            root_dir: Root directory to scan (default: current directory)
-        """
-        self.root_dir = Path(root_dir)
-        self.problematic_files = []
-        self.warning_added_to = set()
-        self.archive_dir = self.root_dir / "archived_stale_reports"
-        
-    def scan_for_problematic_files(self) -> List[Dict[str, Any]]:
-        """
-        Scan for problematic files that may contain misleading benchmark data.
-        
-        Returns:
-            List of dictionaries with information about problematic files
-        """
-        logger.info(f"Scanning for problematic files in {self.root_dir}...")
-        self.problematic_files = []
-        
-        # Check each directory
-        for dir_name in DIRS_TO_SCAN:
-            dir_path = self.root_dir / dir_name
-            if not dir_path.exists():
-                logger.warning(f"Directory not found: {dir_path}")
-                continue
-                
-            logger.info(f"Scanning directory: {dir_path}")
-            
-            # Check HTML reports
-            html_files = list(dir_path.glob("**/*.html"))
-            for html_file in html_files:
-                if self._is_problematic_html(html_file):
-                    self.problematic_files.append({
-                        "path": str(html_file),
-                        "type": "html",
-                        "issue": "May contain simulation results presented as real data",
-                        "last_modified": datetime.datetime.fromtimestamp(html_file.stat().st_mtime).isoformat()
-                    })
-            
-            # Check Markdown reports
-            md_files = list(dir_path.glob("**/*.md"))
-            for md_file in md_files:
-                if self._is_problematic_markdown(md_file):
-                    self.problematic_files.append({
-                        "path": str(md_file),
-                        "type": "markdown",
-                        "issue": "May contain simulation results presented as real data",
-                        "last_modified": datetime.datetime.fromtimestamp(md_file.stat().st_mtime).isoformat()
-                    })
-            
-            # Check JSON files
-            json_files = list(dir_path.glob("**/*.json"))
-            for json_file in json_files:
-                issue = self._check_json_file(json_file)
-                if issue:
-                    self.problematic_files.append({
-                        "path": str(json_file),
-                        "type": "json",
-                        "issue": issue,
-                        "last_modified": datetime.datetime.fromtimestamp(json_file.stat().st_mtime).isoformat()
-                    })
-        
-        logger.info(f"Found {len(self.problematic_files)} problematic files")
-        return self.problematic_files
+    # Get all markdown and HTML files
+    md_files = glob.glob(os.path.join(directory, "**/*.md"), recursive=True)
+    html_files = glob.glob(os.path.join(directory, "**/*.html"), recursive=True)
     
-    def _is_problematic_html(self, file_path: Path) -> bool:
-        """
-        Check if an HTML report contains problematic data.
-        
-        Args:
-            file_path: Path to the HTML file
-            
-        Returns:
-            True if problematic, False otherwise
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            # Check if it's a benchmark report
-            if "Benchmark" not in content or "Report" not in content:
-                return False
-                
-            # Check for simulation warning
-            has_simulation_warning = re.search(r'simulation|simulated', content, re.IGNORECASE) is not None
-            
-            # Check for hardware performance data
-            has_hardware_data = re.search(r'(cuda|rocm|mps|openvino|qnn|webgpu|webnn)', content, re.IGNORECASE) is not None
-            
-            # If it has hardware data but no simulation warning, it may be problematic
-            return has_hardware_data and not has_simulation_warning
-            
-        except Exception as e:
-            logger.warning(f"Error checking HTML file {file_path}: {str(e)}")
-            return False
+    # If checking JSON files as well
+    json_files = []
+    if check_json:
+        json_files = glob.glob(os.path.join(directory, "**/*.json"), recursive=True)
     
-    def _is_problematic_markdown(self, file_path: Path) -> bool:
-        """
-        Check if a Markdown report contains problematic data.
-        
-        Args:
-            file_path: Path to the Markdown file
+    # Check each markdown file
+    for file_path in md_files:
+        # Skip files that are clearly not reports
+        if "README" in file_path or "GUIDE" in file_path:
+            continue
             
-        Returns:
-            True if problematic, False otherwise
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                
-            # Check if it's a benchmark report
-            if "Benchmark" not in content or "Report" not in content:
-                return False
-                
-            # Check for simulation warning
-            has_simulation_warning = re.search(r'simulation|simulated', content, re.IGNORECASE) is not None
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
             
-            # Check for hardware performance data
-            has_hardware_data = re.search(r'(cuda|rocm|mps|openvino|qnn|webgpu|webnn)', content, re.IGNORECASE) is not None
-            
-            # If it has hardware data but no simulation warning, it may be problematic
-            return has_hardware_data and not has_simulation_warning
-            
-        except Exception as e:
-            logger.warning(f"Error checking Markdown file {file_path}: {str(e)}")
-            return False
+        # Check for simulation indicators without explicit warnings
+        if any(re.search(pattern, content) for pattern in simulation_patterns) and "SIMULATION WARNING" not in content:
+            if "simulated" in content.lower() and not re.search(r'marked as simulated|explicitly simulated|simulation status', content.lower()):
+                problematic_files.append((file_path, "markdown", "Contains simulation results without proper warnings"))
     
-    def _check_json_file(self, file_path: Path) -> Optional[str]:
-        """
-        Check if a JSON file contains problematic data.
-        
-        Args:
-            file_path: Path to the JSON file
+    # Check each HTML file
+    for file_path in html_files:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
             
-        Returns:
-            Issue description if problematic, None otherwise
-        """
+        # Check for simulation indicators without explicit warnings
+        if any(re.search(pattern, content) for pattern in simulation_patterns) and "SIMULATION WARNING" not in content:
+            if "simulated" in content.lower() and not re.search(r'marked as simulated|explicitly simulated|simulation status', content.lower()):
+                problematic_files.append((file_path, "html", "Contains simulation results without proper warnings"))
+    
+    # Check each JSON file
+    for file_path in json_files:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            
-            # Check if it's a benchmark results file
-            if not isinstance(data, dict):
-                return None
                 
-            # Check for benchmark results
-            if "results" in data or "benchmark_results" in data or "performance" in data:
-                # Check for simulation flag
-                has_simulation_flag = False
-                
-                # Check for various simulation flag patterns
-                if "simulation" in data or "simulated" in data:
-                    has_simulation_flag = True
-                
-                # Check for hardware results
-                has_hardware_results = False
-                for key in ["cuda", "rocm", "mps", "openvino", "qnn", "webgpu", "webnn"]:
-                    if key in str(data).lower():
-                        has_hardware_results = True
-                        break
-                
-                if has_hardware_results and not has_simulation_flag:
-                    return "Contains hardware results without simulation flags"
-            
-            # Check for truncated or empty files
-            if file_path.stat().st_size < 100:
-                return "File appears to be truncated or empty"
-                
-            # Check for outdated format
-            if "generated_at" in data and isinstance(data["generated_at"], str):
-                try:
-                    generated_date = datetime.datetime.fromisoformat(data["generated_at"].replace("Z", "+00:00"))
-                    days_old = (datetime.datetime.now() - generated_date).days
-                    if days_old > 30:
-                        return f"File is outdated (generated {days_old} days ago)"
-                except:
-                    pass
-            
-            return None
-            
-        except json.JSONDecodeError:
-            return "Invalid JSON format"
-        except Exception as e:
-            logger.warning(f"Error checking JSON file {file_path}: {str(e)}")
-            return None
+            # Check for hardware results without simulation flags
+            if isinstance(data, dict) and any(k in data for k in ["results", "benchmarks", "performance", "hardware"]):
+                if not any(k in data for k in ["is_simulated", "simulation_status", "simulation_flags"]):
+                    problematic_files.append((file_path, "json", "Contains benchmark data without simulation flags"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Skip invalid JSON files
+            continue
     
-    def mark_problematic_files(self) -> int:
-        """
-        Add warning headers to problematic files.
-        
-        Returns:
-            Number of files marked with warnings
-        """
-        if not self.problematic_files:
-            logger.warning("No problematic files found. Run scan_for_problematic_files() first.")
-            return 0
-            
-        count = 0
-        for file_info in self.problematic_files:
-            file_path = Path(file_info["path"])
-            file_type = file_info["type"]
-            
-            if str(file_path) in self.warning_added_to:
-                continue
-                
-            try:
-                # Add appropriate warning based on file type
-                if file_type == "html":
-                    self._add_html_warning(file_path, file_info["issue"])
-                elif file_type == "markdown":
-                    self._add_markdown_warning(file_path, file_info["issue"])
-                elif file_type == "json":
-                    self._add_json_warning(file_path, file_info["issue"])
-                
-                self.warning_added_to.add(str(file_path))
-                count += 1
-                logger.info(f"Added warning to {file_path}")
-                
-            except Exception as e:
-                logger.error(f"Error adding warning to {file_path}: {str(e)}")
-        
-        logger.info(f"Added warnings to {count} files")
-        return count
+    return problematic_files
+
+def mark_problematic_reports(problematic_files):
+    """
+    Add warnings to problematic reports.
+    """
+    marked_count = 0
+    for file_path, file_type, reason in problematic_files:
+        if file_type == "markdown":
+            if add_simulation_warning(file_path, is_html=False):
+                marked_count += 1
+                print(f"Added warning to {file_path}")
+        elif file_type == "html":
+            if add_simulation_warning(file_path, is_html=True):
+                marked_count += 1
+                print(f"Added warning to {file_path}")
+        # We don't modify JSON files
     
-    def _add_html_warning(self, file_path: Path, issue: str) -> None:
-        """Add warning to HTML file."""
+    return marked_count
+
+def archive_problematic_files(problematic_files, archive_dir):
+    """
+    Archive problematic files.
+    """
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    archived_count = 0
+    for file_path, file_type, reason in problematic_files:
+        # Create the relative path structure in the archive directory
+        rel_path = os.path.relpath(file_path, os.path.dirname(archive_dir))
+        archive_path = os.path.join(archive_dir, rel_path)
+        
+        # Create parent directories if they don't exist
+        os.makedirs(os.path.dirname(archive_path), exist_ok=True)
+        
+        # Copy the file to the archive
+        shutil.copy2(file_path, archive_path)
+        archived_count += 1
+        print(f"Archived {file_path} to {archive_path}")
+    
+    return archived_count
+
+def scan_for_simulation_patterns_in_code(directory):
+    """
+    Scan Python files for outdated simulation methods.
+    """
+    problematic_code_files = []
+    
+    # Patterns for problematic simulation code
+    simulation_code_patterns = [
+        (r'def\s+simulate_\w+\s*\([^)]*\)\s*:', "Contains simulation method without explicit status tracking"),
+        (r'_simulated_hardware\s*=\s*(True|False)', "Uses direct simulation flag assignment"),
+        (r'hardware_simulation\s*=\s*(True|False)', "Uses direct simulation flag assignment"),
+        (r'simulate_performance\([^)]*\)', "Uses simulate_performance without status tracking"),
+        (r'simulate_benchmark\([^)]*\)', "Uses simulate_benchmark without status tracking"),
+        (r'mock_hardware_platform', "Uses mock hardware platform without explicit marking"),
+    ]
+    
+    # Get all Python files
+    py_files = glob.glob(os.path.join(directory, "**/*.py"), recursive=True)
+    
+    # Skip these directories
+    skip_dirs = [
+        "archived_", 
+        "venv", 
+        "__pycache__", 
+        "test_simulation_detection.py",
+        "update_db_schema_for_simulation.py"
+    ]
+    
+    for file_path in py_files:
+        # Skip files in specified directories
+        if any(skip_dir in file_path for skip_dir in skip_dirs):
+            continue
+            
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        warning_html = f"""
-        <div style="background-color: #ffcccc; border: 2px solid #ff0000; padding: 10px; margin: 10px 0; color: #cc0000;">
-            <h2>⚠️ WARNING: POTENTIALLY MISLEADING DATA ⚠️</h2>
-            <p>This report may contain simulated benchmark results that are presented as real hardware data.</p>
-            <p>Issue: {issue}</p>
-            <p>Marked as problematic by cleanup_stale_reports.py on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        </div>
-        """
-        
-        # Insert after opening body tag
-        if "<body>" in content:
-            new_content = content.replace("<body>", f"<body>\n{warning_html}")
-        else:
-            # If no body tag, insert after opening html tag
-            new_content = content.replace("<html>", f"<html>\n{warning_html}")
-            
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
+        # Check for problematic patterns
+        for pattern, reason in simulation_code_patterns:
+            if re.search(pattern, content) and "is_simulated" not in content:
+                problematic_code_files.append((file_path, pattern, reason))
+                break
     
-    def _add_markdown_warning(self, file_path: Path, issue: str) -> None:
-        """Add warning to Markdown file."""
+    return problematic_code_files
+
+def fix_report_py_files(directory):
+    """
+    Fix Python report generator files to include simulation validation.
+    """
+    # Patterns to identify report generator files
+    report_py_patterns = [
+        r'def\s+generate_report',
+        r'def\s+create_report',
+        r'def\s+build_report',
+        r'def\s+make_report',
+        r'report_generator',
+        r'class\s+\w*Report'
+    ]
+    
+    # Get all Python files
+    py_files = glob.glob(os.path.join(directory, "**/*.py"), recursive=True)
+    
+    fixed_count = 0
+    for file_path in py_files:
+        # Skip files in certain directories
+        if any(skip_dir in file_path for skip_dir in ["archived_", "venv", "__pycache__"]):
+            continue
+            
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        warning_md = f"""
-# ⚠️ WARNING: POTENTIALLY MISLEADING DATA ⚠️
-
-**This report may contain simulated benchmark results that are presented as real hardware data.**
-
-Issue: {issue}
-
-*Marked as problematic by cleanup_stale_reports.py on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-
----
-
+        # Check if this is a report generator file
+        if any(re.search(pattern, content) for pattern in report_py_patterns):
+            # Check if it already has validation
+            if "_validate_data_authenticity" not in content and "check_simulation_status" not in content:
+                # Backup the file
+                backup_path = file_path + ".bak"
+                shutil.copy2(file_path, backup_path)
+                
+                # Add validation function
+                validation_code = """
+def _validate_data_authenticity(data):
+    """Validate that the data is authentic and not simulated."""
+    is_simulated = False
+    simulation_reason = None
+    
+    # Check for simulation flags in data
+    if hasattr(data, 'get') and callable(data.get):
+        is_simulated = data.get('is_simulated', False)
+        simulation_reason = data.get('simulation_reason', None)
+    
+    # If the data is simulated, add a warning
+    if is_simulated:
+        print(f"WARNING: Report contains simulated data. Reason: {simulation_reason}")
+        return False, simulation_reason
+    
+    return True, None
 """
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(warning_md + content)
-    
-    def _add_json_warning(self, file_path: Path, issue: str) -> None:
-        """Add warning to JSON file."""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
                 
-            if isinstance(data, dict):
-                data["WARNING"] = {
-                    "message": "POTENTIALLY MISLEADING DATA",
-                    "details": "This file may contain simulated benchmark results that are presented as real hardware data.",
-                    "issue": issue,
-                    "marked_at": datetime.datetime.now().isoformat()
-                }
+                # Add validation call to generate_report function
+                modified_content = content
+                report_funcs = ["generate_report", "create_report", "build_report", "make_report"]
                 
+                for func in report_funcs:
+                    pattern = fr'def\s+{func}\s*\(([^)]*)\)\s*:'
+                    match = re.search(pattern, modified_content)
+                    
+                    if match:
+                        args = match.group(1)
+                        func_pos = match.start()
+                        
+                        # Find the function body (the next line with content after the definition)
+                        lines = modified_content.split("\n")
+                        func_line = None
+                        for i, line in enumerate(lines):
+                            if re.search(pattern, line):
+                                func_line = i
+                                break
+                        
+                        if func_line is not None:
+                            # Find the first non-comment line with content
+                            for i in range(func_line + 1, len(lines)):
+                                if lines[i].strip() and not lines[i].strip().startswith("#"):
+                                    # Insert validation before this line
+                                    indent = re.match(r'^\s*', lines[i]).group(0)
+                                    validation_line = f"{indent}# Validate data authenticity\n{indent}is_authentic, simulation_reason = _validate_data_authenticity(data)\n{indent}if not is_authentic:\n{indent}    print(f\"WARNING: Adding simulation warning to report. Reason: {{simulation_reason}}\")\n"
+                                    lines.insert(i, validation_line)
+                                    break
+                            
+                            modified_content = "\n".join(lines)
+                
+                # Add validation function to the file
+                if "_validate_data_authenticity" not in modified_content:
+                    # Find the last import and add after it
+                    last_import = 0
+                    for i, line in enumerate(modified_content.split("\n")):
+                        if line.startswith("import ") or line.startswith("from "):
+                            last_import = i
+                    
+                    lines = modified_content.split("\n")
+                    lines.insert(last_import + 1, validation_code)
+                    modified_content = "\n".join(lines)
+                
+                # Write modified content back to the file
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2)
-            else:
-                logger.warning(f"Cannot add warning to non-object JSON: {file_path}")
-                
-        except json.JSONDecodeError:
-            # For invalid JSON, create a backup and override with warning
-            backup_path = file_path.with_suffix(file_path.suffix + ".bak")
-            shutil.copy2(file_path, backup_path)
-            
-            warning_data = {
-                "WARNING": {
-                    "message": "INVALID JSON DATA",
-                    "details": "The original file was invalid JSON and has been backed up.",
-                    "issue": issue,
-                    "original_file_backup": str(backup_path),
-                    "marked_at": datetime.datetime.now().isoformat()
-                }
-            }
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(warning_data, f, indent=2)
-    
-    def remove_problematic_files(self) -> int:
-        """
-        Remove problematic files.
-        
-        Returns:
-            Number of files removed
-        """
-        if not self.problematic_files:
-            logger.warning("No problematic files found. Run scan_for_problematic_files() first.")
-            return 0
-            
-        count = 0
-        for file_info in self.problematic_files:
-            file_path = Path(file_info["path"])
-            
-            try:
-                file_path.unlink()
-                count += 1
-                logger.info(f"Removed {file_path}")
-                
-            except Exception as e:
-                logger.error(f"Error removing {file_path}: {str(e)}")
-        
-        logger.info(f"Removed {count} files")
-        return count
-    
-    def archive_problematic_files(self) -> int:
-        """
-        Archive problematic files to a dedicated directory.
-        
-        Returns:
-            Number of files archived
-        """
-        if not self.problematic_files:
-            logger.warning("No problematic files found. Run scan_for_problematic_files() first.")
-            return 0
-            
-        # Create archive directory
-        self.archive_dir.mkdir(exist_ok=True, parents=True)
-        
-        count = 0
-        for file_info in self.problematic_files:
-            file_path = Path(file_info["path"])
-            
-            # Create subdirectories in archive to maintain folder structure
-            relative_path = file_path.relative_to(self.root_dir)
-            archive_path = self.archive_dir / relative_path
-            archive_path.parent.mkdir(exist_ok=True, parents=True)
-            
-            try:
-                shutil.copy2(file_path, archive_path)
-                count += 1
-                logger.info(f"Archived {file_path} to {archive_path}")
-                
-            except Exception as e:
-                logger.error(f"Error archiving {file_path}: {str(e)}")
-        
-        logger.info(f"Archived {count} files to {self.archive_dir}")
-        return count
-    
-    def fix_report_generators(self) -> List[str]:
-        """
-        Add validation to report generator Python files.
-        
-        Returns:
-            List of modified files
-        """
-        logger.info("Fixing report generator scripts...")
-        modified_files = []
-        
-        # Find report generator scripts
-        report_scripts = []
-        for pattern in ["*report*.py", "*benchmark*report*.py", "*timing*report*.py"]:
-            report_scripts.extend(list(self.root_dir.glob(pattern)))
-        
-        for script_path in report_scripts:
-            if self._fix_report_script(script_path):
-                modified_files.append(str(script_path))
-        
-        logger.info(f"Fixed {len(modified_files)} report generator scripts")
-        return modified_files
-    
-    def _fix_report_script(self, script_path: Path) -> bool:
-        """
-        Add validation code to a report generator script.
-        
-        Args:
-            script_path: Path to the script
-            
-        Returns:
-            True if modified, False otherwise
-        """
-        try:
-            with open(script_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            # Check if script already has simulation detection
-            if "simulation" in content and "is_simulated" in content:
-                logger.info(f"Script already has simulation detection: {script_path}")
-                return False
-            
-            # Find appropriate places to insert validation code
-            modified_content = content
-            
-            # Simple string replacement approach - a more robust implementation would use AST
-            validation_function = """
-def _validate_data_authenticity(self, df):
-    \"\"\"
-    Validate that the data is authentic and mark simulated results.
-    
-    Args:
-        df: DataFrame with benchmark results
-        
-    Returns:
-        Tuple of (DataFrame with authenticity flags, bool indicating if any simulation was detected)
-    \"\"\"
-    logger.info("Validating data authenticity...")
-    simulation_detected = False
-    
-    # Add new column to track simulation status
-    if 'is_simulated' not in df.columns:
-        df['is_simulated'] = False
-    
-    # Check database for simulation flags if possible
-    if self.conn:
-        try:
-            # Query simulation status from database
-            simulation_query = "SELECT hardware_type, COUNT(*) as count, SUM(CASE WHEN is_simulated THEN 1 ELSE 0 END) as simulated_count FROM hardware_platforms GROUP BY hardware_type"
-            sim_result = self.conn.execute(simulation_query).fetchdf()
-            
-            if not sim_result.empty:
-                for _, row in sim_result.iterrows():
-                    hw = row['hardware_type']
-                    if row['simulated_count'] > 0:
-                        # Mark rows with this hardware as simulated
-                        df.loc[df['hardware_type'] == hw, 'is_simulated'] = True
-                        simulation_detected = True
-                        logger.warning(f"Detected simulation data for hardware: {hw}")
-        except Exception as e:
-            logger.warning(f"Failed to check simulation status in database: {e}")
-    
-    # Additional checks for simulation indicators in the data
-    for hw in ['qnn', 'rocm', 'openvino', 'webgpu', 'webnn']:
-        hw_data = df[df['hardware_type'] == hw]
-        if not hw_data.empty:
-            # Check for simulation patterns in the data
-            if hw_data['throughput_items_per_second'].std() < 0.1 and len(hw_data) > 1:
-                logger.warning(f"Suspiciously uniform performance for {hw} - possible simulation")
-                df.loc[df['hardware_type'] == hw, 'is_simulated'] = True
-                simulation_detected = True
-    
-    return df, simulation_detected
-"""
-            
-            # Add validation function
-            if "def __init__" in content:
-                # Insert after the class definition
-                class_pattern = r'class\s+\w+.*:'
-                class_matches = list(re.finditer(class_pattern, content))
-                if class_matches:
-                    pos = class_matches[-1].end()
-                    modified_content = content[:pos] + validation_function + content[pos:]
-            else:
-                # Append to the end of the file
-                modified_content = content + "\n" + validation_function
-            
-            # Add validation call in appropriate places
-            if "_fetch_timing_data" in modified_content:
-                # Add validation call after fetching data
-                fetch_pattern = r'def\s+_fetch_timing_data.*?return\s+.*?$'
-                fetch_matches = list(re.finditer(fetch_pattern, modified_content, re.DOTALL))
-                if fetch_matches:
-                    match = fetch_matches[-1]
-                    return_pos = modified_content.rfind("return", match.start(), match.end())
-                    if return_pos > 0:
-                        result_var = modified_content[return_pos:match.end()].strip().replace("return", "").strip()
-                        validation_call = f"\n        # Validate data authenticity\n        {result_var}, simulation_detected = self._validate_data_authenticity({result_var})\n        if simulation_detected:\n            logger.warning(\"SIMULATION DATA DETECTED - Report may contain simulated results\")\n        \n        return {result_var}"
-                        modified_content = modified_content[:return_pos] + validation_call + modified_content[match.end():]
-            
-            # Add simulation warning to report generation
-            if "generate_" in modified_content and ("html" in modified_content or "report" in modified_content):
-                # Add simulation warning to report generation
-                html_pattern = r'def\s+(?:_generate_html_report|generate_.*?_report).*?{.*?}'
-                html_matches = list(re.finditer(html_pattern, modified_content, re.DOTALL | re.IGNORECASE))
-                
-                if html_matches:
-                    for match in html_matches:
-                        # Find where HTML content is being generated
-                        if "warning_html" not in modified_content[match.start():match.end()]:
-                            # Add simulation warning
-                            simulation_warning = """
-            # Add simulation warning if needed
-            simulation_detected = any(getattr(data, 'is_simulated', False) for _, data in df.iterrows()) if not df.empty else False
-            
-            warning_html = ""
-            if simulation_detected:
-                warning_html = '''
-                <div style="background-color: #ffcccc; border: 2px solid #ff0000; padding: 10px; margin: 10px 0; color: #cc0000;">
-                    <h2>⚠️ WARNING: REPORT CONTAINS SIMULATED DATA ⚠️</h2>
-                    <p>This report contains results from simulated hardware that may not reflect real-world performance.</p>
-                    <p>Simulated hardware data is included for comparison purposes only and should not be used for procurement decisions.</p>
-                </div>
-                '''
-"""
-                            write_pos = modified_content.find("with open(", match.start(), match.end())
-                            if write_pos > 0:
-                                modified_content = modified_content[:write_pos] + simulation_warning + modified_content[write_pos:]
-            
-            # Check if content was modified
-            if modified_content != content:
-                # Write modified content back to file
-                with open(script_path, 'w', encoding='utf-8') as f:
                     f.write(modified_content)
                 
-                logger.info(f"Added simulation validation to {script_path}")
-                return True
-            else:
-                logger.info(f"No changes needed for {script_path}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error fixing script {script_path}: {str(e)}")
-            return False
+                fixed_count += 1
+                print(f"Fixed {file_path}")
     
-    def generate_report(self, output_file: str = "stale_report_cleanup_report.md") -> str:
-        """
-        Generate a report of problematic files.
-        
-        Args:
-            output_file: Path to output report file
-            
-        Returns:
-            Path to the generated report
-        """
-        if not self.problematic_files:
-            logger.warning("No problematic files found. Run scan_for_problematic_files() first.")
-            return ""
-            
-        report_path = Path(output_file)
-        
-        with open(report_path, 'w', encoding='utf-8') as f:
-            f.write(f"# Stale and Problematic Report Cleanup Report\n\n")
-            f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
-            f.write(f"## Summary\n\n")
-            f.write(f"- Total problematic files found: {len(self.problematic_files)}\n")
-            
-            # Count by type
-            types = {}
-            for file_info in self.problematic_files:
-                file_type = file_info["type"]
-                types[file_type] = types.get(file_type, 0) + 1
-            
-            f.write("- File types:\n")
-            for file_type, count in types.items():
-                f.write(f"  - {file_type}: {count}\n")
-            
-            f.write("\n## Problematic Files\n\n")
-            f.write("| File Path | Type | Issue | Last Modified |\n")
-            f.write("|-----------|------|-------|---------------|\n")
-            
-            for file_info in self.problematic_files:
-                f.write(f"| {file_info['path']} | {file_info['type']} | {file_info['issue']} | {file_info['last_modified']} |\n")
-            
-            f.write("\n## Recommendations\n\n")
-            f.write("Based on the scan results, we recommend the following actions:\n\n")
-            f.write("1. **Mark files with warnings**: Add clear warnings to files that may contain misleading data\n")
-            f.write("   ```bash\n   python cleanup_stale_reports.py --mark\n   ```\n\n")
-            f.write("2. **Archive problematic files**: Move problematic files to an archive directory\n")
-            f.write("   ```bash\n   python cleanup_stale_reports.py --archive\n   ```\n\n")
-            f.write("3. **Fix report generators**: Add validation to report generator scripts\n")
-            f.write("   ```bash\n   python cleanup_stale_reports.py --fix-report-py\n   ```\n\n")
-            f.write("4. **Update database schema**: Ensure the database schema includes simulation flags\n")
-            f.write("   ```bash\n   python update_db_schema_for_simulation.py\n   ```\n\n")
-            
-            f.write("\n## Next Steps\n\n")
-            f.write("After implementing these recommendations, re-run the scan to verify that all issues have been addressed:\n\n")
-            f.write("```bash\n")
-            f.write("python cleanup_stale_reports.py --scan\n")
-            f.write("```\n\n")
-            
-            f.write("If you need to remove problematic files entirely (use with caution):\n\n")
-            f.write("```bash\n")
-            f.write("python cleanup_stale_reports.py --remove\n")
-            f.write("```\n")
-        
-        logger.info(f"Generated report: {report_path}")
-        return str(report_path)
+    return fixed_count
 
 def main():
-    """Main function."""
-    parser = argparse.ArgumentParser(description="Cleanup stale benchmark reports and JSON files")
-    
-    # Action arguments
-    action_group = parser.add_mutually_exclusive_group(required=True)
-    action_group.add_argument("--scan", action="store_true", help="Scan for problematic files")
-    action_group.add_argument("--mark", action="store_true", help="Mark problematic files with warnings")
-    action_group.add_argument("--remove", action="store_true", help="Remove problematic files")
-    action_group.add_argument("--archive", action="store_true", help="Archive problematic files")
-    action_group.add_argument("--fix-report-py", action="store_true", help="Add validation to report generators")
-    
-    # Optional arguments
-    parser.add_argument("--root-dir", default=".", help="Root directory to scan")
-    parser.add_argument("--output", default="stale_report_cleanup_report.md", help="Output report file")
+    parser = argparse.ArgumentParser(description='Cleanup stale benchmark reports and mark them with warnings.')
+    parser.add_argument('--scan', action='store_true', help='Scan for problematic reports without modifying them')
+    parser.add_argument('--mark', action='store_true', help='Add warnings to problematic reports')
+    parser.add_argument('--archive', action='store_true', help='Archive problematic files')
+    parser.add_argument('--archive-dir', default='/home/barberb/ipfs_accelerate_py/test/archived_stale_reports', help='Directory to archive problematic files')
+    parser.add_argument('--directory', default='/home/barberb/ipfs_accelerate_py/test', help='Directory to scan')
+    parser.add_argument('--check-json', action='store_true', help='Check JSON files as well')
+    parser.add_argument('--check-code', action='store_true', help='Check Python code for outdated simulation methods')
+    parser.add_argument('--fix-report-py', action='store_true', help='Fix report generator Python files to include validation')
     
     args = parser.parse_args()
     
-    # Create cleaner
-    cleaner = StaleReportCleaner(root_dir=args.root_dir)
-    
-    if args.scan:
-        # Scan for problematic files
-        problematic_files = cleaner.scan_for_problematic_files()
-        
-        # Generate report
-        report_path = cleaner.generate_report(output_file=args.output)
+    if args.scan or (not args.mark and not args.archive and not args.check_code and not args.fix_report_py):
+        print(f"Scanning for problematic reports in {args.directory}...")
+        problematic_files = scan_for_problematic_reports(args.directory, args.check_json)
         
         if problematic_files:
-            print(f"\nFound {len(problematic_files)} problematic files. Report generated: {report_path}")
+            print(f"Found {len(problematic_files)} problematic files:")
+            for file_path, file_type, reason in problematic_files:
+                print(f"- {file_path} ({file_type}): {reason}")
         else:
-            print("\nNo problematic files found.")
-            
-    elif args.mark:
-        # Scan for problematic files
-        cleaner.scan_for_problematic_files()
-        
-        # Mark problematic files
-        count = cleaner.mark_problematic_files()
-        
-        print(f"\nAdded warnings to {count} problematic files.")
-        
-    elif args.remove:
-        # Scan for problematic files
-        cleaner.scan_for_problematic_files()
-        
-        # Confirm removal
-        print(f"\nWARNING: This will remove {len(cleaner.problematic_files)} problematic files.")
-        confirmation = input("Are you sure you want to continue? (y/N): ")
-        
-        if confirmation.lower() == 'y':
-            # Remove problematic files
-            count = cleaner.remove_problematic_files()
-            print(f"\nRemoved {count} problematic files.")
-        else:
-            print("\nRemoval cancelled.")
-            
-    elif args.archive:
-        # Scan for problematic files
-        cleaner.scan_for_problematic_files()
-        
-        # Archive problematic files
-        count = cleaner.archive_problematic_files()
-        
-        print(f"\nArchived {count} problematic files to {cleaner.archive_dir}.")
-        
-    elif args.fix_report_py:
-        # Fix report generators
-        modified_files = cleaner.fix_report_generators()
-        
-        print(f"\nAdded validation to {len(modified_files)} report generator scripts.")
+            print("No problematic reports found.")
     
+    if args.mark:
+        print(f"Marking problematic reports in {args.directory}...")
+        problematic_files = scan_for_problematic_reports(args.directory, args.check_json)
+        marked_count = mark_problematic_reports(problematic_files)
+        print(f"Added warnings to {marked_count} files.")
+    
+    if args.archive:
+        print(f"Archiving problematic files to {args.archive_dir}...")
+        problematic_files = scan_for_problematic_reports(args.directory, args.check_json)
+        archived_count = archive_problematic_files(problematic_files, args.archive_dir)
+        print(f"Archived {archived_count} files.")
+    
+    if args.check_code:
+        print(f"Scanning for outdated simulation methods in Python code...")
+        problematic_code_files = scan_for_simulation_patterns_in_code(args.directory)
+        
+        if problematic_code_files:
+            print(f"Found {len(problematic_code_files)} Python files with outdated simulation methods:")
+            for file_path, pattern, reason in problematic_code_files:
+                print(f"- {file_path}: {reason}")
+        else:
+            print("No Python files with outdated simulation methods found.")
+    
+    if args.fix_report_py:
+        print(f"Fixing report generator Python files to include validation...")
+        fixed_count = fix_report_py_files(args.directory)
+        print(f"Fixed {fixed_count} report generator Python files.")
+
 if __name__ == "__main__":
     main()

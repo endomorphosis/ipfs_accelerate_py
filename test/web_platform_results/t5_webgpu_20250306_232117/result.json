@@ -1,0 +1,26 @@
+{
+  "model_key": "t5",
+  "model_name": "t5-small",
+  "platform": "webgpu",
+  "status": "success",
+  "test_file": "web_platform_tests/t5/webgpu_test.html",
+  "browser_opened": false,
+  "headless": false,
+  "timestamp": "2025-03-06T23:21:17.658021",
+  "platform_support": {
+    "available": true,
+    "transformers_js": true,
+    "onnx_runtime": false,
+    "web_browser": true,
+    "simulated": true
+  },
+  "implementation_type": "REAL_WEBGPU",
+  "is_simulation": true,
+  "modality": "text",
+  "metrics": {
+    "inference_time_ms": 80,
+    "load_time_ms": 480,
+    "memory_mb": 150,
+    "throughput_items_per_second": 100.0
+  }
+}

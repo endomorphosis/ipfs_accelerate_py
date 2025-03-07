@@ -359,10 +359,12 @@ def setup_webgpu_4bit_handler(model_path, model_type, args):
             "scheme": "symmetric",
             "mixed_precision": args.mixed_precision,
             "use_specialized_kernels": args.specialized_kernels,
-            "optimize_attention": True
+            "optimize_attention": True,
+            "model_type": model_type  # Explicitly provide model_type in config
         }
         
-        return setup_4bit_inference(model_path, model_type, config)
+        # Call with explicit model_type parameter to avoid confusion
+        return setup_4bit_inference(model=model_path, model_type=model_type, config=config)
 
 def setup_webnn_handler(model_path, model_type):
     """Set up a WebNN handler for inference (uses simulation)."""

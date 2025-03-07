@@ -656,28 +656,55 @@ class WebGPU4BitInferenceHandler:
             "success": True
         }
 
-def setup_4bit_inference(model, config=None, device="webgpu"):
+def setup_4bit_inference(model, model_type=None, config=None, device="webgpu"):
     """
     Set up model for 4-bit inference on WebGPU.
     
     Args:
-        model: Model to set up
-        config: Configuration dict
+        model: Model to set up or model path
+        model_type: Type of model (string) or can be in config 
+        config: Configuration dict or string with model type
         device: Target device
         
     Returns:
         Configured inference handler
     """
+    # Handle flexible parameter formats to support test_webgpu_4bit_inference.py
+    
+    # Create a default configuration
+    final_config = {
+        "bits": 4,
+        "group_size": 128,
+        "scheme": "symmetric",
+        "model_type": "llm"
+    }
+    
+    # Case 1: If config is None, use default config
     if config is None:
-        config = {}
+        # We'll keep the defaults
+        pass
+    # Case 2: If config is a string, it's actually a model_type
+    elif isinstance(config, str):
+        final_config["model_type"] = config
+    # Case 3: If config is a dictionary, merge with defaults
+    elif isinstance(config, dict):
+        for key, value in config.items():
+            final_config[key] = value
     
-    # Extract model info
-    model_type = config.get("model_type", "llm")
+    # If model_type is provided directly, it takes precedence over config
+    if model_type is not None:
+        if isinstance(model_type, str):
+            final_config["model_type"] = model_type
+        # If model_type is a dict (legacy API usage), merge it
+        elif isinstance(model_type, dict):
+            for key, value in model_type.items():
+                final_config[key] = value
     
-    # Configure quantizer
-    bits = config.get("bits", 4)
-    group_size = config.get("group_size", 128)
-    scheme = config.get("scheme", "symmetric")
+    # Extract final parameters
+    bits = final_config.get("bits", 4)
+    group_size = final_config.get("group_size", 128)
+    scheme = final_config.get("scheme", "symmetric")
+    model_type = final_config.get("model_type", "llm")
     
     # Create quantizer
     quantizer = WebGPUQuantizer(bits=bits, group_size=group_size, scheme=scheme)

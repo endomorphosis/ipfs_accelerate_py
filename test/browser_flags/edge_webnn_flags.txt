@@ -1,0 +1,22 @@
+# Microsoft Edge WebNN Flags
+
+To enable WebNN in Microsoft Edge:
+
+## Method 1: Edge Flags UI
+1. Navigate to edge://flags in the address bar
+2. Search for "WebNN"
+3. Enable the flag "WebNN API"
+4. Restart Edge
+
+## Method 2: Command Line
+Launch Edge with these flags:
+
+```
+msedge --enable-features=WebML --disable-web-security --enable-features=WebNN,WebNNDMLCompute
+```
+
+## Latest Edge versions:
+Edge often has more complete WebNN support than Chrome since Microsoft has been leading WebNN development:
+```
+msedge --enable-dawn-features=allow_unsafe_apis --enable-webgpu-developer-features --enable-webnn
+```
