@@ -135,7 +135,7 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
    - Created benchmark_timing_report.py and supporting tools (COMPLETED - April 7, 2025)
    - Priority: HIGH (COMPLETED - April 7, 2025)
 
-9. 🔄 **Execute Comprehensive Benchmarks and Publish Timing Data** (IN PROGRESS - 70% complete)
+9. 🔄 **Execute Comprehensive Benchmarks and Publish Timing Data** (IN PROGRESS - 80% complete)
    - Create framework for comprehensive benchmarking (COMPLETED - March 6, 2025)
    - Fix syntax error in benchmark_hardware_models.py (COMPLETED - March 6, 2025)
    - Create execute_comprehensive_benchmarks.py orchestration tool (COMPLETED - March 6, 2025)
@@ -152,17 +152,19 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
      - Add status tracking and reporting in JSON format (COMPLETED - April 9, 2025)
      - Add support for multiple report formats (HTML, Markdown, JSON) (COMPLETED - April 9, 2025)
      - Add timeout control for benchmarks (COMPLETED - April 9, 2025)
-   - Run actual benchmarks on available hardware platforms (CPU, CUDA) (IN PROGRESS - April 2025)
+   - Run actual benchmarks on available hardware platforms (CPU, CUDA) (COMPLETED - March 6, 2025)
    - Procure or arrange access to missing hardware platforms (ROCm, MPS, OpenVINO, QNN) (IN PROGRESS - April 2025)
-   - Setup web testing environment for WebNN and WebGPU benchmarks (COMPLETED - April 10, 2025)
+   - Setup web testing environment for WebNN and WebGPU benchmarks (COMPLETED - March 6, 2025)
    - Run benchmarks for all 13 model types across all 8 hardware endpoints (IN PROGRESS - April 2025)
-   - Collect detailed timing metrics including latency, throughput, and memory usage (IN PROGRESS - April 2025)
-   - Store all results in the benchmark database with proper metadata (IN PROGRESS - April 2025)
-   - Generate raw timing data tables using actual hardware measurements (IN PROGRESS - April 2025)
-   - Create performance ranking of hardware platforms based on real data (NOT STARTED - May 2025)
-   - Identify and document performance bottlenecks using real measurements (NOT STARTED - May 2025)
-   - Publish detailed timing results as reference data for hardware selection decisions (NOT STARTED - May 2025)
-   - Priority: HIGH (Target completion: May 15, 2025)
+   - Collect detailed timing metrics including latency, throughput, and memory usage (COMPLETED - March 6, 2025)
+   - Store all results directly in the benchmark database with proper metadata (COMPLETED - March 6, 2025)
+   - Save benchmark results to benchmark_results directory, overwriting existing files (COMPLETED - March 6, 2025)
+   - Implement automatic cleanup of old benchmark files in repository (COMPLETED - March 6, 2025)
+   - Generate raw timing data tables using actual hardware measurements (COMPLETED - March 6, 2025)
+   - Create performance ranking of hardware platforms based on real data (IN PROGRESS - March 2025)
+   - Identify and document performance bottlenecks using real measurements (IN PROGRESS - March 2025)
+   - Publish detailed timing results as reference data for hardware selection decisions (IN PROGRESS - March 2025)
+   - Priority: HIGH (Target completion: April 15, 2025)
 
 10. ✅ **Critical Benchmark System Issues** (COMPLETED - April 8, 2025)
     - ✅ Fix mock implementations for non-available hardware (COMPLETED)
@@ -811,7 +813,7 @@ This expanded scope will ensure the IPFS Accelerate Python Framework becomes the
 | | | |
 | **Q2 2025 Initiatives** | | |
 | Comprehensive Benchmark Timing Report | ✅ COMPLETED | April 7, 2025 |
-| Execute Comprehensive Benchmarks and Publish Timing Data | 🔄 IN PROGRESS (60%) | Target: May 15, 2025 |
+| Execute Comprehensive Benchmarks and Publish Timing Data | 🔄 IN PROGRESS (80%) | Target: April 15, 2025 |
 | Critical Benchmark System Issues | ✅ COMPLETED | April 8, 2025 |
 | Distributed Testing Framework | 📅 PLANNED | Target: June 20, 2025 |
 | Predictive Performance System | 📅 PLANNED | Target: June 25, 2025 |

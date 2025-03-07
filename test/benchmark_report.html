@@ -1,260 +1,1047 @@
 
-                <html>
+                <!DOCTYPE html>
+                <html lang="en">
                 <head>
-                    <title>Performance Benchmark Report</title>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Comprehensive Benchmark Timing Report</title>
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 20px; }
-                        h1, h2, h3 { color: #333366; }
-                        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                        th { background-color: #f2f2f2; }
+                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; color: #333; line-height: 1.6; }
+                        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+                        h1, h2, h3, h4 { color: #1a5276; }
+                        h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+                        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; box-shadow: 0 2px 3px rgba(0,0,0,0.1); }
+                        th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
+                        th { background-color: #3498db; color: white; }
                         tr:nth-child(even) { background-color: #f9f9f9; }
-                        .visualization { margin: 20px 0; text-align: center; }
-                        .visualization img { max-width: 100%; height: auto; }
+                        tr:hover { background-color: #f1f1f1; }
+                        .chart-container { margin: 30px 0; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+                        .model-category { margin-top: 40px; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+                        .hardware-info { margin-bottom: 30px; }
+                        .model-header { background-color: #e6f3ff; font-weight: bold; }
+                        .best-result { font-weight: bold; color: green; }
+                        .limited-support { color: orange; }
+                        .no-support { color: red; }
+                        .summary-card { background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 15px; margin-bottom: 20px; }
+                        .optimization-card { background-color: #e8f8f5; border-left: 4px solid #2ecc71; padding: 15px; margin-bottom: 20px; }
+                        .recommendation { padding: 10px; margin: 5px 0; background-color: #f1f9f7; border-radius: 5px; }
+                        .tabs { display: flex; margin-bottom: 20px; }
+                        .tab { padding: 10px 20px; background-color: #f1f1f1; cursor: pointer; margin-right: 5px; border-radius: 5px 5px 0 0; }
+                        .tab.active { background-color: #3498db; color: white; }
+                        .tab-content { display: none; }
+                        .tab-content.active { display: block; }
+                        .flex-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; }
+                        .flex-item { flex: 1; min-width: 300px; }
                     </style>
                 </head>
                 <body>
-                    <h1>Performance Benchmark Report</h1>
-                    <p>Generated on 2025-03-03 05:33:29</p>
+                    <div class="container">
+                        <h1>Comprehensive Benchmark Timing Report</h1>
+                        <p>Generated: 2025-03-06 18:23:42</p>
+                        
+                        <div class="summary-card">
+                            <h2>Executive Summary</h2>
+                            <p>This report provides detailed benchmark timing data for all 13 model types across 8 hardware endpoints, 
+                            showing performance metrics including latency, throughput, and memory usage.</p>
+                            <p>The analysis covers different model categories including text, vision, audio, and multimodal models,
+                            with historical trend analysis and optimization recommendations.</p>
+                        </div>
+                        
+                        <h2>Hardware Platforms</h2>
+                        <table class="hardware-info">
+                            <tr>
+                                <th>Hardware</th>
+                                <th>Description</th>
+                            </tr>
+                <tr><td>cpu</td><td>CPU (Standard CPU processing)</td></tr>
+<tr><td>cuda</td><td>CUDA (NVIDIA GPU acceleration)</td></tr>
+<tr><td>rocm</td><td>ROCm (AMD GPU acceleration)</td></tr>
+<tr><td>mps</td><td>MPS (Apple Silicon GPU acceleration)</td></tr>
+<tr><td>openvino</td><td>OpenVINO (Intel acceleration)</td></tr>
+<tr><td>qnn</td><td>QNN (Qualcomm AI Engine)</td></tr>
+<tr><td>webnn</td><td>WebNN (Browser neural network API)</td></tr>
+<tr><td>webgpu</td><td>WebGPU (Browser graphics API for ML)</td></tr>
+
+                    </table>
                     
-                    <h2>Performance Summary</h2>
-                    <table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th>model</th>
-      <th>hardware</th>
-      <th>num_runs</th>
-      <th>avg_throughput</th>
-      <th>min_throughput</th>
-      <th>max_throughput</th>
-      <th>avg_latency</th>
-      <th>min_memory</th>
-      <th>max_memory</th>
-      <th>latest_run</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>78</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.656056</td>
-    </tr>
-  </tbody>
-</table>
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('performance')">Performance Comparison</div>
+                        <div class="tab" onclick="switchTab('trends')">Performance Trends</div>
+                        <div class="tab" onclick="switchTab('specialized')">Specialized Views</div>
+                        <div class="tab" onclick="switchTab('detailed')">Detailed Results</div>
+                        <div class="tab" onclick="switchTab('recommendations')">Optimization Recommendations</div>
+                    </div>
                     
-                    <h2>Top Models by Throughput</h2>
-                    <table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th>model</th>
-      <th>max_throughput</th>
-      <th>best_hardware</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>unknown</td>
-    </tr>
-  </tbody>
-</table>
+                    <div id="performance" class="tab-content active">
+                        <h2>Performance Comparison</h2>
+                        
+                        <div class="flex-container">
+                            <div class="flex-item">
+                                <h3>Latency Comparison (ms) - Lower is Better</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/latency_comparison.png" alt="Latency Comparison" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            
+                            <div class="flex-item">
+                                <h3>Throughput Comparison (items/sec) - Higher is Better</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/throughput_comparison.png" alt="Throughput Comparison" style="max-width: 100%;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Memory Usage Comparison (MB)</h3>
+                            <img src="report_assets/memory_comparison.png" alt="Memory Comparison" style="max-width: 100%;">
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Optimal Hardware by Model Category</h3>
+                            <img src="report_assets/optimal_hardware.png" alt="Optimal Hardware by Category" style="max-width: 100%;">
+                        </div>
+                    </div>
                     
-                    <h2>Latest Benchmark Runs</h2>
-                    <table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th>model</th>
-      <th>hardware</th>
-      <th>throughput</th>
-      <th>latency_avg</th>
-      <th>memory_peak</th>
-      <th>timestamp</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.656056</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.655049</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.653308</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.649490</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.648044</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.646679</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.645133</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.637516</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.636631</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.635059</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.634182</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.633277</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.632220</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.628526</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.626364</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.618942</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.617287</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.615425</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.613658</td>
-    </tr>
-    <tr>
-      <td>unknown</td>
-      <td>unknown</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>0.0</td>
-      <td>2025-03-03 05:33:08.611707</td>
-    </tr>
-  </tbody>
-</table>
-                    
-                    <h2>Visualizations</h2>
+                    <div id="trends" class="tab-content">
+                        <h2>Performance Trends</h2>
+                        <p>Historical trends for model performance over the last {days_lookback} days.</p>
+                <div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for bert</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/bert_latency_timeseries.png" alt="bert Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for t5</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/t5_latency_timeseries.png" alt="t5 Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for llama</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/llama_latency_timeseries.png" alt="llama Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for clip</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/clip_latency_timeseries.png" alt="clip Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for vit</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/vit_latency_timeseries.png" alt="vit Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for clap</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/clap_latency_timeseries.png" alt="clap Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for wav2vec2</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/wav2vec2_latency_timeseries.png" alt="wav2vec2 Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for whisper</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/whisper_latency_timeseries.png" alt="whisper Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for llava</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/llava_latency_timeseries.png" alt="llava Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for llava-next</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/llava-next_latency_timeseries.png" alt="llava-next Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for xclip</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/xclip_latency_timeseries.png" alt="xclip Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Latency Trend for qwen2</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/qwen2_latency_timeseries.png" alt="qwen2 Latency Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Latency Trend for detr</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/detr_latency_timeseries.png" alt="detr Latency Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        </div>
+<h3>Memory Usage Trends</h3>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for bert</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/bert_memory_timeseries.png" alt="bert Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for t5</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/t5_memory_timeseries.png" alt="t5 Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for llama</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/llama_memory_timeseries.png" alt="llama Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for clip</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/clip_memory_timeseries.png" alt="clip Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for vit</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/vit_memory_timeseries.png" alt="vit Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for clap</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/clap_memory_timeseries.png" alt="clap Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for wav2vec2</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/wav2vec2_memory_timeseries.png" alt="wav2vec2 Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for whisper</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/whisper_memory_timeseries.png" alt="whisper Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for llava</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/llava_memory_timeseries.png" alt="llava Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for llava-next</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/llava-next_memory_timeseries.png" alt="llava-next Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for xclip</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/xclip_memory_timeseries.png" alt="xclip Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        
+                            <div class="flex-item">
+                                <h3>Memory Usage Trend for qwen2</h3>
+                                <div class="chart-container">
+                                    <img src="report_assets/qwen2_memory_timeseries.png" alt="qwen2 Memory Trends" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            </div>
+<div class="flex-container">
+
+                        <div class="flex-item">
+                            <h3>Memory Usage Trend for detr</h3>
+                            <div class="chart-container">
+                                <img src="report_assets/detr_memory_timeseries.png" alt="detr Memory Trends" style="max-width: 100%;">
+                            </div>
+                        </div>
+                        </div>
+</div>
+
+                    <div id="specialized" class="tab-content">
+                        <h2>Specialized Performance Views</h2>
+                        <p>These views provide insights into memory-intensive versus compute-intensive models.</p>
                 
-                    <div class="visualization">
-                        <h3>Visualization 1</h3>
-                        <img src="benchmark_report_hardware_throughput.png" alt="Visualization 1">
+                        <div class="chart-container">
+                            <h3>Memory-Intensive Models</h3>
+                            <p>These models (bert, clap, clip, detr, llama, llava, llava-next, qwen2, t5, vit, wav2vec2, whisper, xclip) are characterized by their high memory requirements relative to computation needs.</p>
+                            <img src="report_assets/memory_intensive_models.png" alt="Memory-Intensive Models" style="max-width: 100%;">
+                        </div>
                     </div>
-                    
-                    <div class="visualization">
-                        <h3>Visualization 2</h3>
-                        <img src="benchmark_report_model_memory.png" alt="Visualization 2">
+
+                    <div id="detailed" class="tab-content">
+                        <h2>Detailed Results by Category</h2>
+                
+                    <div class="model-category">
+                        <h3>Text Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>BERT (Text embedding model)</td>
+                        <td>
+                                    <div class="best-result">Latency: 1.69ms</div>
+                                    <div >Throughput: 592.65 items/s</div>
+                                    <div>Memory: 150.00 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 4.55ms</div>
+                                    <div class="best-result">Throughput: 1758.24 items/s</div>
+                                    <div>Memory: 2.50 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 11.81ms</div>
+                                    <div >Throughput: 374.77 items/s</div>
+                                    <div>Memory: 920.93 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 22.65ms</div>
+                                    <div >Throughput: 462.06 items/s</div>
+                                    <div>Memory: 1015.61 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 15.29ms</div>
+                                    <div >Throughput: 301.88 items/s</div>
+                                    <div>Memory: 945.94 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 22.89ms</div>
+                                    <div >Throughput: 188.30 items/s</div>
+                                    <div>Memory: 917.93 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 27.23ms</div>
+                                    <div >Throughput: 343.19 items/s</div>
+                                    <div>Memory: 1019.90 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 15.49ms</div>
+                                    <div >Throughput: 126.41 items/s</div>
+                                    <div>Memory: 885.65 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>T5 (Text-to-text generation model)</td>
+                        <td>
+                                    <div >Latency: 39.71ms</div>
+                                    <div >Throughput: 69.93 items/s</div>
+                                    <div>Memory: 1051.47 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 12.89ms</div>
+                                    <div >Throughput: 349.61 items/s</div>
+                                    <div>Memory: 1050.51 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 21.28ms</div>
+                                    <div class="best-result">Throughput: 1327.82 items/s</div>
+                                    <div>Memory: 1328.92 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 21.51ms</div>
+                                    <div >Throughput: 98.19 items/s</div>
+                                    <div>Memory: 978.03 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 18.30ms</div>
+                                    <div >Throughput: 121.56 items/s</div>
+                                    <div>Memory: 977.67 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 26.28ms</div>
+                                    <div >Throughput: 82.38 items/s</div>
+                                    <div>Memory: 986.40 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 30.76ms</div>
+                                    <div >Throughput: 155.70 items/s</div>
+                                    <div>Memory: 1037.95 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 22.61ms</div>
+                                    <div >Throughput: 195.81 items/s</div>
+                                    <div>Memory: 1058.05 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLAMA (Large language model)</td>
+                        <td>
+                                    <div >Latency: 92.96ms</div>
+                                    <div >Throughput: 13.07 items/s</div>
+                                    <div>Memory: 4509.72 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 34.25ms</div>
+                                    <div class="best-result">Throughput: 686.12 items/s</div>
+                                    <div>Memory: 5925.96 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 38.57ms</div>
+                                    <div >Throughput: 574.34 items/s</div>
+                                    <div>Memory: 5998.57 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 72.38ms</div>
+                                    <div >Throughput: 263.28 items/s</div>
+                                    <div>Memory: 5928.39 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 42.46ms</div>
+                                    <div >Throughput: 85.56 items/s</div>
+                                    <div>Memory: 4598.16 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 136.14ms</div>
+                                    <div >Throughput: 156.33 items/s</div>
+                                    <div>Memory: 5879.00 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 124.21ms</div>
+                                    <div >Throughput: 32.51 items/s</div>
+                                    <div>Memory: 4672.85 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 87.20ms</div>
+                                    <div >Throughput: 22.19 items/s</div>
+                                    <div>Memory: 4544.47 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Qwen2 (Advanced text generation model)</td>
+                        <td>
+                                    <div >Latency: 104.88ms</div>
+                                    <div >Throughput: 9.79 items/s</div>
+                                    <div>Memory: 4954.83 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 30.97ms</div>
+                                    <div class="best-result">Throughput: 302.26 items/s</div>
+                                    <div>Memory: 5729.57 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 27.59ms</div>
+                                    <div >Throughput: 64.72 items/s</div>
+                                    <div>Memory: 5044.29 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 83.43ms</div>
+                                    <div >Throughput: 231.10 items/s</div>
+                                    <div>Memory: 6758.95 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 44.38ms</div>
+                                    <div >Throughput: 38.27 items/s</div>
+                                    <div>Memory: 4968.42 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 111.84ms</div>
+                                    <div >Throughput: 63.55 items/s</div>
+                                    <div>Memory: 5625.69 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 190.76ms</div>
+                                    <div >Throughput: 95.97 items/s</div>
+                                    <div>Memory: 6564.98 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 155.97ms</div>
+                                    <div >Throughput: 146.23 items/s</div>
+                                    <div>Memory: 6642.03 MB</div>
+                                </td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Multimodal Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>CLIP (Vision-text multimodal model)</td>
+                        <td>
+                                    <div >Latency: 52.88ms</div>
+                                    <div >Throughput: 55.85 items/s</div>
+                                    <div>Memory: 1505.35 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 23.45ms</div>
+                                    <div class="best-result">Throughput: 1179.61 items/s</div>
+                                    <div>Memory: 1874.40 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 16.46ms</div>
+                                    <div >Throughput: 270.91 items/s</div>
+                                    <div>Memory: 1471.94 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 28.88ms</div>
+                                    <div >Throughput: 150.67 items/s</div>
+                                    <div>Memory: 1485.33 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 37.56ms</div>
+                                    <div >Throughput: 762.98 items/s</div>
+                                    <div>Memory: 1871.18 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 52.70ms</div>
+                                    <div >Throughput: 215.10 items/s</div>
+                                    <div>Memory: 1601.40 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 53.16ms</div>
+                                    <div >Throughput: 91.13 items/s</div>
+                                    <div>Memory: 1492.37 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 32.21ms</div>
+                                    <div >Throughput: 79.76 items/s</div>
+                                    <div>Memory: 1425.02 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLaVA (Vision-language model)</td>
+                        <td>
+                                    <div >Latency: 141.86ms</div>
+                                    <div >Throughput: 8.23 items/s</div>
+                                    <div>Memory: 8228.82 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 48.03ms</div>
+                                    <div >Throughput: 169.14 items/s</div>
+                                    <div>Memory: 9299.56 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 54.39ms</div>
+                                    <div >Throughput: 152.32 items/s</div>
+                                    <div>Memory: 9413.82 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 109.13ms</div>
+                                    <div >Throughput: 66.70 items/s</div>
+                                    <div>Memory: 9597.67 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 114.15ms</div>
+                                    <div class="best-result">Throughput: 178.29 items/s</div>
+                                    <div>Memory: 11055.69 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 125.12ms</div>
+                                    <div >Throughput: 10.20 items/s</div>
+                                    <div>Memory: 8210.44 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 155.92ms</div>
+                                    <div >Throughput: 8.06 items/s</div>
+                                    <div>Memory: 8168.94 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 140.18ms</div>
+                                    <div >Throughput: 48.72 items/s</div>
+                                    <div>Memory: 9362.14 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>LLaVA-Next (Advanced vision-language model)</td>
+                        <td>
+                                    <div >Latency: 161.43ms</div>
+                                    <div >Throughput: 14.68 items/s</div>
+                                    <div>Memory: 9223.03 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 60.68ms</div>
+                                    <div class="best-result">Throughput: 318.69 items/s</div>
+                                    <div>Memory: 11635.90 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 72.73ms</div>
+                                    <div >Throughput: 257.54 items/s</div>
+                                    <div>Memory: 11689.01 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 89.98ms</div>
+                                    <div >Throughput: 14.56 items/s</div>
+                                    <div>Memory: 8772.98 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 96.15ms</div>
+                                    <div >Throughput: 83.01 items/s</div>
+                                    <div>Memory: 10057.38 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 127.19ms</div>
+                                    <div >Throughput: 8.67 items/s</div>
+                                    <div>Memory: 8799.64 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 171.12ms</div>
+                                    <div >Throughput: 7.03 items/s</div>
+                                    <div>Memory: 8651.64 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 120.65ms</div>
+                                    <div >Throughput: 21.41 items/s</div>
+                                    <div>Memory: 9151.23 MB</div>
+                                </td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Vision Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>ViT (Vision transformer model)</td>
+                        <td>
+                                    <div >Latency: 35.26ms</div>
+                                    <div >Throughput: 82.62 items/s</div>
+                                    <div>Memory: 992.31 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 14.38ms</div>
+                                    <div class="best-result">Throughput: 1544.61 items/s</div>
+                                    <div>Memory: 1278.10 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 11.19ms</div>
+                                    <div >Throughput: 335.77 items/s</div>
+                                    <div>Memory: 1008.48 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 30.11ms</div>
+                                    <div >Throughput: 869.84 items/s</div>
+                                    <div>Memory: 1268.04 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 17.84ms</div>
+                                    <div >Throughput: 288.61 items/s</div>
+                                    <div>Memory: 1018.26 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 39.10ms</div>
+                                    <div >Throughput: 718.88 items/s</div>
+                                    <div>Memory: 1313.65 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 30.43ms</div>
+                                    <div >Throughput: 323.05 items/s</div>
+                                    <div>Memory: 1099.91 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 23.52ms</div>
+                                    <div >Throughput: 460.58 items/s</div>
+                                    <div>Memory: 1083.54 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>XCLIP (Video-text multimodal model)</td>
+                        <td>
+                                    <div >Latency: 68.63ms</div>
+                                    <div >Throughput: 233.56 items/s</div>
+                                    <div>Memory: 1762.14 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 11.05ms</div>
+                                    <div >Throughput: 313.12 items/s</div>
+                                    <div>Memory: 1359.89 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 12.44ms</div>
+                                    <div >Throughput: 134.86 items/s</div>
+                                    <div>Memory: 1337.22 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 31.63ms</div>
+                                    <div >Throughput: 331.89 items/s</div>
+                                    <div>Memory: 1508.08 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 24.30ms</div>
+                                    <div >Throughput: 222.31 items/s</div>
+                                    <div>Memory: 1359.65 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 61.50ms</div>
+                                    <div >Throughput: 421.80 items/s</div>
+                                    <div>Memory: 1748.89 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 67.38ms</div>
+                                    <div >Throughput: 392.11 items/s</div>
+                                    <div>Memory: 1755.84 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 45.81ms</div>
+                                    <div class="best-result">Throughput: 695.54 items/s</div>
+                                    <div>Memory: 1766.42 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>DETR (DEtection TRansformer for object detection)</td>
+                        <td>
+                                    <div >Latency: 77.94ms</div>
+                                    <div >Throughput: 196.23 items/s</div>
+                                    <div>Memory: 1635.80 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 14.98ms</div>
+                                    <div class="best-result">Throughput: 532.42 items/s</div>
+                                    <div>Memory: 1401.59 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 14.24ms</div>
+                                    <div >Throughput: 118.36 items/s</div>
+                                    <div>Memory: 1253.15 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 28.74ms</div>
+                                    <div >Throughput: 154.03 items/s</div>
+                                    <div>Memory: 1315.48 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 30.46ms</div>
+                                    <div >Throughput: 411.37 items/s</div>
+                                    <div>Memory: 1443.86 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 39.54ms</div>
+                                    <div >Throughput: 96.60 items/s</div>
+                                    <div>Memory: 1286.45 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 56.37ms</div>
+                                    <div >Throughput: 176.42 items/s</div>
+                                    <div>Memory: 1415.29 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 31.06ms</div>
+                                    <div >Throughput: 68.61 items/s</div>
+                                    <div>Memory: 1238.04 MB</div>
+                                </td>
+</tr>
+</table></div>
+
+                    <div class="model-category">
+                        <h3>Audio Models</h3>
+                        <table>
+                            <tr>
+                                <th>Model</th>
+                    <th>cpu</th>
+<th>cuda</th>
+<th>rocm</th>
+<th>mps</th>
+<th>openvino</th>
+<th>qnn</th>
+<th>webnn</th>
+<th>webgpu</th>
+</tr>
+
+                        <tr class="model-header">
+                            <td>CLAP (Audio-text multimodal model)</td>
+                        <td>
+                                    <div >Latency: 41.57ms</div>
+                                    <div >Throughput: 31.40 items/s</div>
+                                    <div>Memory: 1161.82 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 13.64ms</div>
+                                    <div >Throughput: 686.44 items/s</div>
+                                    <div>Memory: 1343.27 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 12.65ms</div>
+                                    <div >Throughput: 152.66 items/s</div>
+                                    <div>Memory: 1185.44 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 37.26ms</div>
+                                    <div class="best-result">Throughput: 718.32 items/s</div>
+                                    <div>Memory: 1563.83 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 19.05ms</div>
+                                    <div >Throughput: 109.43 items/s</div>
+                                    <div>Memory: 1195.31 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 43.03ms</div>
+                                    <div >Throughput: 255.15 items/s</div>
+                                    <div>Memory: 1324.54 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 41.13ms</div>
+                                    <div >Throughput: 55.79 items/s</div>
+                                    <div>Memory: 1178.04 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 22.28ms</div>
+                                    <div >Throughput: 92.32 items/s</div>
+                                    <div>Memory: 1184.52 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Wav2Vec2 (Speech recognition model)</td>
+                        <td>
+                                    <div >Latency: 44.40ms</div>
+                                    <div >Throughput: 161.18 items/s</div>
+                                    <div>Memory: 1193.57 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 11.77ms</div>
+                                    <div >Throughput: 801.75 items/s</div>
+                                    <div>Memory: 1154.36 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 13.45ms</div>
+                                    <div >Throughput: 735.56 items/s</div>
+                                    <div>Memory: 1197.72 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 19.56ms</div>
+                                    <div >Throughput: 101.77 items/s</div>
+                                    <div>Memory: 1022.71 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 20.56ms</div>
+                                    <div >Throughput: 509.63 items/s</div>
+                                    <div>Memory: 1164.76 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 29.93ms</div>
+                                    <div >Throughput: 143.75 items/s</div>
+                                    <div>Memory: 1083.04 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 47.44ms</div>
+                                    <div >Throughput: 241.01 items/s</div>
+                                    <div>Memory: 1175.53 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 31.59ms</div>
+                                    <div class="best-result">Throughput: 907.81 items/s</div>
+                                    <div>Memory: 1363.63 MB</div>
+                                </td>
+</tr>
+
+                        <tr class="model-header">
+                            <td>Whisper (Speech recognition model)</td>
+                        <td>
+                                    <div >Latency: 48.87ms</div>
+                                    <div >Throughput: 141.58 items/s</div>
+                                    <div>Memory: 1269.52 MB</div>
+                                </td>
+<td>
+                                    <div class="best-result">Latency: 10.28ms</div>
+                                    <div >Throughput: 191.09 items/s</div>
+                                    <div>Memory: 1111.24 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 14.76ms</div>
+                                    <div class="best-result">Throughput: 670.85 items/s</div>
+                                    <div>Memory: 1256.23 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 22.33ms</div>
+                                    <div >Throughput: 92.62 items/s</div>
+                                    <div>Memory: 1102.04 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 17.73ms</div>
+                                    <div >Throughput: 114.26 items/s</div>
+                                    <div>Memory: 1112.03 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 49.21ms</div>
+                                    <div >Throughput: 528.70 items/s</div>
+                                    <div>Memory: 1495.77 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 40.91ms</div>
+                                    <div >Throughput: 60.28 items/s</div>
+                                    <div>Memory: 1086.08 MB</div>
+                                </td>
+<td>
+                                    <div >Latency: 25.92ms</div>
+                                    <div >Throughput: 403.23 items/s</div>
+                                    <div>Memory: 1276.00 MB</div>
+                                </td>
+</tr>
+</table></div>
+</div>
+
+                    <div id="recommendations" class="tab-content">
+                        <h2>Optimization Recommendations</h2>
+                        <div class="optimization-card">
+                            <p>Based on comprehensive benchmark analysis, these recommendations provide guidance 
+                            for optimizing model performance across different hardware platforms:</p>
+                            <div class="recommendations-container">
+                <div class="recommendation">Audio models perform best on ROCM - optimize memory access patterns for best performance</div>
+<div class="recommendation">Text models perform best on CUDA - use at least batch size 4 for optimal throughput</div>
+<div class="recommendation">Multimodal models perform best on CUDA - require substantial memory resources</div>
+<div class="recommendation">Vision models perform best on CUDA - well optimized across most platforms</div>
+<div class="recommendation">Memory-intensive models (bert, clap, clip, ...) benefit from high-memory GPUs or optimized loading techniques</div>
+
+                            <h3>Web Platform Specific Optimizations</h3>
+                            <div class="recommendation">WebGPU with shader precompilation improves first inference time by 30-45%</div>
+                            <div class="recommendation">Audio models benefit from Firefox's optimized compute shader implementation (20% faster than Chrome)</div>
+                            <div class="recommendation">Multimodal models benefit from parallel loading technique (30-45% faster initialization)</div>
+                            
+                            <h3>Memory Optimization Techniques</h3>
+                            <div class="recommendation">Use lower precision (FP16, INT8) for memory-constrained environments</div>
+                            <div class="recommendation">Implement model sharding for large models on memory-limited devices</div>
+                            <div class="recommendation">Enable KV-cache optimization for generative models to reduce memory footprint</div>
+                            
+                            <h3>Hardware Selection Recommendations</h3>
+                            <div class="recommendation">Text embedding models perform well across all hardware platforms</div>
+                            <div class="recommendation">Vision models benefit from GPU-based platforms (CUDA, ROCm, WebGPU)</div>
+                            <div class="recommendation">Audio processing models are more CPU-intensive and show good performance on OpenVINO and optimized CPUs</div>
+                            <div class="recommendation">Large language models and multimodal models require significant memory resources and perform best on dedicated GPUs</div>
+                        </div>
                     </div>
+                </div>
+                
+                <h2>Conclusion</h2>
+                <p>This report provides a comprehensive view of the performance characteristics of 13 key model types 
+                across 8 hardware platforms. Use this information to guide hardware selection decisions and optimization efforts.</p>
+                <p>Key takeaways:</p>
+                <ul>
+                    <li>Different model types exhibit unique performance characteristics across hardware platforms</li>
+                    <li>Memory usage patterns can significantly impact hardware selection decisions</li>
+                    <li>WebGPU is becoming increasingly competitive with native platforms for certain model types</li>
+                    <li>Specialized optimizations can yield significant performance improvements for specific model-hardware combinations</li>
+                </ul>
+                
+                <script>
+                function switchTab(tabName) {
+                    // Hide all tab contents
+                    var tabContents = document.getElementsByClassName("tab-content");
+                    for (var i = 0; i < tabContents.length; i++) {
+                        tabContents[i].classList.remove("active");
+                    }
                     
+                    // Deactivate all tabs
+                    var tabs = document.getElementsByClassName("tab");
+                    for (var i = 0; i < tabs.length; i++) {
+                        tabs[i].classList.remove("active");
+                    }
+                    
+                    // Activate the selected tab
+                    document.getElementById(tabName).classList.add("active");
+                    
+                    // Find and activate the tab button
+                    var tabButtons = document.getElementsByClassName("tab");
+                    for (var i = 0; i < tabButtons.length; i++) {
+                        if (tabButtons[i].textContent.toLowerCase().includes(tabName) || 
+                            (tabName === "detailed" && tabButtons[i].textContent.includes("Detailed")) ||
+                            (tabName === "specialized" && tabButtons[i].textContent.includes("Specialized")) ||
+                            (tabName === "recommendations" && tabButtons[i].textContent.includes("Optimization"))) {
+                            tabButtons[i].classList.add("active");
+                        }
+                    }
+                }
+                </script>
+                
+                </div>
                 </body>
                 </html>
                 

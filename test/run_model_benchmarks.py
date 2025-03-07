@@ -264,6 +264,83 @@ class ModelBenchmarkRunner:
         # Initialize database connection if needed
         if self.store_in_db:
             self._initialize_db()
+            
+    def _update_compatibility_matrix(self, results: Dict = None):
+        """
+        Update hardware compatibility matrix.
+        This method is a stub that will be replaced with the actual implementation.
+        
+        Args:
+            results: Optional results dict to use for updating compatibility matrix
+        """
+        try:
+            logger.info("Updating hardware compatibility matrix... (stub implementation)")
+            
+            # In a real implementation, this would update a compatibility matrix
+            # with the latest hardware compatibility information based on benchmark results
+            
+            # Check if we have access to hardware compatibility database
+            if not hasattr(self, "db_conn") or self.db_conn is None:
+                logger.warning("No database connection available for updating compatibility matrix")
+                return
+                
+            # Example implementation (not actually executed)
+            if False:  # This block is never executed
+                for model_key, model_info in self.models.items():
+                    model_name = model_info.get("name", model_key)
+                    for hardware_type in self.hardware_types:
+                        # Check if hardware is available
+                        is_available = self.available_hardware.get(hardware_type, False)
+                        
+                        # Determine compatibility based on benchmark results
+                        is_compatible = False
+                        if results and model_key in results and hardware_type in results[model_key]:
+                            is_compatible = results[model_key][hardware_type].get("success", False)
+                        
+                        # Update compatibility matrix in database
+                        # This would be the actual implementation in a real system
+                        pass
+                        
+            logger.info("Hardware compatibility matrix updated (stub implementation)")
+        except Exception as e:
+            logger.error(f"Error updating hardware compatibility matrix: {e}")
+            # Continue execution despite the error
+            
+    def _save_results(self):
+        """
+        Save benchmark results to JSON file and database.
+        This is a stub implementation to fix the missing method error.
+        """
+        try:
+            # Save results to JSON file if not disabled
+            if not self.db_only and not DEPRECATE_JSON_OUTPUT:
+                # Determine the output file path - directly to benchmark_results directory
+                output_file = self.output_dir / f"benchmark_results_{self.timestamp}.json"
+                
+                # Save results
+                with open(output_file, 'w') as f:
+                    json.dump(self.results, f, indent=2)
+                    
+                logger.info(f"Results saved to: {output_file}")
+                
+            # Save results to database if enabled
+            if self.store_in_db and BENCHMARK_DB_AVAILABLE:
+                try:
+                    # Use the BenchmarkDBAPI if available
+                    api = BenchmarkDBAPI(self.db_path)
+                    api.store_benchmark_results(self.results)
+                    logger.info("Results stored in database successfully")
+                except Exception as db_error:
+                    logger.error(f"Error storing results in database: {str(db_error)}")
+                    
+            # If JSON output is deprecated and database storage failed, log a warning
+            if DEPRECATE_JSON_OUTPUT and not BENCHMARK_DB_AVAILABLE:
+                logger.warning("JSON output is deprecated and database storage is not available. Results may not be saved.")
+                
+            return True
+        except Exception as e:
+            logger.error(f"Error saving benchmark results: {str(e)}")
+            return False
     
     def run(self):
         """

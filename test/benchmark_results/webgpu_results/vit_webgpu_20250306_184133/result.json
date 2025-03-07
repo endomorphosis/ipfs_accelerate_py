@@ -1,0 +1,26 @@
+{
+  "model_key": "vit",
+  "model_name": "facebook/deit-tiny-patch16-224",
+  "platform": "webgpu",
+  "status": "success",
+  "test_file": "web_platform_tests/vit/webgpu_test.html",
+  "browser_opened": false,
+  "headless": true,
+  "timestamp": "2025-03-06T18:41:33.998990",
+  "platform_support": {
+    "available": true,
+    "transformers_js": true,
+    "onnx_runtime": false,
+    "web_browser": true,
+    "simulated": true
+  },
+  "implementation_type": "REAL_WEBGPU",
+  "is_simulation": true,
+  "modality": "vision",
+  "metrics": {
+    "inference_time_ms": 80,
+    "load_time_ms": 480,
+    "memory_mb": 250,
+    "throughput_items_per_second": 100.0
+  }
+}

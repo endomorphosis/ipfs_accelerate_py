@@ -1096,6 +1096,116 @@ class BenchmarkDBAPI:
         """
         return self.query(sql)
     
+    def store_benchmark_results(self, results: Dict[str, Any]) -> str:
+        """
+        Store benchmark results in the database.
+        
+        This method is a wrapper around store_performance_result to maintain compatibility
+        with benchmark runners that expect this method.
+        
+        Args:
+            results: Dictionary with benchmark results
+            
+        Returns:
+            result_id: ID of the stored result
+        """
+        logger.info("store_benchmark_results called - forwarding to store_performance_result")
+        
+        # Extract relevant fields from results
+        try:
+            # Basic fields
+            model_name = results.get("model_name")
+            if not model_name:
+                model_name = results.get("model", "unknown_model")
+                
+            hardware_type = results.get("hardware_type")
+            if not hardware_type:
+                hardware_type = results.get("hardware", "cpu")
+                
+            # Extract performance metrics
+            batch_size = results.get("batch_size", 1)
+            
+            # Look for metrics in different possible locations in the results dictionary
+            throughput = None
+            latency_avg = None
+            memory_peak = None
+            
+            # Try direct access first
+            throughput = results.get("throughput_items_per_second", results.get("throughput"))
+            latency_avg = results.get("average_latency_ms", results.get("latency_avg", results.get("latency")))
+            memory_peak = results.get("memory_peak_mb", results.get("memory_peak", results.get("memory")))
+            
+            # Try nested dictionaries if direct access fails
+            if "metrics" in results:
+                metrics = results["metrics"]
+                if throughput is None:
+                    throughput = metrics.get("throughput_items_per_second", metrics.get("throughput"))
+                if latency_avg is None:
+                    latency_avg = metrics.get("average_latency_ms", metrics.get("latency_avg", metrics.get("latency")))
+                if memory_peak is None:
+                    memory_peak = metrics.get("memory_peak_mb", metrics.get("memory_peak", metrics.get("memory")))
+                    
+            # If batch_sizes exists, try to extract metrics from there
+            if "batch_sizes" in results and isinstance(results["batch_sizes"], dict):
+                batch_data = results["batch_sizes"].get(str(batch_size))
+                if batch_data:
+                    if throughput is None:
+                        throughput = batch_data.get("throughput_items_per_second", batch_data.get("throughput"))
+                    if latency_avg is None:
+                        latency_avg = batch_data.get("average_latency_ms", batch_data.get("latency_avg", batch_data.get("latency")))
+                    if memory_peak is None:
+                        memory_peak = batch_data.get("memory_peak_mb", batch_data.get("memory_peak", batch_data.get("memory")))
+            
+            # Use reasonable defaults if values are still None
+            if throughput is None:
+                throughput = 0.0
+                logger.warning(f"No throughput found in results for {model_name} on {hardware_type}, using default 0.0")
+            
+            if latency_avg is None:
+                latency_avg = 0.0
+                logger.warning(f"No latency found in results for {model_name} on {hardware_type}, using default 0.0")
+            
+            if memory_peak is None:
+                memory_peak = 0.0
+                logger.warning(f"No memory usage found in results for {model_name} on {hardware_type}, using default 0.0")
+            
+            # Create performance result
+            performance_result = {
+                "model_name": model_name,
+                "hardware_type": hardware_type,
+                "device_name": results.get("device_name"),
+                "batch_size": batch_size,
+                "precision": results.get("precision", "fp32"),
+                "test_case": results.get("test_case", "default"),
+                "throughput": float(throughput),
+                "latency_avg": float(latency_avg),
+                "memory_peak": float(memory_peak),
+                "total_time_seconds": results.get("total_time_seconds"),
+                "iterations": results.get("iterations"),
+                "warmup_iterations": results.get("warmup_iterations"),
+                "metrics": results.get("metrics"),
+            }
+            
+            # Store performance result
+            return self.store_performance_result(performance_result)
+            
+        except Exception as e:
+            logger.error(f"Error parsing benchmark results for store_benchmark_results: {e}")
+            logger.error(f"Results keys: {list(results.keys())}")
+            
+            # Try to store with minimal data
+            try:
+                performance_result = {
+                    "model_name": results.get("model_name", results.get("model", "unknown_model")),
+                    "hardware_type": results.get("hardware_type", results.get("hardware", "cpu")),
+                    "throughput": 0.0,
+                    "latency_avg": 0.0,
+                }
+                return self.store_performance_result(performance_result)
+            except Exception as inner_e:
+                logger.error(f"Failed to store minimal benchmark results: {inner_e}")
+                raise
+    
     def get_performance_comparison(self, model_name: str, metric: str = "throughput") -> pd.DataFrame:
         """
         Get performance comparison across hardware platforms for a specific model.

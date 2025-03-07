@@ -764,26 +764,37 @@ api.store_performance_result(
     latency_avg=8.2
 )
 
-# NOT RECOMMENDED: Writing to JSON files (deprecated)
-# Only needed for backward compatibility with external systems
+# FOR BACKWARD COMPATIBILITY ONLY: Writing to JSON files
+# If JSON output is still required, write to the benchmark_results directory,
+# overwriting existing files each time (don't create new directories)
 if json_output_required:
-    with open("benchmark_results/result.json", "w") as f:
+    # Ensure we're writing to benchmark_results directory directly
+    # and not creating nested directories
+    file_path = os.path.join("benchmark_results", f"{model_name}_{hardware_type}_benchmark.json")
+    with open(file_path, "w") as f:
         json.dump(results, f, indent=2)
+    
+    # Ensure old results are cleaned up after successful runs
+    # This can be done by adding cleanup logic after successful database storage
 ```
 
 When modifying existing code, replace JSON writing operations with database operations:
 
 ```python
-# Old approach (deprecated)
+# Old approach (not recommended)
 def save_benchmark_results(results, model_name, hardware_type):
-    output_dir = f"./benchmark_results/{model_name}_{hardware_type}"
-    os.makedirs(output_dir, exist_ok=True)
-    with open(f"{output_dir}/benchmark_result.json", "w") as f:
+    # Don't create nested directories like this:
+    # output_dir = f"./benchmark_results/{model_name}_{hardware_type}"
+    # os.makedirs(output_dir, exist_ok=True)
+    
+    # Instead, write directly to benchmark_results with descriptive filenames
+    file_path = f"./benchmark_results/{model_name}_{hardware_type}_result.json"
+    with open(file_path, "w") as f:
         json.dump(results, f, indent=2)
 
 # New approach (recommended)
 def save_benchmark_results(results, model_name, hardware_type):
-    # Store in database
+    # Store in database (primary method)
     api = BenchmarkDBAPI()
     api.store_performance_result(
         model_name=model_name,
@@ -792,6 +803,15 @@ def save_benchmark_results(results, model_name, hardware_type):
         latency_avg=results.get("latency_avg"),
         memory_peak_mb=results.get("memory_peak_mb")
     )
+    
+    # If JSON output is still needed for backward compatibility:
+    if json_output_required:
+        file_path = f"./benchmark_results/{model_name}_{hardware_type}_result.json"
+        with open(file_path, "w") as f:
+            json.dump(results, f, indent=2)
+        
+        # Add logic to clean up old results after successful runs
+        cleanup_old_benchmark_files()
 ```
 
 ### For Users:
@@ -807,15 +827,47 @@ When running benchmarks, ensure you:
    python test/run_benchmark_with_db.py --db-path ./benchmark_db.duckdb
    ```
 
-2. Avoid using any parameters that explicitly write JSON files to the `benchmark_results` directory.
+2. If you need to use JSON output for backward compatibility:
+   ```bash
+   # Explicitly request JSON output to benchmark_results directory
+   python test/run_benchmark_with_db.py --output-dir ./benchmark_results
+   
+   # Files will be saved directly to benchmark_results directory,
+   # overwriting existing files, and will be cleaned up after successful runs
+   ```
 
-3. All legacy scripts have been updated to write to the database by default. If you encounter scripts still writing to the `benchmark_results` directory, please update them according to the examples in this guide.
+3. All legacy scripts have been updated to write to the database by default. If you encounter scripts still writing to the `benchmark_results` directory in a way that creates nested directories, please update them according to the examples in this guide.
 
 4. For data analysis and reporting, use the database query tools instead of parsing JSON files:
    ```bash
    # Generate reports from database
    python test/fixed_benchmark_db_query.py --report performance --format html
    ```
+
+### Clean Up of Benchmark Results
+
+Scripts that write to the benchmark_results directory should include cleanup logic:
+
+```python
+def cleanup_old_benchmark_files():
+    """Clean up old benchmark result files after successful database storage."""
+    # Keep only the most recent files for each model-hardware combination
+    # This can be implemented based on file naming patterns or timestamps
+    
+    benchmark_dir = "./benchmark_results"
+    
+    # Example implementation:
+    # 1. Identify current model-hardware combinations
+    # 2. For each combination, keep only the most recent file
+    # 3. Delete all other files
+    
+    # Alternative: Clean up files older than X days
+    cutoff_time = time.time() - (7 * 86400)  # 7 days
+    for filename in os.listdir(benchmark_dir):
+        filepath = os.path.join(benchmark_dir, filename)
+        if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
+            os.remove(filepath)
+```
 
 ### Checking for Legacy JSON Output
 
@@ -829,7 +881,7 @@ grep -r "benchmark_results.*json.dump" --include="*.py" ./
 grep -r "json.dump" --include="*.py" ./ | grep -v "DEPRECATE_JSON_OUTPUT"
 ```
 
-If you find any code still writing to JSON files, update it to use the database API as shown above.
+If you find any code still writing to JSON files in a way that creates nested directories, update it to write directly to the benchmark_results directory as shown above, and add cleanup logic.
 
 ## Best Practices
 

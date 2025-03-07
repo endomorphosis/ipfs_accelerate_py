@@ -223,7 +223,7 @@
                             resultsDiv.innerHTML = `
                                 <div class="success">
                                     <h3>WebGPU Test Completed</h3>
-                                    <p>Model: google/vit-base-patch16-224</p>
+                                    <p>Model: facebook/deit-tiny-patch16-224</p>
                                     <p>Input Type: ${inputType}</p>
                                     <p>Adapter: ${(await adapter.requestAdapterInfo()).vendor || 'unknown'}</p>
                                     <p>Load Time: ${(loadEndTime - loadStartTime).toFixed(2)} ms</p>

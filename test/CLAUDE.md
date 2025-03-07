@@ -153,6 +153,25 @@ python test/run_comprehensive_benchmarks.py --timeout 1200  # 20 minutes
 # Specify database path and output directory
 python test/run_comprehensive_benchmarks.py --db-path ./benchmark_db.duckdb --output-dir ./benchmark_results
 
+# Web Platform Testing (April 2025 Enhancement)
+# Set up web testing environment with browser detection
+python test/run_comprehensive_benchmarks.py --setup-web-testing --browser chrome
+
+# Run WebGPU tests with compute shader optimization for audio models
+python test/run_comprehensive_benchmarks.py --models whisper,wav2vec2 --hardware webgpu --web-compute-shaders 
+
+# Run WebGPU tests with parallel loading for multimodal models
+python test/run_comprehensive_benchmarks.py --models clip,llava --hardware webgpu --web-parallel-loading
+
+# Run WebGPU tests with shader precompilation for faster startup
+python test/run_comprehensive_benchmarks.py --models bert,vit --hardware webgpu --web-shader-precompile
+
+# Run WebNN tests for best performance on Edge browser
+python test/run_comprehensive_benchmarks.py --models bert,t5 --hardware webnn --browser edge
+
+# Enable all WebGPU optimizations at once with specific browser
+python test/run_comprehensive_benchmarks.py --models all --hardware webgpu --web-all-optimizations --browser firefox
+
 # Legacy method: Execute comprehensive benchmarks across all hardware platforms
 python benchmark_all_key_models.py --output-dir ./benchmark_results
 

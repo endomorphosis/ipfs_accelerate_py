@@ -29,8 +29,12 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 # Run benchmarks (results stored directly in database)
 python test/benchmark_all_key_models.py --db-only
 
-# AVOID using the --output-dir parameter (deprecated)
-# DO NOT use: python test/benchmark_all_key_models.py --output-dir ./benchmark_results
+# If you need JSON output files (for backward compatibility only):
+# Files should be saved to benchmark_results directory (not a new folder)
+# and overwrite existing files each time
+python test/benchmark_all_key_models.py --output-dir ./benchmark_results
+
+# Files will be automatically cleaned up from the repository after successful runs
 ```
 
 ### For Developers

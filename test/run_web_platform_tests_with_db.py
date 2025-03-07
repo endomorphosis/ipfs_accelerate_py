@@ -157,8 +157,10 @@ class WebPlatformTestsDBIntegration:
             self.model_keys = models
         
         # Filter out audio models - they're handled by web_audio_platform_tests.py
-        self.model_keys = [k for k in self.model_keys if
-                          HIGH_PRIORITY_MODELS[k].get('modality') != 'audio']
+        # However, if compute shaders are enabled, we want to include audio models
+        if not self.compute_shaders:
+            self.model_keys = [k for k in self.model_keys if
+                              HIGH_PRIORITY_MODELS[k].get('modality') != 'audio']
         
         # Use both platforms if not specified
         if platforms is None:
@@ -219,7 +221,7 @@ class WebPlatformTestsDBIntegration:
         
         try:
             # Connect to database (creates it if it doesn't exist) with appropriate parameters
-            conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            conn = duckdb.connect(self.db_path, read_only=False)
             
             # Start a transaction for consistency
             conn.execute("BEGIN TRANSACTION")
@@ -270,12 +272,12 @@ class WebPlatformTestsDBIntegration:
                     except Exception as e:
                         logger.error(f"Error running schema script: {e}")
                         # Re-connect to create the minimal schema
-                        conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+                        conn = duckdb.connect(self.db_path, read_only=False)
                         self._create_minimal_schema(conn)
                 else:
                     logger.warning(f"Schema script not found. Checked paths: {possible_paths}. Creating minimal schema.")
                     # Re-connect to create the minimal schema
-                    conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+                    conn = duckdb.connect(self.db_path, read_only=False)
                     self._create_minimal_schema(conn)
                 
                 # Re-connect to check tables after schema creation
@@ -284,7 +286,7 @@ class WebPlatformTestsDBIntegration:
                         conn.close()
                     except:
                         pass
-                conn = duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+                conn = duckdb.connect(self.db_path, read_only=False)
                 conn.execute("BEGIN TRANSACTION")
                 tables = conn.execute("SHOW TABLES").fetchall()
                 table_names = [t[0].lower() for t in tables]
@@ -551,6 +553,10 @@ class WebPlatformTestsDBIntegration:
         """
         self._create_web_platform_tables(conn)
         
+    def _create_fallback_web_platform_tables(self, conn) -> None:
+        """
+        Create the most minimal web platform tables possible as a last resort.
+        
         Args:
             conn: DuckDB connection
         """
@@ -650,7 +656,7 @@ class WebPlatformTestsDBIntegration:
     
     def _ensure_model_exists(self, model_key: str) -> int:
         """
-        Ensure a model exists in the database, adding it if it doesn't.
+        Ensure a model exists in the database, adding it if it doesn't exist.
         
         Args:
             model_key: Key of the model in self.models
