@@ -1,10 +1,12 @@
 # Simulation Detection and Flagging Improvements
 
 **Date: April 8, 2025**
-**Updated: March 6, 2025**
+**Updated: April 7, 2025**
 **Status: COMPLETED ✅**
 
 This document describes the improvements made to the benchmark system to address item #10 "Critical Benchmark System Issues" from the NEXT_STEPS.md document. These improvements focus on properly handling and clearly indicating simulated hardware platforms in the benchmark system.
+
+**UPDATE April 7, 2025**: Enhanced cleanup tools have been implemented to further improve the system, including automatic documentation archival, improved stale report scanning, code pattern detection for outdated simulation methods, and fixes for report generator Python files.
 
 **UPDATE March 6, 2025**: Task #10 "Cleanup stale and misleading reports" from NEXT_STEPS.md has been fully completed. All stale benchmark reports have been identified, marked with appropriate warnings, and report generators have been updated to check for and display simulation data warnings.
 
@@ -46,13 +48,30 @@ The following improvements have been implemented:
    - Added `qnn_simulation_helper.py` for explicit control of QNN simulation
    - Added comprehensive testing in `test_simulation_detection.py`
    - Created `test_bert_benchmark.py` for verifying real hardware performance
+   
+7. **Incremental Benchmark System** (March 7, 2025)
+   - Implemented `run_incremental_benchmarks.py` for intelligently identifying missing or outdated benchmarks
+   - Added simulation awareness to benchmark selection process
+   - Integrated with hardware detection to determine simulation status
+   - Created progress tracking and reporting with simulation status clearly indicated
+   - Added priority-based scheduling that considers hardware simulation status
 
-7. **Stale Reports Cleanup (COMPLETED March 6, 2025)**
+8. **Stale Reports Cleanup (COMPLETED March 6, 2025)**
    - Created `run_cleanup_stale_reports.py` script to automate the cleanup process
    - Successfully identified and marked 12 problematic benchmark reports with warnings
    - Added validation tests with `test_simulation_awareness.py`
    - Generated comprehensive completion reports and documentation
    - Verified all generated reports now properly distinguish between real and simulated data
+
+8. **Enhanced Cleanup Tools (ADDED April 7, 2025)**
+   - Created `archive_old_documentation.py` for systematic archival of outdated documentation
+   - Enhanced `cleanup_stale_reports.py` with improved scanning capabilities for problematic reports
+   - Added code pattern detection for outdated simulation methods in Python files
+   - Implemented automated fixes for report generator Python files to include validation
+   - Created comprehensive archival system for documentation and reports
+   - Added archive notices to all archived files
+   - Updated documentation index with latest status
+   - Generated detailed archive reports with statistics
 
 ## Files Changed
 
@@ -62,6 +81,8 @@ The following improvements have been implemented:
    - `SIMULATION_DETECTION_IMPROVEMENTS.md`: Updated documentation with latest changes
    - `benchmark_timing_report.py`: Updated to check for and display simulation warnings
    - `cleanup_stale_reports.py`: Enhanced to identify and mark problematic reports
+   - `DOCUMENTATION_INDEX.md`: Updated with information about archived documentation
+   - `DOCUMENTATION_UPDATE_NOTE.md`: Added section about documentation cleanup
 
 2. **New Files:**
    - `hardware_detection/qnn_support_fixed.py`: Improved QNN support with proper error handling
@@ -77,6 +98,8 @@ The following improvements have been implemented:
    - `STALE_REPORTS_CLEANUP_COMPLETED.md`: Completion report for stale reports cleanup
    - `STALE_BENCHMARK_REPORTS_FIXED.md`: Detailed documentation of the stale reports cleanup task
    - `PHASE16_CLEANUP_SUMMARY.md`: Summary of Phase 16 cleanup activities
+   - `archive_old_documentation.py`: Utility for archiving outdated documentation
+   - `run_documentation_cleanup.sh`: Script to run all documentation cleanup tools
 
 ## Database Schema Changes
 
@@ -191,6 +214,31 @@ python run_cleanup_stale_reports.py
 python run_cleanup_stale_reports.py --skip-schema-check
 ```
 
+### Documentation and Report Cleanup
+
+```bash
+# Run the complete documentation cleanup process
+./run_documentation_cleanup.sh
+
+# Archive old documentation only
+python archive_old_documentation.py
+
+# Scan for problematic benchmark reports without modifying them
+python cleanup_stale_reports.py --scan
+
+# Add warnings to problematic reports
+python cleanup_stale_reports.py --mark
+
+# Archive problematic files
+python cleanup_stale_reports.py --archive
+
+# Check for outdated simulation methods in Python code
+python cleanup_stale_reports.py --check-code
+
+# Fix report generator Python files to include validation
+python cleanup_stale_reports.py --fix-report-py
+```
+
 ## Benefits
 
 These improvements provide the following benefits:
@@ -210,6 +258,17 @@ These improvements provide the following benefits:
    - Recommendations involving simulated hardware are clearly marked
    - Performance metrics include simulation markers
    - All benchmark reports now have explicit warnings for simulated data
+
+4. **Clean Documentation:**
+   - Outdated and misleading documentation is properly archived
+   - Documentation index is updated with latest status
+   - Clear archive notices are added to all archived files
+   - Historical reports are properly preserved and marked
+
+5. **Improved Code Quality:**
+   - Outdated simulation methods in code are identified
+   - Report generator Python files are automatically fixed to include validation
+   - Code patterns for proper simulation handling are enforced
 
 ## Future Work
 
@@ -238,6 +297,8 @@ The following items are recommended for future work:
    
 ## Conclusion
 
-With the completion of the "Cleanup stale and misleading reports" task (item #10 in NEXT_STEPS.md), the simulation detection and flagging system is now fully implemented and integrated throughout the framework. Users can now trust that all benchmark reports clearly distinguish between real hardware results and simulated data, enabling better decision-making and proper interpretation of performance metrics.
+With the completion of the "Cleanup stale and misleading reports" task (item #10 in NEXT_STEPS.md) and the addition of enhanced documentation and report cleanup tools, the simulation detection and flagging system is now fully implemented and integrated throughout the framework. Users can now trust that all benchmark reports clearly distinguish between real hardware results and simulated data, enabling better decision-making and proper interpretation of performance metrics.
 
-The combination of database schema updates, improved hardware detection, report generation enhancements, and stale report cleanup ensures a comprehensive solution to the simulation detection challenge. This work provides a solid foundation for the remaining tasks in the NEXT_STEPS.md roadmap.
+The combination of database schema updates, improved hardware detection, report generation enhancements, stale report cleanup, and enhanced documentation cleanup ensures a comprehensive solution to the simulation detection challenge. This work provides a solid foundation for the remaining tasks in the NEXT_STEPS.md roadmap.
+
+The newly added documentation and report cleanup tools further enhance the system by providing systematic ways to maintain a clean and accurate documentation structure, ensuring that users always have access to the most up-to-date and accurate information.

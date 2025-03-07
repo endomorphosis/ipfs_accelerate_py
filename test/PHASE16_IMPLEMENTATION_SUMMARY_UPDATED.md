@@ -90,6 +90,7 @@ The following tools and scripts have been created to support the implementation:
 | benchmark_db_api.py | Database API for benchmarks | ✅ Complete |
 | benchmark_db_query.py | Query tool for benchmark database | ✅ Complete |
 | benchmark_db_visualizer.py | Visualization tool for database | ✅ Complete |
+| run_incremental_benchmarks.py | Intelligent benchmark runner | ✅ Complete |
 
 ## Implementation Details
 
@@ -134,6 +135,7 @@ The database system uses DuckDB for efficient storage and querying:
 3. **Query Tools**: Created tools for executing complex queries across test results.
 4. **Migration System**: Implemented a system to convert JSON files to database records.
 5. **Visualization**: Added tools to create charts and reports from database data.
+6. **Incremental Benchmarking**: Implemented intelligent system to identify and run only missing or outdated benchmarks.
 
 ```bash
 # Query benchmark data
@@ -144,6 +146,12 @@ python benchmark_visualizer.py --input benchmark_db.duckdb --output report.html
 
 # Run benchmark with database integration
 python benchmark_with_db_integration.py --model bert --hardware all
+
+# Run incremental benchmarks (only missing or outdated tests)
+python run_incremental_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+
+# Run incremental benchmarks with prioritization
+python run_incremental_benchmarks.py --priority-only --refresh-older-than 14
 ```
 
 ### Web Platform Integration
