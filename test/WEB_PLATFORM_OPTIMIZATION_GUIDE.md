@@ -22,9 +22,41 @@ This guide covers the optimizations implemented for the IPFS Accelerate Python f
 | **Configuration Validation** | Automatic validation and correction | All models | Optimal browser settings |
 | **Performance Dashboard** | Interactive visualization with history | Analysis tools | Comprehensive metrics |
 
-## 1. Ultra-Low Precision Quantization (2-bit/3-bit)
+## 1. Ultra-Low Precision Quantization (2-bit/3-bit/4-bit)
 
-Ultra-Low Precision quantization takes memory efficiency to unprecedented levels by representing weights in just 2 or 3 bits, allowing even 7B parameter models to run in memory-constrained environments like web browsers.
+Ultra-Low Precision quantization takes memory efficiency to unprecedented levels by representing weights in just 2, 3, or 4 bits, allowing even 7B parameter models to run in memory-constrained environments like web browsers.
+
+### Model Compatibility Matrix (Updated March 2025)
+
+| Model Type | WebGPU 16-bit | WebGPU 8-bit | WebGPU 4-bit | WebGPU 4-bit Mixed | WebNN 16-bit | WebNN 8-bit | WebNN 4-bit |
+|------------|---------------|--------------|--------------|-------------------|--------------|-------------|-------------|
+| BERT       | ✅ Excellent  | ✅ Excellent | ✅ Good      | ✅ Very Good      | ✅ Excellent | ✅ Good     | ⚠️ Limited  |
+| T5         | ✅ Excellent  | ✅ Good      | ✅ Good      | ✅ Very Good      | ✅ Excellent | ✅ Good     | ⚠️ Limited  |
+| ViT        | ✅ Excellent  | ✅ Excellent | ⚠️ Limited   | ✅ Good           | ✅ Excellent | ✅ Good     | ❌ Not supported |
+| CLIP       | ✅ Excellent  | ✅ Good      | ⚠️ Limited   | ✅ Good           | ✅ Good      | ⚠️ Limited  | ❌ Not supported |
+| Whisper    | ✅ Excellent  | ✅ Good      | ❌ Not recommended | ✅ Good      | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| LLaMA      | ✅ Good       | ✅ Good      | ⚠️ Limited   | ✅ Good           | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| LLaVA      | ⚠️ Limited    | ⚠️ Limited   | ❌ Not supported | ⚠️ Limited    | ❌ Not supported | ❌ Not supported | ❌ Not supported |
+
+### Performance Impact by Precision Level
+
+| Precision Format | Memory Reduction | Inference Time | Impact on Accuracy | Use Case |
+|------------------|------------------|----------------|-------------------|----------|
+| 16-bit (FP16)    | 0% (baseline)    | Baseline       | None              | Maximum compatibility and accuracy |
+| 8-bit (INT8)     | 35-50%           | 5-25% faster   | Minimal (≤1%)     | Good balance for all model types |
+| 4-bit (INT4)     | 65-75%           | 10-60% faster  | Noticeable (2-5%) | Memory-constrained environments |
+| 4-bit Mixed      | 50-65%           | 5-50% faster   | Minimal (1-2%)    | Recommended for most use cases |
+| 3-bit            | 81.25%           | 70-90% faster  | Significant (5-10%) | Extreme memory constraints |
+| 2-bit            | 87.5%            | 80-100% faster | Severe (8-15%)    | Maximum compression, accuracy trade-off |
+
+### Browser Compatibility with Quantization
+
+| Browser | WebNN Support | WebNN Quantization | WebGPU Support | WebGPU Quantization | Notes |
+|---------|--------------|-------------------|----------------|---------------------|-------|
+| Chrome  | ✅ Full      | 16-bit, 8-bit     | ✅ Full        | 16-bit, 8-bit, 4-bit, 2-bit | Best overall performance |
+| Edge    | ✅ Full      | 16-bit, 8-bit     | ✅ Full        | 16-bit, 8-bit, 4-bit | Similar to Chrome |
+| Firefox | ❌ None      | N/A               | ✅ Full        | 16-bit, 8-bit, 4-bit, 2-bit | Better for audio models with compute shaders |
+| Safari  | ⚠️ Limited   | 16-bit only       | ⚠️ Limited     | 16-bit, 8-bit       | Conservative implementation |
 
 ### Implementation Details
 
@@ -32,6 +64,172 @@ Ultra-Low Precision quantization takes memory efficiency to unprecedented levels
 - **3-bit Representation**: Weights stored with just 8 possible values
 - **Adaptive Precision**: Critical layers use higher precision
 - **Mixed Precision**: Different components use optimal bit-width
+- **Block-wise Quantization**: Weights quantized in blocks for better accuracy
+- **Model-Aware Optimization**: Model-specific optimizations for each architecture
+- **Browser-Specific Tuning**: Specialized optimizations for each browser
+
+### Quantized Model Implementation Examples
+
+#### Basic Usage with 4-bit Quantization
+
+```python
+from fixed_web_platform.webgpu_quantization import setup_quantization_config
+from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
+
+# Basic 4-bit quantization for BERT model
+platform = UnifiedWebPlatform(
+    model_name="bert-base-uncased",
+    model_type="text",
+    platform="webgpu",
+    bits=4,
+    mixed_precision=True  # Recommended for 4-bit to preserve accuracy
+)
+
+# Run inference with quantized model
+result = platform.run_inference({"input_text": "Sample text for inference"})
+```
+
+#### Mixed Precision Configuration
+
+```python
+from fixed_web_platform.webgpu_quantization import (
+    setup_quantization_config, 
+    MixedPrecisionConfig
+)
+from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
+
+# Create advanced mixed precision config
+precision_config = MixedPrecisionConfig(
+    model_type="text",
+    default_bits=4,              # Default precision for most layers
+    attention_bits=8,            # Higher precision for attention mechanism
+    embedding_bits=8,            # Higher precision for embeddings
+    output_bits=8                # Higher precision for output layers
+)
+
+# Configure quantization
+config = setup_quantization_config(
+    model_type="text",
+    mixed_precision=True,
+    precision_config=precision_config,
+    block_size=128,              # Block size for quantization
+    scheme="symmetric"           # Symmetric quantization scheme
+)
+
+# Initialize with advanced configuration
+platform = UnifiedWebPlatform(
+    model_name="bert-base-uncased",
+    model_type="text",
+    platform="webgpu",
+    quantization_config=config
+)
+```
+
+#### Model-Specific Optimizations
+
+```python
+# Text Models (BERT, T5) - 4-bit mixed precision recommended
+config_text = setup_quantization_config(
+    model_type="text",
+    bits=4,
+    mixed_precision=True,
+    block_size=128
+)
+
+# Vision Models (ViT, DETR) - 8-bit recommended
+config_vision = setup_quantization_config(
+    model_type="vision",
+    bits=8,
+    block_size=64
+)
+
+# Audio Models (Whisper, Wav2Vec2) - 8-bit with Firefox optimization
+config_audio = setup_quantization_config(
+    model_type="audio",
+    bits=8,
+    optimize_for_browser="firefox"  # Firefox has better audio compute shaders
+)
+
+# LLMs (LLaMA, Qwen2) - 4-bit mixed with KV cache optimization
+config_llm = setup_quantization_config(
+    model_type="text_generation",
+    bits=4,
+    mixed_precision=True,
+    kv_cache_optimization=True,
+    max_sequence_length=8192  # Enabled by memory savings
+)
+```
+
+#### Browser-Specific Optimizations
+
+```python
+# Firefox optimization for audio models
+from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+
+# Configure for Firefox audio processing (workgroup size 256x1x1)
+config = setup_quantization_config(
+    model_type="audio",
+    bits=8,
+    optimize_for_browser="firefox"
+)
+config = optimize_for_firefox(config)
+
+# Chrome optimization for general use
+config = setup_quantization_config(
+    model_type="text",
+    bits=4,
+    mixed_precision=True,
+    optimize_for_browser="chrome",
+    shader_precompilation=True
+)
+```
+
+#### Advanced Ultra-Low Precision (2-bit)
+
+```python
+from fixed_web_platform.webgpu_ultra_low_precision import setup_ultra_low_precision
+
+# Configure experimental 2-bit precision (WebGPU only)
+config = setup_ultra_low_precision(
+    model_type="text",
+    bits=2,
+    adaptive=True,  # Dynamically adjust precision for critical operations
+    critical_layers=["embeddings", "attention.query", "lm_head"]  # Higher precision
+)
+
+# Initialize with ultra-low precision (use with caution)
+platform = UnifiedWebPlatform(
+    model_name="bert-base-uncased",
+    model_type="text",
+    platform="webgpu",
+    experimental_precision=True,
+    quantization_config=config
+)
+```
+
+#### Benchmark Different Quantization Levels
+
+```python
+from fixed_web_platform.performance_tools import benchmark_quantization
+
+# Compare different bit-widths for a model
+results = benchmark_quantization(
+    model_name="bert-base-uncased",
+    model_type="text",
+    bits=[16, 8, 4, 2],  # Compare all precision levels
+    mixed_precision=[False, True],
+    platforms=["webgpu"],
+    browsers=["chrome"],
+    metrics=["latency", "throughput", "memory", "accuracy"]
+)
+
+# Print results
+for result in results:
+    print(f"Bits: {result['bits']}, Mixed: {result['mixed_precision']}")
+    print(f"  Memory Reduction: {result['memory_reduction_percent']}%")
+    print(f"  Inference Time: {result['inference_time_ms']} ms")
+    print(f"  Accuracy Loss: {result['accuracy_loss_percent']}%")
+```
 - **Layer-Specific Configuration**: Precision tuned for each layer type
 - **Specialized Compute Shaders**: Custom WebGPU kernels for 2-bit/3-bit operations
 

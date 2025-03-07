@@ -718,6 +718,13 @@ python test/test_web_platform_optimizations.py --all-optimizations
 
 # Compare Firefox vs Chrome browser performance
 ./run_web_platform_tests.sh --compare-browsers --model whisper
+
+# Test WebNN and WebGPU with different quantization levels
+python run_real_webgpu_webnn_fixed.py --platform webgpu --model bert-base-uncased --model-type text --bits 8
+python run_real_webgpu_webnn_fixed.py --platform webnn --model bert-base-uncased --model-type text --bits 4 --mixed-precision
+
+# Run comprehensive quantization tests for all high priority models
+./test_webnn_webgpu_models_fixed.sh
 ```
 
 ### QNN (Qualcomm Neural Networks) Support and Advanced Quantization (March 2025)
@@ -1233,6 +1240,28 @@ The March 2025 enhancements have significantly improved web platform performance
 | Small T5 | 1.5-2.0x faster | 1.3-1.8x faster | 1.3-1.8x faster | 1.6-2.2x faster | Small |
 | Tiny LLAMA | 1.0-1.2x faster | 1.2-1.5x faster | 1.2-1.5x faster | 1.4-1.9x faster | Tiny (<1B) |
 | Audio Models | 0.8-1.2x CPU | 1.0-1.2x CPU | 1.0-1.2x CPU | 1.2-1.5x faster | Tiny-Small |
+
+### WebNN and WebGPU Quantization Support (ADDED - March 7, 2025)
+
+All high-priority HuggingFace model classes now support various quantization levels with WebNN and WebGPU:
+
+| Quantization | Text Models | Vision Models | Audio Models | Multimodal Models |
+|--------------|-------------|--------------|--------------|-------------------|
+| 16-bit | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU |
+| 8-bit | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU |
+| 4-bit | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU |
+| 2-bit | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU | ✅ WebNN/WebGPU |
+| Mixed Precision | ✅ 4-bit/2-bit | ✅ 4-bit/2-bit | ✅ 4-bit/2-bit | ✅ 4-bit/2-bit |
+
+**Optimal configurations**:
+- Text Models (BERT, T5, LLAMA): WebNN with 8-bit quantization
+- Vision Models (CLIP, ViT, DETR): WebGPU with 8-bit quantization
+- Audio Models (Whisper, Wav2Vec2): WebGPU with compute shaders (Firefox preferred)
+- Multimodal Models (LLaVA, XCLIP): WebGPU with parallel loading
+
+For memory-constrained environments, 4-bit mixed precision provides the best balance between performance and model size.
+
+For detailed compatibility information, see [WEBNN_WEBGPU_COMPATIBILITY_MATRIX.md](WEBNN_WEBGPU_COMPATIBILITY_MATRIX.md).
 
 **March 2025 Optimization Details:**
 

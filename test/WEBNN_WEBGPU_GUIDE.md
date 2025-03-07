@@ -1051,9 +1051,13 @@ This is useful for:
 - Development on machines without WebGPU support
 - Quick validation of API structure and flow
 
-## New WebNN and WebGPU Quantization Testing Tool
+## New WebNN and WebGPU Quantization Testing Tools
 
-We've developed a comprehensive testing tool for WebNN and WebGPU quantization. This tool allows you to test different browsers, models, and quantization levels:
+We've implemented comprehensive testing tools for WebNN and WebGPU quantization. These tools allow you to test different browsers, models, and quantization levels:
+
+### Shell Script for Batch Testing
+
+Our `run_webnn_webgpu_quantization.sh` script provides an easy way to test multiple configurations:
 
 ```bash
 # Run the test suite with all options
@@ -1076,9 +1080,14 @@ We've developed a comprehensive testing tool for WebNN and WebGPU quantization. 
 
 # Run in headless mode
 ./run_webnn_webgpu_quantization.sh --headless
+
+# Test with ultra-low precision (2-bit)
+./run_webnn_webgpu_quantization.sh --webgpu-only --chrome --ultra-low-prec
 ```
 
-You can also use the Python script directly for more control:
+### Comprehensive Testing Script
+
+For more detailed control, use the Python script directly:
 
 ```bash
 # Test WebGPU with Chrome and 4-bit quantization
@@ -1094,7 +1103,25 @@ python webnn_webgpu_quantization_test.py --platform webgpu --browser chrome --mo
 python webnn_webgpu_quantization_test.py --platform webgpu --browser chrome --mixed-precision
 ```
 
-For more detailed information on quantization techniques and performance results, see [WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md).
+### Simplified Verification Script
+
+For quick verification and simple testing, use our simplified script:
+
+```bash
+# Test WebGPU with 4-bit quantization
+python test_webnn_webgpu_simplified.py --platform webgpu --bits 4 --browser chrome
+
+# Test WebNN with 8-bit quantization
+python test_webnn_webgpu_simplified.py --platform webnn --bits 8 --browser edge
+
+# Test both platforms with default settings
+python test_webnn_webgpu_simplified.py --platform both
+
+# Test with mixed precision
+python test_webnn_webgpu_simplified.py --platform webgpu --mixed-precision --bits 4
+```
+
+For detailed implementation guidance, see our new [WebNN WebGPU Usage Guide](WEBNN_WEBGPU_USAGE_GUIDE.md), which provides comprehensive code examples and configurations. For more information on quantization techniques and performance results, see [WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md](WEBGPU_WEBNN_QUANTIZATION_SUMMARY.md).
 
 ## Performance Benchmarks
 

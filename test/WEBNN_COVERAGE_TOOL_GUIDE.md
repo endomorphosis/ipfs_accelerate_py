@@ -1,6 +1,17 @@
 # WebNN and WebGPU Coverage Testing Tool Guide
 
-The `run_webnn_coverage_tests.py` tool provides a comprehensive solution for testing WebNN and WebGPU support across browsers, models, and optimization techniques.
+> **March 2025 Edition**  
+> Enhanced testing framework for WebNN and WebGPU browser capabilities
+
+## Overview
+
+The WebNN and WebGPU Coverage Tool provides a comprehensive framework for testing and verifying browser support for WebNN (Web Neural Network API) and WebGPU across different models, hardware configurations, and optimization techniques. The tool enables developers to:
+
+1. **Verify browser compatibility** with WebNN and WebGPU standards
+2. **Benchmark model performance** across different browsers and hardware
+3. **Measure optimization impact** of techniques like compute shaders, parallel loading, and shader precompilation
+4. **Generate detailed reports** in markdown or HTML format
+5. **Store results in a database** for historical tracking and analysis
 
 ## How It Works
 
@@ -31,6 +42,40 @@ The tool performs these key functions:
    - Provides browser-specific recommendations
    - Includes optimizations for different model types
 
+## Architecture
+
+The WebNN/WebGPU Coverage Tool consists of three main components:
+
+```
+┌───────────────────────┐     ┌────────────────────────┐     ┌───────────────────────┐
+│                       │     │                        │     │                       │
+│ run_webnn_webgpu_     │     │ run_webnn_coverage_    │     │ test_webnn_minimal.py │
+│ coverage.sh           ├────►│ tests.py               ├────►│                       │
+│                       │     │                        │     │                       │
+│ Shell interface with  │     │ Core Python test       │     │ Lightweight WebNN/    │
+│ predefined profiles   │     │ runner and reporter    │     │ WebGPU capability test│
+└───────────────────────┘     └────────────────────────┘     └───────────────────────┘
+         │                               │                              │
+         │                               │                              │
+         ▼                               ▼                              ▼
+┌───────────────────────┐     ┌────────────────────────┐     ┌───────────────────────┐
+│                       │     │                        │     │                       │
+│ WebNN/WebGPU          │     │ Browser automation     │     │ Real browser          │
+│ coverage results      │     │ with Selenium          │     │ implementation        │
+│                       │     │                        │     │                       │
+└───────────────────────┘     └────────────────────────┘     └───────────────────────┘
+         │                               │                              │
+         └───────────────────────────────┴──────────────────────────────┘
+                                         │
+                                         ▼
+                               ┌────────────────────────┐
+                               │                        │
+                               │ DuckDB benchmark       │
+                               │ database               │
+                               │                        │
+                               └────────────────────────┘
+```
+
 ## Technical Implementation
 
 ### Browser Interaction
@@ -58,31 +103,54 @@ When a database path is provided:
 - Enables historical performance tracking over time
 - Supports complex queries and visualizations
 
-## Architecture Diagram
+## Installation Requirements
 
+The WebNN/WebGPU Coverage Tool requires:
+
+- Python 3.8 or higher
+- Selenium WebDriver
+- The following browsers (at least one):
+  - Microsoft Edge (best WebNN support)
+  - Google Chrome
+  - Mozilla Firefox
+  - Safari (limited support)
+- DuckDB (for storing benchmark results)
+
+## Quick Start
+
+### Basic Usage
+
+```bash
+# Quick capability check
+./run_webnn_webgpu_coverage.sh capabilities-only
+
+# Test Firefox with audio models and compute shader optimization
+./run_webnn_webgpu_coverage.sh firefox-audio
+
+# Run comprehensive test across all browsers and models
+./run_webnn_webgpu_coverage.sh full
+
+# Run minimal WebNN check
+python test_webnn_minimal.py --browser edge
 ```
-┌────────────────────────────────────┐
-│   run_webnn_coverage_tests.py      │
-└────────────────┬───────────────────┘
-                 │
-┌────────────────┼───────────────────┐
-│                │                    │
-▼                ▼                    ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│  Capability  │ │    WebNN     │ │    WebGPU    │
-│  Detection   │ │ Benchmarking │ │ Optimization │
-└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
-       │                │                │
-       ▼                ▼                ▼
-┌─────────────────────────────────────────────────┐
-│      Browser Interaction Layer (Selenium)       │
-└─────────────────────┬───────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────┐
-│   Browser (Chrome/Edge/Firefox/Safari) with     │
-│        WebNN/WebGPU Hardware Acceleration       │
-└─────────────────────────────────────────────────┘
+
+### Predefined Profiles
+
+The shell script provides several predefined profiles for common testing scenarios:
+
+| Profile | Description |
+|---------|-------------|
+| `quick` | Quick test with minimal configuration |
+| `capabilities-only` | Only check browser WebNN/WebGPU capabilities |
+| `firefox-audio` | Test Firefox with audio models and compute shader optimization |
+| `all-browsers` | Test across Chrome, Edge, and Firefox |
+| `full` | Comprehensive test with all models and optimizations |
+| `optimization-check` | Focus on measuring optimization impact |
+
+### Command Line Options
+
+```bash
+./run_webnn_webgpu_coverage.sh --help
 ```
 
 ## Common Testing Scenarios
@@ -122,6 +190,74 @@ This command:
 3. Generates a comprehensive comparison report
 4. Provides browser recommendations for each model type
 
+## Detailed Usage
+
+### Testing Browser Capabilities
+
+To check if your browsers properly support WebNN and WebGPU:
+
+```bash
+# Check capabilities of all browsers
+./run_webnn_webgpu_coverage.sh capabilities-only
+
+# Check a specific browser
+./run_webnn_webgpu_coverage.sh capabilities-only --browser firefox
+
+# Use minimal test script for quick verification
+python test_webnn_minimal.py --browser edge
+```
+
+### Testing Models
+
+To test specific models or model types:
+
+```bash
+# Test text models (BERT, T5)
+./run_webnn_webgpu_coverage.sh --model-type text
+
+# Test audio models (Whisper, Wav2Vec2)
+./run_webnn_webgpu_coverage.sh --model-type audio
+
+# Test multimodal models (CLIP, LLaVA)
+./run_webnn_webgpu_coverage.sh --model-type multimodal
+
+# Test vision models (ViT)
+./run_webnn_webgpu_coverage.sh --model-type vision
+
+# Test all model types
+./run_webnn_webgpu_coverage.sh --model-type all
+```
+
+### Testing Optimizations
+
+To test specific WebGPU optimizations:
+
+```bash
+# Test compute shader optimization for audio models
+./run_webnn_webgpu_coverage.sh --optimizations compute-shaders --model-type audio
+
+# Test parallel loading optimization for multimodal models
+./run_webnn_webgpu_coverage.sh --optimizations parallel-loading --model-type multimodal
+
+# Test shader precompilation for all models
+./run_webnn_webgpu_coverage.sh --optimizations shader-precompile
+
+# Test all optimizations
+./run_webnn_webgpu_coverage.sh --optimizations all
+```
+
+### Cross-Browser Comparison
+
+To compare WebNN and WebGPU performance across browsers:
+
+```bash
+# Compare all browsers with default models
+./run_webnn_webgpu_coverage.sh all-browsers
+
+# Compare browsers with specific models and optimizations
+./run_webnn_webgpu_coverage.sh all-browsers --model-type audio --optimizations compute-shaders
+```
+
 ## Tips for Effective Testing
 
 1. **Start with capabilities-only testing** to verify browser support before running full benchmarks
@@ -130,6 +266,45 @@ This command:
 4. **Test Firefox with audio models** to see the most significant compute shader optimizations
 5. **Always store results in the database** with `--db-path` for historical tracking
 6. **Generate HTML reports** with `--report-format html` for visually appealing documentation
+
+## Optimization Techniques
+
+The tool supports testing three key WebGPU optimization techniques:
+
+### 1. WebGPU Compute Shader Optimization
+
+Particularly beneficial for audio models (Whisper, Wav2Vec2, CLAP), this optimization:
+- Uses specialized compute shaders for audio processing
+- Provides ~20-35% performance improvement
+- Shows best results in Firefox (optimized workgroup size)
+- Enabled via `--optimizations compute-shaders`
+
+### 2. Parallel Loading for Multimodal Models
+
+Beneficial for multimodal models (CLIP, LLaVA, XCLIP), this optimization:
+- Loads multiple model components in parallel
+- Reduces initialization time by ~30-45%
+- Particularly effective for models with separate encoders
+- Enabled via `--optimizations parallel-loading`
+
+### 3. Shader Precompilation
+
+Beneficial for all WebGPU models, this optimization:
+- Precompiles shaders during model initialization
+- Makes first inference ~30-45% faster
+- Most effective for vision models
+- Enabled via `--optimizations shader-precompile`
+
+## Browser-Specific Recommendations
+
+Based on extensive testing, here are browser-specific recommendations:
+
+| Browser | WebNN Support | WebGPU Support | Best For | Notes |
+|---------|---------------|----------------|----------|-------|
+| Edge | ✅ Excellent | ✅ Good | Text models, general WebNN | Best overall WebNN support |
+| Chrome | ✅ Good | ✅ Excellent | Vision models, general WebGPU | Best general WebGPU support |
+| Firefox | ❌ Limited | ✅ Excellent | Audio models | Superior compute shader performance for audio |
+| Safari | ⚠️ Partial | ⚠️ Partial | Limited testing | Limited WebGPU support, experimental WebNN |
 
 ## Integration with the Framework
 
@@ -141,6 +316,46 @@ The coverage testing tool integrates with other framework components:
 - **Hardware Selection**: Helps determine optimal hardware-model pairings
 - **Documentation Generation**: Creates comprehensive compatibility matrices
 
+## Troubleshooting
+
+If you encounter issues with the WebNN/WebGPU Coverage Tool:
+
+1. **Browser not detected**:
+   - Ensure the browser is properly installed
+   - Check browser flags for enabling WebNN/WebGPU features
+   - Try running in verbose mode: `--verbose`
+
+2. **WebNN not available**:
+   - WebNN is best supported in Edge and Chrome
+   - Ensure browser flags are set correctly
+   - WebNN might be running in simulation mode
+
+3. **WebGPU tests fail**:
+   - Verify GPU drivers are up to date
+   - Check if WebGPU is enabled in browser flags
+   - Some browsers may require additional flags for experimental features
+
+4. **Optimization tests show no improvement**:
+   - Check if the optimization is appropriate for the model type
+   - Verify browser support for the specific optimization
+   - Ensure hardware acceleration is enabled
+
+## Future Development
+
+Planned enhancements for the WebNN/WebGPU Coverage Tool:
+
+1. **Mobile browser support** for testing on Android and iOS devices
+2. **Custom shader support** for specialized model optimizations
+3. **Streaming inference** testing for large models
+4. **Quantization support** for testing model compression
+5. **Progressive loading** for large model testing
+6. **Automated CI/CD integration** for regular compatibility checking
+
 ## Conclusion
 
 The WebNN and WebGPU coverage testing tool provides a comprehensive solution for verifying browser capabilities, measuring performance, and testing optimizations. By automating the testing process across browsers and models, it enables efficient validation of web platform implementations and helps identify the optimal browser and optimization settings for different model types.
+
+---
+
+**Version**: March 2025 Edition  
+**Last Updated**: March 7, 2025

@@ -364,21 +364,31 @@ class RealWebNNImplementation:
                 # Handle quantization options
                 if "use_quantization" in inference_options and inference_options["use_quantization"]:
                     # Add quantization settings
-                    quantization_bits = inference_options.get("bits", 8)  # WebNN supports 8-bit by default
+                    quantization_bits = inference_options.get("bits", 8)  # WebNN officially supports 8-bit by default
                     
-                    # Ensure we don't try to use 4-bit with WebNN (not supported)
-                    if quantization_bits < 8:
-                        logger.warning(f"WebNN doesn't support {quantization_bits}-bit quantization. Falling back to 8-bit.")
+                    # Experimental: attempt to use the requested precision even if not officially supported
+                    # Instead of automatic fallback, we'll try the requested precision and report errors
+                    experimental_mode = inference_options.get("experimental_precision", True)
+                    
+                    if quantization_bits < 8 and not experimental_mode:
+                        # Traditional approach: fall back to 8-bit
+                        logger.warning(f"WebNN doesn't officially support {quantization_bits}-bit quantization. Falling back to 8-bit.")
                         quantization_bits = 8
+                    elif quantization_bits < 8:
+                        # Experimental approach: try the requested precision
+                        logger.warning(f"WebNN doesn't officially support {quantization_bits}-bit quantization. Attempting experimental usage.")
+                        # Keep the requested bits, but add a flag to indicate experimental usage
+                        inference_options["experimental_quantization"] = True
                     
                     # Add quantization options to inference options
                     inference_options["quantization"] = {
                         "bits": quantization_bits,
                         "scheme": inference_options.get("scheme", "symmetric"),
-                        "mixed_precision": inference_options.get("mixed_precision", False)
+                        "mixed_precision": inference_options.get("mixed_precision", False),
+                        "experimental": quantization_bits < 8
                     }
                     
-                    logger.info(f"Using {quantization_bits}-bit quantization with WebNN")
+                    logger.info(f"Using {quantization_bits}-bit quantization with WebNN (experimental: {quantization_bits < 8})")
                 
                 # Run inference with options
                 result = self.implementation.run_inference(model_name, input_data, options=inference_options)

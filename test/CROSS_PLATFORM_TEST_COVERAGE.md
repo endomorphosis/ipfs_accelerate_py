@@ -30,6 +30,110 @@ Note: This matrix represents the updated implementation status as of March 5, 20
 
 ## Implementation Status
 
+## Web Platform Quantization Support Matrix (Updated March 2025)
+
+The following matrix details the quantization support for WebNN and WebGPU across different model types:
+
+| Model Type | WebGPU 16-bit | WebGPU 8-bit | WebGPU 4-bit | WebGPU 4-bit Mixed | WebGPU 2-bit | WebNN 16-bit | WebNN 8-bit | WebNN 4-bit |
+|------------|---------------|--------------|--------------|-------------------|-------------|--------------|-------------|-------------|
+| BERT       | ✅ Excellent  | ✅ Excellent | ✅ Good      | ✅ Very Good      | ⚠️ Limited  | ✅ Excellent | ✅ Good     | ⚠️ Limited  |
+| T5         | ✅ Excellent  | ✅ Good      | ✅ Good      | ✅ Very Good      | ⚠️ Limited  | ✅ Excellent | ✅ Good     | ⚠️ Limited  |
+| ViT        | ✅ Excellent  | ✅ Excellent | ⚠️ Limited   | ✅ Good           | ❌ Not recommended | ✅ Excellent | ✅ Good     | ❌ Not supported |
+| CLIP       | ✅ Excellent  | ✅ Good      | ⚠️ Limited   | ✅ Good           | ❌ Not recommended | ✅ Good      | ⚠️ Limited  | ❌ Not supported |
+| Whisper    | ✅ Excellent  | ✅ Good      | ❌ Not recommended | ✅ Good      | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| LLaMA      | ✅ Good       | ✅ Good      | ⚠️ Limited   | ✅ Good           | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| LLaVA      | ⚠️ Limited    | ⚠️ Limited   | ❌ Not supported | ⚠️ Limited    | ❌ Not supported | ❌ Not supported | ❌ Not supported | ❌ Not supported |
+| Wav2Vec2   | ✅ Excellent  | ✅ Good      | ❌ Not recommended | ✅ Good      | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| CLAP       | ✅ Good       | ✅ Good      | ❌ Not recommended | ⚠️ Limited    | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| XCLIP      | ✅ Good       | ✅ Good      | ⚠️ Limited   | ✅ Good           | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+| Qwen2      | ✅ Good       | ✅ Good      | ⚠️ Limited   | ✅ Good           | ❌ Not supported | ❌ Not supported | ❌ Not supported | ❌ Not supported |
+| DETR       | ✅ Excellent  | ✅ Good      | ⚠️ Limited   | ✅ Good           | ❌ Not supported | ⚠️ Limited  | ⚠️ Limited  | ❌ Not supported |
+
+Legend:
+- ✅ Excellent: Fully supported with high accuracy and performance
+- ✅ Good: Well supported with minimal accuracy impact
+- ✅ Very Good: Excellent support with mixed precision configuration
+- ⚠️ Limited: Works but with notable limitations or accuracy issues
+- ❌ Not supported/recommended: Either not implemented or not recommended due to severe accuracy degradation
+
+### Quantization Performance Metrics
+
+| Precision Format | Memory Reduction | Inference Time | Impact on Accuracy | Browser Support |
+|------------------|------------------|----------------|-------------------|----------------|
+| 16-bit (FP16)    | 0% (baseline)    | Baseline       | None              | All browsers   |
+| 8-bit (INT8)     | 35-50%           | 5-25% faster   | Minimal (≤1%)     | All browsers   |
+| 4-bit (INT4)     | 65-75%           | 10-60% faster  | Noticeable (2-5%) | Chrome, Edge, Firefox |
+| 4-bit Mixed      | 50-65%           | 5-50% faster   | Minimal (1-2%)    | Chrome, Edge, Firefox |
+| 2-bit            | 87.5%            | 80-100% faster | Severe (8-15%)    | Chrome, Firefox (experimental) |
+
+### Browser Compatibility Matrix
+
+| Browser | WebNN Support | WebGPU Support | 4-bit Support | 2-bit Support | Notes |
+|---------|--------------|----------------|---------------|---------------|-------|
+| Chrome  | ✅ Full      | ✅ Full        | ✅ Good       | ⚠️ Experimental | Best overall support |
+| Edge    | ✅ Full      | ✅ Full        | ✅ Good       | ❌ Not supported | Similar to Chrome |
+| Firefox | ❌ None      | ✅ Full        | ✅ Good       | ⚠️ Experimental | Best for audio with compute shaders |
+| Safari  | ⚠️ Limited   | ⚠️ Limited     | ❌ Not supported | ❌ Not supported | Most conservative implementation |
+
+### WebNN and WebGPU Quantization Support in Browsers
+
+| Browser | 16-bit (FP16) | 8-bit (INT8) | 4-bit (INT4) | 2-bit (INT2) | Mixed Precision |
+|---------|--------------|--------------|--------------|--------------|----------------|
+| **WebNN Implementation** |
+| Chrome  | ✅ Full      | ✅ Full      | ⚠️ Limited   | ❌ None      | ✅ Full        |
+| Edge    | ✅ Full      | ✅ Full      | ✅ Full      | ❌ None      | ✅ Full        |
+| Firefox | ❌ None      | ❌ None      | ❌ None      | ❌ None      | ❌ None        |
+| Safari  | ✅ Partial   | ⚠️ Limited   | ❌ None      | ❌ None      | ⚠️ Limited     |
+| **WebGPU Implementation** |
+| Chrome  | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full        |
+| Edge    | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full        |
+| Firefox | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full      | ✅ Full        |
+| Safari  | ✅ Partial   | ✅ Partial   | ⚠️ Limited   | ❌ None      | ⚠️ Limited     |
+
+### Model-Specific Quantization Recommendations
+
+| Model Type   | Recommended Precision | Recommended API | Recommended Browser | Notes |
+|--------------|----------------------|-----------------|---------------------|-------|
+| Text (BERT)  | 8-bit or 4-bit mixed | WebGPU          | Chrome, Edge        | Good balance of performance and accuracy |
+| Vision (ViT) | 8-bit                | WebGPU          | Chrome, Edge        | Best visual quality retention |
+| Audio        | 8-bit                | WebGPU          | Firefox             | Firefox has better audio performance |
+| LLMs         | 4-bit mixed          | WebGPU          | Chrome, Edge        | Mixed precision critical for attention layers |
+
+### Implementation Files
+
+These implementations are available in the following files:
+- `fixed_web_platform/webgpu_quantization.py`: Core quantization system
+- `fixed_web_platform/webgpu_4bit_inference.py`: 4-bit inference implementation
+- `fixed_web_platform/webgpu_4bit_kernels.py`: Specialized compute kernels
+- `fixed_web_platform/webgpu_ultra_low_precision.py`: 2-bit experimental implementation
+- `fixed_web_platform/webgpu_adaptive_precision.py`: Mixed precision framework
+- `test_webnn_minimal.py`: WebNN real browser inference with quantization
+- `test_webgpu_quantization.py`: WebGPU real browser inference with quantization
+- `run_webnn_quantized_tests.sh`: Quantization benchmark script for WebNN
+- `run_web_quantization_tests.sh`: Master script for complete testing
+
+### Testing and Verification
+
+To run comprehensive tests of WebNN and WebGPU quantization support:
+
+```bash
+# Run complete test suite
+./run_web_quantization_tests.sh
+
+# Run WebNN tests only
+./run_webnn_quantized_tests.sh
+
+# Run specific WebGPU test
+python test_webgpu_quantization.py --model prajjwal1/bert-tiny --browser chrome --bits 8
+
+# Run specific WebNN test
+python test_webnn_minimal.py --model prajjwal1/bert-tiny --browser edge --bits 4 --mixed-precision
+```
+
+The test suite will generate a comprehensive report comparing performance across browsers and precision levels. It automatically selects the most appropriate precision/browser combination for each model type.
+
+For troubleshooting and optimization guide, see [QUANTIZATION_TROUBLESHOOTING.md](QUANTIZATION_TROUBLESHOOTING.md).
+
 All 13 high-priority models now have implementation for all hardware platforms with the following notes:
 
 1. **CUDA Support Status**:

@@ -378,6 +378,66 @@ model = pool.get_model(
 )
 ```
 
+### Parallel GPU/CPU Execution with Resource Pool
+
+The newly enhanced resource pool implementation supports running models concurrently on both GPU (WebGPU) and CPU backends, maximizing hardware utilization:
+
+```python
+from resource_pool import get_global_resource_pool
+
+# Get the resource pool
+pool = get_global_resource_pool()
+
+# Load vision model on WebGPU (GPU-optimized)
+webgpu_preferences = {
+    "priority_list": ["webgpu"],
+    "model_family": "vision",
+    "browser_optimized": True
+}
+
+vision_model = pool.get_model(
+    "vision", 
+    "vit-base-patch16-224",
+    constructor=lambda: create_vision_model(),
+    hardware_preferences=webgpu_preferences
+)
+
+# Simultaneously load text model on CPU
+cpu_preferences = {
+    "priority_list": ["cpu"],
+    "model_family": "text_embedding",
+    "browser_optimized": True
+}
+
+text_model = pool.get_model(
+    "text_embedding", 
+    "bert-base-uncased",
+    constructor=lambda: create_text_model(),
+    hardware_preferences=cpu_preferences
+)
+
+# Run inference on both models in parallel
+# Vision processing happens on GPU via WebGPU
+# Text processing happens on CPU
+vision_results = process_image(vision_model, image_data)
+text_results = process_text(text_model, text_data)
+```
+
+This parallel execution capability significantly improves overall system throughput by utilizing all available hardware resources simultaneously. The Selenium bridge implementation supports this concurrent execution model through:
+
+1. **Connection Pooling**: Manages multiple browser connections efficiently
+2. **Parallel Request Handling**: Processes multiple inference requests concurrently
+3. **Resource Isolation**: Ensures models don't interfere with each other's execution
+4. **Adaptive Scheduling**: Allocates resources based on model characteristics and current load
+5. **Load Balancing**: Distributes workload optimally across available hardware resources
+
+You can test the parallel execution capabilities using the enhanced benchmark script:
+
+```bash
+# Run parallel model execution benchmark
+python test/test_parallel_model_execution.py --webgpu-model vit-base-patch16-224 --cpu-model bert-base-uncased --browser chrome
+```
+
 ## Using the New Integrated Test Script
 
 The `run_integrated_web_tests.sh` script provides a unified interface for all web platform testing:

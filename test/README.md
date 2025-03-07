@@ -25,11 +25,12 @@ Phase 16 focusing on advanced hardware benchmarking, web platform integration, a
 - **[Database Template Integration Guide](DATABASE_TEMPLATE_INTEGRATION_GUIDE.md)** - NEW! Complete guide to using the DuckDB template system in generators
 - **[Qualcomm Integration Guide](QUALCOMM_INTEGRATION_GUIDE.md)** - NEW! Guide to the Qualcomm AI Engine integration
 - **[Template Database Guide](TEMPLATE_DATABASE_GUIDE.md)** - NEW! Guide to the template-based test generation system using DuckDB
+- **[WebNN and WebGPU Quantization Guide](WEBNN_WEBGPU_QUANTIZATION_GUIDE.md)** - NEW! Complete guide to WebNN and WebGPU quantization with all precision levels
+- **[WebNN/WebGPU March 2025 Update](WEBNN_WEBGPU_QUANTIZATION_MARCH2025_UPDATE.md)** - NEW! March 2025 updates with experimental WebNN precision
 - **[Web Platform Integration Summary](WEB_PLATFORM_INTEGRATION_SUMMARY.md)** - UPDATED! Now includes template validation for web platforms
 - **[Web Platform Action Plan](WEB_PLATFORM_ACTION_PLAN.md)** - NEW! Updated action plan for completing web platform implementation by August 31, 2025
 - **[Ultra-Low Precision Implementation Guide](ULTRA_LOW_PRECISION_IMPLEMENTATION_GUIDE.md)** - NEW! Guide to implementing 2-bit/3-bit quantization for web browsers
 - **[WebGPU 4-bit Inference Guide](WEBGPU_4BIT_INFERENCE_README.md)** - NEW! Guide to 4-bit quantized inference in WebGPU
-- **[Web Platform Optimization Guide](WEB_PLATFORM_OPTIMIZATION_GUIDE_JUNE2025.md)** - NEW! June 2025 optimizations for web platforms
 - **[Web Platform Implementation Plan](WEB_PLATFORM_IMPLEMENTATION_PLAN.md)** - UPDATED! August 2025 status update of implementation progress
 - **[Web Platform Implementation Next Steps](WEB_PLATFORM_IMPLEMENTATION_NEXT_STEPS.md)** - UPDATED! Detailed next steps for completion
 - **[Web Platform Model Compatibility](WEB_PLATFORM_MODEL_COMPATIBILITY.md)** - Comprehensive web compatibility matrix for all 13 model classes
@@ -424,13 +425,17 @@ python test_resource_pool.py --test family
 ### Web Platform Tests
 
 ```bash
-# Test a model on WebNN
+# Main entry point for WebNN and WebGPU with quantization testing (RECOMMENDED)
+python run_real_webgpu_webnn.py --platform webgpu --browser chrome --bits 4
+python run_real_webgpu_webnn.py --platform webnn --browser edge --bits 8
+python run_real_webgpu_webnn.py --platform both --browser chrome --bits 4 --mixed-precision
+
+# Test experimental WebNN precision (new March 2025 feature)
+python run_real_webgpu_webnn.py --platform webnn --browser edge --bits 4 --experimental-precision
+
+# Legacy API (prefer run_real_webgpu_webnn.py instead)
 ./web_platform_testing.py --test-model bert --platform webnn
-
-# Test a model on WebGPU
 ./web_platform_testing.py --test-model vit --platform webgpu
-
-# Compare WebNN and WebGPU performance
 ./web_platform_testing.py --compare --test-modality text
 
 # Run web platform benchmarking for a specific model
@@ -949,3 +954,5 @@ When adding new scripts or tests:
 ## License
 
 This test framework follows the same license as the main IPFS Accelerate Python library.
+
+<!-- Note: Some WebNN/WebGPU documentation has been archived and replaced with comprehensive real implementation testing documentation. See REAL_WEBNN_WEBGPU_TESTING.md for details. -->

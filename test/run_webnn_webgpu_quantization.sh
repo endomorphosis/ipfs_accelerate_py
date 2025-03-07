@@ -22,6 +22,7 @@ print_help() {
     echo "  --safari            Run tests with Safari"
     echo "  --mixed-precision   Enable mixed precision testing"
     echo "  --ultra-low-prec    Enable ultra-low precision (2-bit) testing"
+    echo "  --experimental      Try experimental precision with WebNN (may fail with errors)"
     echo "  --help              Display this help"
     echo ""
     echo "Examples:"
@@ -85,6 +86,10 @@ while [[ $# -gt 0 ]]; do
             ULTRA_LOW_PRECISION=true
             shift
             ;;
+        --experimental)
+            EXPERIMENTAL_PRECISION=true
+            shift
+            ;;
         --help)
             print_help
             exit 0
@@ -134,10 +139,17 @@ if [ "$MIXED_PRECISION" = true ]; then
     MIXED_PRECISION_OPT="--mixed-precision"
 fi
 
+# Define experimental precision option
+EXPERIMENTAL_OPT=""
+if [ "$EXPERIMENTAL_PRECISION" = true ]; then
+    EXPERIMENTAL_OPT="--experimental-precision"
+fi
+
 echo "==== WebNN and WebGPU Quantization Tests ===="
 echo "Model: $MODEL"
 echo "Headless: $HEADLESS"
 echo "Mixed precision: $MIXED_PRECISION"
+echo "Experimental precision: $EXPERIMENTAL_PRECISION"
 echo "Starting tests..."
 echo ""
 
@@ -147,14 +159,14 @@ if [ "$WEBGPU_ONLY" = true ]; then
     if [ "$RUN_CHROME" = true ]; then
         echo "=== Testing WebGPU with Chrome ==="
         echo "Testing 4-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser chrome --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser chrome --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser chrome --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser chrome --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
         
         # Test ultra-low precision (2-bit) if ULTRA_LOW_PRECISION is set
         if [ "$ULTRA_LOW_PRECISION" = true ]; then
             echo "Testing 2-bit ultra-low precision..."
-            python webnn_webgpu_quantization_test.py --platform webgpu --browser chrome --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
+            python test_webnn_webgpu_simplified.py --platform webgpu --browser chrome --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
         fi
         echo ""
     fi
@@ -163,14 +175,14 @@ if [ "$WEBGPU_ONLY" = true ]; then
     if [ "$RUN_FIREFOX" = true ]; then
         echo "=== Testing WebGPU with Firefox ==="
         echo "Testing 4-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser firefox --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser firefox --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser firefox --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser firefox --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
         
         # Test ultra-low precision (2-bit) if ULTRA_LOW_PRECISION is set
         if [ "$ULTRA_LOW_PRECISION" = true ]; then
             echo "Testing 2-bit ultra-low precision..."
-            python webnn_webgpu_quantization_test.py --platform webgpu --browser firefox --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
+            python test_webnn_webgpu_simplified.py --platform webgpu --browser firefox --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
         fi
         echo ""
     fi
@@ -179,14 +191,14 @@ if [ "$WEBGPU_ONLY" = true ]; then
     if [ "$RUN_EDGE" = true ]; then
         echo "=== Testing WebGPU with Edge ==="
         echo "Testing 4-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser edge --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser edge --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser edge --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser edge --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
         
         # Test ultra-low precision (2-bit) if ULTRA_LOW_PRECISION is set
         if [ "$ULTRA_LOW_PRECISION" = true ]; then
             echo "Testing 2-bit ultra-low precision..."
-            python webnn_webgpu_quantization_test.py --platform webgpu --browser edge --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
+            python test_webnn_webgpu_simplified.py --platform webgpu --browser edge --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
         fi
         echo ""
     fi
@@ -195,14 +207,14 @@ if [ "$WEBGPU_ONLY" = true ]; then
     if [ "$RUN_SAFARI" = true ]; then
         echo "=== Testing WebGPU with Safari ==="
         echo "Testing 4-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser safari --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser safari --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webgpu --browser safari --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webgpu --browser safari --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
         
         # Note: Safari may not support ultra-low precision well, so we don't test 2-bit by default
         if [ "$ULTRA_LOW_PRECISION" = true ]; then
             echo "Testing 2-bit ultra-low precision (experimental for Safari)..."
-            python webnn_webgpu_quantization_test.py --platform webgpu --browser safari --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
+            python test_webnn_webgpu_simplified.py --platform webgpu --browser safari --model $MODEL --bits 2 $HEADLESS_OPT $MIXED_PRECISION_OPT
         fi
         echo ""
     fi
@@ -214,7 +226,17 @@ if [ "$WEBNN_ONLY" = true ]; then
     if [ "$RUN_CHROME" = true ]; then
         echo "=== Testing WebNN with Chrome ==="
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webnn --browser chrome --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webnn --browser chrome --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        
+        # Optionally test with lower precision to demonstrate behavior
+        if [ "$ULTRA_LOW_PRECISION" = true ]; then
+            if [ "$EXPERIMENTAL_PRECISION" = true ]; then
+                echo "Testing with experimental 4-bit request (will attempt 4-bit with expected errors)..."
+            else
+                echo "Testing with 4-bit request (should use 8-bit fallback)..."
+            fi
+            python test_webnn_webgpu_simplified.py --platform webnn --browser chrome --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        fi
         echo ""
     fi
     
@@ -222,7 +244,17 @@ if [ "$WEBNN_ONLY" = true ]; then
     if [ "$RUN_EDGE" = true ]; then
         echo "=== Testing WebNN with Edge ==="
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webnn --browser edge --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webnn --browser edge --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        
+        # Optionally test with lower precision to demonstrate behavior
+        if [ "$ULTRA_LOW_PRECISION" = true ]; then
+            if [ "$EXPERIMENTAL_PRECISION" = true ]; then
+                echo "Testing with experimental 4-bit request (will attempt 4-bit with expected errors)..."
+            else
+                echo "Testing with 4-bit request (should use 8-bit fallback)..."
+            fi
+            python test_webnn_webgpu_simplified.py --platform webnn --browser edge --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        fi
         echo ""
     fi
     
@@ -230,7 +262,13 @@ if [ "$WEBNN_ONLY" = true ]; then
     if [ "$RUN_SAFARI" = true ]; then
         echo "=== Testing WebNN with Safari ==="
         echo "Testing 8-bit quantization..."
-        python webnn_webgpu_quantization_test.py --platform webnn --browser safari --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT
+        python test_webnn_webgpu_simplified.py --platform webnn --browser safari --model $MODEL --bits 8 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        
+        # Optionally test with lower precision to demonstrate behavior
+        if [ "$ULTRA_LOW_PRECISION" = true ] && [ "$EXPERIMENTAL_PRECISION" = true ]; then
+            echo "Testing with experimental 4-bit request (will attempt 4-bit with expected errors)..."
+            python test_webnn_webgpu_simplified.py --platform webnn --browser safari --model $MODEL --bits 4 $HEADLESS_OPT $MIXED_PRECISION_OPT $EXPERIMENTAL_OPT
+        fi
         echo ""
     fi
 fi

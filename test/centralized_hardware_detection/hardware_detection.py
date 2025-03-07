@@ -606,3 +606,55 @@ def get_hardware_detection_code():
 def get_model_hardware_compatibility(model_name):
     """Get hardware compatibility for a model."""
     return HARDWARE_MANAGER.get_model_hardware_compatibility(model_name)
+
+def detect_web_platform_capabilities(browser: str = "chrome", use_browser_automation: bool = False) -> Dict[str, Any]:
+    """
+    Detect WebNN and WebGPU capabilities using browser automation or environment variables.
+    
+    Args:
+        browser: Browser to use for detection ("chrome", "firefox", "edge", "safari")
+        use_browser_automation: Whether to use real browser automation (requires Selenium)
+        
+    Returns:
+        Dictionary with capability information
+    """
+    capabilities = {
+        "webnn_available": HARDWARE_MANAGER.capabilities.get("webnn", False),
+        "webnn_simulated": HARDWARE_MANAGER.capabilities.get("webnn_simulation", True),
+        "webgpu_available": HARDWARE_MANAGER.capabilities.get("webgpu", False),
+        "webgpu_simulated": HARDWARE_MANAGER.capabilities.get("webgpu_simulation", True),
+        "browser": browser,
+        "browser_version": "unknown",
+        "webnn_backends": [],
+        "webgpu_features": {},
+        "detection_method": "environment",
+    }
+    
+    # Check if we're using simulation mode
+    if HARDWARE_MANAGER.webnn_simulation_mode:
+        capabilities["webnn_simulated"] = True
+    
+    if HARDWARE_MANAGER.webgpu_simulation_mode:
+        capabilities["webgpu_simulated"] = True
+    
+    # If browser info is available from the hardware manager, use it
+    browser_info = HARDWARE_MANAGER.get_browser_info()
+    if browser_info.get("is_browser", False):
+        capabilities["browser"] = browser_info.get("browser_type", "unknown")
+        capabilities["detection_method"] = "browser"
+        
+        # Set WebGPU features based on browser type
+        if browser_info.get("is_firefox", False):
+            capabilities["webgpu_features"] = {
+                "workgroup_size": [256, 1, 1],
+                "supports_compute_shaders": True,
+                "browser_optimized": True
+            }
+        elif browser_info.get("is_chrome", False):
+            capabilities["webgpu_features"] = {
+                "workgroup_size": [128, 2, 1],
+                "supports_compute_shaders": True,
+                "browser_optimized": True
+            }
+    
+    return capabilities

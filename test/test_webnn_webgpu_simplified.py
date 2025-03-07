@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Simplified Test for WebNN and WebGPU Implementations
+Simplified Test for WebNN and WebGPU Quantization
 
-This script provides a simple test of WebNN and WebGPU implementations.
-It verifies that the basic functionality works correctly.
+This script provides a simple test of WebNN and WebGPU implementations with quantization.
+It verifies that quantization works correctly with both WebNN and WebGPU.
 """
 
 import os
@@ -11,6 +11,7 @@ import sys
 import json
 import asyncio
 import logging
+import argparse
 from pathlib import Path
 
 # Set up logging
@@ -35,14 +36,14 @@ except ImportError:
     logger.warning("WebNN implementation not available")
     WEBNN_AVAILABLE = False
 
-async def test_webgpu():
-    """Test WebGPU implementation."""
+async def test_webgpu_quantization(bits=4, browser="chrome", model="bert-base-uncased", mixed_precision=False):
+    """Test WebGPU implementation with quantization."""
     if not WEBGPU_AVAILABLE:
         logger.error("WebGPU implementation not available")
         return False
     
-    logger.info("Testing WebGPU implementation...")
-    impl = RealWebGPUImplementation(browser_name="chrome", headless=True)
+    logger.info(f"Testing WebGPU implementation with {bits}-bit quantization on {browser} browser...")
+    impl = RealWebGPUImplementation(browser_name=browser, headless=True)
     
     try:
         # Initialize
@@ -57,8 +58,8 @@ async def test_webgpu():
         logger.info(f"WebGPU features: {json.dumps(features, indent=2)}")
         
         # Initialize model
-        logger.info("Initializing model: bert-base-uncased")
-        model_info = await impl.initialize_model("bert-base-uncased", model_type="text")
+        logger.info(f"Initializing model: {model}")
+        model_info = await impl.initialize_model(model, model_type="text")
         if not model_info:
             logger.error("Failed to initialize model")
             await impl.shutdown()
@@ -66,13 +67,30 @@ async def test_webgpu():
         
         logger.info(f"Model info: {json.dumps(model_info, indent=2)}")
         
-        # Run inference
-        logger.info("Running inference")
-        result = await impl.run_inference("bert-base-uncased", "This is a test.")
+        # Run inference with quantization
+        logger.info(f"Running inference with {bits}-bit quantization")
+        
+        # Create inference options with quantization settings
+        inference_options = {
+            "use_quantization": True,
+            "bits": bits,
+            "scheme": "symmetric",
+            "mixed_precision": mixed_precision
+        }
+        
+        result = await impl.run_inference(model, "This is a test.", inference_options)
         if not result:
             logger.error("Failed to run inference")
             await impl.shutdown()
             return False
+        
+        # Check for quantization info
+        if "performance_metrics" in result:
+            metrics = result["performance_metrics"]
+            if "quantization_bits" in metrics:
+                logger.info(f"Successfully used {metrics['quantization_bits']}-bit quantization")
+            else:
+                logger.warning("Quantization metrics not found in result")
         
         logger.info(f"Inference result: {json.dumps(result, indent=2)}")
         
@@ -96,14 +114,14 @@ async def test_webgpu():
             pass
         return False
 
-async def test_webnn():
-    """Test WebNN implementation."""
+async def test_webnn_quantization(bits=8, browser="chrome", model="bert-base-uncased", mixed_precision=False, experimental_precision=False):
+    """Test WebNN implementation with quantization."""
     if not WEBNN_AVAILABLE:
         logger.error("WebNN implementation not available")
         return False
     
-    logger.info("Testing WebNN implementation...")
-    impl = RealWebNNImplementation(browser_name="chrome", headless=True)
+    logger.info(f"Testing WebNN implementation with {bits}-bit quantization on {browser} browser...")
+    impl = RealWebNNImplementation(browser_name=browser, headless=True)
     
     try:
         # Initialize
@@ -118,8 +136,8 @@ async def test_webnn():
         logger.info(f"WebNN features: {json.dumps(features, indent=2)}")
         
         # Initialize model
-        logger.info("Initializing model: bert-base-uncased")
-        model_info = await impl.initialize_model("bert-base-uncased", model_type="text")
+        logger.info(f"Initializing model: {model}")
+        model_info = await impl.initialize_model(model, model_type="text")
         if not model_info:
             logger.error("Failed to initialize model")
             await impl.shutdown()
@@ -127,13 +145,36 @@ async def test_webnn():
         
         logger.info(f"Model info: {json.dumps(model_info, indent=2)}")
         
-        # Run inference
-        logger.info("Running inference")
-        result = await impl.run_inference("bert-base-uncased", "This is a test.")
+        # Run inference with quantization
+        logger.info(f"Running inference with {bits}-bit quantization")
+        
+        # Create inference options with quantization settings
+        if bits < 8 and experimental_precision:
+            logger.warning(f"WebNN doesn't officially support {bits}-bit quantization. Using experimental mode.")
+        elif bits < 8:
+            logger.warning(f"WebNN doesn't officially support {bits}-bit quantization. Traditional approach would use 8-bit.")
+            
+        inference_options = {
+            "use_quantization": True,
+            "bits": bits,
+            "scheme": "symmetric",
+            "mixed_precision": mixed_precision,
+            "experimental_precision": experimental_precision
+        }
+        
+        result = await impl.run_inference(model, "This is a test.", inference_options)
         if not result:
             logger.error("Failed to run inference")
             await impl.shutdown()
             return False
+        
+        # Check for quantization info
+        if "performance_metrics" in result:
+            metrics = result["performance_metrics"]
+            if "quantization_bits" in metrics:
+                logger.info(f"Successfully used {metrics['quantization_bits']}-bit quantization")
+            else:
+                logger.warning("Quantization metrics not found in result")
         
         logger.info(f"Inference result: {json.dumps(result, indent=2)}")
         
@@ -158,28 +199,73 @@ async def test_webnn():
         return False
 
 async def main():
-    """Run tests."""
-    # Test WebGPU
-    webgpu_success = await test_webgpu()
-    if webgpu_success:
-        logger.info("WebGPU test passed")
-    else:
-        logger.error("WebGPU test failed")
+    """Parse arguments and run tests."""
+    parser = argparse.ArgumentParser(description="Test WebNN and WebGPU with quantization")
     
-    # Test WebNN
-    webnn_success = await test_webnn()
-    if webnn_success:
-        logger.info("WebNN test passed")
-    else:
-        logger.error("WebNN test failed")
+    parser.add_argument("--platform", type=str, choices=["webgpu", "webnn", "both"], default="both",
+                       help="Platform to test")
     
-    # Overall result
-    if webgpu_success and webnn_success:
-        logger.info("All tests passed")
-        return 0
+    parser.add_argument("--browser", type=str, default="chrome",
+                       help="Browser to test with (chrome, firefox, edge, safari)")
+    
+    parser.add_argument("--model", type=str, default="bert-base-uncased",
+                       help="Model to test")
+    
+    parser.add_argument("--bits", type=int, choices=[2, 4, 8, 16], default=None,
+                       help="Bits for quantization (default: 4 for WebGPU, 8 for WebNN)")
+    
+    parser.add_argument("--mixed-precision", action="store_true",
+                       help="Enable mixed precision")
+                       
+    parser.add_argument("--experimental-precision", action="store_true",
+                       help="Try using experimental precision levels with WebNN (may fail with errors)")
+    
+    args = parser.parse_args()
+    
+    # Set default bits if not specified
+    webgpu_bits = args.bits if args.bits is not None else 4
+    webnn_bits = args.bits if args.bits is not None else 8
+    
+    # Run tests
+    if args.platform in ["webgpu", "both"]:
+        webgpu_success = await test_webgpu_quantization(
+            bits=webgpu_bits, 
+            browser=args.browser, 
+            model=args.model,
+            mixed_precision=args.mixed_precision
+        )
+        if webgpu_success:
+            print(f"✅ WebGPU {webgpu_bits}-bit quantization test passed")
+        else:
+            print(f"❌ WebGPU {webgpu_bits}-bit quantization test failed")
+    
+    if args.platform in ["webnn", "both"]:
+        webnn_success = await test_webnn_quantization(
+            bits=webnn_bits, 
+            browser=args.browser, 
+            model=args.model,
+            mixed_precision=args.mixed_precision,
+            experimental_precision=args.experimental_precision
+        )
+        if webnn_success:
+            print(f"✅ WebNN {webnn_bits}-bit quantization test passed")
+        else:
+            print(f"❌ WebNN {webnn_bits}-bit quantization test failed")
+    
+    # Print final summary
+    print("\nTest Summary:")
+    if args.platform in ["webgpu", "both"]:
+        print(f"WebGPU: {'Passed' if webgpu_success else 'Failed'}")
+    if args.platform in ["webnn", "both"]:
+        print(f"WebNN: {'Passed' if webnn_success else 'Failed'}")
+    
+    # Return proper exit code
+    if args.platform == "both":
+        return 0 if (webgpu_success and webnn_success) else 1
+    elif args.platform == "webgpu":
+        return 0 if webgpu_success else 1
     else:
-        logger.error("Some tests failed")
-        return 1
+        return 0 if webnn_success else 1
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))

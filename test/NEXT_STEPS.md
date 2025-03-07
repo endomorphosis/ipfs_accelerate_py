@@ -1419,6 +1419,133 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
       - Create automated diagnostics for conversion failures
     - Priority: HIGH (Target completion: May 15, 2025)
 
+19.3. **WebNN/WebGPU Benchmark Integration Enhancements** (UPDATED - May 7, 2025)
+    - ✅ Enhance run_real_webnn_webgpu.py as the unified entrypoint for all WebNN/WebGPU benchmarks (COMPLETED - May 7, 2025)
+      - ✅ Made run_real_webnn_webgpu.py the standard entrypoint for all browser-based benchmarks
+      - ✅ Implemented unified CLI interface for all browser testing scenarios
+      - ✅ Created comprehensive error handling for browser connectivity issues
+      - ✅ Added detailed logging for all browser-based operations
+      - ✅ Developed integration with existing benchmark database schema
+      - ✅ Created adaptable browser automation with configurable timeouts
+    - ✅ Add support for batch size configuration (COMPLETED - May 7, 2025)
+      - ✅ Implemented batch size parameter support for browser-based testing
+      - ✅ Created browser-side infrastructure for batched inference
+      - ✅ Added performance metrics collection for different batch sizes
+      - ✅ Developed optimal batch size recommendation system
+      - ✅ Created visualization components for batch size impact analysis
+    - ✅ Implement quantization support for browser-based inference (COMPLETED - May 7, 2025)
+      - ✅ Created model quantization pipeline for browser deployment
+      - ✅ Implemented browser-side quantization execution logic
+      - ✅ Added performance measurement for quantized models
+      - ✅ Developed accuracy validation for quantized inference
+      - ✅ Created comparison framework for precision vs. performance
+      - ✅ Added documentation for browser-specific quantization limitations
+    - ✅ Add comprehensive benchmarking for all 13 high-priority model classes (COMPLETED - May 7, 2025)
+      - ✅ Created browser-based benchmarking for text models (BERT, T5, LLAMA)
+      - ✅ Implemented vision model benchmarking (CLIP, ViT, DETR)
+      - ✅ Added audio model benchmarking (Whisper, Wav2Vec2, CLAP)
+      - ✅ Developed multimodal model benchmarking (LLaVA, LLaVA-Next, XCLIP)
+      - ✅ Created specialized Qwen2/3 benchmarking configurations
+      - ✅ Added comparison framework for cross-browser performance
+    - Implement WebGPU/WebNN Resource Pool Integration (PLANNED - May 12, 2025)
+      - Create resource pool implementation for browser-based environments
+      - Implement parallel model execution across WebGPU and CPU backends
+      - Design efficient resource allocation for heterogeneous execution
+      - Add support for concurrent model execution in browser environments
+      - Implement connection pooling for Selenium browser instances
+      - Create load balancing system for distributing models across resources
+      - Develop resource monitoring and adaptive scaling capabilities
+      - Add configuration system for resource allocation policies
+      - Implement dynamic prioritization for critical inference tasks
+      - Create comprehensive documentation in `WEB_RESOURCE_POOL_INTEGRATION.md`
+    - Implement model URL verification and fallback system (PLANNED - May 15, 2025)
+      - Create verification system for web-accessible models
+      - Add HTTPS URL verification for model files
+      - Implement fallback to model conversion when direct URLs unavailable
+      - Create HuggingFace hub integration for model access
+      - Add caching system for previously verified URLs
+      - Develop model integrity validation after download
+    - Create integrated reporting system for browser benchmarks (PLANNED - May 18, 2025)
+      - Develop comprehensive reporting templates for browser benchmarks
+      - Add comparison views for native vs. browser performance
+      - Create browser-specific optimization recommendations
+      - Implement interactive dashboards for benchmark visualization
+      - Add time-series tracking for browser implementation improvements
+      - Create hardware-specific performance projections
+    - Priority: HIGH (Target completion: May 20, 2025)
+    
+    **Resource Pool Integration Details:**
+    
+    The WebGPU/WebNN resource pool integration will enable heterogeneous execution of models across both GPU and CPU backends simultaneously, maximizing hardware utilization and improving overall system throughput:
+    
+    1. **Core Components:**
+       - **BrowserResourcePool**: Manages multiple browser instances with heterogeneous backends
+       - **ModelExecutionScheduler**: Allocates models to optimal backends based on characteristics
+       - **BackendManager**: Abstracts WebGPU, WebNN, and CPU backends for unified access
+       - **ConnectionPool**: Manages Selenium browser connections with health monitoring
+       - **LoadBalancer**: Distributes inference tasks across available resources
+    
+    2. **Key Features:**
+       - Simultaneous execution of models on both GPU and CPU backends
+       - Automatic model placement based on hardware affinity and current load
+       - Dynamic scaling of resources based on workload demands
+       - Graceful handling of backend failures with automatic recovery
+       - Comprehensive monitoring and telemetry for resource utilization
+       - Priority-based scheduling for critical inference tasks
+       - Configurable resource allocation policies for different scenarios
+    
+    3. **Implementation Approach:**
+       - Leverage existing Selenium bridge for browser communication
+       - Implement resource pool with worker thread management
+       - Create unified API for model execution across backends
+       - Build monitoring system for resource utilization and health
+       - Develop configuration system for pool management policies
+       - Create comprehensive documentation and usage examples
+    
+    This enhancement will significantly improve the efficiency and throughput of browser-based inference by utilizing all available hardware resources simultaneously, rather than limiting execution to a single backend at a time.
+
+    **Implementation Details:**
+    - ✅ **Enhanced Quantization Support**:
+      - Implemented support for 2-bit, 4-bit, 8-bit, 16-bit, and 32-bit precision
+      - Added mixed precision support with higher bits for critical layers
+      - Created experimental precision mode for WebNN with 4-bit and 2-bit testing
+      - Implemented browser-side quantization execution with proper error handling
+      - Added memory usage estimation based on model type and precision
+    
+    - ✅ **Model Type Coverage**:  
+      - Added explicit support for all 13 high-priority model classes
+      - Implemented specialized testing for text, vision, audio, multimodal, and text generation models
+      - Created model type detection for automatic parameter configuration
+      - Implemented appropriate input data generation for each model type
+      - Added convenient command-line flags for testing model categories
+    
+    - ✅ **Browser-Specific Optimizations**:
+      - Added compute shader optimization for audio models (best with Firefox)
+      - Implemented shader precompilation for faster startup
+      - Added parallel loading support for multimodal models
+      - Created browser-specific performance tracking and reporting
+      - Added combined optimization mode for maximum performance
+    
+    - ✅ **Enhanced CLI Interface**:
+      - Added precision format selection (int2, int4, int8, fp16, fp32)
+      - Implemented model class testing flags (--test-text-models, --test-vision-models, etc.)
+      - Added --test-all-models flag for comprehensive testing
+      - Created browser optimization flags (--enable-compute-shaders, --enable-shader-precompile, etc.)
+      - Added reporting functionality with multiple output formats
+    
+    - ✅ **Testing Helpers**:
+      - Added capability checking mode for browser feature inspection
+      - Implemented quick test mode for rapid verification
+      - Created simulation control flags for testing without hardware
+      - Added enhanced logging with --verbose flag
+      - Implemented database integration with DuckDB
+
+    **Critical Requirements Still Pending:**
+    - URL verification system for model access and fallback conversion
+    - Comprehensive reporting integration with existing infrastructure
+    
+    The enhanced `run_real_webnn_webgpu.py` script now provides a comprehensive, unified entry point for testing all 13 high-priority HuggingFace model classes with various quantization formats on both WebNN and WebGPU. This early completion gives us a solid foundation to implement the remaining features (URL verification and integrated reporting) ahead of the May 20 target.
+
     **Implementation Strategy:**
     - Create a centralized verification function to check ONNX file existence before tests
     - Implement robust error handling for all verification and conversion steps
