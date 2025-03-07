@@ -275,10 +275,18 @@ For detailed documentation on these features, see [IPFS_ACCELERATION_TESTING.md]
 
 To generate an updated compatibility matrix with actual benchmark data, run:
 ```bash
-python test/benchmark_all_key_models.py --output-dir ./benchmark_results
+# IMPORTANT: All benchmark results are now stored in DuckDB database, not JSON files
+# Set database path with environment variable or parameter
+export BENCHMARK_DB_PATH=./benchmark_db.duckdb
+
+# Run benchmarks (results stored directly in database)
+python test/benchmark_all_key_models.py --db-only
+
+# Legacy approach (DEPRECATED - not recommended)
+# python test/benchmark_all_key_models.py --output-dir ./benchmark_results
 ```
 
-This will benchmark all 13 high-priority model classes across all available hardware platforms and generate a comprehensive compatibility matrix based on real performance data.
+This will benchmark all 13 high-priority model classes across all available hardware platforms and generate a comprehensive compatibility matrix based on real performance data. All results will be stored directly in the DuckDB database for efficient querying and analysis.
 
 ### Key Model Test Coverage Status
 

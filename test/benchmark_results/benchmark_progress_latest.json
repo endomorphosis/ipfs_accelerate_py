@@ -1,5 +1,5 @@
 {
-  "timestamp": "20250306_175653",
+  "timestamp": "20250306_181734",
   "completed_benchmarks": [],
   "failed_benchmarks": [
     {
@@ -8,15 +8,114 @@
       "error": "Command failed with exit code 1",
       "error_type": "execution_error",
       "stdout": "",
-      "stderr": "2025-03-06 17:56:59,527 - __main__ - WARNING - Improved hardware detection not available\nTraceback (most recent call last):\n  File \"/home/barberb/ipfs_accelerate_py/test/run_model_benchmarks.py\", line 1468, in <module>\n    \n  File \"/home/barberb/ipfs_accelerate_py/test/run_model_benchmarks.py\", line 1439, in main\n    \n\nTypeError: ModelBenchmarkRunner.__init__() got an unexpected keyword argument 'db_only'\n",
-      "timestamp": "2025-03-06T17:57:00.412895"
+      "stderr": "2025-03-06 18:17:42,069 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:17:42,074 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:17:42,075 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:17:42,075 - __main__ - INFO - Available hardware platforms: cpu\n2025-03-06 18:17:42,084 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458459) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:17:42,085 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:17:42,085 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:17:42,085 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:17:42,085 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:17:42,085 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:17:42,085 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:17:42,085 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:17:43.227874"
+    },
+    {
+      "model_type": "bert",
+      "hardware_type": "cuda",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:17:48,166 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:17:48,172 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:17:48,172 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:17:48,172 - __main__ - INFO - Available hardware platforms: cuda\n2025-03-06 18:17:48,179 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458459) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:17:48,179 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:17:48,179 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:17:48,179 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:17:48,179 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:17:48,179 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:17:48,179 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:17:48,179 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:17:49.134830"
+    },
+    {
+      "model_type": "bert",
+      "hardware_type": "openvino",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:17:53,979 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:17:53,985 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:17:53,985 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:17:53,985 - __main__ - INFO - Available hardware platforms: openvino\n2025-03-06 18:17:53,996 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458459) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:17:53,996 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:17:53,996 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:17:53,996 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:17:53,996 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:17:53,996 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:17:53,996 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:17:53,996 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:17:55.087309"
+    },
+    {
+      "model_type": "t5",
+      "hardware_type": "cpu",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:17:59,618 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:17:59,625 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:17:59,625 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:17:59,626 - __main__ - INFO - Available hardware platforms: cpu\n2025-03-06 18:17:59,632 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458707) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:17:59,632 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:17:59,632 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:17:59,632 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:17:59,632 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:17:59,632 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:17:59,633 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:17:59,633 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:00.913480"
+    },
+    {
+      "model_type": "t5",
+      "hardware_type": "cuda",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:05,665 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:05,669 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:05,669 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:05,669 - __main__ - INFO - Available hardware platforms: cuda\n2025-03-06 18:18:05,677 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458707) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:18:05,677 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:05,677 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:05,677 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:05,677 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:05,677 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:05,677 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:05,677 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:06.682781"
+    },
+    {
+      "model_type": "t5",
+      "hardware_type": "openvino",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:11,013 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:11,018 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:11,019 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:11,019 - __main__ - INFO - Available hardware platforms: openvino\n2025-03-06 18:18:11,028 - __main__ - ERROR - Error initializing database: IO Error: Could not set lock on file \"/home/barberb/ipfs_accelerate_py/test/./benchmark_db.duckdb\": Conflicting lock is held in /usr/bin/python3.12 (PID 458707) by user barberb. However, you would be able to open this database in read-only mode, e.g. by using the -readonly parameter in the CLI. See also https://duckdb.org/docs/connect/concurrency\n2025-03-06 18:18:11,028 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:11,028 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:11,028 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:11,028 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:11,028 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:11,028 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:11,029 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:12.083804"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "cpu",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:16,685 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:16,694 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:16,694 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:16,694 - __main__ - INFO - Available hardware platforms: cpu\n2025-03-06 18:18:16,759 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:16,759 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:16,759 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:16,759 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:16,759 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:16,759 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:16,770 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:16,770 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:16,774 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:16,774 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:17.719459"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "cuda",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:22,223 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:22,284 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:22,284 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:22,284 - __main__ - INFO - Available hardware platforms: cuda\n2025-03-06 18:18:22,390 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:22,390 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:22,390 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:22,390 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:22,391 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:22,391 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:22,396 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:22,396 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:22,400 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:22,400 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:23.400489"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "openvino",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:27,894 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:27,898 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:27,898 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:27,898 - __main__ - INFO - Available hardware platforms: openvino\n2025-03-06 18:18:27,947 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:27,947 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:27,947 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:27,947 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:27,947 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:27,947 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:27,956 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:27,956 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:27,960 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:27,961 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:28.886146"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "cpu",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:33,836 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:33,841 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:33,841 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:33,841 - __main__ - INFO - Available hardware platforms: cpu\n2025-03-06 18:18:33,897 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:33,898 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:33,898 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:33,898 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:33,898 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:33,898 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:33,906 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:33,906 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:33,909 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:33,910 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_run_performance_benchmarks'\n",
+      "timestamp": "2025-03-06T18:18:34.794921"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "cuda",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:39,485 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:39,491 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:39,491 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:39,492 - __main__ - INFO - Available hardware platforms: cuda\n2025-03-06 18:18:39,536 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:39,536 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:39,536 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:39,536 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:39,536 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:39,536 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:39,544 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:39,544 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:39,544 - __main__ - INFO - Running performance benchmarks...\n2025-03-06 18:18:39,550 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:39,550 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_generate_plots'\n",
+      "timestamp": "2025-03-06T18:18:40.738471"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "openvino",
+      "error": "Command failed with exit code 1",
+      "error_type": "execution_error",
+      "stdout": "",
+      "stderr": "2025-03-06 18:18:46,590 - __main__ - WARNING - Improved hardware detection not available\n2025-03-06 18:18:46,606 - __main__ - INFO - CUDA available with 1 devices\n2025-03-06 18:18:46,607 - __main__ - INFO - OpenVINO available (version 2025.0.0-17942-1f68be9f594-releases/2025/0)\n2025-03-06 18:18:46,607 - __main__ - INFO - Available hardware platforms: openvino\n2025-03-06 18:18:46,711 - __main__ - INFO - Successfully connected to benchmark database: ./benchmark_db.duckdb\n2025-03-06 18:18:46,711 - __main__ - INFO - Running benchmarks...\n2025-03-06 18:18:46,711 - __main__ - INFO - Starting model benchmarks for 1 models on 1 hardware platforms\n2025-03-06 18:18:46,711 - __main__ - INFO - JSON output is deprecated. Storing results directly in the database.\n2025-03-06 18:18:46,712 - benchmark_db_api - INFO - Initialized BenchmarkDBAPI with DB: ./benchmark_db.duckdb\n2025-03-06 18:18:46,712 - __main__ - ERROR - Error storing results in database: 'BenchmarkDBAPI' object has no attribute 'store_benchmark_results'\n2025-03-06 18:18:46,725 - __main__ - ERROR - Error storing results in database: Binder Error: Table \"test_runs\" does not have a column with name \"git_commit\"\n2025-03-06 18:18:46,725 - __main__ - INFO - Verifying model functionality...\n2025-03-06 18:18:46,725 - __main__ - INFO - Running performance benchmarks...\n2025-03-06 18:18:46,741 - __main__ - INFO - Database connection closed\n2025-03-06 18:18:46,741 - __main__ - ERROR - Error running benchmarks: 'ModelBenchmarkRunner' object has no attribute '_generate_plots'\n",
+      "timestamp": "2025-03-06T18:18:47.893534"
     }
   ],
   "skipped_benchmarks": [],
   "summary": {
-    "total": 1,
+    "total": 12,
     "completed": 0,
-    "failed": 1,
+    "failed": 12,
     "skipped": 0,
     "completion_percentage": 0.0
   }

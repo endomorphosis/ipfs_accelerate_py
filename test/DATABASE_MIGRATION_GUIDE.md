@@ -287,7 +287,9 @@ As of March 5, 2025, all benchmark tools have been fully migrated to use the Duc
 3. **Database-Only Storage**: All benchmark tools now store results directly in the database
 4. **Archived Files**: Legacy JSON files have been archived for reference
 
-> **Important Update**: The transition phase is complete. JSON file generation has been deprecated and disabled by default (DEPRECATE_JSON_OUTPUT=1). All tools now use the database for storage and retrieval. The archived JSON files remain available for reference but are no longer actively used.
+> **Important Update (March 6, 2025)**: The transition phase is complete. JSON file generation has been deprecated and disabled by default (DEPRECATE_JSON_OUTPUT=1). All tools now use the database for storage and retrieval. The archived JSON files remain available for reference but are no longer actively used.
+>
+> **Critical Implementation Note**: No new files should be written to the `benchmark_results` directory. All benchmark results must be written directly to the DuckDB database. Any code that still writes JSON files to this directory should be updated to use the database API. See the "Writing Results to Database Instead of JSON Files" section in [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) for implementation details.
 
 Example of database-only storage (current implementation):
 

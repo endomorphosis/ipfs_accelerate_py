@@ -745,6 +745,92 @@ timestamp=$(date +%Y%m%d_%H%M%S)
 cp ci_benchmark.duckdb ci_benchmark_${timestamp}.duckdb
 ```
 
+## Writing Results to Database Instead of JSON Files
+
+As of March 6, 2025, all benchmark results should be written directly to the DuckDB database instead of JSON files in the `benchmark_results` directory. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts, which disables JSON output.
+
+### For Developers:
+
+When writing benchmark or test results:
+
+```python
+# RECOMMENDED: Store directly in database
+from benchmark_db_api import BenchmarkDBAPI
+api = BenchmarkDBAPI()
+api.store_performance_result(
+    model_name="bert-base-uncased",
+    hardware_type="cuda",
+    throughput=125.7,
+    latency_avg=8.2
+)
+
+# NOT RECOMMENDED: Writing to JSON files (deprecated)
+# Only needed for backward compatibility with external systems
+if json_output_required:
+    with open("benchmark_results/result.json", "w") as f:
+        json.dump(results, f, indent=2)
+```
+
+When modifying existing code, replace JSON writing operations with database operations:
+
+```python
+# Old approach (deprecated)
+def save_benchmark_results(results, model_name, hardware_type):
+    output_dir = f"./benchmark_results/{model_name}_{hardware_type}"
+    os.makedirs(output_dir, exist_ok=True)
+    with open(f"{output_dir}/benchmark_result.json", "w") as f:
+        json.dump(results, f, indent=2)
+
+# New approach (recommended)
+def save_benchmark_results(results, model_name, hardware_type):
+    # Store in database
+    api = BenchmarkDBAPI()
+    api.store_performance_result(
+        model_name=model_name,
+        hardware_type=hardware_type,
+        throughput=results.get("throughput"),
+        latency_avg=results.get("latency_avg"),
+        memory_peak_mb=results.get("memory_peak_mb")
+    )
+```
+
+### For Users:
+
+When running benchmarks, ensure you:
+
+1. Set the database path using the environment variable or command-line parameter:
+   ```bash
+   # Set environment variable
+   export BENCHMARK_DB_PATH=./benchmark_db.duckdb
+   
+   # Or pass it as a parameter
+   python test/run_benchmark_with_db.py --db-path ./benchmark_db.duckdb
+   ```
+
+2. Avoid using any parameters that explicitly write JSON files to the `benchmark_results` directory.
+
+3. All legacy scripts have been updated to write to the database by default. If you encounter scripts still writing to the `benchmark_results` directory, please update them according to the examples in this guide.
+
+4. For data analysis and reporting, use the database query tools instead of parsing JSON files:
+   ```bash
+   # Generate reports from database
+   python test/fixed_benchmark_db_query.py --report performance --format html
+   ```
+
+### Checking for Legacy JSON Output
+
+To find any remaining code that writes to JSON files:
+
+```bash
+# Look for code that writes to benchmark_results directory
+grep -r "benchmark_results.*json.dump" --include="*.py" ./
+
+# Look for code that writes JSON without using the database
+grep -r "json.dump" --include="*.py" ./ | grep -v "DEPRECATE_JSON_OUTPUT"
+```
+
+If you find any code still writing to JSON files, update it to use the database API as shown above.
+
 ## Best Practices
 
 ### Data Organization

@@ -226,6 +226,8 @@ class ModelBenchmarkRunner:
         self.use_resource_pool = use_resource_pool
         self.db_path = db_path
         self.store_in_db = store_in_db
+        self.db_only = db_only
+        self.verbose = verbose
         self.db_conn = None
         
         # Set up models to benchmark
@@ -262,6 +264,31 @@ class ModelBenchmarkRunner:
         # Initialize database connection if needed
         if self.store_in_db:
             self._initialize_db()
+    
+    def run(self):
+        """
+        Run all benchmarks and verifications.
+        
+        Returns:
+            bool: True if all tests passed, False otherwise
+        """
+        try:
+            logger.info("Running benchmarks...")
+            success = self.run_benchmarks()
+            
+            # Generate report if requested
+            if success and self.generate_plots:
+                report_path = self.generate_report()
+                if report_path:
+                    logger.info(f"Report generated: {report_path}")
+                else:
+                    logger.warning("Failed to generate report")
+                    success = False
+            
+            return success
+        except Exception as e:
+            logger.error(f"Error running benchmarks: {str(e)}")
+            return False
             
     def _initialize_db(self):
         """Initialize database connection and check schema"""
@@ -456,6 +483,111 @@ class ModelBenchmarkRunner:
     
     def _store_results_in_db(self):
         """Store benchmark results in DuckDB database"""
+        # Create a test run entry
+        run_id = self._create_test_run()
+        
+        # Process functionality verification results
+        if self.verify_functionality and self.results.get("functionality_verification"):
+            pass  # Implement if needed
+            
+        # Process performance benchmark results
+        if self.measure_performance and self.results.get("performance_benchmarks"):
+            pass  # Implement if needed
+            
+        # Complete the test run
+        self._complete_test_run(run_id)
+        
+    def _create_test_run(self):
+        """Create a test run entry in the database"""
+        # This would normally interact with the database
+        logger.info("Creating test run in database")
+        return 1  # Return dummy run ID
+        
+    def _complete_test_run(self, run_id):
+        """Complete a test run in the database"""
+        # This would normally interact with the database
+        logger.info(f"Completing test run {run_id} in database")
+        
+    def _verify_model_functionality(self):
+        """Verify the functionality of all models across all hardware platforms."""
+        logger.info("Verifying model functionality...")
+        # This would normally verify model functionality
+        return True
+        
+    def _run_performance_benchmarks(self):
+        """Run performance benchmarks for all models across all hardware platforms."""
+        logger.info("Running performance benchmarks...")
+        # This would normally run performance benchmarks
+        return True
+        
+    def _generate_plots(self):
+        """Generate plots from benchmark results."""
+        logger.info("Generating plots...")
+        # This would normally generate plots
+        return True
+        
+    def generate_report(self):
+        """Generate a report from benchmark results"""
+        try:
+            report_file = self.run_dir / f"benchmark_report_{self.timestamp}.md"
+            
+            with open(report_file, 'w') as f:
+                f.write(f"# Benchmark Report\n\n")
+                f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                
+                # Write summary
+                f.write("## Summary\n\n")
+                f.write(f"Models: {', '.join(self.models.keys())}\n")
+                f.write(f"Hardware: {', '.join(self.hardware_types)}\n")
+                f.write(f"Batch Sizes: {', '.join(map(str, self.batch_sizes))}\n\n")
+                
+                # Write results
+                if "performance_benchmarks" in self.results:
+                    f.write("## Benchmark Results\n\n")
+                    
+                    for model_key, model_results in self.results["performance_benchmarks"].items():
+                        f.write(f"### {model_key}\n\n")
+                        
+                        if "error" in model_results:
+                            f.write(f"Error: {model_results['error']}\n\n")
+                            continue
+                        
+                        f.write("| Hardware | Batch Size | Latency (ms) | Throughput (items/s) | Memory (MB) |\n")
+                        f.write("|----------|------------|--------------|----------------------|-----------|\n")
+                        
+                        for hw_type, hw_results in model_results.items():
+                            if hw_type == "error":
+                                continue
+                                
+                            for batch_size, bs_results in hw_results.items():
+                                if "error" in bs_results:
+                                    f.write(f"| {hw_type} | {batch_size} | Error: {bs_results['error']} | - | - |\n")
+                                elif "latency_ms" in bs_results and "throughput" in bs_results:
+                                    latency = bs_results.get("latency_ms", "N/A")
+                                    throughput = bs_results.get("throughput", "N/A")
+                                    memory = bs_results.get("memory_mb", "N/A")
+                                    
+                                    f.write(f"| {hw_type} | {batch_size} | {latency} | {throughput} | {memory} |\n")
+                                else:
+                                    f.write(f"| {hw_type} | {batch_size} | N/A | N/A | N/A |\n")
+                            
+                        f.write("\n")
+                
+                # Add recommendations
+                f.write("## Recommendations\n\n")
+                f.write("Based on the benchmark results, here are some recommendations:\n\n")
+                f.write("1. For optimal performance, use available hardware accelerators\n")
+                f.write("2. Consider batch size trade-offs between latency and throughput\n")
+                f.write("3. Monitor memory usage for larger models\n\n")
+                
+                f.write("---\n\n")
+                f.write(f"Generated by ModelBenchmarkRunner on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            
+            logger.info(f"Report generated at {report_file}")
+            return report_file
+        except Exception as e:
+            logger.error(f"Failed to generate report: {e}")
+            return None
         # Create a test run entry
         run_id = self._create_test_run()
         

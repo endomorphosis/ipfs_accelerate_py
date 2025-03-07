@@ -8,6 +8,7 @@ Phase 16 focusing on advanced hardware benchmarking, web platform integration, a
 
 ## Recent Documentation
 
+- **[Benchmark JSON Deprecation Guide](BENCHMARK_JSON_DEPRECATION_GUIDE.md)** - NEW! Important guide on writing benchmark results to DuckDB instead of JSON files
 - **[Comprehensive Benchmark Execution Guide](COMPREHENSIVE_BENCHMARK_EXECUTION_GUIDE.md)** - NEW! Guide to running comprehensive benchmarks with the new orchestration script
 - **[Simulation Detection Improvements](SIMULATION_DETECTION_IMPROVEMENTS.md)** - NEW! Documentation of improvements to properly handle and flag simulated hardware
 - **[Benchmark Timing Report Guide](BENCHMARK_TIMING_REPORT_GUIDE.md)** - NEW! Comprehensive guide to the benchmark timing report system with raw timing data tables
@@ -811,6 +812,15 @@ All 11 API backends are now fully implemented with complete functionality:
 | OVMS | ✅ COMPLETE | OpenVINO Model Server integration |
 | OPEA | ✅ COMPLETE | Open Platform for Enterprise AI |
 | S3 Kit | ✅ COMPLETE | Model storage and retrieval, connection multiplexing |
+
+## Important: Benchmark Results Storage
+
+As of March 6, 2025, all benchmark results are written directly to the DuckDB database instead of JSON files in the `benchmark_results` directory. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts.
+
+- Use the database for all new benchmark results
+- Do not write to the `benchmark_results` directory
+- See [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) for implementation details
+- For existing code that writes to JSON files, update it to use the database API
 
 ## Advanced API Features
 
