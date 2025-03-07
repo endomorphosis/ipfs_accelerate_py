@@ -1,3 +1,31 @@
+
+# ⚠️ SIMULATION WARNING ⚠️
+
+**This report contains data from simulated hardware that may not reflect actual performance.**
+
+The following hardware platforms were simulated:
+- WEBGPU 
+- WEBNN
+- ROCM
+- MPS
+- QNN
+- OPENVINO
+
+Simulated results should be treated as approximations and not used for critical performance decisions without validation on actual hardware.
+
+---
+
+
+# ⚠️ WARNING: POTENTIALLY MISLEADING DATA ⚠️
+
+**This report may contain simulated benchmark results that are presented as real hardware data.**
+
+Issue: May contain simulation results presented as real data
+
+*Marked as problematic by cleanup_stale_reports.py on 2025-03-06 19:14:42*
+
+---
+
 # Model Benchmark Report
 
 Generated: 2025-03-02 20:13:28

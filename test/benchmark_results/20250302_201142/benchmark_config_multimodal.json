@@ -22,5 +22,28 @@
   ],
   "use_resource_pool": true,
   "parallel": true,
-  "generate_plots": true
+  "generate_plots": true,
+  "simulated_hardware": [
+    "webgpu",
+    "webnn",
+    "rocm",
+    "mps",
+    "qnn",
+    "openvino"
+  ],
+  "warnings": [
+    {
+      "type": "simulation",
+      "message": "This data contains simulated hardware results",
+      "affected_hardware": [
+        "webgpu",
+        "webnn",
+        "rocm",
+        "mps",
+        "qnn",
+        "openvino"
+      ],
+      "verification_date": "2025-04-10T00:00:00Z"
+    }
+  ]
 }

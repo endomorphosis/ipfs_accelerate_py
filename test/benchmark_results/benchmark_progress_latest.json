@@ -1,22 +1,52 @@
 {
-  "timestamp": "20250306_185047",
+  "timestamp": "20250306_200849",
   "completed_benchmarks": [
     {
       "model_type": "bert",
+      "hardware_type": "cpu",
+      "timestamp": "2025-03-06T20:08:54.538378"
+    },
+    {
+      "model_type": "bert",
       "hardware_type": "cuda",
-      "timestamp": "2025-03-06T18:50:54.251928"
+      "timestamp": "2025-03-06T20:08:57.552117"
+    },
+    {
+      "model_type": "t5",
+      "hardware_type": "cpu",
+      "timestamp": "2025-03-06T20:09:00.779320"
     },
     {
       "model_type": "t5",
       "hardware_type": "cuda",
-      "timestamp": "2025-03-06T18:50:59.488465"
+      "timestamp": "2025-03-06T20:09:03.881953"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "cpu",
+      "timestamp": "2025-03-06T20:09:07.402528"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "cuda",
+      "timestamp": "2025-03-06T20:09:10.892794"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "cpu",
+      "timestamp": "2025-03-06T20:09:14.002635"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "cuda",
+      "timestamp": "2025-03-06T20:09:17.438391"
     }
   ],
   "failed_benchmarks": [],
   "skipped_benchmarks": [],
   "summary": {
-    "total": 2,
-    "completed": 2,
+    "total": 8,
+    "completed": 8,
     "failed": 0,
     "skipped": 0,
     "completion_percentage": 100.0

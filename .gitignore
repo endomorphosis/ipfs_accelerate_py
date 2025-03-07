@@ -15,4 +15,6 @@ model_cache/*
 *_status_*
 *.bak
 *.py.bak
-*/benchmark_results/*.json
+test/benchmark_results/*.json
+test/benchmark_results/*/*
+*/benchmark_results/*

@@ -1,5 +1,34 @@
 {
   "inference": {},
   "training": {},
-  "hardware_compatibility": {}
+  "hardware_compatibility": {},
+  "WARNING": {
+    "message": "POTENTIALLY MISLEADING DATA",
+    "details": "This file may contain simulated benchmark results that are presented as real hardware data.",
+    "issue": "File appears to be truncated or empty",
+    "marked_at": "2025-03-06T19:14:42.723252"
+  },
+  "simulated_hardware": [
+    "webgpu",
+    "webnn",
+    "rocm",
+    "mps",
+    "qnn",
+    "openvino"
+  ],
+  "warnings": [
+    {
+      "type": "simulation",
+      "message": "This data contains simulated hardware results",
+      "affected_hardware": [
+        "webgpu",
+        "webnn",
+        "rocm",
+        "mps",
+        "qnn",
+        "openvino"
+      ],
+      "verification_date": "2025-04-10T00:00:00Z"
+    }
+  ]
 }

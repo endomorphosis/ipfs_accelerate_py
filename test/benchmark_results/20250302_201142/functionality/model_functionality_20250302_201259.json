@@ -156,5 +156,28 @@
       "stdout": "Starting wav2vec2 test...\nwav2vec2 initialization status: {'torch': True, 'transformers': True, 'numpy': True}\nCreating minimal wav2vec2 model for testing\nUsing model facebook/wav2vec2-base-960h for automatic-speech-recognition task\nModel type detected for CPU: wav2vec2\nSuccessfully loaded AutoProcessor for CPU\nSuccessfully loaded Wav2Vec2ForCTC for CPU\nTesting CPU model with sample input...\nProcessor test successful, inputs shape: torch.Size([1, 8000])\nSuccessfully tested model and processor for facebook/wav2vec2-base-960h on CPU\nError in real CPU inference: Wav2Vec2ForCTC.forward() got an unexpected keyword argument 'return_tensors'\nwav2vec2 test completed\n\nWAV2VEC2 TEST RESULTS:\ninit: Success\ncpu_init: Success\ncpu_handler: Success (REAL)\n",
       "stderr": "The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.\nSome weights of Wav2Vec2ForCTC were not initialized from the model checkpoint at facebook/wav2vec2-base-960h and are newly initialized: ['wav2vec2.masked_spec_embed']\nYou should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.\n"
     }
+  ],
+  "simulated_hardware": [
+    "webgpu",
+    "webnn",
+    "rocm",
+    "mps",
+    "qnn",
+    "openvino"
+  ],
+  "warnings": [
+    {
+      "type": "simulation",
+      "message": "This data contains simulated hardware results",
+      "affected_hardware": [
+        "webgpu",
+        "webnn",
+        "rocm",
+        "mps",
+        "qnn",
+        "openvino"
+      ],
+      "verification_date": "2025-04-10T00:00:00Z"
+    }
   ]
 }

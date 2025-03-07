@@ -4,6 +4,42 @@
 
 ### New Documentation Added
 
+#### March 6, 2025: Simulation Detection and Stale Reports Cleanup
+
+1. **SIMULATION_DETECTION_IMPROVEMENTS.md**: Comprehensive documentation on the simulation detection and flagging system:
+   - Complete overview of all system improvements
+   - Database schema updates with simulation flags
+   - Report generation enhancements for clear simulation marking
+   - Hardware detection improvements for accurate simulation tracking
+   - Stale reports cleanup implementation details
+   - Command-line interfaces for all components
+   - Testing methodology and validation
+   - Best practices for handling simulated data
+
+2. **STALE_BENCHMARK_REPORTS_FIXED.md**: Detailed documentation of the stale reports cleanup task:
+   - Comprehensive explanation of the cleanup process
+   - Methods for identifying problematic reports
+   - Techniques for marking reports with simulation warnings
+   - Testing and validation of the cleanup process
+   - Future recommendations for report generation
+   - Best practices for maintaining report transparency
+
+3. **PHASE16_CLEANUP_SUMMARY.md**: Summary of Phase 16 cleanup activities:
+   - Complete overview of the simulation detection work
+   - Database schema enhancement explanation
+   - Report cleanup implementation details
+   - Testing and validation methodology
+   - Results of the cleanup process
+   - Next steps after completion
+
+4. **Test Scripts and Implementation Files**:
+   - **test_simulation_detection.py**: Test script for simulation detection and flagging
+   - **test_simulation_awareness.py**: Test script for report simulation awareness
+   - **run_cleanup_stale_reports.py**: Script to automate the cleanup of stale benchmark reports
+   - **cleanup_stale_reports.py**: Tool to identify and clean up stale benchmark reports
+   - **update_db_schema_for_simulation.py**: Script to update database schema with simulation flags
+   - **qnn_simulation_helper.py**: Utility for controlling QNN simulation
+
 #### March 6, 2025: Next Steps Implementation Guide
 
 1. **NEXT_STEPS_IMPLEMENTATION.md**: Comprehensive implementation guide for the next steps in the roadmap:

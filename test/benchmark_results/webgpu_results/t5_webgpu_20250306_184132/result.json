@@ -22,5 +22,28 @@
     "load_time_ms": 480,
     "memory_mb": 150,
     "throughput_items_per_second": 100.0
-  }
+  },
+  "simulated_hardware": [
+    "webgpu",
+    "webnn",
+    "rocm",
+    "mps",
+    "qnn",
+    "openvino"
+  ],
+  "warnings": [
+    {
+      "type": "simulation",
+      "message": "This data contains simulated hardware results",
+      "affected_hardware": [
+        "webgpu",
+        "webnn",
+        "rocm",
+        "mps",
+        "qnn",
+        "openvino"
+      ],
+      "verification_date": "2025-04-10T00:00:00Z"
+    }
+  ]
 }

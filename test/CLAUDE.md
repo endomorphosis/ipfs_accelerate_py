@@ -63,6 +63,28 @@ The project has successfully completed 16 phases of implementation, focusing on 
 - ✅ Add advanced visualizations for hardware performance comparisons (COMPLETED - March 6, 2025)
 - ✅ Add power efficiency and thermal metrics for mobile/edge hardware (COMPLETED - March 6, 2025)
 
+#### Benchmark System Enhancements (COMPLETED - April 6, 2025)
+- ✅ Enhanced simulation detection and reporting system (COMPLETED - April 6, 2025)
+  - Added is_simulated and simulation_reason columns to database tables
+  - Added hardware_availability_log table for tracking detection status
+  - Created update_db_schema_for_simulation.py for schema updates
+  - Implemented detailed logging of simulation status in benchmark system
+- ✅ Stale report detection and cleanup (COMPLETED - April 6, 2025)
+  - Created cleanup_stale_reports.py utility for detecting and marking problematic reports
+  - Implemented marking system for HTML, Markdown, and JSON files
+  - Added explicit warnings to all reports with potentially misleading data
+  - Added validation functions to all report generators
+- ✅ Report validation enhancements (COMPLETED - April 6, 2025)
+  - Added _validate_data_authenticity() to validate benchmark data
+  - Added clear visual indicators for simulated hardware results
+  - Added validation step to all report generators
+  - Enhanced database query logic to identify simulation status
+- ✅ Benchmark verification tools (COMPLETED - April 6, 2025)
+  - Created view_benchmark_results.py for database query and verification
+  - Added tools for checking simulation status and fixing database flags
+  - Implemented comprehensive simulation tracking functions
+  - Added detailed documentation in BENCHMARK_DB_FIX.md
+
 ## Time-Series Performance Tracking (COMPLETED - March 25, 2025)
 
 The framework now includes a comprehensive time-series performance tracking system with these features:
@@ -111,7 +133,7 @@ The framework includes a comprehensive benchmark timing report generator that pr
 - Consistent DuckDB database schema for all benchmark data
 - Support for sample data generation for testing and demos
 
-## Comprehensive Benchmarks and Timing Data (UPDATED - April 8, 2025)
+## Comprehensive Benchmarks and Timing Data (UPDATED - April 10, 2025)
 
 The framework includes full benchmark execution and timing data for all model types across all hardware platforms:
 
@@ -121,6 +143,14 @@ The framework includes full benchmark execution and timing data for all model ty
 - HTML and Markdown reports with detailed performance comparisons
 - Interactive visualizations for comparing hardware platforms
 - Power efficiency metrics for mobile/edge devices
+- Benchmark completion report with status of all testing targets
+- March 2025 Web Platform optimizations benchmark results:
+  - WebGPU compute shader optimization for audio models (Whisper, Wav2Vec2)
+  - Parallel loading optimization for multimodal models (CLIP, LLaVA)
+  - Shader precompilation for text and vision models (BERT, ViT)
+  - Combined optimization benchmarks with all features enabled
+- Clear distinction between real and simulated hardware results (ADDED - April 6, 2025)
+- Simulation detection and reporting for transparent benchmarking
 
 ```bash
 # Execute comprehensive benchmarks using the new script (April 2025 Update)
@@ -1038,6 +1068,46 @@ python test/scripts/benchmark_db_query.py --sql "SELECT model_type, COUNT(*) as 
 # Compare power efficiency across hardware platforms
 python test/scripts/benchmark_db_query.py --sql "SELECT hardware_type, AVG(energy_efficiency_items_per_joule) as avg_efficiency FROM performance_comparison GROUP BY hardware_type ORDER BY avg_efficiency DESC" --format chart --output power_efficiency.png
 ```
+
+## Benchmark System and Simulation Detection Tools (ADDED - April 6, 2025)
+
+The framework now includes comprehensive tools for benchmark management, validation, and simulation detection:
+
+```bash
+# Update database schema to include simulation flags
+python update_db_schema_for_simulation.py --db-path ./benchmark_db.duckdb
+
+# Check simulation status in database
+python view_benchmark_results.py --check-simulation
+
+# Generate a benchmark summary with simulation status indicators
+python view_benchmark_results.py --output benchmark_summary.md
+
+# Scan for problematic reports that may contain misleading data
+python cleanup_stale_reports.py --scan
+
+# Mark problematic reports with clear warnings
+python cleanup_stale_reports.py --mark
+
+# Archive problematic files
+python cleanup_stale_reports.py --archive
+
+# Fix report generator scripts to include validation
+python cleanup_stale_reports.py --fix-report-py
+
+# Run benchmarks with explicit simulation for unavailable hardware
+python run_benchmark_with_db.py --model bert-base-uncased --hardware rocm --batch-sizes 1,2 --simulate
+
+# View performance results from database with simulation status
+python view_benchmark_results.py
+
+# Generate CSV report with all benchmark data
+python view_benchmark_results.py --format csv --output benchmark_data.csv
+```
+
+Key documentation:
+- [Simulation Detection Improvements Guide](SIMULATION_DETECTION_IMPROVEMENTS_GUIDE.md): Detailed documentation of simulation detection enhancements
+- [Benchmark Database Fix Guide](BENCHMARK_DB_FIX.md): Summary of database fixes and improvements
 
 ## Performance Benchmarks
 

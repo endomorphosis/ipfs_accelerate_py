@@ -2,5 +2,11 @@
   "total_files": 1,
   "files_fixed": 0,
   "total_issues_fixed": 0,
-  "files_details": []
+  "files_details": [],
+  "WARNING": {
+    "message": "POTENTIALLY MISLEADING DATA",
+    "details": "This file may contain simulated benchmark results that are presented as real hardware data.",
+    "issue": "File appears to be truncated or empty",
+    "marked_at": "2025-03-06T19:14:42.725660"
+  }
 }

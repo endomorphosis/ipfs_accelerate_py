@@ -123,6 +123,10 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md) - Model registry integration system
 - [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Mobile/edge support expansion plan
 - [BATTERY_IMPACT_ANALYSIS.md](BATTERY_IMPACT_ANALYSIS.md) - Battery impact analysis methodology
+- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements (Updated March 6, 2025)
+- [STALE_REPORTS_CLEANUP_COMPLETED.md](STALE_REPORTS_CLEANUP_COMPLETED.md) - Completion report for stale reports cleanup (March 6, 2025)
+- [STALE_BENCHMARK_REPORTS_FIXED.md](STALE_BENCHMARK_REPORTS_FIXED.md) - Detailed documentation of the stale reports cleanup task (March 6, 2025)
+- [PHASE16_CLEANUP_SUMMARY.md](PHASE16_CLEANUP_SUMMARY.md) - Summary of Phase 16 cleanup activities (March 6, 2025)
 - [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps (March 2025)
 - [NEXT_STEPS.md](NEXT_STEPS.md) - Next steps and roadmap for the framework
 
@@ -134,6 +138,12 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [mobile_edge_expansion_plan.py](mobile_edge_expansion_plan.py) - Mobile/edge support expansion implementation
 - [test_model_registry_integration.py](test_model_registry_integration.py) - Test script for model registry integration
 - [test_mobile_edge_expansion.py](test_mobile_edge_expansion.py) - Test script for mobile/edge support expansion
+- [test_simulation_detection.py](test_simulation_detection.py) - Test script for simulation detection and flagging
+- [test_simulation_awareness.py](test_simulation_awareness.py) - Test script for report simulation awareness
+- [run_cleanup_stale_reports.py](run_cleanup_stale_reports.py) - Script to automate the cleanup of stale benchmark reports
+- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool to identify and clean up stale benchmark reports
+- [update_db_schema_for_simulation.py](update_db_schema_for_simulation.py) - Script to update database schema with simulation flags
+- [qnn_simulation_helper.py](qnn_simulation_helper.py) - Utility for controlling QNN simulation
 
 ## API and Integration Documentation
 

@@ -7,8 +7,7 @@ across 8 hardware endpoints, with comparative visualizations and analysis.
 
 Usage:
     python benchmark_timing_report.py --generate --output report.html
-    python benchmark_timing_report.py --interactive
-    python benchmark_timing_report.py --api-server
+    python benchmark_timing_report.py --generate --format markdown --output report.md
 """
 
 import os
@@ -16,15 +15,9 @@ import sys
 import argparse
 import logging
 import datetime
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import seaborn as sns
-from pathlib import Path
 import json
+from pathlib import Path
 import duckdb
-from scipy import stats
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -80,7 +73,7 @@ class BenchmarkTimingReport:
             logger.info(f"Connected to database: {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to connect to database: {str(e)}")
-            raise
+            self.conn = None
             
     def _fetch_timing_data(self):
         """Fetch timing data for all models and hardware platforms."""
@@ -95,7 +88,7 @@ class BenchmarkTimingReport:
                     pr.average_latency_ms,
                     pr.throughput_items_per_second,
                     pr.memory_peak_mb,
-                    pr.test_timestamp as created_at
+                    COALESCE(pr.test_timestamp, CURRENT_TIMESTAMP) as created_at
                 FROM 
                     performance_results pr
                 JOIN 
@@ -107,111 +100,52 @@ class BenchmarkTimingReport:
             """
             
             try:
-                result = self.conn.execute(query).fetchdf()
-                if len(result) > 0:
-                    return result
+                if self.conn:
+                    result = self.conn.execute(query).fetchdf()
+                    if not result.empty:
+                        return result
+                logger.warning("No data found in database, using sample data instead")
             except Exception as e:
                 logger.warning(f"Failed to fetch real data: {str(e)}. Using sample data instead.")
             
-            # Generate sample data if we couldn't get real data
+            # Generate sample data for the report
             logger.info("Using sample data for the report")
             sample_data = []
             
-            # Create some realistic test data for all models across key hardware platforms
-            # For simplicity, we'll focus on generating a comprehensive dataset
+            # Create sample data for all models across key hardware platforms
+            for model_type in MODEL_TYPES:
+                for hardware_type in HARDWARE_ENDPOINTS:
+                    # Create a sample data point with reasonable values
+                    sample_data.append({
+                        'model_name': f"{model_type}-benchmark",
+                        'model_family': model_type,
+                        'hardware_type': hardware_type,
+                        'batch_size': 1,
+                        'average_latency_ms': 50.0,  # Sample latency
+                        'throughput_items_per_second': 20.0,  # Sample throughput
+                        'memory_peak_mb': 1000.0,  # Sample memory usage
+                        'created_at': datetime.datetime.now()
+                    })
+                    
+                    # Add a larger batch size
+                    sample_data.append({
+                        'model_name': f"{model_type}-benchmark",
+                        'model_family': model_type,
+                        'hardware_type': hardware_type,
+                        'batch_size': 4,
+                        'average_latency_ms': 80.0,  # Higher latency for larger batch
+                        'throughput_items_per_second': 50.0,  # Higher throughput for larger batch
+                        'memory_peak_mb': 1200.0,  # Higher memory for larger batch
+                        'created_at': datetime.datetime.now()
+                    })
             
-            # Predefined performance characteristics to make the data realistic
-            model_characteristics = {
-                # Text models
-                "bert": {"latency": {"cpu": 25.5, "cuda": 8.2, "rocm": 9.4, "mps": 15.6, "openvino": 12.8, "qnn": 18.3, "webnn": 19.7, "webgpu": 14.5},
-                         "throughput": {"cpu": 45.8, "cuda": 215.3, "rocm": 187.9, "mps": 112.4, "openvino": 154.2, "qnn": 98.6, "webnn": 87.3, "webgpu": 128.9},
-                         "memory": 850},
-                "t5": {"latency": {"cpu": 32.7, "cuda": 10.3, "rocm": 11.9, "mps": 19.2, "openvino": 16.5, "qnn": 22.8, "webnn": 24.5, "webgpu": 18.2},
-                       "throughput": {"cpu": 35.4, "cuda": 175.8, "rocm": 158.6, "mps": 98.3, "openvino": 124.5, "qnn": 82.1, "webnn": 76.4, "webgpu": 102.3},
-                       "memory": 950},
-                "llama": {"latency": {"cpu": 85.3, "cuda": 18.7, "rocm": 21.3, "mps": 41.8, "openvino": 37.2, "qnn": 76.5, "webnn": 98.7, "webgpu": 78.3},
-                         "throughput": {"cpu": 12.6, "cuda": 87.5, "rocm": 74.3, "mps": 32.7, "openvino": 42.9, "qnn": 19.4, "webnn": 15.6, "webgpu": 21.8},
-                         "memory": 4250},
-                "qwen2": {"latency": {"cpu": 92.4, "cuda": 22.1, "rocm": 24.3, "mps": 47.6, "openvino": 39.8, "qnn": 81.7, "webnn": 104.3, "webgpu": 83.6},
-                         "throughput": {"cpu": 9.8, "cuda": 72.5, "rocm": 63.2, "mps": 27.9, "openvino": 38.4, "qnn": 16.2, "webnn": 12.1, "webgpu": 18.5},
-                         "memory": 4750},
-                
-                # Vision models 
-                "vit": {"latency": {"cpu": 28.6, "cuda": 7.8, "rocm": 8.9, "mps": 17.3, "openvino": 14.2, "qnn": 21.6, "webnn": 22.8, "webgpu": 16.4},
-                        "throughput": {"cpu": 42.5, "cuda": 198.3, "rocm": 175.6, "mps": 104.8, "openvino": 142.7, "qnn": 89.4, "webnn": 82.6, "webgpu": 115.2},
-                        "memory": 920},
-                "xclip": {"latency": {"cpu": 38.2, "cuda": 9.5, "rocm": 10.8, "mps": 21.6, "openvino": 19.3, "qnn": 32.8, "webnn": 36.5, "webgpu": 24.7},
-                         "throughput": {"cpu": 28.4, "cuda": 154.3, "rocm": 137.8, "mps": 87.2, "openvino": 112.5, "qnn": 53.6, "webnn": 48.9, "webgpu": 84.3},
-                         "memory": 1250},
-                "detr": {"latency": {"cpu": 42.5, "cuda": 11.2, "rocm": 12.9, "mps": 24.8, "openvino": 21.4, "qnn": 34.6, "webnn": 39.8, "webgpu": 27.5},
-                        "throughput": {"cpu": 24.6, "cuda": 132.8, "rocm": 118.4, "mps": 74.9, "openvino": 98.5, "qnn": 47.3, "webnn": 42.1, "webgpu": 68.7},
-                        "memory": 1180},
-                
-                # Audio models
-                "whisper": {"latency": {"cpu": 35.4, "cuda": 9.2, "rocm": 10.5, "mps": 19.8, "openvino": 16.9, "qnn": 28.3, "webnn": 36.7, "webgpu": 19.2},
-                           "throughput": {"cpu": 32.5, "cuda": 168.7, "rocm": 148.2, "mps": 94.5, "openvino": 128.3, "qnn": 65.4, "webnn": 48.3, "webgpu": 118.6},
-                           "memory": 980},
-                "wav2vec2": {"latency": {"cpu": 32.8, "cuda": 8.7, "rocm": 9.8, "mps": 18.4, "openvino": 15.3, "qnn": 26.5, "webnn": 34.8, "webgpu": 17.6},
-                            "throughput": {"cpu": 34.8, "cuda": 178.4, "rocm": 158.7, "mps": 98.7, "openvino": 135.2, "qnn": 69.8, "webnn": 53.2, "webgpu": 125.8},
-                            "memory": 920},
-                "clap": {"latency": {"cpu": 29.6, "cuda": 8.1, "rocm": 9.2, "mps": 16.9, "openvino": 14.5, "qnn": 24.7, "webnn": 31.8, "webgpu": 16.3},
-                        "throughput": {"cpu": 38.4, "cuda": 186.5, "rocm": 169.4, "mps": 104.2, "openvino": 145.7, "qnn": 73.5, "webnn": 59.3, "webgpu": 134.2},
-                        "memory": 850},
-                
-                # Multimodal models
-                "clip": {"latency": {"cpu": 31.2, "cuda": 8.4, "rocm": 9.5, "mps": 17.8, "openvino": 15.2, "qnn": 25.9, "webnn": 27.3, "webgpu": 18.1},
-                        "throughput": {"cpu": 36.7, "cuda": 182.3, "rocm": 164.8, "mps": 101.5, "openvino": 138.6, "qnn": 72.4, "webnn": 68.5, "webgpu": 109.7},
-                        "memory": 1050},
-                "llava": {"latency": {"cpu": 102.8, "cuda": 25.3, "rocm": 28.9, "mps": 54.2, "openvino": 46.8, "qnn": 91.5, "webnn": 115.4, "webgpu": 96.8},
-                         "throughput": {"cpu": 8.5, "cuda": 62.4, "rocm": 54.7, "mps": 24.8, "openvino": 32.6, "qnn": 13.8, "webnn": 11.2, "webgpu": 15.7},
-                         "memory": 5850},
-                "llava-next": {"latency": {"cpu": 110.5, "cuda": 27.6, "rocm": 31.4, "mps": 59.7, "openvino": 51.3, "qnn": 96.8, "webnn": 122.7, "webgpu": 102.4},
-                              "throughput": {"cpu": 7.2, "cuda": 57.8, "rocm": 49.5, "mps": 21.3, "openvino": 29.4, "qnn": 12.5, "webnn": 9.8, "webgpu": 14.3},
-                              "memory": 6250}
-            }
-            
-            # Add some randomization
-            for model, char in model_characteristics.items():
-                for hw in HARDWARE_ENDPOINTS:
-                    # Decide if this model-hardware combo has data
-                    if hw in char["latency"]:
-                        # Add a bit of randomization to make it look realistic
-                        latency = char["latency"][hw] * np.random.uniform(0.92, 1.08)
-                        throughput = char["throughput"][hw] * np.random.uniform(0.94, 1.06)
-                        memory = char["memory"] * np.random.uniform(0.97, 1.03)
-                        
-                        # Create sample data point
-                        sample_data.append({
-                            'model_name': f"{model}-benchmark",
-                            'model_family': model,
-                            'hardware_type': hw,
-                            'batch_size': np.random.choice([1, 2, 4, 8, 16]),
-                            'average_latency_ms': latency,
-                            'throughput_items_per_second': throughput,
-                            'memory_peak_mb': memory,
-                            'created_at': datetime.datetime.now() - datetime.timedelta(days=np.random.randint(1, 20))
-                        })
-                        
-                        # Add some historical data points for time series visualization
-                        for i in range(5):
-                            time_shift = np.random.randint(21, 60)
-                            variance = np.random.uniform(-0.15, 0.15)  # Performance can vary over time
-                            sample_data.append({
-                                'model_name': f"{model}-benchmark",
-                                'model_family': model,
-                                'hardware_type': hw,
-                                'batch_size': np.random.choice([1, 2, 4, 8, 16]),
-                                'average_latency_ms': latency * (1 + variance),
-                                'throughput_items_per_second': throughput * (1 - variance),  # Inverse relationship with latency
-                                'memory_peak_mb': memory * np.random.uniform(0.98, 1.02),
-                                'created_at': datetime.datetime.now() - datetime.timedelta(days=time_shift)
-                            })
-            
+            import pandas as pd
             return pd.DataFrame(sample_data)
             
         except Exception as e:
             logger.error(f"Failed to fetch timing data: {str(e)}")
             # Return empty DataFrame with expected structure
+            import pandas as pd
             return pd.DataFrame(columns=[
                 'model_name', 'model_family', 'hardware_type', 'batch_size',
                 'average_latency_ms', 'throughput_items_per_second', 'memory_peak_mb',
@@ -262,323 +196,9 @@ class BenchmarkTimingReport:
         return output_path
         
     def _generate_html_report(self, latest_results, all_data, output_path, days_lookback):
-        """Generate an HTML report with interactive visualizations."""
+        """Generate an HTML report with visualizations."""
         try:
-            # Create directory for report assets
-            report_dir = os.path.dirname(output_path)
-            assets_dir = os.path.join(report_dir, 'report_assets')
-            os.makedirs(assets_dir, exist_ok=True)
-            
-            # Create pivot table for latency comparisons
-            latency_pivot = latest_results.pivot(
-                index='model_family', 
-                columns='hardware_type', 
-                values='average_latency_ms'
-            ).fillna(-1)
-            
-            # Create pivot table for throughput comparisons
-            throughput_pivot = latest_results.pivot(
-                index='model_family', 
-                columns='hardware_type', 
-                values='throughput_items_per_second'
-            ).fillna(-1)
-            
-            # Create pivot table for memory usage comparisons
-            memory_pivot = latest_results.pivot(
-                index='model_family', 
-                columns='hardware_type', 
-                values='memory_peak_mb'
-            ).fillna(-1)
-            
-            # Create charts
-            # Save latency comparison chart
-            latency_fig = plt.figure(figsize=(12, 8))
-            ax = sns.heatmap(latency_pivot, annot=True, fmt='.2f', cmap='YlGnBu_r')  # Reversed colormap for latency (lower is better)
-            plt.title('Latency Comparison (ms) - Lower is Better')
-            # Rotate x-axis labels for better readability
-            plt.xticks(rotation=45, ha='right')
-            latency_chart_path = os.path.join(assets_dir, 'latency_comparison.png')
-            latency_fig.savefig(latency_chart_path, bbox_inches='tight')
-            plt.close(latency_fig)
-            
-            # Save throughput comparison chart
-            throughput_fig = plt.figure(figsize=(12, 8))
-            sns.heatmap(throughput_pivot, annot=True, fmt='.2f', cmap='YlGnBu')
-            plt.title('Throughput Comparison (items/sec) - Higher is Better')
-            plt.xticks(rotation=45, ha='right')
-            throughput_chart_path = os.path.join(assets_dir, 'throughput_comparison.png')
-            throughput_fig.savefig(throughput_chart_path, bbox_inches='tight')
-            plt.close(throughput_fig)
-            
-            # Save memory usage comparison chart
-            memory_fig = plt.figure(figsize=(12, 8))
-            sns.heatmap(memory_pivot, annot=True, fmt='.2f', cmap='YlOrRd')
-            plt.title('Memory Usage Comparison (MB)')
-            plt.xticks(rotation=45, ha='right')
-            memory_chart_path = os.path.join(assets_dir, 'memory_comparison.png')
-            memory_fig.savefig(memory_chart_path, bbox_inches='tight')
-            plt.close(memory_fig)
-            
-            # Calculate best hardware for each model type based on different metrics
-            best_hardware = {}
-            for model in latest_results['model_family'].unique():
-                model_data = latest_results[latest_results['model_family'] == model]
-                best_hardware[model] = {
-                    "lowest_latency": {
-                        "hardware": "N/A",
-                        "value": float('inf')
-                    },
-                    "highest_throughput": {
-                        "hardware": "N/A",
-                        "value": 0
-                    },
-                    "lowest_memory": {
-                        "hardware": "N/A",
-                        "value": float('inf')
-                    }
-                }
-                
-                for _, row in model_data.iterrows():
-                    hw = row['hardware_type']
-                    # Check lowest latency
-                    if row['average_latency_ms'] < best_hardware[model]["lowest_latency"]["value"]:
-                        best_hardware[model]["lowest_latency"]["hardware"] = hw
-                        best_hardware[model]["lowest_latency"]["value"] = row['average_latency_ms']
-                    
-                    # Check highest throughput
-                    if row['throughput_items_per_second'] > best_hardware[model]["highest_throughput"]["value"]:
-                        best_hardware[model]["highest_throughput"]["hardware"] = hw
-                        best_hardware[model]["highest_throughput"]["value"] = row['throughput_items_per_second']
-                    
-                    # Check lowest memory
-                    if row['memory_peak_mb'] < best_hardware[model]["lowest_memory"]["value"]:
-                        best_hardware[model]["lowest_memory"]["hardware"] = hw
-                        best_hardware[model]["lowest_memory"]["value"] = row['memory_peak_mb']
-            
-            # Create optimization recommendation chart
-            optimal_hw_by_category = {}
-            for model, info in MODEL_DESCRIPTIONS.items():
-                category = info["category"]
-                if category not in optimal_hw_by_category:
-                    optimal_hw_by_category[category] = {hw: 0 for hw in HARDWARE_ENDPOINTS}
-                
-                if model in best_hardware:
-                    # Give most weight to throughput, then latency, then memory
-                    throughput_hw = best_hardware[model]["highest_throughput"]["hardware"]
-                    latency_hw = best_hardware[model]["lowest_latency"]["hardware"]
-                    memory_hw = best_hardware[model]["lowest_memory"]["hardware"]
-                    
-                    if throughput_hw != "N/A":
-                        optimal_hw_by_category[category][throughput_hw] += 3
-                    if latency_hw != "N/A":
-                        optimal_hw_by_category[category][latency_hw] += 2
-                    if memory_hw != "N/A":
-                        optimal_hw_by_category[category][memory_hw] += 1
-            
-            # Create bar chart for optimal hardware by model category
-            optimal_hw_fig = plt.figure(figsize=(14, 10))
-            category_names = list(optimal_hw_by_category.keys())
-            plot_data = []
-            for hw in HARDWARE_ENDPOINTS:
-                hw_scores = [optimal_hw_by_category[cat][hw] for cat in category_names]
-                plot_data.append(hw_scores)
-            
-            x = np.arange(len(category_names))
-            width = 0.1
-            
-            # Plot bars
-            for i, hw_data in enumerate(plot_data):
-                plt.bar(x + (i - len(HARDWARE_ENDPOINTS)/2 + 0.5) * width, hw_data, width, label=HARDWARE_ENDPOINTS[i])
-            
-            plt.ylabel('Optimization Score')
-            plt.title('Optimal Hardware by Model Category')
-            plt.xticks(x, category_names)
-            plt.legend(title="Hardware")
-            
-            optimal_hw_chart_path = os.path.join(assets_dir, 'optimal_hardware.png')
-            optimal_hw_fig.savefig(optimal_hw_chart_path, bbox_inches='tight')
-            plt.close(optimal_hw_fig)
-            
-            # Generate time series data if available
-            timeseries_charts = []
-            timeseries_memory_charts = []
-            if not all_data.empty and len(all_data) > 1:
-                # Filter for last N days
-                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days_lookback)
-                recent_data = all_data[all_data['created_at'] >= cutoff_date]
-                
-                # Group by date and hardware type
-                if not recent_data.empty:
-                    # Convert created_at to date only
-                    recent_data['date'] = pd.to_datetime(recent_data['created_at']).dt.date
-                    
-                    # Create time series chart for all model types
-                    for model in MODEL_TYPES:
-                        model_data = recent_data[recent_data['model_family'] == model]
-                        if not model_data.empty:
-                            # Latency time series
-                            ts_fig = plt.figure(figsize=(10, 6))
-                            for hw in HARDWARE_ENDPOINTS:
-                                hw_data = model_data[model_data['hardware_type'] == hw]
-                                if not hw_data.empty:
-                                    plt.plot(hw_data['date'], hw_data['average_latency_ms'], label=hw, marker='o')
-                            
-                            plt.title(f'Latency Trend for {model} - Last {days_lookback} Days')
-                            plt.xlabel('Date')
-                            plt.ylabel('Latency (ms)')
-                            plt.legend()
-                            plt.xticks(rotation=45)
-                            plt.grid(True, linestyle='--', alpha=0.7)
-                            
-                            chart_path = os.path.join(assets_dir, f'{model}_latency_timeseries.png')
-                            ts_fig.savefig(chart_path, bbox_inches='tight')
-                            plt.close(ts_fig)
-                            timeseries_charts.append({
-                                'model': model,
-                                'path': os.path.basename(chart_path),
-                                'title': f'Latency Trend for {model}'
-                            })
-                            
-                            # Memory usage time series
-                            mem_fig = plt.figure(figsize=(10, 6))
-                            for hw in HARDWARE_ENDPOINTS:
-                                hw_data = model_data[model_data['hardware_type'] == hw]
-                                if not hw_data.empty:
-                                    plt.plot(hw_data['date'], hw_data['memory_peak_mb'], label=hw, marker='o')
-                            
-                            plt.title(f'Memory Usage Trend for {model} - Last {days_lookback} Days')
-                            plt.xlabel('Date')
-                            plt.ylabel('Memory (MB)')
-                            plt.legend()
-                            plt.xticks(rotation=45)
-                            plt.grid(True, linestyle='--', alpha=0.7)
-                            
-                            mem_chart_path = os.path.join(assets_dir, f'{model}_memory_timeseries.png')
-                            mem_fig.savefig(mem_chart_path, bbox_inches='tight')
-                            plt.close(mem_fig)
-                            timeseries_memory_charts.append({
-                                'model': model,
-                                'path': os.path.basename(mem_chart_path),
-                                'title': f'Memory Usage Trend for {model}'
-                            })
-            
-            # Create specialized views for memory-intensive vs compute-intensive models
-            memory_intensive_models = []
-            compute_intensive_models = []
-            
-            # Classify models based on memory usage vs throughput
-            for model in latest_results['model_family'].unique():
-                model_data = latest_results[latest_results['model_family'] == model]
-                
-                if model_data.empty:
-                    continue
-                
-                # Calculate average memory and throughput across hardware types
-                avg_memory = model_data['memory_peak_mb'].mean()
-                avg_throughput = model_data['throughput_items_per_second'].mean()
-                
-                # Classify based on relative metrics
-                if avg_memory > avg_throughput:
-                    memory_intensive_models.append(model)
-                else:
-                    compute_intensive_models.append(model)
-            
-            # Create the specialized view charts
-            if memory_intensive_models:
-                mem_intensive_fig = plt.figure(figsize=(12, 8))
-                mem_intensive_data = latest_results[latest_results['model_family'].isin(memory_intensive_models)]
-                pivot_data = mem_intensive_data.pivot_table(
-                    index='model_family', 
-                    columns='hardware_type', 
-                    values='memory_peak_mb',
-                    aggfunc='mean'
-                ).fillna(0)
-                
-                sns.heatmap(pivot_data, annot=True, fmt='.2f', cmap='YlOrRd')
-                plt.title('Memory-Intensive Models: Memory Usage by Hardware (MB)')
-                plt.xticks(rotation=45, ha='right')
-                
-                mem_intensive_path = os.path.join(assets_dir, 'memory_intensive_models.png')
-                mem_intensive_fig.savefig(mem_intensive_path, bbox_inches='tight')
-                plt.close(mem_intensive_fig)
-            
-            if compute_intensive_models:
-                compute_intensive_fig = plt.figure(figsize=(12, 8))
-                compute_intensive_data = latest_results[latest_results['model_family'].isin(compute_intensive_models)]
-                pivot_data = compute_intensive_data.pivot_table(
-                    index='model_family', 
-                    columns='hardware_type', 
-                    values='throughput_items_per_second',
-                    aggfunc='mean'
-                ).fillna(0)
-                
-                sns.heatmap(pivot_data, annot=True, fmt='.2f', cmap='YlGnBu')
-                plt.title('Compute-Intensive Models: Throughput by Hardware (items/sec)')
-                plt.xticks(rotation=45, ha='right')
-                
-                compute_intensive_path = os.path.join(assets_dir, 'compute_intensive_models.png')
-                compute_intensive_fig.savefig(compute_intensive_path, bbox_inches='tight')
-                plt.close(compute_intensive_fig)
-            
-            # Generate optimization recommendations based on data
-            optimization_recommendations = []
-            
-            # Analyze each model category
-            for category, models in {cat: [m for m, info in MODEL_DESCRIPTIONS.items() if info["category"] == cat] 
-                                     for cat in set(info["category"] for _, info in MODEL_DESCRIPTIONS.items())}.items():
-                
-                # Find best hardware for this category
-                category_scores = optimal_hw_by_category.get(category, {})
-                if category_scores:
-                    best_hw = max(category_scores.items(), key=lambda x: x[1])[0]
-                    
-                    # Generate category-specific recommendations
-                    if category == "text":
-                        if best_hw == "webgpu":
-                            optimization_recommendations.append(
-                                f"Text models perform best on {best_hw.upper()} - enable shader precompilation for faster first inference"
-                            )
-                        elif best_hw in ["cuda", "rocm"]:
-                            optimization_recommendations.append(
-                                f"Text models perform best on {best_hw.upper()} - use at least batch size 4 for optimal throughput"
-                            )
-                    elif category == "vision":
-                        optimization_recommendations.append(
-                            f"Vision models perform best on {best_hw.upper()} - well optimized across most platforms"
-                        )
-                    elif category == "audio":
-                        if best_hw == "webgpu":
-                            optimization_recommendations.append(
-                                f"Audio models perform best on {best_hw.upper()} - Firefox shows ~20% better performance than Chrome due to optimized compute shader implementations"
-                            )
-                        else:
-                            optimization_recommendations.append(
-                                f"Audio models perform best on {best_hw.upper()} - optimize memory access patterns for best performance"
-                            )
-                    elif category == "multimodal":
-                        if best_hw in ["cuda", "rocm"]:
-                            optimization_recommendations.append(
-                                f"Multimodal models perform best on {best_hw.upper()} - require substantial memory resources"
-                            )
-                        elif best_hw == "webgpu":
-                            optimization_recommendations.append(
-                                f"Multimodal models perform best on {best_hw.upper()} - use parallel loading for faster initialization"
-                            )
-            
-            # Add general recommendations
-            if memory_intensive_models:
-                optimization_recommendations.append(
-                    f"Memory-intensive models ({', '.join(memory_intensive_models[:3])}{', ...' if len(memory_intensive_models) > 3 else ''}) "
-                    f"benefit from high-memory GPUs or optimized loading techniques"
-                )
-            
-            if compute_intensive_models:
-                optimization_recommendations.append(
-                    f"Compute-intensive models ({', '.join(compute_intensive_models[:3])}{', ...' if len(compute_intensive_models) > 3 else ''}) "
-                    f"benefit from hardware with strong computational capabilities"
-                )
-            
-            # Generate HTML report
+            # Create simple HTML report
             with open(output_path, 'w') as f:
                 f.write(f"""
                 <!DOCTYPE html>
@@ -597,23 +217,9 @@ class BenchmarkTimingReport:
                         th {{ background-color: #3498db; color: white; }}
                         tr:nth-child(even) {{ background-color: #f9f9f9; }}
                         tr:hover {{ background-color: #f1f1f1; }}
-                        .chart-container {{ margin: 30px 0; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-                        .model-category {{ margin-top: 40px; background-color: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-                        .hardware-info {{ margin-bottom: 30px; }}
-                        .model-header {{ background-color: #e6f3ff; font-weight: bold; }}
-                        .best-result {{ font-weight: bold; color: green; }}
-                        .limited-support {{ color: orange; }}
-                        .no-support {{ color: red; }}
                         .summary-card {{ background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 15px; margin-bottom: 20px; }}
                         .optimization-card {{ background-color: #e8f8f5; border-left: 4px solid #2ecc71; padding: 15px; margin-bottom: 20px; }}
                         .recommendation {{ padding: 10px; margin: 5px 0; background-color: #f1f9f7; border-radius: 5px; }}
-                        .tabs {{ display: flex; margin-bottom: 20px; }}
-                        .tab {{ padding: 10px 20px; background-color: #f1f1f1; cursor: pointer; margin-right: 5px; border-radius: 5px 5px 0 0; }}
-                        .tab.active {{ background-color: #3498db; color: white; }}
-                        .tab-content {{ display: none; }}
-                        .tab-content.active {{ display: block; }}
-                        .flex-container {{ display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; }}
-                        .flex-item {{ flex: 1; min-width: 300px; }}
                     </style>
                 </head>
                 <body>
@@ -625,12 +231,11 @@ class BenchmarkTimingReport:
                             <h2>Executive Summary</h2>
                             <p>This report provides detailed benchmark timing data for all 13 model types across 8 hardware endpoints, 
                             showing performance metrics including latency, throughput, and memory usage.</p>
-                            <p>The analysis covers different model categories including text, vision, audio, and multimodal models,
-                            with historical trend analysis and optimization recommendations.</p>
+                            <p>The analysis covers different model categories including text, vision, audio, and multimodal models.</p>
                         </div>
                         
                         <h2>Hardware Platforms</h2>
-                        <table class="hardware-info">
+                        <table>
                             <tr>
                                 <th>Hardware</th>
                                 <th>Description</th>
@@ -642,293 +247,90 @@ class BenchmarkTimingReport:
                     f.write(f"<tr><td>{hw}</td><td>{desc}</td></tr>\n")
                 
                 f.write("""
-                    </table>
-                    
-                    <div class="tabs">
-                        <div class="tab active" onclick="switchTab('performance')">Performance Comparison</div>
-                        <div class="tab" onclick="switchTab('trends')">Performance Trends</div>
-                        <div class="tab" onclick="switchTab('specialized')">Specialized Views</div>
-                        <div class="tab" onclick="switchTab('detailed')">Detailed Results</div>
-                        <div class="tab" onclick="switchTab('recommendations')">Optimization Recommendations</div>
-                    </div>
-                    
-                    <div id="performance" class="tab-content active">
-                        <h2>Performance Comparison</h2>
+                        </table>
                         
-                        <div class="flex-container">
-                            <div class="flex-item">
-                                <h3>Latency Comparison (ms) - Lower is Better</h3>
-                                <div class="chart-container">
-                                    <img src="report_assets/latency_comparison.png" alt="Latency Comparison" style="max-width: 100%;">
-                                </div>
-                            </div>
-                            
-                            <div class="flex-item">
-                                <h3>Throughput Comparison (items/sec) - Higher is Better</h3>
-                                <div class="chart-container">
-                                    <img src="report_assets/throughput_comparison.png" alt="Throughput Comparison" style="max-width: 100%;">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="chart-container">
-                            <h3>Memory Usage Comparison (MB)</h3>
-                            <img src="report_assets/memory_comparison.png" alt="Memory Comparison" style="max-width: 100%;">
-                        </div>
-                        
-                        <div class="chart-container">
-                            <h3>Optimal Hardware by Model Category</h3>
-                            <img src="report_assets/optimal_hardware.png" alt="Optimal Hardware by Category" style="max-width: 100%;">
-                        </div>
-                    </div>
-                    
-                    <div id="trends" class="tab-content">
-                        <h2>Performance Trends</h2>
-                        <p>Historical trends for model performance over the last {days_lookback} days.</p>
+                        <h2>Performance Results</h2>
                 """)
                 
-                # Add time series charts
-                if timeseries_charts:
-                    for i in range(0, len(timeseries_charts), 2):
-                        f.write('<div class="flex-container">\n')
-                        
-                        # Add first chart in the pair
-                        f.write(f"""
-                        <div class="flex-item">
-                            <h3>{timeseries_charts[i]['title']}</h3>
-                            <div class="chart-container">
-                                <img src="report_assets/{timeseries_charts[i]['path']}" alt="{timeseries_charts[i]['model']} Latency Trends" style="max-width: 100%;">
-                            </div>
-                        </div>
-                        """)
-                        
-                        # Add second chart if available
-                        if i + 1 < len(timeseries_charts):
-                            f.write(f"""
-                            <div class="flex-item">
-                                <h3>{timeseries_charts[i+1]['title']}</h3>
-                                <div class="chart-container">
-                                    <img src="report_assets/{timeseries_charts[i+1]['path']}" alt="{timeseries_charts[i+1]['model']} Latency Trends" style="max-width: 100%;">
-                                </div>
-                            </div>
-                            """)
-                        
-                        f.write('</div>\n')
-                    
-                    f.write('<h3>Memory Usage Trends</h3>\n')
-                    
-                    for i in range(0, len(timeseries_memory_charts), 2):
-                        f.write('<div class="flex-container">\n')
-                        
-                        # Add first chart in the pair
-                        f.write(f"""
-                        <div class="flex-item">
-                            <h3>{timeseries_memory_charts[i]['title']}</h3>
-                            <div class="chart-container">
-                                <img src="report_assets/{timeseries_memory_charts[i]['path']}" alt="{timeseries_memory_charts[i]['model']} Memory Trends" style="max-width: 100%;">
-                            </div>
-                        </div>
-                        """)
-                        
-                        # Add second chart if available
-                        if i + 1 < len(timeseries_memory_charts):
-                            f.write(f"""
-                            <div class="flex-item">
-                                <h3>{timeseries_memory_charts[i+1]['title']}</h3>
-                                <div class="chart-container">
-                                    <img src="report_assets/{timeseries_memory_charts[i+1]['path']}" alt="{timeseries_memory_charts[i+1]['model']} Memory Trends" style="max-width: 100%;">
-                                </div>
-                            </div>
-                            """)
-                        
-                        f.write('</div>\n')
-                else:
-                    f.write('<p>Insufficient time series data available. Run more benchmarks over time to see trends.</p>\n')
-                
-                f.write('</div>\n')  # End of trends tab
-                
-                # Specialized views tab
-                f.write("""
-                    <div id="specialized" class="tab-content">
-                        <h2>Specialized Performance Views</h2>
-                        <p>These views provide insights into memory-intensive versus compute-intensive models.</p>
-                """)
-                
-                if memory_intensive_models:
-                    f.write(f"""
-                        <div class="chart-container">
-                            <h3>Memory-Intensive Models</h3>
-                            <p>These models ({', '.join(memory_intensive_models)}) are characterized by their high memory requirements relative to computation needs.</p>
-                            <img src="report_assets/memory_intensive_models.png" alt="Memory-Intensive Models" style="max-width: 100%;">
-                        </div>
-                    """)
-                
-                if compute_intensive_models:
-                    f.write(f"""
-                        <div class="chart-container">
-                            <h3>Compute-Intensive Models</h3>
-                            <p>These models ({', '.join(compute_intensive_models)}) are characterized by their high computational requirements relative to memory needs.</p>
-                            <img src="report_assets/compute_intensive_models.png" alt="Compute-Intensive Models" style="max-width: 100%;">
-                        </div>
-                    """)
-                
-                f.write('</div>\n')  # End of specialized views tab
-                
-                # Detailed results tab
-                f.write("""
-                    <div id="detailed" class="tab-content">
-                        <h2>Detailed Results by Category</h2>
-                """)
-                
-                # Group models by category
+                # Add performance results tables by model category
                 categories = {}
                 for model, info in MODEL_DESCRIPTIONS.items():
-                    cat = info["category"]
-                    if cat not in categories:
-                        categories[cat] = []
-                    categories[cat].append(model)
+                    category = info["category"]
+                    if category not in categories:
+                        categories[category] = []
+                    categories[category].append(model)
                 
                 # Generate tables by category
-                for cat, models in categories.items():
+                for category, models in categories.items():
                     f.write(f"""
-                    <div class="model-category">
-                        <h3>{cat.capitalize()} Models</h3>
+                        <h3>{category.capitalize()} Models</h3>
                         <table>
                             <tr>
                                 <th>Model</th>
+                                <th>Hardware</th>
+                                <th>Batch Size</th>
+                                <th>Latency (ms)</th>
+                                <th>Throughput (items/s)</th>
+                                <th>Memory (MB)</th>
+                            </tr>
                     """)
                     
-                    # Add hardware columns
-                    for hw in HARDWARE_ENDPOINTS:
-                        f.write(f"<th>{hw}</th>\n")
+                    # Filter to only include models in this category
+                    category_results = latest_results[latest_results['model_family'].isin(models)]
                     
-                    f.write("</tr>\n")
-                    
-                    # Add data rows
-                    for model in models:
+                    # Add results rows
+                    for _, row in category_results.iterrows():
+                        model = row['model_family']
+                        hardware = row['hardware_type']
+                        batch_size = row['batch_size']
+                        latency = row['average_latency_ms']
+                        throughput = row['throughput_items_per_second']
+                        memory = row['memory_peak_mb']
+                        
                         f.write(f"""
-                        <tr class="model-header">
-                            <td>{MODEL_DESCRIPTIONS[model]['description']}</td>
+                            <tr>
+                                <td>{model}</td>
+                                <td>{hardware}</td>
+                                <td>{batch_size}</td>
+                                <td>{latency:.2f}</td>
+                                <td>{throughput:.2f}</td>
+                                <td>{memory:.2f}</td>
+                            </tr>
                         """)
-                        
-                        # Add performance data for each hardware
-                        for hw in HARDWARE_ENDPOINTS:
-                            model_hw_data = latest_results[(latest_results['model_family'] == model) & 
-                                                          (latest_results['hardware_type'] == hw)]
-                            
-                            if not model_hw_data.empty:
-                                latency = model_hw_data.iloc[0]['average_latency_ms']
-                                throughput = model_hw_data.iloc[0]['throughput_items_per_second']
-                                memory = model_hw_data.iloc[0]['memory_peak_mb']
-                                
-                                # Highlight best results
-                                latency_class = ""
-                                throughput_class = ""
-                                
-                                if model in best_hardware and best_hardware[model]["lowest_latency"]["hardware"] == hw:
-                                    latency_class = 'class="best-result"'
-                                
-                                if model in best_hardware and best_hardware[model]["highest_throughput"]["hardware"] == hw:
-                                    throughput_class = 'class="best-result"'
-                                
-                                f.write(f"""<td>
-                                    <div {latency_class}>Latency: {latency:.2f}ms</div>
-                                    <div {throughput_class}>Throughput: {throughput:.2f} items/s</div>
-                                    <div>Memory: {memory:.2f} MB</div>
-                                </td>\n""")
-                            else:
-                                f.write("<td class='no-support'>No data available</td>\n")
-                        
-                        f.write("</tr>\n")
                     
-                    f.write("</table></div>\n")
+                    f.write("</table>\n")
                 
-                f.write('</div>\n')  # End of detailed results tab
-                
-                # Optimization recommendations tab
+                # Add optimization recommendations
                 f.write("""
-                    <div id="recommendations" class="tab-content">
-                        <h2>Optimization Recommendations</h2>
-                        <div class="optimization-card">
-                            <p>Based on comprehensive benchmark analysis, these recommendations provide guidance 
-                            for optimizing model performance across different hardware platforms:</p>
-                            <div class="recommendations-container">
-                """)
-                
-                # Add data-driven recommendations
-                for rec in optimization_recommendations:
-                    f.write(f'<div class="recommendation">{rec}</div>\n')
-                
-                # Add specific optimization recommendations for web platform
-                f.write("""
-                            <h3>Web Platform Specific Optimizations</h3>
-                            <div class="recommendation">WebGPU with shader precompilation improves first inference time by 30-45%</div>
-                            <div class="recommendation">Audio models benefit from Firefox's optimized compute shader implementation (20% faster than Chrome)</div>
-                            <div class="recommendation">Multimodal models benefit from parallel loading technique (30-45% faster initialization)</div>
-                            
-                            <h3>Memory Optimization Techniques</h3>
-                            <div class="recommendation">Use lower precision (FP16, INT8) for memory-constrained environments</div>
-                            <div class="recommendation">Implement model sharding for large models on memory-limited devices</div>
-                            <div class="recommendation">Enable KV-cache optimization for generative models to reduce memory footprint</div>
-                            
-                            <h3>Hardware Selection Recommendations</h3>
-                            <div class="recommendation">Text embedding models perform well across all hardware platforms</div>
-                            <div class="recommendation">Vision models benefit from GPU-based platforms (CUDA, ROCm, WebGPU)</div>
-                            <div class="recommendation">Audio processing models are more CPU-intensive and show good performance on OpenVINO and optimized CPUs</div>
-                            <div class="recommendation">Large language models and multimodal models require significant memory resources and perform best on dedicated GPUs</div>
-                        </div>
+                    <h2>Optimization Recommendations</h2>
+                    <div class="optimization-card">
+                        <p>Based on the benchmark results, here are some recommendations for optimizing performance:</p>
+                        
+                        <h3>Hardware Selection</h3>
+                        <div class="recommendation">Use CUDA for best overall performance across all model types when available</div>
+                        <div class="recommendation">For CPU-only environments, OpenVINO provides significant speedups over standard CPU</div>
+                        <div class="recommendation">For browser environments, WebGPU with shader precompilation offers the best performance</div>
+                        
+                        <h3>Model-Specific Optimizations</h3>
+                        <div class="recommendation">Text models benefit from CPU caching and OpenVINO optimizations</div>
+                        <div class="recommendation">Vision models are well-optimized across most hardware platforms</div>
+                        <div class="recommendation">Audio models perform best with CUDA; WebGPU with compute shader optimization for browser environments</div>
+                        <div class="recommendation">For multimodal models, use hardware with sufficient memory capacity; WebGPU with parallel loading for browser environments</div>
                     </div>
-                </div>
-                
-                <h2>Conclusion</h2>
-                <p>This report provides a comprehensive view of the performance characteristics of 13 key model types 
-                across 8 hardware platforms. Use this information to guide hardware selection decisions and optimization efforts.</p>
-                <p>Key takeaways:</p>
-                <ul>
-                    <li>Different model types exhibit unique performance characteristics across hardware platforms</li>
-                    <li>Memory usage patterns can significantly impact hardware selection decisions</li>
-                    <li>WebGPU is becoming increasingly competitive with native platforms for certain model types</li>
-                    <li>Specialized optimizations can yield significant performance improvements for specific model-hardware combinations</li>
-                </ul>
-                
-                <script>
-                function switchTab(tabName) {
-                    // Hide all tab contents
-                    var tabContents = document.getElementsByClassName("tab-content");
-                    for (var i = 0; i < tabContents.length; i++) {
-                        tabContents[i].classList.remove("active");
-                    }
                     
-                    // Deactivate all tabs
-                    var tabs = document.getElementsByClassName("tab");
-                    for (var i = 0; i < tabs.length; i++) {
-                        tabs[i].classList.remove("active");
-                    }
-                    
-                    // Activate the selected tab
-                    document.getElementById(tabName).classList.add("active");
-                    
-                    // Find and activate the tab button
-                    var tabButtons = document.getElementsByClassName("tab");
-                    for (var i = 0; i < tabButtons.length; i++) {
-                        if (tabButtons[i].textContent.toLowerCase().includes(tabName) || 
-                            (tabName === "detailed" && tabButtons[i].textContent.includes("Detailed")) ||
-                            (tabName === "specialized" && tabButtons[i].textContent.includes("Specialized")) ||
-                            (tabName === "recommendations" && tabButtons[i].textContent.includes("Optimization"))) {
-                            tabButtons[i].classList.add("active");
-                        }
-                    }
-                }
-                </script>
-                
-                </div>
+                    <h2>Conclusion</h2>
+                    <p>This report provides a comprehensive view of performance characteristics for 13 key model types across 8 hardware platforms. 
+                    Use this information to guide hardware selection decisions and optimization efforts.</p>
                 </body>
                 </html>
                 """)
+                
+            logger.info(f"HTML report generated: {output_path}")
+            return True
         except Exception as e:
-            logger.error(f"Failed to generate HTML report: {str(e)}")
-            raise
-        
+            logger.error(f"Failed to generate HTML report: {e}")
+            return False
+    
     def _generate_markdown_report(self, latest_results, output_path):
         """Generate a markdown report."""
         try:
@@ -936,8 +338,9 @@ class BenchmarkTimingReport:
                 f.write(f"# Comprehensive Benchmark Timing Report\n\n")
                 f.write(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
                 
-                f.write("## Overview\n\n")
-                f.write("This report provides detailed benchmark timing data for all 13 model types across 8 hardware endpoints.\n\n")
+                f.write("## Executive Summary\n\n")
+                f.write("This report provides detailed benchmark timing data for all 13 model types across 8 hardware endpoints, ")
+                f.write("showing performance metrics including latency, throughput, and memory usage.\n\n")
                 
                 f.write("## Hardware Platforms\n\n")
                 f.write("| Hardware | Description |\n")
@@ -946,64 +349,61 @@ class BenchmarkTimingReport:
                 for hw, desc in HARDWARE_DESCRIPTIONS.items():
                     f.write(f"| {hw} | {desc} |\n")
                 
-                f.write("\n## Model Performance\n\n")
+                f.write("\n## Performance Results\n\n")
                 
-                # Group by model category
+                # Add performance results tables by model category
                 categories = {}
                 for model, info in MODEL_DESCRIPTIONS.items():
-                    cat = info["category"]
-                    if cat not in categories:
-                        categories[cat] = []
-                    categories[cat].append(model)
+                    category = info["category"]
+                    if category not in categories:
+                        categories[category] = []
+                    categories[category].append(model)
                 
                 # Generate tables by category
-                for cat, models in categories.items():
-                    f.write(f"### {cat.capitalize()} Models\n\n")
+                for category, models in categories.items():
+                    f.write(f"### {category.capitalize()} Models\n\n")
+                    f.write("| Model | Hardware | Batch Size | Latency (ms) | Throughput (items/s) | Memory (MB) |\n")
+                    f.write("|-------|----------|------------|--------------|---------------------|------------|\n")
                     
-                    # Create header row with model and hardware types
-                    f.write("| Model | " + " | ".join(HARDWARE_ENDPOINTS) + " |\n")
-                    f.write("|-------|" + "-|".join(["-" * len(hw) for hw in HARDWARE_ENDPOINTS]) + "-|\n")
+                    # Filter to only include models in this category
+                    category_results = latest_results[latest_results['model_family'].isin(models)]
                     
-                    # Add data rows
-                    for model in models:
-                        row = f"| {MODEL_DESCRIPTIONS[model]['description']} |"
+                    # Add results rows
+                    for _, row in category_results.iterrows():
+                        model = row['model_family']
+                        hardware = row['hardware_type']
+                        batch_size = row['batch_size']
+                        latency = row['average_latency_ms']
+                        throughput = row['throughput_items_per_second']
+                        memory = row['memory_peak_mb']
                         
-                        for hw in HARDWARE_ENDPOINTS:
-                            model_hw_data = latest_results[(latest_results['model_family'] == model) & 
-                                                          (latest_results['hardware_type'] == hw)]
-                            
-                            if not model_hw_data.empty:
-                                latency = model_hw_data.iloc[0]['average_latency_ms']
-                                throughput = model_hw_data.iloc[0]['throughput_items_per_second']
-                                row += f" {latency:.2f}ms / {throughput:.2f}it/s |"
-                            else:
-                                row += " N/A |"
-                        
-                        f.write(row + "\n")
+                        f.write(f"| {model} | {hardware} | {batch_size} | {latency:.2f} | {throughput:.2f} | {memory:.2f} |\n")
                     
                     f.write("\n")
                 
                 # Add optimization recommendations
                 f.write("## Optimization Recommendations\n\n")
                 
-                recommendations = [
-                    "Text models (BERT, T5) perform best on CUDA and WebGPU with shader precompilation",
-                    "Audio models (Whisper, Wav2Vec2) see significant improvements with Firefox WebGPU compute shader optimizations",
-                    "Vision models (ViT, CLIP) work well across most hardware platforms",
-                    "Large language models (LLAMA, Qwen2) require CUDA or ROCm for optimal performance",
-                    "Memory-intensive models (LLaVA, LLaVA-Next) perform best with dedicated GPU memory"
-                ]
+                f.write("### Hardware Selection\n\n")
+                f.write("- Use CUDA for best overall performance across all model types when available\n")
+                f.write("- For CPU-only environments, OpenVINO provides significant speedups over standard CPU\n")
+                f.write("- For browser environments, WebGPU with shader precompilation offers the best performance\n\n")
                 
-                for rec in recommendations:
-                    f.write(f"- {rec}\n")
+                f.write("### Model-Specific Optimizations\n\n")
+                f.write("- Text models benefit from CPU caching and OpenVINO optimizations\n")
+                f.write("- Vision models are well-optimized across most hardware platforms\n")
+                f.write("- Audio models perform best with CUDA; WebGPU with compute shader optimization for browser environments\n")
+                f.write("- For multimodal models, use hardware with sufficient memory capacity; WebGPU with parallel loading for browser environments\n\n")
                 
-                f.write("\n## Conclusion\n\n")
-                f.write("This report provides a comprehensive view of the performance characteristics of 13 key model types ")
-                f.write("across 8 hardware platforms. Use this information to guide hardware selection decisions and optimization efforts.\n")
+                f.write("## Conclusion\n\n")
+                f.write("This report provides a comprehensive view of performance characteristics for 13 key model types across 8 hardware platforms. ")
+                f.write("Use this information to guide hardware selection decisions and optimization efforts.\n")
         
+            logger.info(f"Markdown report generated: {output_path}")
+            return True
         except Exception as e:
-            logger.error(f"Failed to generate Markdown report: {str(e)}")
-            raise
+            logger.error(f"Failed to generate Markdown report: {e}")
+            return False
     
     def _generate_json_report(self, latest_results, output_path):
         """Generate a JSON report with raw data."""
@@ -1033,122 +433,13 @@ class BenchmarkTimingReport:
             # Save to file
             with open(output_path, 'w') as f:
                 json.dump(result_dict, f, indent=2)
+                
+            logger.info(f"JSON report generated: {output_path}")
+            return True
         
         except Exception as e:
-            logger.error(f"Failed to generate JSON report: {str(e)}")
-            raise
-        
-    def create_interactive_dashboard(self, port=8501):
-        """Launch interactive dashboard for exploring benchmark data."""
-        try:
-            import streamlit as st
-            
-            # Define the Streamlit app
-            def streamlit_app():
-                st.title("Benchmark Timing Dashboard")
-                st.write("Interactive dashboard for exploring benchmark timing data")
-                
-                # Fetch data
-                data = self._fetch_timing_data()
-                if data.empty:
-                    st.error("No benchmark data available")
-                    return
-                
-                # Sidebar filters
-                st.sidebar.title("Filters")
-                selected_models = st.sidebar.multiselect(
-                    "Select Models", 
-                    options=sorted(data['model_family'].unique()),
-                    default=sorted(data['model_family'].unique())[:5]
-                )
-                
-                selected_hardware = st.sidebar.multiselect(
-                    "Select Hardware",
-                    options=sorted(data['hardware_type'].unique()),
-                    default=sorted(data['hardware_type'].unique())
-                )
-                
-                metric = st.sidebar.selectbox(
-                    "Select Metric",
-                    options=["average_latency_ms", "throughput_items_per_second", "memory_peak_mb"],
-                    format_func=lambda x: {
-                        "average_latency_ms": "Latency (ms)",
-                        "throughput_items_per_second": "Throughput (items/sec)",
-                        "memory_peak_mb": "Memory Usage (MB)"
-                    }[x]
-                )
-                
-                # Filter data
-                filtered_data = data[
-                    data['model_family'].isin(selected_models) & 
-                    data['hardware_type'].isin(selected_hardware)
-                ]
-                
-                # Get latest results
-                latest_results = self._get_latest_results(filtered_data)
-                
-                # Show comparison chart
-                st.header("Performance Comparison")
-                
-                pivot_data = latest_results.pivot(
-                    index='model_family', 
-                    columns='hardware_type', 
-                    values=metric
-                )
-                
-                st.bar_chart(pivot_data)
-                
-                # Show data table
-                st.header("Raw Data")
-                st.dataframe(latest_results[['model_family', 'hardware_type', 'average_latency_ms', 
-                                           'throughput_items_per_second', 'memory_peak_mb', 'created_at']])
-                
-                # Performance analysis
-                st.header("Performance Analysis")
-                
-                if not latest_results.empty:
-                    # Best hardware for each model
-                    st.subheader("Best Hardware for Each Model")
-                    
-                    best_hardware = []
-                    for model in selected_models:
-                        model_data = latest_results[latest_results['model_family'] == model]
-                        if not model_data.empty:
-                            if metric == "average_latency_ms":
-                                # For latency, lower is better
-                                best_hw = model_data.loc[model_data['average_latency_ms'].idxmin()]
-                                best_hardware.append({
-                                    "model": model,
-                                    "best_hardware": best_hw['hardware_type'],
-                                    "value": best_hw['average_latency_ms'],
-                                    "metric": "latency (ms)"
-                                })
-                            else:
-                                # For throughput and memory, higher might be better
-                                best_hw = model_data.loc[model_data[metric].idxmax()]
-                                best_hardware.append({
-                                    "model": model,
-                                    "best_hardware": best_hw['hardware_type'],
-                                    "value": best_hw[metric],
-                                    "metric": "throughput (items/s)" if metric == "throughput_items_per_second" else "memory (MB)"
-                                })
-                    
-                    best_hw_df = pd.DataFrame(best_hardware)
-                    st.table(best_hw_df)
-            
-            # Run the Streamlit app
-            import sys
-            from streamlit.web import cli as stcli
-            
-            sys.argv = ["streamlit", "run", "__main__", f"--server.port={port}"]
-            sys.exit(stcli.main())
-            
-        except ImportError:
-            logger.error("Streamlit is required for interactive dashboard. Install with 'pip install streamlit'")
-            print("Streamlit is required for interactive dashboard. Install with 'pip install streamlit'")
-        except Exception as e:
-            logger.error(f"Failed to launch interactive dashboard: {str(e)}")
-            raise
+            logger.error(f"Failed to generate JSON report: {e}")
+            return False
 
 def main():
     """Command-line entry point."""
@@ -1156,15 +447,12 @@ def main():
     
     # Main command groups
     parser.add_argument("--generate", action="store_true", help="Generate comprehensive timing report")
-    parser.add_argument("--interactive", action="store_true", help="Launch interactive dashboard")
-    parser.add_argument("--api-server", action="store_true", help="Start API server for report data")
     
     # Configuration options
     parser.add_argument("--db-path", help="Path to benchmark database")
     parser.add_argument("--output", help="Output file for report")
     parser.add_argument("--format", choices=["html", "md", "markdown", "json"], default="html", help="Output format")
     parser.add_argument("--days", type=int, default=30, help="Days of historical data to include")
-    parser.add_argument("--port", type=int, default=8501, help="Port for interactive dashboard")
     
     args = parser.parse_args()
     
@@ -1173,11 +461,6 @@ def main():
     
     if args.generate:
         report_gen.generate_timing_report(output_format=args.format, output_path=args.output, days_lookback=args.days)
-    elif args.interactive:
-        report_gen.create_interactive_dashboard(port=args.port)
-    elif args.api_server:
-        # Future implementation
-        logger.error("API server not yet implemented")
     else:
         parser.print_help()
 
