@@ -1,9 +1,11 @@
 # IPFS Accelerate Python Framework - Next Steps and Roadmap
 
-**Date: April 7, 2025**  
-**Status: Updated with Phase 16 Verification Completion & IPFS Acceleration Implementation**
+**Date: May 10, 2025**  
+**Status: Updated with Q2-Q3 2025 Benchmarking Initiatives & Distributed Testing Framework**
 
 This document outlines the next steps for the IPFS Accelerate Python Framework now that Phase 16 has been completed and documentation has been finalized. The focus now shifts to enhancing the existing systems, improving performance, and expanding capabilities.
+
+> **New Addition**: For detailed plans on enhancing the benchmarking system, please see [NEXT_STEPS_BENCHMARKING_PLAN.md](NEXT_STEPS_BENCHMARKING_PLAN.md) which outlines the integration with the distributed testing framework, predictive performance system, advanced visualization, simulation validation, and ultra-low precision support.
 
 ## Completed Phase 16 Milestones
 
@@ -56,7 +58,16 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
    - Added testing framework for migration tool (`test_ipfs_migration.py`)
    - Priority: HIGH (COMPLETED - March 2025)
 
-2. ✅ **CI/CD Integration for Test Results** (COMPLETED - March 7, 2025)
+2. ✅ **Incremental Benchmark Runner** (COMPLETED - March 7, 2025)
+   - Implemented intelligent system for identifying missing or outdated benchmarks (`run_incremental_benchmarks.py`)
+   - Created database querying system to find benchmark gaps
+   - Added prioritization for critical model-hardware combinations
+   - Implemented progress tracking and reporting capabilities
+   - Provided comprehensive report generation for benchmark coverage
+   - Enhanced DuckDB integration for efficient resource utilization
+   - Priority: HIGH (COMPLETED - March 2025)
+
+3. ✅ **CI/CD Integration for Test Results** (COMPLETED - March 7, 2025)
    - Created GitHub Actions workflow for automated test execution
    - Configured automatic database storage of test results
    - Implemented scheduled compatibility matrix generation
@@ -214,9 +225,9 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
       - Develop a dashboard showing simulation status across benchmarks
       - Implement automatic benchmarking with real hardware where possible
       - Create scheduled jobs to continuously identify/clean up stale reports
-      - Extend cleanup_stale_reports.py to detect and archive problematic or stale Python files
-      - Add static code analysis to identify outdated simulation methods in Python code
-      - Implement Python code scanning for deprecated hardware simulation patterns
+      - Extend cleanup_stale_reports.py to detect and archive problematic or stale Python files (COMPLETED - April 7, 2025)
+      - Add static code analysis to identify outdated simulation methods in Python code (COMPLETED - April 7, 2025)
+      - Implement Python code scanning for deprecated hardware simulation patterns (COMPLETED - April 7, 2025)
       - Create automatic backup system for Python files before modification
       - Build code quality metrics for simulation-related code
 
@@ -281,66 +292,98 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
     - Document real-world impact metrics with quantitative benefits (COMPLETED - March 6, 2025)
     - Priority: MEDIUM (COMPLETED - March 6, 2025)
 
-12. **Distributed Testing Framework** (DEFERRED)
-    - Design high-performance distributed test execution system (DEFERRED from May 8, 2025)
-      - Create architecture for coordinator and worker nodes with gRPC communication
-      - Implement job distribution and scheduling algorithms
-      - Design persistent storage for test configurations and results
-      - Create comprehensive API for test submission and monitoring
-      - Implement dynamically scalable worker pool management
-    - Create secure worker node registration and management system (DEFERRED from May 15, 2025)
-      - Implement authentication and authorization for worker nodes
-      - Design secure credential management for distributed testing
-      - Build automatic worker health checking and rotation
-      - Create node capability reporting protocol
-      - Implement secure telemetry collection from worker nodes
-    - Implement intelligent result aggregation and analysis pipeline (DEFERRED from May 22, 2025)
+12. **Distributed Testing Framework** (IN PROGRESS - Started May 8, 2025)
+    - ✅ Design high-performance distributed test execution system (COMPLETED - May 10, 2025)
+      - ✅ Created architecture for coordinator and worker nodes with WebSocket communication
+      - ✅ Designed job distribution and scheduling algorithms
+      - ✅ Implemented persistent storage using DuckDB
+      - ✅ Created comprehensive API for test submission and monitoring
+      - ✅ Designed dynamically scalable worker pool management
+      - ✅ Created DISTRIBUTED_TESTING_DESIGN.md with detailed architecture documentation
+    - ✅ Initial implementation of core components (COMPLETED - May 12, 2025)
+      - ✅ Implemented basic coordinator server with WebSocket API
+      - ✅ Created worker registration and capability tracking
+      - ✅ Implemented simple task distribution logic
+      - ✅ Added basic result aggregation and storage in DuckDB
+      - ✅ Created worker client with auto-registration
+      - ✅ Implemented hardware capability detection
+      - ✅ Added basic task execution framework
+      - ✅ Implemented result reporting and error handling
+      - ✅ Created test runner for development and testing
+    - ⏳ Create secure worker node registration and management system (IN PROGRESS - May 15-22, 2025)
+      - ⏳ Implement authentication and authorization for worker nodes
+      - ⏳ Design secure credential management for distributed testing
+      - ⏳ Build automatic worker health checking and rotation
+      - ⏳ Enhance node capability reporting protocol
+      - ⏳ Implement secure telemetry collection from worker nodes
+    - 🔲 Implement intelligent result aggregation and analysis pipeline (PLANNED - May 22-29, 2025)
       - Build streaming result collection and real-time processing
       - Create time-series database integration for continuous metrics
       - Implement distributed log aggregation and analysis
       - Design automated performance regression detection
       - Create alert system for critical test failures
-    - Develop adaptive load balancing for optimal test distribution (DEFERRED from May 29, 2025) 
+    - 🔲 Develop adaptive load balancing for optimal test distribution (PLANNED - May 29-June 5, 2025) 
       - Create dynamic worker capacity estimation
       - Implement test complexity scoring and prediction
       - Build prioritization system for critical tests
       - Design predictive scaling based on test queue
       - Implement resource reservation for high-priority tests
-    - Add support for heterogeneous hardware environments with capability detection (DEFERRED from June 5, 2025)
-      - Create hardware discovery and classification system
-      - Implement capability matrix for worker node assignment
+    - 🔲 Enhance support for heterogeneous hardware environments (PLANNED - June 5-12, 2025)
+      - Improve hardware discovery and classification system
+      - Implement comprehensive capability matrix for worker node assignment
       - Build configuration adaptation based on hardware capabilities
       - Design hardware-aware test routing algorithms
       - Create test execution environment validation
-    - Create fault tolerance system with automatic retries and fallbacks (DEFERRED from June 12, 2025)
+    - 🔲 Create fault tolerance system with automatic retries and fallbacks (PLANNED - June 12-19, 2025)
       - Implement robust error handling and recovery
       - Build test retry logic with intelligent backoff
       - Create fallback execution paths for critical tests
       - Design distributed state management for fault recovery
       - Implement distributed transactions for test status
-    - Design comprehensive monitoring dashboard for distributed tests (DEFERRED from June 19, 2025)
+    - 🔲 Design comprehensive monitoring dashboard for distributed tests (PLANNED - June 19-26, 2025)
       - Create real-time status visualization for all worker nodes
       - Build test execution timeline with dependency tracking
       - Implement resource utilization monitoring across fleet
       - Design bottleneck identification and visualization
       - Create comprehensive reporting for test execution efficiency
-    - Priority: LOW (DEFERRED - Previously targeted for June 20, 2025)
+    - Priority: MEDIUM (Target completion: June 26, 2025)
     
-    **Core Components:**
-    1. **Coordinator Service**: Manages job distribution, scheduling, and worker coordination
-    2. **Worker Agent**: Executes tests, reports results, and manages local resources
-    3. **Result Pipeline**: Processes, aggregates, and analyzes test results in real-time
-    4. **Security Manager**: Handles authentication, authorization, and secure communications
-    5. **Resource Scheduler**: Optimizes test distribution based on hardware capabilities and load
-    6. **Monitoring System**: Provides real-time insights into test execution status and system health
-    7. **Recovery Manager**: Handles fault detection, isolation, and recovery
+    **Core Components Implemented:**
+    1. ✅ **Coordinator Service**: Manages job distribution, scheduling, and worker coordination
+       - Implementation: `/test/distributed_testing/coordinator.py`
+       - WebSocket server for worker communication
+       - RESTful API for test submission and monitoring
+       - Task distribution and tracking
+       - Worker registration and heartbeat monitoring
+       - DuckDB database integration for results
+    2. ✅ **Worker Agent**: Executes tests, reports results, and manages local resources
+       - Implementation: `/test/distributed_testing/worker.py`
+       - Hardware capability detection
+       - WebSocket client to connect to coordinator
+       - Task execution framework with different task types
+       - Heartbeat and reconnection logic
+    3. ⏳ **Result Pipeline**: Processes, aggregates, and analyzes test results in real-time
+    4. ⏳ **Security Manager**: Handles authentication, authorization, and secure communications
+    5. 🔲 **Resource Scheduler**: Optimizes test distribution based on hardware capabilities and load
+    6. 🔲 **Monitoring System**: Provides real-time insights into test execution status and system health
+    7. 🔲 **Recovery Manager**: Handles fault detection, isolation, and recovery
+    
+    **Testing Framework:**
+    - ✅ **Test Runner**: Run and test the distributed testing framework
+      - Implementation: `/test/distributed_testing/run_test.py`
+      - Supports running coordinator only, worker only, or all components
+      - Submits test tasks for testing
+      - Logs output from all processes
+      
+    **Documentation:**
+    - ✅ **Design Document**: `/test/DISTRIBUTED_TESTING_DESIGN.md`
+    - ✅ **README**: `/test/distributed_testing/README.md`
     
     **Implementation Strategy:**
-    - Deploy as containerized microservices with Kubernetes orchestration
-    - Use gRPC for high-performance inter-service communication
-    - Implement event-driven architecture for real-time processing
-    - Use time-series database for metrics and resource tracking
-    - Leverage cloud provider autoscaling for dynamic capacity
+    - First phase uses WebSockets for simpler implementation and deployment
+    - DuckDB for result storage with integration to existing benchmark database
+    - Python-based coordinator and worker nodes for easy development and testing
+    - Later phases may include containerization and Kubernetes for production deployment
 
 13. **Predictive Performance System**
     - Design ML architecture for performance prediction on untested configurations (PLANNED - May 10, 2025)
@@ -463,6 +506,61 @@ This document outlines the next steps for the IPFS Accelerate Python Framework n
     - Leverage Observable-inspired reactive programming model
     - Implement server-side rendering for large datasets
     - Create visualization component library with TypeScript
+
+14.1. **Advanced Performance Metrics System** (DEFERRED)
+    - Design fine-grained performance metrics collection system (DEFERRED from July 20, 2025)
+      - Create layer-by-layer execution profiling for all model types
+      - Implement memory utilization tracking over execution time
+      - Design cache hit/miss rate monitoring system
+      - Build compute unit utilization tracking with workload distribution
+      - Create I/O bottleneck identification system
+    - Develop comprehensive analysis tools for performance data (DEFERRED from July 30, 2025)
+      - Implement automated bottleneck detection across all hardware platforms
+      - Create performance delta analysis with statistical significance testing
+      - Design hardware-specific optimization recommendation engine
+      - Build multi-dimensional performance visualization system
+      - Implement cross-platform efficiency scoring system
+    - Implement advanced regression testing framework (DEFERRED from August 10, 2025)
+      - Create anomaly detection using statistical methods and ML techniques
+      - Implement performance change attribution to specific code changes
+      - Design regression severity classification and prioritization
+      - Build impact analysis system for detected regressions
+      - Create historical trend analysis with forecasting
+    - Create hardware-specific profiling tools (DEFERRED from August 20, 2025)
+      - Design specialized CUDA profiling integration for GPU workloads
+      - Implement CPU vectorization efficiency analysis
+      - Create memory bandwidth and cache efficiency profiling
+      - Build power efficiency profiling for mobile/edge devices
+      - Implement custom profiling for WebGPU/WebNN platforms
+    - Develop real-time monitoring system (DEFERRED from August 30, 2025)
+      - Create real-time dashboard for performance metrics
+      - Implement alert system for performance anomalies
+      - Design performance trend visualization in real-time
+      - Build resource utilization monitoring with thresholds
+      - Create automated remediation suggestions for bottlenecks
+    - Implement integration with existing tools and systems (DEFERRED from September 10, 2025)
+      - Create integration with distributed testing framework
+      - Implement predictive performance system data collection
+      - Design hardware recommendation engine integration
+      - Build benchmark database connectivity with streaming updates
+      - Create CI/CD integration for continuous performance monitoring
+    - Priority: LOW (DEFERRED - Previously targeted for September 15, 2025)
+    
+    **Core Components:**
+    1. **Metrics Collection System**: Collects fine-grained performance data across all hardware platforms
+    2. **Analysis Engine**: Processes metrics to identify bottlenecks and optimization opportunities
+    3. **Regression Detection**: Identifies performance regressions with statistical confidence
+    4. **Hardware Profilers**: Provides platform-specific profiling for detailed analysis
+    5. **Monitoring Dashboard**: Visualizes performance metrics in real-time
+    6. **Integration Layer**: Connects with other framework components for comprehensive performance optimization
+    
+    **Implementation Strategy:**
+    - Implement low-overhead profiling using hardware counters and kernel instrumentation
+    - Create separate collection pipelines optimized for each hardware platform
+    - Use statistical methods for reliable regression detection and anomaly identification
+    - Implement streaming analytics for real-time processing of performance data
+    - Create modular architecture for easy extension to new hardware platforms
+    - Design comprehensive API for integration with visualization and prediction systems
 
 ### Q3 2025 Strategic Initiatives
 
@@ -991,6 +1089,7 @@ With all planned tasks completed ahead of schedule, we are now positioned to beg
 1. ~~Distributed Testing Framework~~ (DEFERRED - originally planned start: May 2025)
 2. Predictive Performance System (HIGH PRIORITY - planned start: May 2025)
 3. Advanced Visualization System (planned start: June 2025)
+4. ~~Advanced Performance Metrics System~~ (DEFERRED - originally planned start: July 2025)
 
 This aggressive progress puts us ahead of schedule on our roadmap, positioning the IPFS Accelerate Python Framework as a comprehensive solution for cross-platform AI acceleration with unparalleled hardware compatibility, performance optimization, and developer tools.
 
@@ -1015,6 +1114,7 @@ This expanded scope will ensure the IPFS Accelerate Python Framework becomes the
 | **Core Framework Components** | | |
 | Phase 16 Core Implementation | ✅ COMPLETED | March 2025 |
 | DuckDB Database Integration | ✅ COMPLETED | March 2025 |
+| Documentation Cleanup Enhancement | ✅ COMPLETED | April 7, 2025 |
 | Hardware Compatibility Matrix | ✅ COMPLETED | March 2025 |
 | Qualcomm AI Engine Support | ✅ COMPLETED | March 2025 |
 | Documentation Enhancement | ✅ COMPLETED | March 2025 |
@@ -1038,7 +1138,7 @@ This expanded scope will ensure the IPFS Accelerate Python Framework becomes the
 | Distributed Testing Framework | 🚫 DEFERRED | Previously targeted for June 20, 2025 |
 | Predictive Performance System | 🚨 HIGH PRIORITY | Target: June 25, 2025 |
 | Advanced Visualization System | 📅 PLANNED | Target: July 15, 2025 |
-| Advanced Performance Metrics System | 📅 PLANNED | Target: September 15, 2025 |
+| Advanced Performance Metrics System | 🚫 DEFERRED | Previously targeted for September 15, 2025 |
 | | | |
 | **Q3 2025 Initiatives** | | |
 | Ultra-Low Precision Inference Framework | 📅 PLANNED | Target: September 30, 2025 |
@@ -1088,6 +1188,28 @@ With the deferral of the Distributed Testing Framework, the Predictive Performan
 
 This system will fundamentally transform our approach to hardware selection and benchmarking, providing substantial cost savings while improving the accuracy and reliability of our performance predictions.
 
+## Deferred Initiatives (Q2 2025)
+
+To ensure focused development and maximum resource allocation to high-priority initiatives, the following projects have been deferred:
+
+### Distributed Testing Framework
+The decision to defer the Distributed Testing Framework was made to:
+- Focus resources on the Predictive Performance System, which offers higher ROI
+- Address architectural concerns with the current distributed design
+- Allow time for further requirements gathering from stakeholders
+- Minimize operational complexity in the near term
+- Reassess infrastructure needs based on Predictive Performance System insights
+
+### Advanced Performance Metrics System
+The Advanced Performance Metrics System has been deferred to:
+- Prioritize resources for the Predictive Performance System development
+- Allow time to leverage insights from the completed Predictive system 
+- Incorporate feedback from the completed Advanced Visualization System
+- Align with broader architectural decisions for monitoring infrastructure
+- Provide a more integrated approach with simulation validation work
+
+Both initiatives remain strategically important and will be reconsidered for implementation in future planning cycles, potentially in late 2025 or early 2026, after the completion of current high-priority initiatives.
+
 ## Simulation Quality and Validation Roadmap (Q3-Q4 2025)
 
 The new focus on simulation quality and validation reflects our commitment to providing accurate benchmarking and hardware recommendations even when physical hardware isn't available. This comprehensive initiative spans multiple aspects:
@@ -1114,3 +1236,33 @@ The new focus on simulation quality and validation reflects our commitment to pr
 - Develop best practices documentation for simulation implementation
 
 This initiative ensures our simulation capabilities maintain the highest standards of accuracy and reliability, providing trustworthy results for hardware selection and optimization even when direct hardware testing isn't possible.
+## Documentation Cleanup Enhancement (April 2025)
+
+The documentation and report cleanup capabilities have been significantly enhanced in April 2025:
+
+1. **Enhanced Cleanup Tools Implementation** (COMPLETED - April 7, 2025)
+   - Created `archive_old_documentation.py` utility for systematic archival of outdated documentation
+   - Enhanced `cleanup_stale_reports.py` with improved scanning for problematic reports
+   - Added code pattern detection for outdated simulation methods in Python files
+   - Implemented automated fixes for report generator Python files
+   - Created comprehensive `run_documentation_cleanup.sh` script for running all tools
+   - Generated detailed documentation in `DOCUMENTATION_CLEANUP_GUIDE.md`
+   - Summarized cleanup work in `DOCUMENTATION_CLEANUP_SUMMARY.md`
+
+2. **Documentation Structure Improvements** (COMPLETED - April 7, 2025)
+   - Created archive directories for outdated documentation and reports
+   - Updated `DOCUMENTATION_INDEX.md` with information about archived files
+   - Added archive notices to all archived files
+   - Improved organization and categorization of documentation
+   - Enhanced simulation detection improvements documentation
+
+3. **Simulation Code Pattern Detection** (COMPLETED - April 7, 2025)
+   - Implemented pattern matching for outdated simulation methods
+   - Added validation code generation for report scripts
+   - Created backup mechanism for Python files before modification
+   - Integrated code scanning with documentation cleanup workflow
+   - Added detailed logging for detected patterns
+
+The enhancements provide a more comprehensive solution for documentation maintenance, ensuring that all documentation remains current and accurate, while properly archiving outdated information. The addition of code pattern detection helps identify potential simulation-related issues in the codebase, and the automated fixes for report generator files ensure that all reports properly validate simulation status.
+
+These improvements complete several key tasks from the future work section of the simulation detection and flagging improvements (item #10 in NEXT_STEPS.md), providing a solid foundation for the remaining tasks.

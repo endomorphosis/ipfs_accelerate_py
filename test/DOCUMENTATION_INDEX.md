@@ -1,10 +1,20 @@
 # IPFS Accelerate Python Framework Documentation Index
 
-Last Updated: March 7, 2025
+Last Updated: April 7, 2025
 
 This document provides a comprehensive index of all project documentation, organized by category and implementation phase.
 
-## Current Hardware and Model Coverage Status (March 7, 2025)
+## Recently Archived Documentation (April 2025)
+
+The following documentation has been archived as part of the April 2025 cleanup:
+
+- Performance reports older than 30 days have been moved to `archived_reports_april2025/`
+- Outdated documentation files have been moved to `archived_documentation_april2025/`
+- Each archived file has been marked with an archive notice
+
+To access archived documentation, please check the appropriate archive directory.
+
+## Current Hardware and Model Coverage Status (April 7, 2025)
 
 ### Hardware Backend Support
 
@@ -55,7 +65,7 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [PHASE16_COMPLETION_TASKS.md](PHASE16_COMPLETION_TASKS.md) - Tasks needed to complete Phase 16
 - [PHASE_16_IMPLEMENTATION_PLAN.md](PHASE_16_IMPLEMENTATION_PLAN.md) - Original implementation plan (reference only)
 
-### Hardware Benchmarking
+### Hardware Benchmarking and Performance Analysis
 
 - [HARDWARE_BENCHMARKING_GUIDE.md](HARDWARE_BENCHMARKING_GUIDE.md) - Main hardware benchmarking documentation
 - [HARDWARE_BENCHMARKING_GUIDE_PHASE16.md](HARDWARE_BENCHMARKING_GUIDE_PHASE16.md) - Phase 16 benchmarking enhancements
@@ -70,12 +80,22 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [QUALCOMM_INTEGRATION_GUIDE.md](QUALCOMM_INTEGRATION_GUIDE.md) - Qualcomm AI Engine integration guide
 - [final_hardware_coverage_report.md](final_hardware_coverage_report.md) - Current hardware coverage status
 
+### Comprehensive Benchmarking Documentation (March 2025)
+
+- [benchmark_results/DOCUMENTATION_README.md](benchmark_results/DOCUMENTATION_README.md) - **NEW** Central index for all benchmark documentation
+- [benchmark_results/NEXT_STEPS_BENCHMARKING_PLAN.md](benchmark_results/NEXT_STEPS_BENCHMARKING_PLAN.md) - **NEW** Detailed week-by-week execution plan for benchmarking
+- [benchmark_results/MARCH_2025_BENCHMARK_PROGRESS.md](benchmark_results/MARCH_2025_BENCHMARK_PROGRESS.md) - **NEW** Current progress report with detailed Week 1 plan
+- [benchmark_results/BENCHMARK_SUMMARY.md](benchmark_results/BENCHMARK_SUMMARY.md) - **NEW** Comprehensive summary of benchmark results
+- [benchmark_results/BENCHMARK_COMMAND_CHEATSHEET.md](benchmark_results/BENCHMARK_COMMAND_CHEATSHEET.md) - **NEW** Quick reference for benchmark commands
+- [run_comprehensive_benchmarks.py](run_comprehensive_benchmarks.py) - **NEW** Main script for running comprehensive benchmarks
+
 ### Database Implementation
 
 - [BENCHMARK_DATABASE_GUIDE.md](BENCHMARK_DATABASE_GUIDE.md) - Benchmark database architecture and usage
 - [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) - Guide to migrating data to the database
 - [DATABASE_MIGRATION_STATUS.md](DATABASE_MIGRATION_STATUS.md) - Status of database migration (100% complete)
 - [PHASE16_DATABASE_IMPLEMENTATION.md](PHASE16_DATABASE_IMPLEMENTATION.md) - Database implementation details
+- [run_incremental_benchmarks.py](run_incremental_benchmarks.py) - **NEW** Intelligent benchmark runner for identifying and running missing or outdated benchmarks
 
 ### Web Platform Integration
 
@@ -116,22 +136,27 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [MODEL_FAMILY_GUIDE.md](MODEL_FAMILY_GUIDE.md) - Guide to model family classification
 - [MODEL_FAMILY_CLASSIFIER_GUIDE.md](MODEL_FAMILY_CLASSIFIER_GUIDE.md) - Model family classifier documentation
 
-## Advanced Features Documentation (March 2025)
+## Advanced Features Documentation (April 2025)
 
+- [DOCUMENTATION_CLEANUP_GUIDE.md](DOCUMENTATION_CLEANUP_GUIDE.md) - Guide for documentation and report cleanup (NEW - April 7, 2025)
 - [TIME_SERIES_PERFORMANCE_GUIDE.md](TIME_SERIES_PERFORMANCE_GUIDE.md) - Time-series performance tracking system
 - [IPFS_ACCELERATION_TESTING.md](IPFS_ACCELERATION_TESTING.md) - IPFS acceleration testing with DuckDB integration (Updated March 2025)
 - [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md) - Model registry integration system
 - [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md) - Mobile/edge support expansion plan
 - [BATTERY_IMPACT_ANALYSIS.md](BATTERY_IMPACT_ANALYSIS.md) - Battery impact analysis methodology
-- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements (Updated March 6, 2025)
+- [SIMULATION_DETECTION_IMPROVEMENTS.md](SIMULATION_DETECTION_IMPROVEMENTS.md) - Simulation detection and flagging improvements (Updated April 7, 2025)
 - [STALE_REPORTS_CLEANUP_COMPLETED.md](STALE_REPORTS_CLEANUP_COMPLETED.md) - Completion report for stale reports cleanup (March 6, 2025)
 - [STALE_BENCHMARK_REPORTS_FIXED.md](STALE_BENCHMARK_REPORTS_FIXED.md) - Detailed documentation of the stale reports cleanup task (March 6, 2025)
 - [PHASE16_CLEANUP_SUMMARY.md](PHASE16_CLEANUP_SUMMARY.md) - Summary of Phase 16 cleanup activities (March 6, 2025)
+- [DOCUMENTATION_CLEANUP_SUMMARY.md](DOCUMENTATION_CLEANUP_SUMMARY.md) - Summary of documentation and report cleanup (April 7, 2025)
 - [NEXT_STEPS_IMPLEMENTATION.md](NEXT_STEPS_IMPLEMENTATION.md) - Implementation guide for next steps (March 2025)
 - [NEXT_STEPS.md](NEXT_STEPS.md) - Next steps and roadmap for the framework
 
 ### Implementation Files
 
+- [archive_old_documentation.py](archive_old_documentation.py) - Utility for archiving outdated documentation (NEW - April 7, 2025)
+- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool for cleaning up stale benchmark reports (UPDATED - April 7, 2025)
+- [run_documentation_cleanup.sh](run_documentation_cleanup.sh) - Script to run all documentation cleanup tools (NEW - April 7, 2025)
 - [time_series_performance.py](time_series_performance.py) - Time-series performance tracking implementation
 - [test_ipfs_accelerate.py](test_ipfs_accelerate.py) - IPFS acceleration testing implementation with DuckDB integration
 - [model_registry_integration.py](model_registry_integration.py) - Model registry integration implementation
@@ -141,7 +166,6 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 - [test_simulation_detection.py](test_simulation_detection.py) - Test script for simulation detection and flagging
 - [test_simulation_awareness.py](test_simulation_awareness.py) - Test script for report simulation awareness
 - [run_cleanup_stale_reports.py](run_cleanup_stale_reports.py) - Script to automate the cleanup of stale benchmark reports
-- [cleanup_stale_reports.py](cleanup_stale_reports.py) - Tool to identify and clean up stale benchmark reports
 - [update_db_schema_for_simulation.py](update_db_schema_for_simulation.py) - Script to update database schema with simulation flags
 - [qnn_simulation_helper.py](qnn_simulation_helper.py) - Utility for controlling QNN simulation
 
@@ -158,12 +182,13 @@ For full details on the database implementation, see [DATABASE_MIGRATION_STATUS.
 
 ## Archived Documentation
 
-Older documentation files have been archived in the `archived_md_files` directory for reference. Key archived files include:
+Older documentation files have been archived in the following directories:
+- `archived_md_files/` - Legacy documentation from previous phases
+- `archived_documentation_april2025/` - Recently archived documentation (April 2025)
+- `archived_reports_april2025/` - Recently archived performance reports (April 2025)
+- `archived_stale_reports/` - Problematic benchmark reports identified during cleanup
 
-- Outdated implementation plans and summaries
-- Superseded API documentation
-- Deprecated testing guides
-- Future-dated projection documents
+Each archived file has been marked with an archive notice for clarity.
 
 ## How to Use This Index
 
@@ -171,14 +196,15 @@ Older documentation files have been archived in the `archived_md_files` director
 2. **For Implementation Status**: See PHASE16_IMPLEMENTATION_SUMMARY_UPDATED.md and PHASE16_PROGRESS_UPDATE.md
 3. **For Task Planning**: Refer to PHASE16_COMPLETION_TASKS.md for outstanding implementation tasks
 4. **For Technical Details**: See the specialized guides for each component
+5. **For Documentation Maintenance**: Refer to DOCUMENTATION_CLEANUP_GUIDE.md for cleanup procedures
 
 ## Documentation Maintenance
 
 This documentation index is regularly updated as the project evolves. When adding new documentation:
 
 1. Add a reference to this index in the appropriate category
-2. Archive outdated documents in the `archived_md_files` directory
-3. Add an archive note to the top of archived files
+2. Archive outdated documents using the `archive_old_documentation.py` script
+3. Run `./run_documentation_cleanup.sh` periodically to maintain a clean documentation structure
 4. Update status indicators in active documentation files
 
-For any documentation questions or issues, please refer to CLAUDE.md for additional guidance.
+For any documentation questions or issues, please refer to CLAUDE.md for additional guidance or the DOCUMENTATION_CLEANUP_GUIDE.md for maintenance procedures.

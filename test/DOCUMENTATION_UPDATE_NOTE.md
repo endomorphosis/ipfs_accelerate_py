@@ -50,6 +50,19 @@
    - Integration with existing framework components
    - Step-by-step implementation instructions
    - Examples and best practices
+   
+#### March 7, 2025: Incremental Benchmark Runner
+
+1. **BENCHMARK_DATABASE_GUIDE.md**: Updated with comprehensive documentation on the new incremental benchmark runner:
+   - Complete overview of the incremental benchmarking approach
+   - Command-line interface documentation with examples
+   - Integration with DuckDB database for querying missing or outdated benchmarks
+   - Priority-based scheduling for critical model-hardware combinations
+   - Instructions for CI/CD integration
+   - Examples of report generation and interpretation
+   - Comparison with the previous weekly scheduled approach
+   - Best practices for maintaining benchmark freshness
+   - Configuration options and customization guidelines
 
 2. **Test Scripts for Next Steps Implementation**:
    - **test_model_registry_integration.py**: Test script for model registry integration
@@ -544,3 +557,34 @@ When using the new advanced quantization capabilities, refer to:
    - Advanced filtering and sorting capabilities
    - Visual indicators for compatibility status
    - Detailed notes on implementation status and limitations
+
+#### April 7, 2025: Documentation and Report Cleanup
+
+1. **Documentation Cleanup**:
+   - Archived outdated documentation files
+   - Added archive notices to all archived files
+   - Updated documentation index with latest status
+   - Streamlined documentation structure
+   - Created comprehensive archival system
+
+2. **Performance Report Cleanup**:
+   - Archived performance reports older than 30 days
+   - Created structured archive directory for historical reports
+   - Added archive notices to all archived reports
+   - Implemented automated archival process
+
+3. **System Improvements**:
+   - Created `archive_old_documentation.py` utility for future cleanup
+   - Added documentation lifecycle management processes
+   - Updated references to reflect current documentation structure
+   - Added archive section to documentation index
+   - Enhanced `cleanup_stale_reports.py` with improved scanning capabilities
+   - Added code pattern detection for outdated simulation methods
+   - Implemented automated fixes for report generator Python files
+
+4. **Documentation and Tools**:
+   - Created `DOCUMENTATION_CLEANUP_GUIDE.md` with comprehensive guidance
+   - Created `run_documentation_cleanup.sh` script for running all cleanup tools
+   - Updated `SIMULATION_DETECTION_IMPROVEMENTS.md` with latest cleanup capabilities
+   - Enhanced documentation index with information about archived files
+   - Added examples and best practices for documentation maintenance
