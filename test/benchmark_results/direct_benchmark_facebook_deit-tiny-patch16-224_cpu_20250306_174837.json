@@ -1,0 +1,12 @@
+{
+  "model": "facebook/deit-tiny-patch16-224",
+  "hardware": "cpu",
+  "success": true,
+  "batch_results": {
+    "1": {
+      "success": false,
+      "error": "ViTModel.forward() got an unexpected keyword argument 'input_ids'"
+    }
+  },
+  "timestamp": "2025-03-06T17:48:37.242096"
+}

@@ -940,6 +940,120 @@ python test/test_comprehensive_hardware_coverage.py --patch-generators --coverag
 python test/benchmark_db_query.py --report generator-improvements --format html --output generator_improvements.html
 ```
 
+## Simulation Mode and Real Hardware Tracking
+
+The database schema has been enhanced to clearly distinguish between real hardware tests and simulations, particularly for specialized hardware platforms that might not be universally available like Qualcomm Neural Networks (QNN).
+
+### Hardware Simulation Support
+
+The system now includes robust tracking of simulation status for hardware platforms:
+
+```sql
+-- Hardware platforms table with simulation support
+CREATE TABLE hardware_platforms (
+    hardware_id INTEGER PRIMARY KEY,
+    hardware_type VARCHAR NOT NULL,
+    device_name VARCHAR,
+    platform VARCHAR,
+    memory_gb FLOAT,
+    simulation_mode BOOLEAN DEFAULT FALSE,
+    simulation_warning VARCHAR,
+    detection_timestamp TIMESTAMP
+);
+
+-- Performance results with simulation tracking
+CREATE TABLE performance_results (
+    result_id INTEGER PRIMARY KEY,
+    run_id INTEGER,
+    model_id INTEGER,
+    hardware_id INTEGER,
+    test_case VARCHAR,
+    batch_size INTEGER,
+    precision VARCHAR,
+    throughput_items_per_second FLOAT,
+    average_latency_ms FLOAT,
+    memory_peak_mb FLOAT,
+    simulation_mode BOOLEAN DEFAULT FALSE,
+    simulation_details VARCHAR,
+    metrics JSON,
+    FOREIGN KEY (run_id) REFERENCES test_runs(run_id),
+    FOREIGN KEY (model_id) REFERENCES models(model_id),
+    FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
+);
+```
+
+### Querying Simulation vs. Real Hardware Results
+
+You can query the database to specifically include or exclude simulated results:
+
+```bash
+# Get only real hardware benchmark results
+python test/scripts/benchmark_db_query.py --sql "SELECT m.model_name, h.hardware_type, p.throughput_items_per_second FROM performance_results p JOIN models m ON p.model_id = m.model_id JOIN hardware_platforms h ON p.hardware_id = h.hardware_id WHERE (p.simulation_mode = FALSE OR p.simulation_mode IS NULL) AND (h.simulation_mode = FALSE OR h.simulation_mode IS NULL)" --format html --output real_hardware_results.html
+
+# Get only simulated results (for testing/development)
+python test/scripts/benchmark_db_query.py --sql "SELECT m.model_name, h.hardware_type, p.throughput_items_per_second, p.simulation_details FROM performance_results p JOIN models m ON p.model_id = m.model_id JOIN hardware_platforms h ON p.hardware_id = h.hardware_id WHERE p.simulation_mode = TRUE OR h.simulation_mode = TRUE" --format html --output simulated_results.html
+
+# Get all results with clear simulation indicators
+python test/scripts/benchmark_db_query.py --sql "SELECT m.model_name, h.hardware_type, p.throughput_items_per_second, CASE WHEN p.simulation_mode = TRUE OR h.simulation_mode = TRUE THEN 'SIMULATED' ELSE 'REAL' END as data_source FROM performance_results p JOIN models m ON p.model_id = m.model_id JOIN hardware_platforms h ON p.hardware_id = h.hardware_id" --format html --output all_results_with_indicators.html
+```
+
+### Simulation Mode for QNN Hardware (Enhanced April 2025)
+
+The system has been significantly enhanced to properly handle QNN (Qualcomm Neural Networks) hardware detection with robust simulation mode tracking and clear status flags in all database records:
+
+```bash
+# Run benchmarks with real QNN hardware (if available)
+python test/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
+
+# Run benchmarks in QNN simulation mode (when hardware is unavailable)
+QNN_SIMULATION_MODE=1 python test/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
+
+# Generate reports that clearly distinguish between real and simulated QNN results
+python test/scripts/benchmark_db_query.py --report qnn-performance --show-simulation-status --format html --output qnn_performance.html
+
+# Check hardware detection status including simulation flags
+python -c "from centralized_hardware_detection.hardware_detection import get_capabilities; print(get_capabilities())"
+
+# Check QNN hardware detection status specifically
+python -c "from hardware_detection.qnn_support import QNNCapabilityDetector; detector = QNNCapabilityDetector(); print(f'QNN Available: {detector.is_available()}, Simulation: {detector.is_simulation_mode()}')"
+```
+
+The April 2025 update replaces the previous MockQNNSDK implementation with a robust QNNSDKWrapper class that provides:
+
+1. **Clear Simulation Indication**: All simulation results are explicitly marked in both code and database
+2. **Enhanced Error Handling**: Proper error messages and status codes when hardware is unavailable
+3. **Unified API**: Consistent interface whether using real hardware or simulation mode
+4. **Explicit Environment Controls**: The `QNN_SIMULATION_MODE` environment variable provides explicit control
+5. **Database Integration**: All simulation flags are properly tracked in the database schema
+
+When running in simulation mode:
+1. All results are clearly marked as simulated in the database with the `simulation_mode` field
+2. Reports and visualizations show prominent warnings when displaying simulated results
+3. Hardware selection algorithms consider simulation status for recommendations
+4. Performance predictions indicate lower confidence for simulated results
+5. Database queries can easily filter real vs. simulated results
+
+### Hardware Simulation Controls
+
+The following environment variables control simulation behavior:
+
+| Environment Variable | Purpose |
+|----------------------|---------|
+| `QNN_SIMULATION_MODE` | Enable simulation mode for Qualcomm hardware (set to "1" to enable) |
+| `WEBNN_SIMULATION` | Enable simulation mode for WebNN API |
+| `WEBGPU_SIMULATION` | Enable simulation mode for WebGPU API |
+| `SIMULATION_WARNING_LEVEL` | Control warning visibility ("none", "info", "warning", "error") |
+
+### Best Practices for Simulation vs. Real Hardware
+
+1. **Clear Labeling**: Always ensure simulation results are clearly labeled
+2. **Filtering Options**: Provide options to filter out simulated results in reports
+3. **Visual Indicators**: Use visual cues in charts to distinguish real vs. simulated data
+4. **Documentation**: Document which results come from real hardware vs. simulation
+5. **Decision Making**: Base deployment decisions only on real hardware results
+6. **Development**: Use simulation mode freely during development and testing
+7. **Database Queries**: Include simulation status in database queries when analyzing results
+
 ## Current Status and Roadmap
 
 ### Current Status (March 2025)

@@ -55,6 +55,10 @@ try:
 except ImportError:
     HAS_VISUALIZATION = False
 
+# Configure logger
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Database integration
 import os
@@ -66,14 +70,50 @@ try:
         create_test_run,
         complete_test_run,
         get_or_create_model,
-        get_or_create_hardware_platform,
         DEPRECATE_JSON_OUTPUT
     )
+    
+    # Handle name difference if it exists
+    try:
+        from integrated_improvements.database_integration import get_or_create_hardware_platform
+    except ImportError:
+        # Use get_or_create_hardware as an alias if the platform function doesn't exist
+        try:
+            from integrated_improvements.database_integration import get_or_create_hardware
+            get_or_create_hardware_platform = get_or_create_hardware
+        except ImportError:
+            logger.warning("get_or_create_hardware_platform not available")
+            # Define a stub function to avoid errors
+            def get_or_create_hardware_platform(*args, **kwargs):
+                return None
+    
     HAS_DB_INTEGRATION = True
 except ImportError:
     logger.warning("Database integration not available")
     HAS_DB_INTEGRATION = False
     DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
+    
+    # Define stub functions to avoid errors
+    def get_db_connection(*args, **kwargs):
+        return None
+        
+    def store_test_result(*args, **kwargs):
+        return None
+        
+    def store_performance_result(*args, **kwargs):
+        return None
+        
+    def create_test_run(*args, **kwargs):
+        return None
+        
+    def complete_test_run(*args, **kwargs):
+        return None
+        
+    def get_or_create_model(*args, **kwargs):
+        return None
+        
+    def get_or_create_hardware_platform(*args, **kwargs):
+        return None
 
 # Improved hardware detection
 try:
@@ -153,7 +193,9 @@ class ModelBenchmarkRunner:
         update_compatibility_matrix: bool = True,
         use_resource_pool: bool = True,
         db_path: str = "./benchmark_db.duckdb",
-        store_in_db: bool = True
+        store_in_db: bool = True,
+        db_only: bool = False,
+        verbose: bool = False
     ):
         """
         Initialize the benchmark runner.
@@ -980,73 +1022,72 @@ class ModelBenchmarkRunner:
                         try:
                             with open(compatibility_file, 'r') as matrix_file:
                                 matrix = json.load(matrix_file)
-                        except Exception as e:
-                            logger.warning(f"Could not read hardware compatibility matrix: {e}")
-                            
-                        f.write("### Model Family Compatibility\n\n")
-                        f.write("| Model Family |")
-                        for hw_type in matrix["hardware_types"]:
-                            f.write(f" {hw_type} |")
-                        f.write("\n")
-                        
-                        f.write("|--------------|")
-                        for _ in matrix["hardware_types"]:
-                            f.write("---|")
-                        f.write("\n")
-                        
-                        for family, family_data in matrix["model_families"].items():
-                            f.write(f"| {family} |")
-                            
+                                
+                            f.write("### Model Family Compatibility\n\n")
+                            f.write("| Model Family |")
                             for hw_type in matrix["hardware_types"]:
-                                compatibility = False
-                                rating = None
-                                
-                                if "hardware_compatibility" in family_data and hw_type in family_data["hardware_compatibility"]:
-                                    hw_data = family_data["hardware_compatibility"][hw_type]
-                                    compatibility = hw_data.get("compatible", False)
-                                    rating = hw_data.get("performance_rating")
-                                
-                                if compatibility:
-                                    if rating:
-                                        f.write(f" ✅ {rating.title()} |")
-                                    else:
-                                        f.write(" ✅ |")
-                                else:
-                                    f.write(" ❌ |")
-                            
+                                f.write(f" {hw_type} |")
                             f.write("\n")
-                        
-                        f.write("\n")
-                        
-                        # Hardware-specific issues
-                        f.write("### Hardware-Specific Issues\n\n")
-                        
-                        has_issues = False
-                        
-                        for hw_type in matrix["hardware_types"]:
-                            issues = []
+                            
+                            f.write("|--------------|")
+                            for _ in matrix["hardware_types"]:
+                                f.write("---|")
+                            f.write("\n")
                             
                             for family, family_data in matrix["model_families"].items():
-                                if "hardware_compatibility" in family_data and hw_type in family_data["hardware_compatibility"]:
-                                    hw_data = family_data["hardware_compatibility"][hw_type]
-                                    
-                                    if not hw_data.get("compatible", False) and "error" in hw_data:
-                                        issues.append((family, hw_data["error"]))
-                            
-                            if issues:
-                                has_issues = True
-                                f.write(f"#### {hw_type}\n\n")
+                                f.write(f"| {family} |")
                                 
-                                for family, error in issues:
-                                    f.write(f"- **{family}**: {error}\n")
+                                for hw_type in matrix["hardware_types"]:
+                                    compatibility = False
+                                    rating = None
+                                    
+                                    if "hardware_compatibility" in family_data and hw_type in family_data["hardware_compatibility"]:
+                                        hw_data = family_data["hardware_compatibility"][hw_type]
+                                        compatibility = hw_data.get("compatible", False)
+                                        rating = hw_data.get("performance_rating")
+                                    
+                                    if compatibility:
+                                        if rating:
+                                            f.write(f" ✅ {rating.title()} |")
+                                        else:
+                                            f.write(" ✅ |")
+                                    else:
+                                        f.write(" ❌ |")
                                 
                                 f.write("\n")
-                        
-                        if not has_issues:
-                            f.write("No specific issues identified.\n\n")
                             
-                    except Exception as e:
-                        f.write(f"Error loading compatibility matrix: {e}\n\n")
+                            f.write("\n")
+                            
+                            # Hardware-specific issues
+                            f.write("### Hardware-Specific Issues\n\n")
+                            
+                            has_issues = False
+                            
+                            for hw_type in matrix["hardware_types"]:
+                                issues = []
+                                
+                                for family, family_data in matrix["model_families"].items():
+                                    if "hardware_compatibility" in family_data and hw_type in family_data["hardware_compatibility"]:
+                                        hw_data = family_data["hardware_compatibility"][hw_type]
+                                        
+                                        if not hw_data.get("compatible", False) and "error" in hw_data:
+                                            issues.append((family, hw_data["error"]))
+                                
+                                if issues:
+                                    has_issues = True
+                                    f.write(f"#### {hw_type}\n\n")
+                                    
+                                    for family, error in issues:
+                                        f.write(f"- **{family}**: {error}\n")
+                                    
+                                    f.write("\n")
+                            
+                            if not has_issues:
+                                f.write("No specific issues identified.\n\n")
+                                
+                        except Exception as e:
+                            logger.warning(f"Could not read hardware compatibility matrix: {e}")
+                            f.write(f"Error loading compatibility matrix: {e}\n\n")
                 else:
                     f.write("Compatibility matrix not available.\n\n")
                 
@@ -1192,34 +1233,144 @@ class ModelBenchmarkRunner:
                         logger.warning(f"Could not read hardware compatibility matrix: {e}")
             
             if matrix:
-                for family, family_data in matrix["model_families"].items():
-                    if "hardware_compatibility" not in family_data:
-                        continue
+                try:
+                    for family, family_data in matrix["model_families"].items():
+                        if "hardware_compatibility" not in family_data:
+                            continue
+                            
+                        incompatible_hw = []
                         
-                    incompatible_hw = []
-                    
-                    for hw_type, hw_data in family_data["hardware_compatibility"].items():
-                        if not hw_data.get("compatible", False):
-                            incompatible_hw.append(hw_type)
-                    
-                    if incompatible_hw:
-                        recommendations["Compatibility Issues"].append(f"{family} models are not compatible with: {', '.join(incompatible_hw)}")
+                        for hw_type, hw_data in family_data["hardware_compatibility"].items():
+                            if not hw_data.get("compatible", False):
+                                incompatible_hw.append(hw_type)
+                        
+                        if incompatible_hw:
+                            recommendations["Compatibility Issues"].append(f"{family} models are not compatible with: {', '.join(incompatible_hw)}")
                 except Exception as e:
                     logger.error(f"Error loading compatibility matrix for recommendations: {e}")
             
             return recommendations
     
-    def main():
-        """Main function for running model benchmarks from command line"""
+    def run_from_args():
+        """Run benchmarks from command line arguments"""
         parser = argparse.ArgumentParser(description="Comprehensive Model Benchmark Runner")
+        
+        # Main options
         parser.add_argument("--output-dir", type=str, default="./benchmark_results", help="Output directory for benchmark results")
         parser.add_argument("--models-set", choices=["key", "small", "custom"], default="key", help="Which model set to use")
         parser.add_argument("--custom-models", type=str, help="JSON file with custom models configuration (required if models-set=custom)")
-else:
-    logger.info("JSON output is deprecated. Results are stored directly in the database.")
+        parser.add_argument("--hardware", type=str, nargs="+", help="Hardware platforms to test (defaults to all available)")
+        parser.add_argument("--batch-sizes", type=int, nargs="+", default=DEFAULT_BATCH_SIZES, help="Batch sizes to test")
+        parser.add_argument("--verify-only", action="store_true", help="Only verify functionality without performance benchmarks")
+        parser.add_argument("--benchmark-only", action="store_true", help="Only run performance benchmarks without verification")
+        parser.add_argument("--no-plots", action="store_true", help="Disable plot generation")
+        parser.add_argument("--no-compatibility-update", action="store_true", help="Disable compatibility matrix update")
+        parser.add_argument("--no-resource-pool", action="store_true", help="Disable ResourcePool for model caching")
+        parser.add_argument("--specific-models", type=str, nargs="+", help="Only benchmark specific models (by key) from the selected set")
+        parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+        parser.add_argument("--db-path", type=str, default="./benchmark_db.duckdb", help="Path to DuckDB database for storing results")
+        parser.add_argument("--no-db-store", action="store_true", help="Disable storing results in the database")
+        parser.add_argument("--visualize-from-db", action="store_true", help="Generate visualizations from database instead of current run results")
+        parser.add_argument("--db-only", action="store_true", help="Store results only in the database, not in JSON")
+        parser.add_argument("--models", type=str, nargs="+", help="Specific models to benchmark (alternative to --specific-models)")
+        parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    
+        # Process command line arguments
+        args = parser.parse_args()
+        
+        # Check for deprecated JSON output
+        if DEPRECATE_JSON_OUTPUT:
+            logger.info("JSON output is deprecated. Results are stored directly in the database.")
+        
+        # Configure logging
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+        
+        # Handle custom models
+        custom_models = None
+        if args.models_set == "custom":
+            if not args.custom_models:
+                logger.error("--custom-models is required when using --models-set=custom")
+                return 1
+            
+            try:
+                # Try database first, fall back to JSON if necessary
+                try:
+                    from benchmark_db_api import BenchmarkDBAPI
+                    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+                    custom_models = db_api.get_benchmark_results()
+                    logger.info("Successfully loaded results from database")
+                except Exception as e:
+                    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                    
+                with open(args.custom_models, 'r') as f:
+                    custom_models = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading custom models: {e}")
+                return 1
+        
+        # Handle specific models
+        if args.models:
+            args.specific_models = args.models
+        
+        if args.specific_models:
+            if args.models_set == "key":
+                model_set = {k: v for k, v in KEY_MODEL_SET.items() if k in args.specific_models}
+            elif args.models_set == "small":
+                model_set = {k: v for k, v in SMALL_MODEL_SET.items() if k in args.specific_models}
+            elif args.models_set == "custom":
+                model_set = {k: v for k, v in custom_models.items() if k in args.specific_models}
+            
+            # Check if we have any models after filtering
+            if not model_set:
+                logger.error(f"No models found matching the specified keys: {args.specific_models}")
+                return 1
+            
+            custom_models = model_set
+            args.models_set = "custom"
+        
+        # Create and run benchmarks
+        runner = ModelBenchmarkRunner(
+            output_dir=args.output_dir,
+            models_set=args.models_set,
+            custom_models=custom_models,
+            hardware_types=args.hardware,
+            batch_sizes=args.batch_sizes,
+            verify_functionality=not args.benchmark_only,
+            measure_performance=not args.verify_only,
+            generate_plots=not args.no_plots,
+            update_compatibility_matrix=not args.no_compatibility_update,
+            use_resource_pool=not args.no_resource_pool,
+            db_path=args.db_path,
+            store_in_db=not args.no_db_store,
+            db_only=args.db_only,
+            verbose=args.verbose or args.debug
+        )
+        
+        success = runner.run()
+        
+        # Generate visualizations if requested
+        if args.visualize_from_db:
+            logger.info("Generating visualizations from database...")
+            if not runner.visualize_from_db():
+                logger.error("Failed to generate visualizations from database")
+                return 1
+        
+        return 0 if success else 1
 
-    parser.add_argument("--hardware", type=str, nargs="+", help="Hardware platforms to test (defaults to all available)")
-    parser.add_argument("--batch-sizes", type=int, nargs="+", default=DEFAULT_BATCH_SIZES, help="Batch sizes to test")
+# Define the main function
+# Define main function at the global scope
+def main():
+    """Main function for running model benchmarks from command line"""
+    parser = argparse.ArgumentParser(description="Benchmark models across hardware platforms")
+    
+    # Main options
+    parser.add_argument("--output-dir", type=str, default="./benchmark_results", help="Output directory for benchmark results")
+    parser.add_argument("--models-set", choices=["key", "small", "custom"], default="key", help="Which model set to use")
+    parser.add_argument("--custom-models", type=str, help="JSON file with custom models configuration (required if models-set=custom)")
+    parser.add_argument("--hardware", type=str, nargs="+", default=["cpu"], help="Hardware platforms to test")
+    parser.add_argument("--batch-sizes", type=str, default="1,2,4,8,16", help="Comma-separated list of batch sizes to test")
     parser.add_argument("--verify-only", action="store_true", help="Only verify functionality without performance benchmarks")
     parser.add_argument("--benchmark-only", action="store_true", help="Only run performance benchmarks without verification")
     parser.add_argument("--no-plots", action="store_true", help="Disable plot generation")
@@ -1227,57 +1378,49 @@ else:
     parser.add_argument("--no-resource-pool", action="store_true", help="Disable ResourcePool for model caching")
     parser.add_argument("--specific-models", type=str, nargs="+", help="Only benchmark specific models (by key) from the selected set")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    
-    # Database-related arguments
-    parser.add_argument("--db-path", type=str, default="./benchmark_db.duckdb", help="Path to DuckDB database for storing results")
+    parser.add_argument("--db-path", type=str, help="Path to DuckDB database for storing results")
     parser.add_argument("--no-db-store", action="store_true", help="Disable storing results in the database")
     parser.add_argument("--visualize-from-db", action="store_true", help="Generate visualizations from database instead of current run results")
+    parser.add_argument("--db-only", action="store_true", help="Store results only in the database, not in JSON")
+    parser.add_argument("--models", type=str, nargs="+", help="Specific models to benchmark (alternative to --specific-models)")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("--timestamp", type=str, help="Timestamp to use for output files")
     
+    args = parser.parse_args()
     
-    parser.add_argument("--db-path", type=str, default=None,
-                      help="Path to the benchmark database")
-    parser.add_argument("--db-only", action="store_true",
-                      help="Store results only in the database, not in JSON")
-args = parser.parse_args()
+    # Process batch sizes
+    batch_sizes = [int(x) for x in args.batch_sizes.split(",")]
     
-    # Configure logging
-    if args.debug:
-# Try database first, fall back to JSON if necessary
-try:
-    from benchmark_db_api import BenchmarkDBAPI
-    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
-    results = db_api.get_benchmark_results()
-    logger.info("Successfully loaded results from database")
-except Exception as e:
-    logger.warning(f"Error reading from database, falling back to JSON: {e}")
-            logging.getLogger().setLevel(logging.DEBUG)
-
-        logger.setLevel(logging.DEBUG)
-    
-    # Handle custom models
-    custom_models = None
+    # Load custom models if specified
+    custom_models = {}
     if args.models_set == "custom":
         if not args.custom_models:
-            logger.error("--custom-models is required when using --models-set=custom")
-            return
+            logger.error("--custom-models must be specified when using --models-set=custom")
+            return 1
         
         try:
-# Try database first, fall back to JSON if necessary
-try:
-    from benchmark_db_api import BenchmarkDBAPI
-    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
-    custom_models = db_api.get_benchmark_results()
-    logger.info("Successfully loaded results from database")
-except Exception as e:
-    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+            # Try loading from database first if integration is available
+            if BENCHMARK_DB_AVAILABLE and Path(args.custom_models).suffix.lower() != ".json":
+                try:
+                    db_path = args.db_path or os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                    db_api = BenchmarkDBAPI(db_path)
+                    custom_models = db_api.get_benchmark_results()
+                    logger.info("Successfully loaded results from database")
+                except Exception as e:
+                    logger.warning(f"Error reading from database, falling back to JSON: {e}")
+            
+            # Fall back to JSON if needed
+            if not custom_models:
                 with open(args.custom_models, 'r') as f:
                     custom_models = json.load(f)
-
         except Exception as e:
             logger.error(f"Error loading custom models: {e}")
-            return
+            return 1
     
     # Handle specific models
+    if args.models:
+        args.specific_models = args.models
+    
     if args.specific_models:
         if args.models_set == "key":
             model_set = {k: v for k, v in KEY_MODEL_SET.items() if k in args.specific_models}
@@ -1289,7 +1432,7 @@ except Exception as e:
         # Check if we have any models after filtering
         if not model_set:
             logger.error(f"No models found matching the specified keys: {args.specific_models}")
-            return
+            return 1
         
         custom_models = model_set
         args.models_set = "custom"
@@ -1300,68 +1443,28 @@ except Exception as e:
         models_set=args.models_set,
         custom_models=custom_models,
         hardware_types=args.hardware,
-        batch_sizes=args.batch_sizes,
+        batch_sizes=batch_sizes,
         verify_functionality=not args.benchmark_only,
         measure_performance=not args.verify_only,
         generate_plots=not args.no_plots,
         update_compatibility_matrix=not args.no_compatibility_update,
         use_resource_pool=not args.no_resource_pool,
-        db_path = args.db_path
-    if db_path is None:
-        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
-        logger.info(f"Using database path from environment: {db_path}"),
-        store_in_db=not args.no_db_store
+        db_path=args.db_path,
+        store_in_db=not args.no_db_store,
+        db_only=args.db_only,
+        verbose=args.verbose or args.debug
     )
     
-    results = runner.run_benchmarks()
+    success = runner.run()
     
-    # Print short summary
-    print("\nBenchmark Summary:")
+    # Generate visualizations if requested
+    if args.visualize_from_db:
+        logger.info("Generating visualizations from database...")
+        if not runner.visualize_from_db():
+            logger.error("Failed to generate visualizations from database")
+            return 1
     
-    # Verification summary
-    if not args.benchmark_only and results.get("functionality_verification"):
-        print("\nFunctionality Verification:")
-        for hw_type, hw_results in results["functionality_verification"].items():
-            success_rate = 0
-            if "summary" in hw_results:
-                success_rate = hw_results["summary"].get("success_rate", 0)
-            elif "stats" in hw_results:
-                success_rate = hw_results["stats"].get("success_rate", 0)
-            
-            print(f"  {hw_type}: {success_rate:.1f}% success rate")
-    
-    # Performance summary
-    if not args.verify_only and results.get("performance_benchmarks"):
-        print("\nPerformance Benchmarks:")
-        for family in results["performance_benchmarks"].keys():
-            print(f"  {family}: Benchmarks completed")
-    
-    # Database storage status
-    if runner.store_in_db and runner.db_conn:
-        print("\nResults stored in database:")
-        print(f"  Database path: {runner.db_path}")
-    
-    print(f"\nFull results saved to: {os.path.join(args.output_dir, runner.timestamp)}")
-    
-    # Additional database visualization if requested
-    if args.visualize_from_db and not args.no_db_store:
-        try:
-            from scripts.benchmark_db_query import generate_report
-            print("\nGenerating database visualizations...")
-            report_path = generate_report(
-                db_path = args.db_path
-    if db_path is None:
-        db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
-        logger.info(f"Using database path from environment: {db_path}"),
-                report_type="performance",
-                output_format="html",
-                output_file=os.path.join(args.output_dir, runner.timestamp, "db_performance_report.html")
-            )
-            print(f"Database report generated: {report_path}")
-        except ImportError:
-            print("Could not generate database visualizations - benchmark_db_query module not found")
-        except Exception as e:
-            print(f"Error generating database visualizations: {e}")
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

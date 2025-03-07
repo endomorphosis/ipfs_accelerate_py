@@ -1,0 +1,24 @@
+{
+  "model": "google/vit-base-patch16-224",
+  "hardware": "cpu",
+  "success": true,
+  "batch_results": {
+    "1": {
+      "success": true,
+      "batch_size": 1,
+      "avg_latency_ms": 257.5669288635254,
+      "throughput_items_per_second": 3.8824860179540392,
+      "memory_mb": 836.12890625,
+      "latencies_ms": [
+        280.1337242126465,
+        286.7085933685303,
+        245.2073097229004,
+        225.30460357666016,
+        250.48041343688965
+      ],
+      "device": "cpu",
+      "timestamp": "2025-03-06T17:45:45.440227"
+    }
+  },
+  "timestamp": "2025-03-06T17:45:43.279615"
+}

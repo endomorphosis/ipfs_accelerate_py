@@ -1,0 +1,24 @@
+{
+  "model": "prajjwal1/bert-tiny",
+  "hardware": "cpu",
+  "success": true,
+  "batch_results": {
+    "1": {
+      "success": true,
+      "batch_size": 1,
+      "avg_latency_ms": 21.828126907348633,
+      "throughput_items_per_second": 45.81245125816733,
+      "memory_mb": 507.12890625,
+      "latencies_ms": [
+        20.139455795288086,
+        41.502952575683594,
+        16.34836196899414,
+        16.76034927368164,
+        14.389514923095703
+      ],
+      "device": "cpu",
+      "timestamp": "2025-03-06T17:48:25.402477"
+    }
+  },
+  "timestamp": "2025-03-06T17:48:24.430152"
+}

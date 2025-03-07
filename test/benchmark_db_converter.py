@@ -81,20 +81,24 @@ class BenchmarkDBConverter:
     def _get_performance_schema(self):
         """
         Define the schema for performance benchmark data.
+        Matches the schema in create_benchmark_schema.py
         """
         return pa.schema([
-            ('model', pa.string()),
-            ('hardware', pa.string()),
-            ('device', pa.string()),
+            ('result_id', pa.int32()),
+            ('run_id', pa.int32()),
+            ('model_id', pa.int32()),
+            ('hardware_id', pa.int32()),
+            ('test_case', pa.string()),
             ('batch_size', pa.int32()),
             ('precision', pa.string()),
-            ('throughput', pa.float32()),
-            ('latency_avg', pa.float32()),
-            ('latency_p90', pa.float32()),
-            ('latency_p95', pa.float32()),
-            ('latency_p99', pa.float32()),
-            ('memory_peak', pa.float32()),
-            ('timestamp', pa.timestamp('ms')),
+            ('total_time_seconds', pa.float32()),
+            ('average_latency_ms', pa.float32()),
+            ('throughput_items_per_second', pa.float32()),
+            ('memory_peak_mb', pa.float32()),
+            ('iterations', pa.int32()),
+            ('warmup_iterations', pa.int32()),
+            ('metrics', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
             ('source_file', pa.string()),
             ('notes', pa.string())
         ])
@@ -102,35 +106,42 @@ class BenchmarkDBConverter:
     def _get_hardware_schema(self):
         """
         Define the schema for hardware detection data.
+        Matches the schema in create_benchmark_schema.py
         """
         return pa.schema([
+            ('hardware_id', pa.int32()),
             ('hardware_type', pa.string()),
             ('device_name', pa.string()),
-            ('is_available', pa.bool_()),
             ('platform', pa.string()),
+            ('platform_version', pa.string()),
             ('driver_version', pa.string()),
-            ('memory_total', pa.float32()),
-            ('memory_free', pa.float32()),
-            ('compute_capability', pa.string()),
-            ('error', pa.string()),
-            ('timestamp', pa.timestamp('ms')),
+            ('memory_gb', pa.float32()),
+            ('compute_units', pa.int32()),
+            ('metadata', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
             ('source_file', pa.string())
         ])
     
     def _get_compatibility_schema(self):
         """
         Define the schema for compatibility test data.
+        Matches the schema in create_benchmark_schema.py
         """
         return pa.schema([
-            ('model', pa.string()),
-            ('hardware_type', pa.string()),
+            ('compatibility_id', pa.int32()),
+            ('run_id', pa.int32()),
+            ('model_id', pa.int32()),
+            ('hardware_id', pa.int32()),
             ('is_compatible', pa.bool_()),
-            ('compatibility_level', pa.string()),
+            ('detection_success', pa.bool_()),
+            ('initialization_success', pa.bool_()),
             ('error_message', pa.string()),
             ('error_type', pa.string()),
-            ('memory_required', pa.float32()),
-            ('memory_available', pa.float32()),
-            ('timestamp', pa.timestamp('ms')),
+            ('suggested_fix', pa.string()),
+            ('workaround_available', pa.bool_()),
+            ('compatibility_score', pa.float32()),
+            ('metadata', pa.string()),  # JSON as string
+            ('created_at', pa.timestamp('ms')),
             ('source_file', pa.string())
         ])
     
@@ -218,21 +229,36 @@ class BenchmarkDBConverter:
                 
                 # Create entry with safe conversions
                 try:
+                    # Prepare JSON metrics field
+                    metrics = {}
+                    for key, value in item.items():
+                        if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                     'throughput', 'latency', 'memory_peak', 'timestamp',
+                                     'iterations', 'warmup_iterations']:
+                            metrics[key] = value
+                    
                     entry = {
-                        'model': item.get('model', 'unknown'),
-                        'hardware': item.get('hardware', 'unknown'),
-                        'device': item.get('device', 'unknown'),
+                        'result_id': 0,  # Will be assigned by database
+                        'run_id': 0,     # Will be assigned by database
+                        'model_id': 0,   # Will be resolved by database API
+                        'hardware_id': 0, # Will be resolved by database API
+                        'test_case': item.get('test_case', 'default'),
                         'batch_size': int(float(item.get('batch_size', 1))),
                         'precision': item.get('precision', 'fp32'),
-                        'throughput': float(item.get('throughput', 0.0)),
-                        'latency_avg': float(item.get('latency_avg', item.get('latency', 0.0))),
-                        'latency_p90': float(item.get('latency_p90', 0.0)),
-                        'latency_p95': float(item.get('latency_p95', 0.0)),
-                        'latency_p99': float(item.get('latency_p99', 0.0)),
-                        'memory_peak': float(item.get('memory_peak', item.get('memory', 0.0))),
-                        'timestamp': timestamp,
+                        'total_time_seconds': float(item.get('total_time', item.get('execution_time', 0.0))),
+                        'average_latency_ms': float(item.get('latency_avg', item.get('latency', 0.0))),
+                        'throughput_items_per_second': float(item.get('throughput', 0.0)),
+                        'memory_peak_mb': float(item.get('memory_peak', item.get('memory', 0.0))),
+                        'iterations': int(item.get('iterations', 1)),
+                        'warmup_iterations': int(item.get('warmup_iterations', 0)),
+                        'metrics': json.dumps(metrics),
+                        'created_at': timestamp,
                         'source_file': source_file,
-                        'notes': item.get('notes', '')
+                        'notes': item.get('notes', ''),
+                        # Additional fields to help with database insertion
+                        'model_name': item.get('model', 'unknown'),
+                        'hardware_type': item.get('hardware', item.get('hardware_type', 'unknown')),
+                        'device_name': item.get('device', item.get('device_name', 'unknown'))
                     }
                     normalized.append(entry)
                 except (ValueError, TypeError) as e:
@@ -261,21 +287,36 @@ class BenchmarkDBConverter:
             # Multiple results format
             for result in data['results']:
                 try:
+                    # Prepare JSON metrics field
+                    metrics = {}
+                    for key, value in result.items():
+                        if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                     'throughput', 'latency', 'memory_peak', 'timestamp',
+                                     'iterations', 'warmup_iterations']:
+                            metrics[key] = value
+                    
                     entry = {
-                        'model': result.get('model', data.get('model', 'unknown')),
-                        'hardware': result.get('hardware', data.get('hardware', 'unknown')),
-                        'device': result.get('device', data.get('device', 'unknown')),
+                        'result_id': 0,  # Will be assigned by database
+                        'run_id': 0,     # Will be assigned by database
+                        'model_id': 0,   # Will be resolved by database API
+                        'hardware_id': 0, # Will be resolved by database API
+                        'test_case': result.get('test_case', data.get('test_case', 'default')),
                         'batch_size': int(float(result.get('batch_size', data.get('batch_size', 1)))),
                         'precision': result.get('precision', data.get('precision', 'fp32')),
-                        'throughput': float(result.get('throughput', 0.0)),
-                        'latency_avg': float(result.get('latency_avg', result.get('latency', 0.0))),
-                        'latency_p90': float(result.get('latency_p90', 0.0)),
-                        'latency_p95': float(result.get('latency_p95', 0.0)),
-                        'latency_p99': float(result.get('latency_p99', 0.0)),
-                        'memory_peak': float(result.get('memory_peak', result.get('memory', 0.0))),
-                        'timestamp': timestamp,
+                        'total_time_seconds': float(result.get('total_time', result.get('execution_time', data.get('total_time', data.get('execution_time', 0.0))))),
+                        'average_latency_ms': float(result.get('latency_avg', result.get('latency', 0.0))),
+                        'throughput_items_per_second': float(result.get('throughput', 0.0)),
+                        'memory_peak_mb': float(result.get('memory_peak', result.get('memory', 0.0))),
+                        'iterations': int(result.get('iterations', data.get('iterations', 1))),
+                        'warmup_iterations': int(result.get('warmup_iterations', data.get('warmup_iterations', 0))),
+                        'metrics': json.dumps(metrics),
+                        'created_at': timestamp,
                         'source_file': source_file,
-                        'notes': result.get('notes', data.get('notes', ''))
+                        'notes': result.get('notes', data.get('notes', '')),
+                        # Additional fields to help with database insertion
+                        'model_name': result.get('model', data.get('model', 'unknown')),
+                        'hardware_type': result.get('hardware', result.get('hardware_type', data.get('hardware', data.get('hardware_type', 'unknown')))),
+                        'device_name': result.get('device', result.get('device_name', data.get('device', data.get('device_name', 'unknown'))))
                     }
                     normalized.append(entry)
                 except (ValueError, TypeError) as e:
@@ -284,21 +325,36 @@ class BenchmarkDBConverter:
         else:
             # Single result format
             try:
+                # Prepare JSON metrics field
+                metrics = {}
+                for key, value in data.items():
+                    if key not in ['model', 'hardware_type', 'device', 'batch_size', 'precision',
+                                 'throughput', 'latency', 'memory_peak', 'timestamp',
+                                 'iterations', 'warmup_iterations']:
+                        metrics[key] = value
+                
                 entry = {
-                    'model': data.get('model', 'unknown'),
-                    'hardware': data.get('hardware', 'unknown'),
-                    'device': data.get('device', 'unknown'),
+                    'result_id': 0,  # Will be assigned by database
+                    'run_id': 0,     # Will be assigned by database
+                    'model_id': 0,   # Will be resolved by database API
+                    'hardware_id': 0, # Will be resolved by database API
+                    'test_case': data.get('test_case', 'default'),
                     'batch_size': int(float(data.get('batch_size', 1))),
                     'precision': data.get('precision', 'fp32'),
-                    'throughput': float(data.get('throughput', 0.0)),
-                    'latency_avg': float(data.get('latency_avg', data.get('latency', 0.0))),
-                    'latency_p90': float(data.get('latency_p90', 0.0)),
-                    'latency_p95': float(data.get('latency_p95', 0.0)),
-                    'latency_p99': float(data.get('latency_p99', 0.0)),
-                    'memory_peak': float(data.get('memory_peak', data.get('memory', 0.0))),
-                    'timestamp': timestamp,
+                    'total_time_seconds': float(data.get('total_time', data.get('execution_time', 0.0))),
+                    'average_latency_ms': float(data.get('latency_avg', data.get('latency', 0.0))),
+                    'throughput_items_per_second': float(data.get('throughput', 0.0)),
+                    'memory_peak_mb': float(data.get('memory_peak', data.get('memory', 0.0))),
+                    'iterations': int(data.get('iterations', 1)),
+                    'warmup_iterations': int(data.get('warmup_iterations', 0)),
+                    'metrics': json.dumps(metrics),
+                    'created_at': timestamp,
                     'source_file': source_file,
-                    'notes': data.get('notes', '')
+                    'notes': data.get('notes', ''),
+                    # Additional fields to help with database insertion
+                    'model_name': data.get('model', 'unknown'),
+                    'hardware_type': data.get('hardware', data.get('hardware_type', 'unknown')),
+                    'device_name': data.get('device', data.get('device_name', 'unknown'))
                 }
                 normalized.append(entry)
             except (ValueError, TypeError) as e:
@@ -335,33 +391,49 @@ class BenchmarkDBConverter:
         # Handle CUDA devices
         if 'cuda' in data and data['cuda'] is True and 'cuda_devices' in data:
             for device in data['cuda_devices']:
-                entry = {
-                    'hardware_type': 'cuda',
-                    'device_name': device.get('name', 'unknown'),
+                # Create metadata JSON
+                metadata = {
                     'is_available': True,
-                    'platform': data.get('system', {}).get('platform', 'unknown'),
-                    'driver_version': data.get('cuda_driver_version', 'unknown'),
-                    'memory_total': float(device.get('total_memory', 0.0)),
                     'memory_free': float(device.get('free_memory', 0.0)),
                     'compute_capability': device.get('compute_capability', 'unknown'),
-                    'error': '',
-                    'timestamp': timestamp,
+                    'error': ''
+                }
+                
+                entry = {
+                    'hardware_id': 0,  # Will be assigned by database
+                    'hardware_type': 'cuda',
+                    'device_name': device.get('name', 'unknown'),
+                    'platform': data.get('system', {}).get('platform', 'unknown'),
+                    'platform_version': data.get('system', {}).get('platform_version', 'unknown'),
+                    'driver_version': data.get('cuda_driver_version', 'unknown'),
+                    'memory_gb': float(device.get('total_memory', 0.0)) / 1024.0 if 'total_memory' in device else 0.0,
+                    'compute_units': int(device.get('compute_units', 0)),
+                    'metadata': json.dumps(metadata),
+                    'created_at': timestamp,
                     'source_file': source_file
                 }
                 normalized.append(entry)
         elif 'cuda' in data:
             # CUDA not available or no devices
-            entry = {
-                'hardware_type': 'cuda',
-                'device_name': 'none',
+            # Create metadata JSON
+            metadata = {
                 'is_available': data['cuda'] is True,
-                'platform': data.get('system', {}).get('platform', 'unknown'),
-                'driver_version': data.get('cuda_driver_version', 'unknown'),
-                'memory_total': 0.0,
                 'memory_free': 0.0,
                 'compute_capability': 'unknown',
-                'error': data.get('cuda_error', ''),
-                'timestamp': timestamp,
+                'error': data.get('cuda_error', '')
+            }
+            
+            entry = {
+                'hardware_id': 0,  # Will be assigned by database
+                'hardware_type': 'cuda',
+                'device_name': 'none',
+                'platform': data.get('system', {}).get('platform', 'unknown'),
+                'platform_version': data.get('system', {}).get('platform_version', 'unknown'),
+                'driver_version': data.get('cuda_driver_version', 'unknown'),
+                'memory_gb': 0.0,
+                'compute_units': 0,
+                'metadata': json.dumps(metadata),
+                'created_at': timestamp,
                 'source_file': source_file
             }
             normalized.append(entry)

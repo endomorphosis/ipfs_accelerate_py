@@ -2,11 +2,16 @@
 """
 CI Benchmark Timing Report
 
-This script is designed to be run as part of a CI/CD pipeline to generate
-the comprehensive benchmark timing report and publish it to a specified location.
+This script is designed to be run as part of a CI/CD pipeline to run benchmarks 
+and/or generate the comprehensive benchmark timing report and publish it to a 
+specified location.
 
 Usage:
+    # Generate report only
     python ci_benchmark_timing_report.py --db-path ./benchmark_db.duckdb --output-dir ./public/reports
+    
+    # Run benchmarks and generate report
+    python ci_benchmark_timing_report.py --run-benchmarks --models bert,vit,whisper --hardware cpu,cuda
 """
 
 import os
@@ -17,6 +22,16 @@ import subprocess
 import json
 import datetime
 from pathlib import Path
+
+# Try to import execute_comprehensive_benchmarks
+try:
+    parent_dir = str(Path(__file__).parent.parent)
+    if parent_dir not in sys.path:
+        sys.path.append(parent_dir)
+    from execute_comprehensive_benchmarks import ComprehensiveBenchmarkOrchestrator
+    HAVE_BENCHMARK_TOOLS = True
+except ImportError:
+    HAVE_BENCHMARK_TOOLS = False
 
 # Configure logging
 logging.basicConfig(
@@ -153,17 +168,82 @@ def create_metadata_file(output_dir, metadata=None):
     logger.info(f"Created metadata file: {metadata_path}")
     return metadata_path
 
+def run_benchmarks(args):
+    """Run benchmarks using the ComprehensiveBenchmarkOrchestrator."""
+    if not HAVE_BENCHMARK_TOOLS:
+        logger.error("Benchmark orchestration tools not available")
+        return False
+    
+    try:
+        # Parse model and hardware lists
+        models = args.models.split(",") if args.models else None
+        hardware = args.hardware.split(",") if args.hardware else None
+        
+        # Parse batch sizes
+        batch_sizes = [int(x) for x in args.batch_sizes.split(",")] if args.batch_sizes else [1, 4, 16]
+        
+        logger.info(f"Running benchmarks for models: {models or 'all'} on hardware: {hardware or 'all'}")
+        logger.info(f"Using small models: {args.small_models}")
+        logger.info(f"Batch sizes: {batch_sizes}")
+        
+        # Create benchmark orchestrator
+        orchestrator = ComprehensiveBenchmarkOrchestrator(
+            db_path=args.db_path,
+            output_dir=args.output_dir,
+            small_models=args.small_models,
+            batch_sizes=batch_sizes
+        )
+        
+        # Run benchmarks
+        results = orchestrator.run_all_benchmarks(
+            model_types=models,
+            hardware_types=hardware,
+            skip_unsupported=not args.force_all_hardware
+        )
+        
+        # Print summary
+        logger.info("\nBenchmark Summary:")
+        logger.info(f"Total benchmarks: {results['summary']['total']}")
+        logger.info(f"Completed: {results['summary']['completed']}")
+        logger.info(f"Failed: {results['summary']['failed']}")
+        logger.info(f"Skipped: {results['summary']['skipped']}")
+        logger.info(f"Completion percentage: {results['summary']['completion_percentage']}%")
+        
+        # Return success if completion percentage is above threshold
+        threshold = args.completion_threshold
+        if results["summary"]["completion_percentage"] >= threshold:
+            logger.info(f"Benchmark run successful: {results['summary']['completion_percentage']}% complete (threshold: {threshold}%)")
+            return True
+        else:
+            logger.error(f"Benchmark run failed: only {results['summary']['completion_percentage']}% complete (threshold: {threshold}%)")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error running benchmarks: {str(e)}")
+        return False
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="CI Benchmark Timing Report")
     
-    # Configuration options
+    # Main operations
+    parser.add_argument("--run-benchmarks", action="store_true", help="Run benchmarks before generating report")
+    
+    # Configuration options for report generation
     parser.add_argument("--db-path", help="Path to benchmark database")
     parser.add_argument("--output-dir", default="./reports", help="Output directory for reports")
     parser.add_argument("--format", choices=["html", "md", "markdown", "json"], default="html", help="Output format")
     parser.add_argument("--days", type=int, default=30, help="Days of historical data to include")
     parser.add_argument("--publish", action="store_true", help="Publish the report to GitHub Pages")
     parser.add_argument("--metadata", type=str, help="JSON file with additional metadata to include")
+    
+    # Configuration options for benchmarks
+    parser.add_argument("--models", help="Comma-separated list of models to benchmark")
+    parser.add_argument("--hardware", help="Comma-separated list of hardware platforms to benchmark")
+    parser.add_argument("--small-models", action="store_true", help="Use smaller model variants when available")
+    parser.add_argument("--batch-sizes", default="1,4,16", help="Comma-separated list of batch sizes to test")
+    parser.add_argument("--force-all-hardware", action="store_true", help="Force benchmarking on all hardware types")
+    parser.add_argument("--completion-threshold", type=float, default=50.0, help="Minimum benchmark completion percentage to consider successful")
     
     args = parser.parse_args()
     
@@ -178,6 +258,14 @@ def main():
                 additional_metadata = json.load(f)
         except json.JSONDecodeError:
             logger.warning(f"Could not parse metadata file: {args.metadata}")
+    
+    # Run benchmarks if requested
+    if args.run_benchmarks:
+        if not run_benchmarks(args):
+            logger.error("Benchmark run failed")
+            # Only exit if benchmarks failed but continue with report generation if not
+            if not args.db_path:
+                return 1
     
     # Run the benchmark report
     if run_benchmark_report(args):

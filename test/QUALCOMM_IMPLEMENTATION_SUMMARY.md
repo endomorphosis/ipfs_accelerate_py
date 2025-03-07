@@ -14,10 +14,10 @@ The Qualcomm AI Engine integration extends the IPFS Accelerate Python Framework 
 - **Power Efficiency Focus**: Optimized for battery-powered devices with power monitoring
 - **Thermal Management**: Tracks temperature during inference to prevent throttling
 - **SDK Flexibility**: Compatible with both QNN SDK and QTI SDK versions
-- **Mock Implementation**: Testing support without physical hardware
+- **Enhanced Simulation Mode**: Robust QNNSDKWrapper with clear simulation status flags (NEW in April 2025)
 - **Comprehensive Metrics**: Detailed performance, power, and thermal measurements
-- **DuckDB Integration**: All test results stored in structured database format
-- **Visualization Tools**: Generate performance comparison charts and reports
+- **DuckDB Integration**: All test results stored in structured database format with simulation tracking
+- **Visualization Tools**: Generate performance comparison charts and reports with simulation indicators
 
 ## Implementation Details
 
@@ -294,13 +294,61 @@ Several challenges were addressed during implementation:
 
 ## Implementation Status
 
-The current implementation (March 2025) includes:
+The current implementation (April 2025) includes:
 
 1. **QualcommTestHandler**: Complete implementation of Qualcomm hardware testing
-2. **TestResultsDBHandler**: Full integration with DuckDB for storing all test results
+2. **TestResultsDBHandler**: Full integration with DuckDB for storing all test results with simulation tracking
 3. **test_qualcomm_endpoint**: Full endpoint testing capability for Qualcomm hardware
-4. **Mock Mode**: Complete implementation of mock mode for testing without hardware
+4. **QNNSDKWrapper**: Enhanced wrapper with proper simulation indicators and error handling (NEW!)
 5. **Power Monitoring**: Full power and thermal metrics collection
+
+### Enhanced QNNSDKWrapper (April 2025)
+
+The April 2025 update includes a significant enhancement with the replacement of the previous MockQNNSDK implementation with a robust QNNSDKWrapper class that provides:
+
+```python
+class QNNSDKWrapper:
+    """
+    Wrapper for QNN SDK with proper error handling and simulation detection.
+    This replaces the previous MockQNNSDK implementation with a more robust approach.
+    """
+    def __init__(self, version: str = "2.10", simulation_mode: bool = False):
+        self.version = version
+        self.available = False
+        self.simulation_mode = simulation_mode
+        self.devices = []
+        self.current_device = None
+        
+        if simulation_mode:
+            logger.warning("QNN SDK running in SIMULATION mode. No real hardware will be used.")
+            self._setup_simulation()
+        else:
+            logger.info(f"Attempting to initialize QNN SDK version {version}")
+```
+
+Key benefits of the enhanced implementation:
+
+1. **Clear Simulation Indication**:
+   - Explicit simulation_mode flag in all results
+   - Warning messages in logs when running in simulation mode
+   - Simulation flags propagated to database records
+
+2. **Improved Error Handling**:
+   - Proper detection of SDK availability
+   - Clear error messages when hardware or SDK is unavailable
+   - Graceful fallback to simulation mode when requested
+
+3. **Consistent API**:
+   - Same interface for real hardware and simulation
+   - All methods properly handle simulation status
+   - Centralized hardware detection integration
+
+4. **Enhanced Logging**:
+   - Comprehensive logging of detection process
+   - Clear indication of simulation mode in logs
+   - Detailed error reporting and diagnostics
+
+This enhancement ensures that users can clearly distinguish between real hardware tests and simulations, leading to more reliable deployment decisions and performance expectations.
 
 ## Future Improvements
 

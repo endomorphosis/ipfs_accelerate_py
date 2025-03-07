@@ -8,6 +8,9 @@ Phase 16 focusing on advanced hardware benchmarking, web platform integration, a
 
 ## Recent Documentation
 
+- **[Comprehensive Benchmark Execution Guide](COMPREHENSIVE_BENCHMARK_EXECUTION_GUIDE.md)** - NEW! Guide to running comprehensive benchmarks with the new orchestration script
+- **[Simulation Detection Improvements](SIMULATION_DETECTION_IMPROVEMENTS.md)** - NEW! Documentation of improvements to properly handle and flag simulated hardware
+- **[Benchmark Timing Report Guide](BENCHMARK_TIMING_REPORT_GUIDE.md)** - NEW! Comprehensive guide to the benchmark timing report system with raw timing data tables
 - **[Mobile/Edge Support Guide](MOBILE_EDGE_SUPPORT_GUIDE.md)** - COMPLETED! Comprehensive guide to mobile and edge device support including Qualcomm, MediaTek, and Samsung
 - **[Samsung NPU Support Guide](SAMSUNG_NPU_SUPPORT_GUIDE.md)** - NEW! Complete guide to Samsung Exynos NPU support with One UI optimization
 - **[Mobile Edge Device Metrics Guide](MOBILE_EDGE_DEVICE_METRICS.md)** - NEW! Complete guide to collecting, storing, and analyzing mobile device metrics
@@ -74,6 +77,22 @@ The repository has been organized for better readability and maintainability:
 - **archived_cuda_fixes/**: CUDA detection fix scripts
 - **old_scripts/**: Older versions of implementation scripts
 - **generated_skillsets/**: Output directory for skillset generator
+
+### New Tools Added (April 2025)
+
+- **`run_comprehensive_benchmarks.py`**: Enhanced orchestration script for running comprehensive benchmarks with advanced features:
+  - Hardware auto-detection with centralized hardware detection integration
+  - Batch size customization capabilities
+  - Hardware forcing for testing unavailable platforms
+  - Status tracking and reporting in JSON format
+  - Multiple report format support (HTML, Markdown, JSON)
+  - Timeout control for preventing hung benchmarks
+  - Comprehensive error handling and reporting
+- **`benchmark_timing_report.py`**: Comprehensive benchmark timing report generator with visualization
+- **`run_benchmark_timing_report.py`**: User-friendly CLI for generating benchmark timing reports
+- **`execute_comprehensive_benchmarks.py`**: Orchestrates running REAL benchmarks across all models and hardware platforms with comprehensive error tracking
+- **`query_benchmark_timings.py`**: Lightweight tool for querying raw benchmark timing data with detailed error reporting
+- **`scripts/ci_benchmark_timing_report.py`**: CI/CD integration for benchmark reports
 
 ### New Tools Added (March 2025)
 
@@ -451,6 +470,12 @@ python test/verify_web_platform_integration.py
 ### Benchmark Database and Analysis
 
 ```bash
+# Run comprehensive benchmarks with the new orchestration script
+python test/run_comprehensive_benchmarks.py
+
+# Run benchmarks for specific models and hardware
+python test/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+
 # Initialize benchmark database with sample data
 python benchmark_database.py
 
@@ -471,6 +496,9 @@ python benchmark_query.py report --family embedding --format html
 
 # Get database statistics
 python benchmark_query.py stats
+
+# Generate comprehensive benchmark timing report
+python test/benchmark_timing_report.py --generate --format html --output report.html
 ```
 
 ### Skillset Generation with Database Templates
@@ -592,6 +620,34 @@ python simple_model_test_generator.py --model llama-3-70b-instruct --task text-g
 ```
 
 ## Recent Improvements
+
+### April 2025 Enhancements
+
+1. **Enhanced Benchmark Timing System** - Major improvements to the benchmark system:
+   - Replaced simulation-based benchmarks with REAL benchmarks for all model-hardware combinations
+   - Implemented comprehensive error handling with detailed error classification and reporting
+   - Added three error types: timeout, execution_error, and unexpected_error
+   - Ensured all error messages are captured and stored for troubleshooting
+   - Enhanced the reporting system to clearly display successful and failed benchmarks
+   - Updated database schema to store error information with each benchmark result
+   - Added detailed command tracking for each benchmark execution
+   - Improved recovery from failed benchmarks without interrupting the entire process
+   - Enhanced visualization tools to highlight performance bottlenecks
+   - Updated documentation to reflect the improved benchmark system
+   - Comprehensive enhancements to error reporting in query_benchmark_timings.py
+   - Added execution_time_sec tracking for benchmark performance analysis
+
+2. **Enhanced Error Diagnostics** - Improved error diagnostics capabilities:
+   - Robust subprocess error capture and classification
+   - Detailed command execution history for troubleshooting
+   - Storage of stdout and stderr for failed benchmarks
+   - Batch-specific error handling for partial benchmark failures
+   - Database integration for error recording and historical analysis
+   - Improved visualization of errors in benchmark reports
+   - Error classification and severity analysis
+   - Time-based error correlation for multi-platform issues
+   - Automatic alerting for critical failures
+   - Detailed error documentation for common issues
 
 ### March 2025 Enhancements
 

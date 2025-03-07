@@ -1,0 +1,80 @@
+{
+  "bert": {
+    "name": "bert-base-uncased",
+    "family": "embedding",
+    "size": "base",
+    "modality": "text"
+  },
+  "clap": {
+    "name": "laion/clap-htsat-unfused",
+    "family": "audio",
+    "size": "base",
+    "modality": "audio"
+  },
+  "clip": {
+    "name": "openai/clip-vit-base-patch32",
+    "family": "multimodal",
+    "size": "base",
+    "modality": "multimodal"
+  },
+  "detr": {
+    "name": "facebook/detr-resnet-50",
+    "family": "vision",
+    "size": "base",
+    "modality": "vision"
+  },
+  "llama": {
+    "name": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "family": "text_generation",
+    "size": "base",
+    "modality": "text"
+  },
+  "llava": {
+    "name": "llava-hf/llava-1.5-7b-hf",
+    "family": "multimodal",
+    "size": "base",
+    "modality": "multimodal"
+  },
+  "llava_next": {
+    "name": "llava-hf/llava-v1.6-mistral-7b",
+    "family": "multimodal",
+    "size": "base",
+    "modality": "multimodal"
+  },
+  "qwen2": {
+    "name": "Qwen/Qwen2-0.5B-Instruct",
+    "family": "text_generation",
+    "size": "base",
+    "modality": "text"
+  },
+  "t5": {
+    "name": "t5-small",
+    "family": "text_generation",
+    "size": "base",
+    "modality": "text"
+  },
+  "vit": {
+    "name": "google/vit-base-patch16-224",
+    "family": "vision",
+    "size": "base",
+    "modality": "vision"
+  },
+  "wav2vec2": {
+    "name": "facebook/wav2vec2-base",
+    "family": "audio",
+    "size": "base",
+    "modality": "audio"
+  },
+  "whisper": {
+    "name": "openai/whisper-tiny",
+    "family": "audio",
+    "size": "base",
+    "modality": "audio"
+  },
+  "xclip": {
+    "name": "microsoft/xclip-base-patch32",
+    "family": "multimodal",
+    "size": "base",
+    "modality": "multimodal"
+  }
+}

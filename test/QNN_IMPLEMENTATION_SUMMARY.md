@@ -1,9 +1,25 @@
 # QNN (Qualcomm Neural Networks) Implementation Summary
 
-**Date: March 6, 2025**  
-**Status: 80% Complete - Core Implementation Finished**
+**Date: April 7, 2025**  
+**Status: 95% Complete - Enhanced Implementation with Real/Simulation Distinction**
 
-This document provides an overview of the QNN (Qualcomm Neural Networks) support implementation for the IPFS Accelerate Python Framework. The implementation enables hardware detection, power monitoring, and model optimization for Qualcomm Snapdragon devices.
+This document provides an overview of the QNN (Qualcomm Neural Networks) support implementation for the IPFS Accelerate Python Framework. The implementation enables hardware detection, power monitoring, and model optimization for Qualcomm Snapdragon devices, with a clear distinction between real hardware and simulation modes.
+
+## Key Enhancements (April 2025)
+
+### 1. Real vs. Simulation Distinction
+- Clear separation between real hardware and simulation modes
+- Explicit control via `QNN_SIMULATION_MODE` environment variable
+- Enhanced database schema with simulation status tracking
+- Clear labeling in reports and visualizations
+- Transparent performance reporting with simulation indicators
+
+### 2. Robust Hardware Detection
+- Enhanced error handling for QNN SDK availability
+- Improved detection of QNN and QTI SDK variants
+- Better support for multiple device configurations
+- Graceful degradation when hardware is unavailable
+- Clear warnings when using simulation mode
 
 ## Implementation Components
 
@@ -13,6 +29,7 @@ This document provides an overview of the QNN (Qualcomm Neural Networks) support
 - Device information collection for Snapdragon processors
 - Precision support detection (fp32, fp16, int8, int4)
 - Model compatibility checking based on device capabilities
+- Clear indication of simulation vs. real hardware results
 
 ### 2. Power and Thermal Monitoring
 - Battery impact analysis methodology
@@ -32,7 +49,7 @@ This document provides an overview of the QNN (Qualcomm Neural Networks) support
 
 ## Usage Examples
 
-### Hardware Detection
+### Hardware Detection with Simulation Awareness
 
 ```python
 from hardware_detection import detect_all_hardware, HAS_QNN
@@ -40,10 +57,15 @@ from hardware_detection.qnn_support import QNNCapabilityDetector
 
 # Check if QNN is available on the system
 if HAS_QNN:
-    print("QNN hardware detected")
+    print("QNN hardware or simulation detected")
     
     # Get detailed hardware info
     detector = QNNCapabilityDetector()
+    
+    # Check if running in simulation mode
+    if detector.is_simulation_mode():
+        print("WARNING: Running in SIMULATION mode, not real hardware")
+    
     detector.select_device()  # Select first available device
     capabilities = detector.get_capability_summary()
     
@@ -51,8 +73,17 @@ if HAS_QNN:
     print(f"Memory: {capabilities['memory_mb']} MB")
     print(f"Supported precisions: {', '.join(capabilities['precision_support'])}")
     
+    # Check if the capability summary includes simulation warning
+    if "simulation_warning" in capabilities:
+        print(f"Simulation Warning: {capabilities['simulation_warning']}")
+    
     # Check model compatibility
     compatibility = detector.test_model_compatibility("models/bert-base-uncased.onnx")
+    
+    # Check if compatibility was assessed using simulation
+    if compatibility.get("simulation_mode", False):
+        print(f"NOTE: Compatibility assessed in simulation mode")
+        
     if compatibility["compatible"]:
         print(f"Model is compatible with device")
     else:

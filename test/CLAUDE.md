@@ -99,6 +99,105 @@ python test/time_series_performance.py report --days 30 --format markdown --outp
 
 For detailed documentation, see [Time-Series Performance Tracking Guide](TIME_SERIES_PERFORMANCE_GUIDE.md).
 
+## Comprehensive Benchmark Timing Report (COMPLETED - March 6, 2025)
+
+The framework includes a comprehensive benchmark timing report generator that provides detailed analysis of performance metrics for all 13 model types across 8 hardware endpoints:
+
+- Detailed latency, throughput, and memory usage metrics
+- Cross-hardware platform performance comparison
+- Visualizations for performance metrics (HTML and Markdown formats)
+- Categorized model performance by type (text, vision, audio, multimodal)
+- Data-driven optimization recommendations based on model categories
+- Consistent DuckDB database schema for all benchmark data
+- Support for sample data generation for testing and demos
+
+## Comprehensive Benchmarks and Timing Data (UPDATED - April 8, 2025)
+
+The framework includes full benchmark execution and timing data for all model types across all hardware platforms:
+
+- Comprehensive benchmarks for all 13 model types across 8 hardware platforms
+- Detailed performance metrics including latency, throughput, and memory usage
+- Hardware compatibility matrix with optimization recommendations
+- HTML and Markdown reports with detailed performance comparisons
+- Interactive visualizations for comparing hardware platforms
+- Power efficiency metrics for mobile/edge devices
+
+```bash
+# Execute comprehensive benchmarks using the new script (April 2025 Update)
+python test/run_comprehensive_benchmarks.py
+
+# Run specific models on specific hardware
+python test/run_comprehensive_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+
+# Specify batch sizes to test
+python test/run_comprehensive_benchmarks.py --batch-sizes 1,4,16
+
+# Force benchmarks on hardware that may not be available
+python test/run_comprehensive_benchmarks.py --force-hardware rocm,webgpu
+
+# List available hardware platforms
+python test/run_comprehensive_benchmarks.py --list-available-hardware
+
+# Run benchmarks on all supported hardware platforms (may use simulation)
+python test/run_comprehensive_benchmarks.py --all-hardware
+
+# Use full-sized models instead of smaller variants
+python test/run_comprehensive_benchmarks.py --no-small-models
+
+# Generate report in different formats
+python test/run_comprehensive_benchmarks.py --report-format markdown
+
+# Set a custom timeout for benchmarks
+python test/run_comprehensive_benchmarks.py --timeout 1200  # 20 minutes
+
+# Specify database path and output directory
+python test/run_comprehensive_benchmarks.py --db-path ./benchmark_db.duckdb --output-dir ./benchmark_results
+
+# Legacy method: Execute comprehensive benchmarks across all hardware platforms
+python benchmark_all_key_models.py --output-dir ./benchmark_results
+
+# Run with small model variants for faster testing
+python benchmark_all_key_models.py --small-models --output-dir ./benchmark_results
+
+# Generate comprehensive benchmark timing report in multiple formats
+python benchmark_timing_report.py --generate --format html --output report.html
+python benchmark_timing_report.py --generate --format markdown --output report.md
+
+# Generate hardware compatibility matrix with visualization
+python get_compatibility_matrix.py
+```
+
+```bash
+# Generate comprehensive benchmark timing report in HTML format
+python test/run_benchmark_timing_report.py --generate --format html
+
+# Generate report in Markdown format
+python test/run_benchmark_timing_report.py --generate --format markdown
+
+# Specify custom output location and database path
+python test/run_benchmark_timing_report.py --generate --format html --output report.html --db-path ./benchmark_db.duckdb
+
+# Generate sample benchmark data for testing
+python test/generate_sample_benchmarks.py --db ./benchmark_db.duckdb
+
+# Run real benchmarks with database integration
+python test/benchmark_all_key_models.py --small-models --db-path ./benchmark_db.duckdb --db-only
+
+# Generate model-hardware performance report
+python test/scripts/benchmark_db_query.py --sql "SELECT m.model_name, hp.hardware_type, AVG(pr.average_latency_ms) as avg_latency, AVG(pr.throughput_items_per_second) as avg_throughput FROM performance_results pr JOIN models m ON pr.model_id = m.model_id JOIN hardware_platforms hp ON pr.hardware_id = hp.hardware_id GROUP BY m.model_name, hp.hardware_type ORDER BY m.model_name, hp.hardware_type" --db ./benchmark_db.duckdb --format markdown --output performance_summary.md
+```
+
+The report includes specialized views for:
+- Text models (BERT, T5, LLAMA, Qwen2)
+- Vision models (ViT, DETR, XCLIP)
+- Audio models (Whisper, Wav2Vec2, CLAP)
+- Multimodal models (CLIP, LLaVA, LLaVA-Next)
+- Memory-intensive vs compute-intensive models
+
+Performance data is stored in the DuckDB database for efficient querying and visualization, with comprehensive metrics showing optimal hardware selection for each model category.
+
+For detailed documentation, see [Benchmark Timing Report Guide](BENCHMARK_TIMING_REPORT_GUIDE.md).
+
 ## Hardware Compatibility Matrix
 
 ### Model Family-Based Compatibility Chart
@@ -718,6 +817,18 @@ export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 # JSON output is deprecated and now disabled by default
 # All results are stored directly in the database
 
+# Update database schema to add simulation flags
+python update_db_schema_for_simulation.py
+
+# Check QNN simulation status
+python qnn_simulation_helper.py --check
+
+# Enable QNN simulation (for testing only)
+python qnn_simulation_helper.py --enable
+
+# Disable QNN simulation
+python qnn_simulation_helper.py --disable
+
 # Migrate existing JSON files to the database 
 python test/migrate_all_json_files.py --db-path ./benchmark_db.duckdb --archive
 
@@ -1147,6 +1258,7 @@ The database also stores all benchmark results and test outputs:
   - `run_benchmark_with_db.py`: Example integration
   - `cleanup_test_results.py`: Automated migration utility
   - `generate_compatibility_matrix.py`: Creates comprehensive model compatibility matrix
+  - `update_db_schema_for_simulation.py`: Updates schema with simulation flags
 
 #### Model Compatibility Matrix
 The database enables automatic generation of a comprehensive compatibility matrix for all 300+ HuggingFace model classes:
@@ -1180,6 +1292,7 @@ Documentation and guides:
 - [Web Platform Integration Guide](web_platform_integration_guide.md)
 - [Template Database Guide](TEMPLATE_INHERITANCE_GUIDE.md)
 - [Comprehensive Model Compatibility Matrix](COMPREHENSIVE_MODEL_COMPATIBILITY_MATRIX.md)
+- [Simulation Detection Improvements](SIMULATION_DETECTION_IMPROVEMENTS.md)
 
 ### Hardware Selection and Performance Prediction System
 

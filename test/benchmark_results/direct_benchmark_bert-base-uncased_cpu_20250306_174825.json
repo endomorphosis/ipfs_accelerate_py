@@ -1,0 +1,24 @@
+{
+  "model": "bert-base-uncased",
+  "hardware": "cpu",
+  "success": true,
+  "batch_results": {
+    "1": {
+      "success": true,
+      "batch_size": 1,
+      "avg_latency_ms": 164.52527046203613,
+      "throughput_items_per_second": 6.078093639911371,
+      "memory_mb": 833.44921875,
+      "latencies_ms": [
+        90.81053733825684,
+        180.76801300048828,
+        217.09084510803223,
+        159.18827056884766,
+        174.76868629455566
+      ],
+      "device": "cpu",
+      "timestamp": "2025-03-06T17:48:25.199371"
+    }
+  },
+  "timestamp": "2025-03-06T17:48:23.974325"
+}

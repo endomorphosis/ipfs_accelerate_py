@@ -378,8 +378,13 @@ class BenchmarkDBAPI:
     def _get_connection(self):
         """Get a connection to the database with appropriate settings."""
         try:
-            # Use parameters that avoid locking issues
-            return duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            # Use parameters compatible with the installed DuckDB version
+            try:
+                # Try newer DuckDB versions
+                return duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            except TypeError:
+                # Fall back to older DuckDB versions
+                return duckdb.connect(self.db_path, read_only=False)
         except Exception as e:
             logger.error(f"Error connecting to database: {e}")
             raise

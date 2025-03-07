@@ -93,34 +93,93 @@ class HardwareManager:
         # OpenVINO detection
         self.has_openvino = importlib.util.find_spec("openvino") is not None
         
-        # Qualcomm detection
+        # Qualcomm detection (enhanced to properly check for simulation vs real)
         self.has_qualcomm = False
+        self.qnn_simulation_mode = False
         try:
-            self.has_qualcomm = (
-                importlib.util.find_spec("qnn_wrapper") is not None or
-                importlib.util.find_spec("qti") is not None or
-                "QUALCOMM_SDK" in os.environ
-            )
-        except (ValueError, ImportError):
+            # Try to import our enhanced QNN support module
+            try:
+                # First try our standardized module
+                from hardware_detection.qnn_support import QNN_AVAILABLE, QNN_SIMULATION_MODE
+                self.has_qualcomm = QNN_AVAILABLE
+                self.qnn_simulation_mode = QNN_SIMULATION_MODE
+                logger.info(f"QNN detection: Available={QNN_AVAILABLE}, Simulation={QNN_SIMULATION_MODE}")
+            except ImportError:
+                try:
+                    # Try alternative path
+                    import sys
+                    sys.path.append('/home/barberb/ipfs_accelerate_py/test')
+                    from hardware_detection.qnn_support import QNN_AVAILABLE, QNN_SIMULATION_MODE
+                    self.has_qualcomm = QNN_AVAILABLE
+                    self.qnn_simulation_mode = QNN_SIMULATION_MODE
+                    logger.info(f"QNN detection (alt path): Available={QNN_AVAILABLE}, Simulation={QNN_SIMULATION_MODE}")
+                except ImportError:
+                    # Fall back to basic detection
+                    self.has_qualcomm = (
+                        importlib.util.find_spec("qnn_wrapper") is not None or
+                        importlib.util.find_spec("qti") is not None or
+                        "QUALCOMM_SDK" in os.environ
+                    )
+                    self.qnn_simulation_mode = os.environ.get("QNN_SIMULATION_MODE", "0").lower() in ("1", "true", "yes")
+                    logger.warning("Using basic QNN detection (qnn_support module not found)")
+        except (ValueError, ImportError, Exception) as e:
             # Handle errors if modules are not properly installed
             if "QUALCOMM_SDK" in os.environ:
                 self.has_qualcomm = True
+                self.qnn_simulation_mode = os.environ.get("QNN_SIMULATION_MODE", "0").lower() in ("1", "true", "yes")
+            logger.warning(f"QNN detection error: {str(e)}")
         
-        # WebNN detection (browser API or simulation)
-        self.has_webnn = (
+        # WebNN detection with proper simulation tracking
+        webnn_library_available = (
             importlib.util.find_spec("webnn") is not None or 
-            importlib.util.find_spec("webnn_js") is not None or
-            "WEBNN_AVAILABLE" in os.environ or
-            "WEBNN_SIMULATION" in os.environ
+            importlib.util.find_spec("webnn_js") is not None
         )
         
-        # WebGPU detection (browser API or simulation)
-        self.has_webgpu = (
+        # Track simulation status separately
+        self.webnn_simulation_mode = os.environ.get("WEBNN_SIMULATION", "0").lower() in ("1", "true", "yes")
+        webnn_override = os.environ.get("WEBNN_AVAILABLE", "0").lower() in ("1", "true", "yes")
+        
+        if webnn_library_available:
+            self.has_webnn = True
+            logger.info("WebNN library detected")
+        elif self.webnn_simulation_mode:
+            # Allow simulation if explicitly requested
+            self.has_webnn = True
+            logger.warning("WebNN SIMULATION mode enabled via environment variable")
+        elif webnn_override:
+            # Allow override if explicitly requested, but mark as simulation
+            self.has_webnn = True
+            self.webnn_simulation_mode = True
+            logger.warning("WebNN availability forced by environment variable (treated as simulation)")
+        else:
+            self.has_webnn = False
+            self.webnn_simulation_mode = False
+        
+        # WebGPU detection with proper simulation tracking
+        webgpu_library_available = (
             importlib.util.find_spec("webgpu") is not None or
-            importlib.util.find_spec("wgpu") is not None or
-            "WEBGPU_AVAILABLE" in os.environ or
-            "WEBGPU_SIMULATION" in os.environ
+            importlib.util.find_spec("wgpu") is not None
         )
+        
+        # Track simulation status separately
+        self.webgpu_simulation_mode = os.environ.get("WEBGPU_SIMULATION", "0").lower() in ("1", "true", "yes")
+        webgpu_override = os.environ.get("WEBGPU_AVAILABLE", "0").lower() in ("1", "true", "yes")
+        
+        if webgpu_library_available:
+            self.has_webgpu = True
+            logger.info("WebGPU library detected")
+        elif self.webgpu_simulation_mode:
+            # Allow simulation if explicitly requested
+            self.has_webgpu = True
+            logger.warning("WebGPU SIMULATION mode enabled via environment variable")
+        elif webgpu_override:
+            # Allow override if explicitly requested, but mark as simulation
+            self.has_webgpu = True
+            self.webgpu_simulation_mode = True
+            logger.warning("WebGPU availability forced by environment variable (treated as simulation)")
+        else:
+            self.has_webgpu = False
+            self.webgpu_simulation_mode = False
     
     def _check_hardware(self) -> Dict[str, Any]:
         """Generate comprehensive hardware capability information."""
@@ -132,9 +191,12 @@ class HardwareManager:
             "mps": False,
             "openvino": False,
             "qualcomm": False,
+            "qualcomm_simulation": False,
             "rocm": False,
             "webnn": False,
-            "webgpu": False
+            "webnn_simulation": False,
+            "webgpu": False,
+            "webgpu_simulation": False
         }
         
         # CUDA capabilities
@@ -149,17 +211,20 @@ class HardwareManager:
         # OpenVINO capabilities
         capabilities["openvino"] = self.has_openvino
         
-        # Qualcomm capabilities
+        # Qualcomm capabilities with simulation flag
         capabilities["qualcomm"] = self.has_qualcomm
+        capabilities["qualcomm_simulation"] = self.qnn_simulation_mode if self.has_qualcomm else False
         
         # ROCm capabilities
         capabilities["rocm"] = self.has_rocm
         
-        # WebNN capabilities
+        # WebNN capabilities with simulation flag
         capabilities["webnn"] = self.has_webnn
+        capabilities["webnn_simulation"] = self.webnn_simulation_mode if self.has_webnn else False
         
-        # WebGPU capabilities
+        # WebGPU capabilities with simulation flag
         capabilities["webgpu"] = self.has_webgpu
+        capabilities["webgpu_simulation"] = self.webgpu_simulation_mode if self.has_webgpu else False
         
         return capabilities
     
@@ -340,21 +405,85 @@ if HAS_TORCH:
 # OpenVINO detection
 HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
 
-# WebNN detection (browser API)
-HAS_WEBNN = (
+# QNN/Qualcomm detection with simulation awareness
+HAS_QUALCOMM = False
+QNN_SIMULATION_MODE = os.environ.get("QNN_SIMULATION_MODE", "0").lower() in ("1", "true", "yes")
+try:
+    # Try standardized QNN support module if available
+    try:
+        from hardware_detection.qnn_support import QNN_AVAILABLE, QNN_SIMULATION_MODE
+        HAS_QUALCOMM = QNN_AVAILABLE
+    except ImportError:
+        try:
+            # Try alternative path
+            import sys
+            sys.path.append('/home/barberb/ipfs_accelerate_py/test')
+            from hardware_detection.qnn_support import QNN_AVAILABLE, QNN_SIMULATION_MODE
+            HAS_QUALCOMM = QNN_AVAILABLE
+        except ImportError:
+            # Fall back to basic detection
+            HAS_QUALCOMM = (
+                importlib.util.find_spec("qnn_wrapper") is not None or
+                importlib.util.find_spec("qti") is not None or
+                "QUALCOMM_SDK" in os.environ
+            )
+except Exception as e:
+    # Handle unexpected errors gracefully
+    if "QUALCOMM_SDK" in os.environ:
+        HAS_QUALCOMM = True
+    logger.warning(f"QNN detection error in template: {str(e)}")
+
+# WebNN detection with proper simulation tracking
+webnn_library_available = (
     importlib.util.find_spec("webnn") is not None or 
-    importlib.util.find_spec("webnn_js") is not None or
-    "WEBNN_AVAILABLE" in os.environ or
-    "WEBNN_SIMULATION" in os.environ
+    importlib.util.find_spec("webnn_js") is not None
 )
 
-# WebGPU detection (browser API)
-HAS_WEBGPU = (
+# Track WebNN simulation status separately
+WEBNN_SIMULATION_MODE = os.environ.get("WEBNN_SIMULATION", "0").lower() in ("1", "true", "yes")
+webnn_override = os.environ.get("WEBNN_AVAILABLE", "0").lower() in ("1", "true", "yes")
+
+if webnn_library_available:
+    HAS_WEBNN = True
+    logger.debug("WebNN library detected")
+elif WEBNN_SIMULATION_MODE:
+    # Allow simulation if explicitly requested
+    HAS_WEBNN = True
+    logger.warning("WebNN SIMULATION mode enabled via environment variable")
+elif webnn_override:
+    # Allow override if explicitly requested, but mark as simulation
+    HAS_WEBNN = True
+    WEBNN_SIMULATION_MODE = True
+    logger.warning("WebNN availability forced by environment variable (treated as simulation)")
+else:
+    HAS_WEBNN = False
+    WEBNN_SIMULATION_MODE = False
+
+# WebGPU detection with proper simulation tracking
+webgpu_library_available = (
     importlib.util.find_spec("webgpu") is not None or
-    importlib.util.find_spec("wgpu") is not None or
-    "WEBGPU_AVAILABLE" in os.environ or
-    "WEBGPU_SIMULATION" in os.environ
+    importlib.util.find_spec("wgpu") is not None
 )
+
+# Track WebGPU simulation status separately
+WEBGPU_SIMULATION_MODE = os.environ.get("WEBGPU_SIMULATION", "0").lower() in ("1", "true", "yes")
+webgpu_override = os.environ.get("WEBGPU_AVAILABLE", "0").lower() in ("1", "true", "yes")
+
+if webgpu_library_available:
+    HAS_WEBGPU = True
+    logger.debug("WebGPU library detected")
+elif WEBGPU_SIMULATION_MODE:
+    # Allow simulation if explicitly requested
+    HAS_WEBGPU = True
+    logger.warning("WebGPU SIMULATION mode enabled via environment variable")
+elif webgpu_override:
+    # Allow override if explicitly requested, but mark as simulation
+    HAS_WEBGPU = True
+    WEBGPU_SIMULATION_MODE = True
+    logger.warning("WebGPU availability forced by environment variable (treated as simulation)")
+else:
+    HAS_WEBGPU = False
+    WEBGPU_SIMULATION_MODE = False
 
 # Hardware detection function for comprehensive hardware info
 def check_hardware():
@@ -365,10 +494,14 @@ def check_hardware():
         "cuda_version": None,
         "cuda_devices": 0,
         "mps": False,
-        "openvino": False,\n        "qualcomm": False,\n            "qualcomm": False,
+        "openvino": False,
+        "qualcomm": False,
+        "qualcomm_simulation": QNN_SIMULATION_MODE,
         "rocm": False,
         "webnn": False,
-        "webgpu": False
+        "webnn_simulation": WEBNN_SIMULATION_MODE,
+        "webgpu": False,
+        "webgpu_simulation": WEBGPU_SIMULATION_MODE
     }
     
     # CUDA capabilities
@@ -382,6 +515,9 @@ def check_hardware():
     
     # OpenVINO capabilities
     capabilities["openvino"] = HAS_OPENVINO
+    
+    # Qualcomm capabilities
+    capabilities["qualcomm"] = HAS_QUALCOMM
     
     # ROCm capabilities
     capabilities["rocm"] = HAS_ROCM

@@ -272,6 +272,10 @@ class TestResultsDBHandler:
                     execution_time FLOAT,
                     memory_usage FLOAT,
                     details VARCHAR,
+                    is_simulated BOOLEAN DEFAULT FALSE,
+                    simulation_reason VARCHAR,
+                    error_category VARCHAR,
+                    error_details JSON,
                     FOREIGN KEY (model_id) REFERENCES models(model_id),
                     FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
                 )
@@ -294,6 +298,8 @@ class TestResultsDBHandler:
                     power_watts FLOAT,
                     energy_efficiency_items_per_joule FLOAT,
                     test_timestamp TIMESTAMP,
+                    is_simulated BOOLEAN DEFAULT FALSE,
+                    simulation_reason VARCHAR,
                     FOREIGN KEY (model_id) REFERENCES models(model_id),
                     FOREIGN KEY (hardware_id) REFERENCES hardware_platforms(hardware_id)
                 )
@@ -331,6 +337,21 @@ class TestResultsDBHandler:
                     notes VARCHAR,
                     last_updated TIMESTAMP
                 )
+            """)
+            
+            # Create view for test results with simulation metadata
+            self.con.execute("""
+                CREATE VIEW IF NOT EXISTS v_test_results_with_simulation AS
+                SELECT 
+                    tr.id, tr.timestamp, tr.test_date, tr.status, tr.test_type,
+                    m.model_id, m.model_name, m.model_family,
+                    h.hardware_id, h.hardware_type,
+                    tr.endpoint_type, tr.success, tr.error_message, tr.execution_time, tr.memory_usage,
+                    tr.is_simulated, tr.simulation_reason, tr.error_category, tr.error_details,
+                    tr.details
+                FROM test_results tr
+                JOIN models m ON tr.model_id = m.model_id
+                JOIN hardware_platforms h ON tr.hardware_id = h.hardware_id
             """)
             
             # Create power_metrics table for mobile/edge devices
@@ -460,14 +481,40 @@ class TestResultsDBHandler:
             now = datetime.now()
             test_date = now.strftime("%Y-%m-%d")
             
-            # Store main test result
+            # Check if this is a simulated test result
+            is_simulated = test_result.get('is_simulated', False)
+            simulation_reason = test_result.get('simulation_reason', None)
+            
+            # Get error categorization if present
+            error_category = test_result.get('error_category', None)
+            error_details = test_result.get('error_details', {})
+            
+            # If hardware type suggests simulation but it's not marked, flag it
+            hardware_lowercase = hardware_type.lower() if hardware_type else ""
+            if not is_simulated and ("qualcomm" in hardware_lowercase or "webgpu" in hardware_lowercase or "webnn" in hardware_lowercase):
+                # Try to detect if the hardware detection module reports it as real or simulated
+                from hardware_detection import HardwareDetector
+                detector = HardwareDetector()
+                hw_type = "qualcomm" if "qualcomm" in hardware_lowercase else "webgpu" if "webgpu" in hardware_lowercase else "webnn"
+                
+                if hw_type in detector._details and detector._details[hw_type].get('simulation_enabled', False):
+                    is_simulated = True
+                    simulation_reason = f"Hardware detection indicates {hw_type} is simulated"
+                    # Add simulation flag to error details if there isn't already one
+                    if error_details:
+                        error_details["hardware_simulated"] = True
+                    else:
+                        error_details = {"hardware_simulated": True}
+            
+            # Store main test result with simulation data
             self.con.execute(
                 """
                 INSERT INTO test_results (
                     timestamp, test_date, status, test_type, model_id, hardware_id,
-                    endpoint_type, success, error_message, execution_time, memory_usage, details
+                    endpoint_type, success, error_message, execution_time, memory_usage, details,
+                    is_simulated, simulation_reason, error_category, error_details
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     now, test_date, 
@@ -479,7 +526,11 @@ class TestResultsDBHandler:
                     test_result.get('error_message'),
                     test_result.get('execution_time'),
                     test_result.get('memory_usage'),
-                    json.dumps(test_result.get('details', {}))
+                    json.dumps(test_result.get('details', {})),
+                    is_simulated,
+                    simulation_reason,
+                    error_category,
+                    json.dumps(error_details) if error_details else None
                 ]
             )
             
@@ -524,15 +575,55 @@ class TestResultsDBHandler:
             
         try:
             now = datetime.now()
+            # Check if results are simulated
+            is_simulated = performance.get('is_simulated', False)
+            simulation_reason = performance.get('simulation_reason', None)
+            
+            # Additional check for simulated hardware
+            if not is_simulated:
+                # Try to get hardware details
+                from hardware_detection import HardwareDetector
+                detector = HardwareDetector()
+                # Map hardware_id to hardware type
+                hw_type = None
+                hardware_info = None
+                
+                try:
+                    # Get hardware type from database
+                    hw_result = self.con.execute(
+                        "SELECT hardware_type FROM hardware_platforms WHERE hardware_id = ?",
+                        [hardware_id]
+                    ).fetchone()
+                    
+                    if hw_result:
+                        hw_type = hw_result[0].lower()
+                        
+                        # Check for specific types that might be simulated
+                        if "qualcomm" in hw_type or "webgpu" in hw_type or "webnn" in hw_type:
+                            # Extract the base type name
+                            base_type = "qualcomm" if "qualcomm" in hw_type else "webgpu" if "webgpu" in hw_type else "webnn"
+                            
+                            # Check detector details
+                            if base_type in detector._details:
+                                hardware_info = detector._details[base_type]
+                                
+                                # Check if it's simulated
+                                if hardware_info.get('simulation_enabled', False):
+                                    is_simulated = True
+                                    simulation_reason = f"Hardware detection indicates {base_type} is simulated"
+                except Exception as e:
+                    print(f"Error checking hardware simulation status: {e}")
+            
             self.con.execute(
                 """
                 INSERT INTO performance_results (
                     model_id, hardware_id, batch_size, sequence_length,
                     average_latency_ms, p50_latency_ms, p90_latency_ms, p99_latency_ms,
                     throughput_items_per_second, memory_peak_mb, power_watts,
-                    energy_efficiency_items_per_joule, test_timestamp
+                    energy_efficiency_items_per_joule, test_timestamp,
+                    is_simulated, simulation_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     model_id, hardware_id,
@@ -546,7 +637,9 @@ class TestResultsDBHandler:
                     performance.get('memory_peak_mb'),
                     performance.get('power_watts'),
                     performance.get('energy_efficiency_items_per_joule'),
-                    now
+                    now,
+                    is_simulated,
+                    simulation_reason
                 ]
             )
             return True
@@ -686,6 +779,22 @@ class TestResultsDBHandler:
             hardware_count = self.con.execute("SELECT COUNT(*) FROM hardware_platforms").fetchone()[0]
             tests_count = self.con.execute("SELECT COUNT(*) FROM test_results").fetchone()[0]
             successful_tests = self.con.execute("SELECT COUNT(*) FROM test_results WHERE success = TRUE").fetchone()[0]
+            
+            # Get simulation statistics
+            simulated_tests = self.con.execute("SELECT COUNT(*) FROM test_results WHERE is_simulated = TRUE").fetchone()[0]
+            real_hardware_tests = self.con.execute("SELECT COUNT(*) FROM test_results WHERE is_simulated = FALSE OR is_simulated IS NULL").fetchone()[0]
+            
+            # Get simulation breakdown by hardware type
+            simulation_by_hardware = self.con.execute("""
+                SELECT hp.hardware_type, 
+                       COUNT(*) as total_tests,
+                       SUM(CASE WHEN tr.is_simulated = TRUE THEN 1 ELSE 0 END) as simulated_tests,
+                       ROUND(SUM(CASE WHEN tr.is_simulated = TRUE THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as simulation_percentage
+                FROM test_results tr
+                JOIN hardware_platforms hp ON tr.hardware_id = hp.hardware_id
+                GROUP BY hp.hardware_type
+                ORDER BY simulation_percentage DESC
+            """).fetchall()
             
             # Get hardware platforms
             hardware_platforms = self.con.execute(
@@ -872,8 +981,9 @@ class TestResultsDBHandler:
         
     def _generate_html_report(self, models_count, hardware_count, tests_count, successful_tests,
                              hardware_platforms, model_families, recent_tests, 
-                             performance_data, compatibility_matrix):
-        """Generate an HTML report from the database data."""
+                             performance_data, compatibility_matrix,
+                             simulated_tests=0, real_hardware_tests=0, simulation_by_hardware=None):
+        """Generate an HTML report from the database data including simulation information."""
         # Basic HTML structure with some simple styling
         html = []
         html.append("<!DOCTYPE html>")
@@ -920,6 +1030,15 @@ class TestResultsDBHandler:
         html.append(f"        <div class='summary-number'>{success_rate:.2f}%</div>")
         html.append(f"        <div>({successful_tests}/{tests_count})</div>")
         html.append("    </div>")
+        
+        # Add simulation information in summary
+        if simulated_tests > 0:
+            simulation_rate = (simulated_tests / tests_count * 100) if tests_count > 0 else 0
+            html.append("    <div class='summary-box' style='background-color: #fff3cd; border-color: #ffeeba;'>")
+            html.append("        <div>Simulated Tests</div>")
+            html.append(f"        <div class='summary-number'>{simulation_rate:.2f}%</div>")
+            html.append(f"        <div>({simulated_tests}/{tests_count})</div>")
+            html.append("    </div>")
         html.append("</div>")
         
         # Hardware platforms section
@@ -938,22 +1057,63 @@ class TestResultsDBHandler:
             html.append(f"    <tr><td>{family[0] or 'Unknown'}</td><td>{family[1]}</td></tr>")
         html.append("</table>")
         
+        # Add simulation breakdown if available
+        if simulation_by_hardware and any(row[2] > 0 for row in simulation_by_hardware):
+            html.append("<h2>Hardware Simulation Status</h2>")
+            html.append("<p style='color: #856404; background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba;'>")
+            html.append("  <strong>Warning:</strong> Some tests are using simulated hardware. These results do not reflect real hardware performance.")
+            html.append("</p>")
+            html.append("<table>")
+            html.append("    <tr><th>Hardware Type</th><th>Total Tests</th><th>Simulated Tests</th><th>Simulation Percentage</th></tr>")
+            for hw in simulation_by_hardware:
+                # Use color coding based on simulation percentage
+                sim_pct = hw[3]
+                row_style = ""
+                if sim_pct > 75:
+                    row_style = " style='background-color: #f8d7da;'"  # Red for high simulation
+                elif sim_pct > 25:
+                    row_style = " style='background-color: #fff3cd;'"  # Yellow for medium simulation
+                
+                html.append(f"    <tr{row_style}><td>{hw[0]}</td><td>{hw[1]}</td><td>{hw[2]}</td><td>{hw[3]}%</td></tr>")
+            html.append("</table>")
+        
         # Recent tests section
         html.append("<h2>Recent Tests</h2>")
         html.append("<table>")
         html.append("    <tr><th>Model</th><th>Hardware</th><th>Status</th><th>Success</th><th>Timestamp</th></tr>")
+        
+        # Add note about simulation detection
+        html.append("<p><em>Note: Simulation status detection requires database schema change. Run this script again after updating to see simulation status.</em></p>")
+        
         for test in recent_tests:
             success_class = "success" if test[3] else "failure"
             success_icon = "✅" if test[3] else "❌"
-            html.append(f"    <tr><td>{test[0]}</td><td>{test[1]}</td><td>{test[2]}</td><td class='{success_class}'>{success_icon}</td><td>{test[4]}</td></tr>")
+            
+            # Hardware types that should be checked carefully
+            hardware_type = test[1].lower() if test[1] else ""
+            suspicious_hardware = "qualcomm" in hardware_type or "webgpu" in hardware_type or "webnn" in hardware_type
+            sim_class = " style='background-color: #fff3cd;'" if suspicious_hardware else ""
+            
+            html.append(f"    <tr{sim_class}><td>{test[0]}</td><td>{test[1]}{' ⚠️' if suspicious_hardware else ''}</td><td>{test[2]}</td><td class='{success_class}'>{success_icon}</td><td>{test[4]}</td></tr>")
         html.append("</table>")
         
         # Performance data section
         html.append("<h2>Performance Data</h2>")
+        
+        # Add warning about potential simulation results
+        html.append("<div style='color: #856404; background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 15px;'>")
+        html.append("  <strong>⚠️ Warning:</strong> Performance results for WebGPU, WebNN, and Qualcomm hardware may be simulated and not reflect real hardware capabilities.")
+        html.append("  After running with updated code, simulated results will be clearly marked.")
+        html.append("</div>")
+        
         html.append("<table>")
         html.append("    <tr><th>Model</th><th>Hardware</th><th>Avg Latency (ms)</th><th>Throughput (items/s)</th><th>Memory (MB)</th></tr>")
         for perf in performance_data:
-            html.append(f"    <tr><td>{perf[0]}</td><td>{perf[1]}</td><td>{perf[2]:.2f if perf[2] is not None else 'N/A'}</td><td>{perf[3]:.2f if perf[3] is not None else 'N/A'}</td><td>{perf[4]:.2f if perf[4] is not None else 'N/A'}</td></tr>")
+            hardware_type = perf[1].lower() if perf[1] else ""
+            suspicious_hardware = "qualcomm" in hardware_type or "webgpu" in hardware_type or "webnn" in hardware_type
+            sim_class = " style='background-color: #fff3cd;'" if suspicious_hardware else ""
+            
+            html.append(f"    <tr{sim_class}><td>{perf[0]}</td><td>{perf[1]}{' ⚠️' if suspicious_hardware else ''}</td><td>{perf[2]:.2f if perf[2] is not None else 'N/A'}</td><td>{perf[3]:.2f if perf[3] is not None else 'N/A'}</td><td>{perf[4]:.2f if perf[4] is not None else 'N/A'}</td></tr>")
         html.append("</table>")
         
         # Compatibility matrix section
@@ -6595,20 +6755,83 @@ if __name__ == "__main__":
     else:
         endpoint_types = ["cuda:0", "openvino:0", "cpu:0"]
         
-    # Add Qualcomm endpoint if requested
+    # Detection of hardware availability should be done properly through hardware_detection.py
+    # without relying on environment variables that force hardware to be "available"
+    
+    # First, detect available hardware
+    from hardware_detection import HardwareDetector
+    
+    hardware_detector = HardwareDetector()
+    hardware_info = hardware_detector.get_available_hardware()
+    
+    # Track requested but unavailable hardware for proper error handling
+    unavailable_requested = []
+    
+    # Add Qualcomm endpoint if requested AND available
     if args.qualcomm:
-        endpoint_types.append("qualcomm:0")
-        os.environ["TEST_QUALCOMM"] = "1"
+        if hardware_info.get("qualcomm", False):
+            endpoint_types.append("qualcomm:0")
+            print("✅ Qualcomm AI Engine hardware detected and will be tested")
+        else:
+            unavailable_requested.append("Qualcomm")
+            print("⚠️ WARNING: Qualcomm AI Engine hardware requested but not available")
         
-    # Add WebNN endpoint if requested
+    # Add WebNN endpoint if requested AND available
     if args.webnn:
-        endpoint_types.append("webnn:0")
-        os.environ["TEST_WEBNN"] = "1"
+        if hardware_info.get("webnn", False):
+            endpoint_types.append("webnn:0")
+            print("✅ WebNN hardware detected and will be tested")
+        else:
+            unavailable_requested.append("WebNN")
+            print("⚠️ WARNING: WebNN hardware requested but not available")
         
-    # Add WebGPU endpoint if requested
+    # Add WebGPU endpoint if requested AND available
     if args.webgpu:
-        endpoint_types.append("webgpu:0")
-        os.environ["TEST_WEBGPU"] = "1"
+        if hardware_info.get("webgpu", False):
+            endpoint_types.append("webgpu:0")
+            print("✅ WebGPU hardware detected and will be tested")
+        else:
+            unavailable_requested.append("WebGPU")
+            print("⚠️ WARNING: WebGPU hardware requested but not available")
+    
+    # Log in the database if there was requested hardware that's unavailable
+    if unavailable_requested and HAVE_DUCKDB:
+        try:
+            db_path = args.db_path or os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+            conn = duckdb.connect(db_path)
+            
+            # Create hardware_availability_log table if it doesn't exist
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardware_availability_log (
+                id INTEGER PRIMARY KEY,
+                hardware_type VARCHAR,
+                is_available BOOLEAN,
+                detection_method VARCHAR,
+                detection_details JSON,
+                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Record unavailable hardware
+            for hw_type in unavailable_requested:
+                conn.execute(
+                    """
+                    INSERT INTO hardware_availability_log (hardware_type, is_available, detection_method, detection_details)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        hw_type,
+                        False,
+                        "HardwareDetector",
+                        json.dumps({"reason": "Requested but not available", "test_invocation": sys.argv})
+                    ]
+                )
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Error recording hardware availability: {e}")
+            traceback.print_exc()
     
     metadata = {
         "dataset": "laion/gpt4v-dataset",

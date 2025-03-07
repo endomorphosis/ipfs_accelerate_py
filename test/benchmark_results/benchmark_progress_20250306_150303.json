@@ -1,0 +1,32 @@
+{
+  "timestamp": "20250306_150303",
+  "completed_benchmarks": [],
+  "failed_benchmarks": [
+    {
+      "model_type": "bert",
+      "hardware_type": "cpu",
+      "error": "Command '['python', 'benchmark_hardware_models.py', '--model', 'prajjwal1/bert-tiny', '--model-type', 'bert', '--hardware', 'cpu', '--db-path', './benchmark_db.duckdb', '--output-dir', 'benchmark_results', '--batch-sizes', '1,2,4,8,16', '--timestamp', '20250306_150303']' returned non-zero exit status 1.",
+      "timestamp": "2025-03-06T15:03:05.019406"
+    },
+    {
+      "model_type": "vit",
+      "hardware_type": "cpu",
+      "error": "Command '['python', 'benchmark_hardware_models.py', '--model', 'facebook/deit-tiny-patch16-224', '--model-type', 'vit', '--hardware', 'cpu', '--db-path', './benchmark_db.duckdb', '--output-dir', 'benchmark_results', '--batch-sizes', '1,2,4,8,16', '--timestamp', '20250306_150303']' returned non-zero exit status 1.",
+      "timestamp": "2025-03-06T15:03:05.052288"
+    },
+    {
+      "model_type": "whisper",
+      "hardware_type": "cpu",
+      "error": "Command '['python', 'benchmark_hardware_models.py', '--model', 'openai/whisper-tiny', '--model-type', 'whisper', '--hardware', 'cpu', '--db-path', './benchmark_db.duckdb', '--output-dir', 'benchmark_results', '--batch-sizes', '1,2,4,8,16', '--timestamp', '20250306_150303']' returned non-zero exit status 1.",
+      "timestamp": "2025-03-06T15:03:05.087530"
+    }
+  ],
+  "skipped_benchmarks": [],
+  "summary": {
+    "total": 3,
+    "completed": 0,
+    "failed": 3,
+    "skipped": 0,
+    "completion_percentage": 0.0
+  }
+}

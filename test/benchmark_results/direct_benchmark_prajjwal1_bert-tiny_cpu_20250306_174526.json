@@ -1,0 +1,40 @@
+{
+  "model": "prajjwal1/bert-tiny",
+  "hardware": "cpu",
+  "success": true,
+  "batch_results": {
+    "1": {
+      "success": true,
+      "batch_size": 1,
+      "avg_latency_ms": 3.147125244140625,
+      "throughput_items_per_second": 317.75030303030303,
+      "memory_mb": 505.93359375,
+      "latencies_ms": [
+        2.961874008178711,
+        4.429817199707031,
+        3.6067962646484375,
+        2.0406246185302734,
+        2.696514129638672
+      ],
+      "device": "cpu",
+      "timestamp": "2025-03-06T17:45:26.506441"
+    },
+    "2": {
+      "success": true,
+      "batch_size": 2,
+      "avg_latency_ms": 4.760122299194336,
+      "throughput_items_per_second": 420.1572720806996,
+      "memory_mb": 505.93359375,
+      "latencies_ms": [
+        6.388187408447266,
+        1.9006729125976562,
+        2.427816390991211,
+        8.401155471801758,
+        4.682779312133789
+      ],
+      "device": "cpu",
+      "timestamp": "2025-03-06T17:45:26.561616"
+    }
+  },
+  "timestamp": "2025-03-06T17:45:26.462134"
+}

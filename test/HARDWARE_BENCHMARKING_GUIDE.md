@@ -439,11 +439,14 @@ python run_benchmark_suite.py --check
 
 ### QNN (Qualcomm Neural Networks) Benchmarking
 
-The framework now includes full support for benchmarking on QNN and Hexagon DSP hardware:
+The framework includes robust support for benchmarking on QNN and Hexagon DSP hardware, with clear distinction between real hardware tests and simulations:
 
 ```bash
-# Run benchmarks on QNN hardware only
+# Run benchmarks on real QNN hardware only
 python hardware_benchmark_runner.py --hardware qnn
+
+# Run benchmarks using simulation mode (when real hardware is unavailable)
+QNN_SIMULATION_MODE=1 python hardware_benchmark_runner.py --hardware qnn
 
 # Compare QNN performance with other hardware platforms
 python hardware_benchmark_runner.py --hardware cuda cpu qnn --model-families embedding vision
@@ -451,17 +454,87 @@ python hardware_benchmark_runner.py --hardware cuda cpu qnn --model-families emb
 # Benchmark small models on QNN
 python hardware_benchmark_runner.py --hardware qnn --small-models-only
 
-# Benchmark on QNN with environment variable configuration
+# Benchmark on QNN with custom SDK path
 QNN_SDK=/path/to/sdk QNN_DEBUG=1 python hardware_benchmark_runner.py --hardware qnn
+
+# Query results that clearly separate real vs. simulated benchmarks
+python test/benchmark_db_query.py --sql "SELECT * FROM hardware_benchmarks WHERE hardware_type='qnn' AND NOT simulation_mode" --format markdown
 ```
 
-The QNN benchmark process:
-1. Detects available QNN SDKs (QNN or QTI)
-2. Converts models to QNN formats via ONNX
-3. Runs inference on QNN hardware
-4. Collects and reports performance metrics
+#### QNN Real Hardware vs. Simulation Mode (Enhanced April 2025)
 
-Results are integrated into the hardware compatibility matrix and used by the hardware selection system to make intelligent recommendations.
+The QNN support system has been significantly enhanced with the robust QNNSDKWrapper implementation that properly distinguishes between actual hardware tests and simulations:
+
+1. **Real Hardware Mode**:
+   - Detects and uses actual Qualcomm Neural Network SDK if available
+   - Supports both QNN SDK and QTI SDK paths with unified interface
+   - Runs on physical QNN hardware (Snapdragon processors)
+   - Provides accurate performance measurements for deployment planning
+   - Reports detailed power consumption and thermal metrics
+   - Includes proper error handling for initialization and runtime issues
+
+2. **Simulation Mode**:
+   - Activated by setting `QNN_SIMULATION_MODE=1` environment variable
+   - Provides a consistent API surface for testing without physical hardware
+   - Clearly marks all results as simulated in the database schema
+   - Shows explicit simulation warnings in log messages and results
+   - Useful for development, testing, or when hardware is unavailable
+   - Includes realistic but clearly marked performance estimates
+   - Simulated results include warning labels in reports and visualizations
+
+The enhanced QNN benchmark process:
+1. Detects available QNN SDKs (QNN or QTI) with robust error handling
+2. Determines if running in real hardware or simulation mode with clear logging
+3. Converts models to QNN formats via ONNX (for real hardware)
+4. Runs inference on QNN hardware or provides simulation with clear indicators
+5. Collects and reports performance metrics with simulation status flags
+6. Stores results in database with clear simulation flags for all record types
+7. Provides detailed error information when SDKs or hardware are unavailable
+8. Includes comprehensive logging of detection process and execution
+
+All results from the enhanced QNN implementation include:
+- Hardware identification information
+- SDK version and type information
+- Explicit simulation mode flags
+- Proper warning messages for simulated data
+- Accurate error handling for unavailable hardware
+- Complete integration with the hardware compatibility matrix
+
+Results are integrated into the hardware compatibility matrix with simulation indicators, ensuring that hardware selection algorithms can distinguish between real and simulated performance data for reliable recommendations.
+
+The centralized hardware detection system has also been updated to properly track simulation status for all hardware types, with standard fields in the capabilities output:
+
+```python
+# Sample capabilities output with simulation flags
+{
+    "cpu": True,
+    "cuda": True,
+    "cuda_version": "11.8",
+    "cuda_devices": 1,
+    "mps": False,
+    "openvino": True,
+    "qualcomm": True,
+    "qualcomm_simulation": True,  # Clearly indicates simulation status
+    "rocm": False,
+    "webnn": True,
+    "webnn_simulation": True,
+    "webgpu": True,
+    "webgpu_simulation": False
+}
+```
+
+#### Viewing QNN Hardware Detection Status
+
+```bash
+# Check QNN hardware status
+python -c "from hardware_detection.qnn_support import QNNCapabilityDetector; detector = QNNCapabilityDetector(); print(f'QNN Available: {detector.is_available()}, Simulation: {detector.is_simulation_mode()}')"
+
+# View full QNN capabilities
+python -c "from hardware_detection.qnn_support import QNNCapabilityDetector; detector = QNNCapabilityDetector(); print(detector.get_capability_summary())"
+
+# Check if specific models are compatible with QNN
+python -c "from hardware_detection.qnn_support import QNNCapabilityDetector; detector = QNNCapabilityDetector(); print(detector.test_model_compatibility('bert-base-uncased'))"
+```
 
 ## Advanced Usage
 

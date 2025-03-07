@@ -1,5 +1,5 @@
 """
-Platform Detection System for Unified Web Framework (June 2025)
+Platform Detection System for Unified Web Framework (August 2025)
 
 This module provides a standardized interface for detecting browser and hardware
 capabilities, bridging the browser_capability_detector with the unified framework:
@@ -15,7 +15,9 @@ Usage:
         PlatformDetector,
         get_browser_capabilities,
         get_hardware_capabilities,
-        create_platform_profile
+        create_platform_profile,
+        detect_platform,
+        detect_browser_features
     )
     
     # Create detector
@@ -29,6 +31,10 @@ Usage:
     
     # Check specific feature support
     has_webgpu = detector.supports_feature("webgpu")
+    
+    # Simple functions for direct usage
+    browser_info = detect_browser_features()
+    platform_info = detect_platform()
 """
 
 import os
@@ -561,6 +567,36 @@ def create_platform_profile(model_type: str, browser: Optional[str] = None, vers
     """
     detector = PlatformDetector(browser, version)
     return detector.create_configuration(model_type)
+
+
+def detect_platform() -> Dict[str, Any]:
+    """
+    Detect platform capabilities.
+    
+    Returns:
+        Dictionary with platform capabilities
+    """
+    detector = PlatformDetector()
+    return detector.platform_info
+
+
+def detect_browser_features() -> Dict[str, Any]:
+    """
+    Detect browser features.
+    
+    Returns:
+        Dictionary with browser features
+    """
+    detector = PlatformDetector()
+    return {
+        "browser": detector.platform_info["browser"]["name"],
+        "version": detector.platform_info["browser"]["version"],
+        "mobile": detector.platform_info["browser"]["is_mobile"],
+        "user_agent": detector.platform_info["browser"]["user_agent"],
+        "features": detector.platform_info["features"],
+        "platform": detector.platform_info["hardware"]["platform"],
+        "device_type": "mobile" if detector.platform_info["browser"]["is_mobile"] else "desktop"
+    }
 
 
 def get_feature_support_matrix() -> Dict[str, Dict[str, bool]]:

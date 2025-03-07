@@ -601,16 +601,18 @@ class HardwareDetector:
                 try:
                     import torch
                     import onnx
-                    self._hardware_info[WEBNN] = True
+                    # Don't automatically set hardware as available, just record export capability
                     self._details[WEBNN] = {
                         "node_version": node_version,
                         "dependencies": {},
                         "python_export_capability": {
                             "torch": torch.__version__,
                             "onnx": onnx.__version__
-                        }
+                        },
+                        "real_hardware": False,
+                        "export_ready": True
                     }
-                    logger.info("WebNN support detected via Python ONNX export capabilities")
+                    logger.info("WebNN export capabilities detected, but not marking hardware as available")
                     return
                 except ImportError:
                     pass
@@ -628,34 +630,37 @@ class HardwareDetector:
                     has_onnxruntime_web = "onnxruntime-web" in dependencies
                     has_webnn_api = "webnn-api" in dependencies or "webnn-polyfill" in dependencies
                     
+                    # Record capabilities but don't automatically enable hardware
+                    self._details[WEBNN] = {
+                        "node_version": node_version,
+                        "dependencies": {
+                            "onnxruntime_web": has_onnxruntime_web,
+                            "webnn_api": has_webnn_api
+                        },
+                        "real_hardware": False,
+                        "npm_packages_available": True
+                    }
+                    
                     if has_onnxruntime_web or has_webnn_api:
-                        self._hardware_info[WEBNN] = True
-                        self._details[WEBNN] = {
-                            "node_version": node_version,
-                            "dependencies": {
-                                "onnxruntime_web": has_onnxruntime_web,
-                                "webnn_api": has_webnn_api
-                            }
-                        }
+                        logger.info("WebNN NPM packages detected, but not marking hardware as available")
                     else:
-                        self._details[WEBNN] = {
-                            "reason": "Required NPM packages not installed",
-                            "node_version": node_version
-                        }
+                        logger.info("Required WebNN NPM packages not installed")
+                        self._details[WEBNN]["reason"] = "Required NPM packages not installed"
                 except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError) as e:
                     self._details[WEBNN] = {
                         "reason": f"NPM not available or error: {str(e)}",
-                        "node_version": node_version
+                        "node_version": node_version,
+                        "real_hardware": False
                     }
         except Exception as e:
             self._errors[WEBNN] = f"Unexpected error detecting WebNN: {str(e)}"
             logger.warning(f"Error detecting WebNN: {str(e)}")
             
     def _detect_browser_webnn(self) -> bool:
-        """Detect WebNN in a browser environment or via simulation
+        """Detect WebNN in a browser environment
         
         Returns:
-            bool: True if WebNN is detected in browser or simulated, False otherwise
+            bool: True if WebNN is detected in browser, False otherwise
         """
         # First check if we're running in a browser environment
         running_in_browser = False
@@ -686,7 +691,8 @@ class HardwareDetector:
                     self._details[WEBNN] = {
                         "environment": "browser",
                         "navigator_ml": True,
-                        "mode": "direct_browser_detection"
+                        "mode": "direct_browser_detection",
+                        "real_hardware": True
                     }
                     logger.info("WebNN API detected in browser environment")
                     return True
@@ -694,32 +700,30 @@ class HardwareDetector:
                     self._details[WEBNN] = {
                         "environment": "browser",
                         "navigator_ml": False,
-                        "reason": "WebNN API not available in browser"
+                        "reason": "WebNN API not available in browser",
+                        "real_hardware": False
                     }
             except Exception as e:
                 logger.warning(f"Error during browser WebNN detection: {str(e)}")
         
-        # Check for WebNN simulation mode
+        # Handle simulation or overrides
+        self._details[WEBNN] = {
+            "environment": "desktop",
+            "simulation_requested": os.environ.get("WEBNN_SIMULATION") == "1",
+            "override_requested": os.environ.get("WEBNN_AVAILABLE") == "1",
+            "simulation_enabled": False,
+            "real_hardware": False,
+            "reason": "WebNN requires browser environment or explicit simulation configuration"
+        }
+        
+        # Log warnings about environment variables but don't automatically enable
         if os.environ.get("WEBNN_SIMULATION") == "1":
-            self._hardware_info[WEBNN] = True
-            self._details[WEBNN] = {
-                "environment": "simulation",
-                "mode": "simulated_environment",
-                "simulation_enabled": True
-            }
-            logger.info("WebNN simulation mode enabled")
-            return True
+            logger.warning("WEBNN_SIMULATION=1 is set but will not automatically enable simulated hardware.")
+            logger.warning("Hardware simulation should be explicitly requested through proper channels.")
             
-        # Check if someone explicitly set WEBNN_AVAILABLE=1
         if os.environ.get("WEBNN_AVAILABLE") == "1":
-            self._hardware_info[WEBNN] = True
-            self._details[WEBNN] = {
-                "environment": "override",
-                "mode": "environment_variable_override",
-                "simulation_enabled": True
-            }
-            logger.info("WebNN availability forced by environment variable")
-            return True
+            logger.warning("WEBNN_AVAILABLE=1 is set but will not automatically enable simulated hardware.")
+            logger.warning("Hardware detection should rely on actual hardware availability.")
         
         # WebNN not detected in browser context
         return False
@@ -756,16 +760,18 @@ class HardwareDetector:
                     # Check if ONNX is available for WebGPU export
                     try:
                         import onnx
-                        self._hardware_info[WEBGPU] = True
+                        # Don't automatically set hardware as available, just record export capability
                         self._details[WEBGPU] = {
                             "node_version": node_version,
                             "dependencies": {},
                             "python_export_capability": {
                                 "torch": torch.__version__,
                                 "onnx": onnx.__version__
-                            }
+                            },
+                            "real_hardware": False,
+                            "export_ready": True
                         }
-                        logger.info("WebGPU support detected via Python ONNX export capabilities")
+                        logger.info("WebGPU export capabilities detected, but not marking hardware as available")
                         return
                     except ImportError:
                         pass
@@ -785,43 +791,44 @@ class HardwareDetector:
                     has_transformers_js = "@xenova/transformers" in dependencies
                     has_webgpu = "@webgpu/types" in dependencies
                     
-                    if has_transformers_js or has_webgpu:
-                        self._hardware_info[WEBGPU] = True
-                        self._details[WEBGPU] = {
-                            "node_version": node_version,
-                            "dependencies": {
-                                "transformers_js": has_transformers_js,
-                                "webgpu_types": has_webgpu
-                            }
-                        }
+                    # Record capabilities but don't automatically enable hardware
+                    self._details[WEBGPU] = {
+                        "node_version": node_version,
+                        "dependencies": {
+                            "transformers_js": has_transformers_js,
+                            "webgpu_types": has_webgpu
+                        },
+                        "real_hardware": False,
+                        "npm_packages_available": True
+                    }
+                    
+                    if has_transformers_js:
+                        try:
+                            # Try to get transformers.js version
+                            pkg_info = subprocess.check_output(["npm", "view", "@xenova/transformers", "version"], universal_newlines=True).strip()
+                            self._details[WEBGPU]["transformers_js_version"] = pkg_info
+                        except:
+                            pass
                         
-                        # Check for additional capabilities
-                        if has_transformers_js:
-                            try:
-                                # Try to get transformers.js version
-                                pkg_info = subprocess.check_output(["npm", "view", "@xenova/transformers", "version"], universal_newlines=True).strip()
-                                self._details[WEBGPU]["transformers_js_version"] = pkg_info
-                            except:
-                                pass
+                        logger.info("WebGPU NPM packages detected, but not marking hardware as available")
                     else:
-                        self._details[WEBGPU] = {
-                            "reason": "Required NPM packages not installed",
-                            "node_version": node_version
-                        }
+                        logger.info("Required WebGPU NPM packages not installed")
+                        self._details[WEBGPU]["reason"] = "Required NPM packages not installed"
                 except (subprocess.SubprocessError, json.JSONDecodeError, FileNotFoundError) as e:
                     self._details[WEBGPU] = {
                         "reason": f"NPM not available or error: {str(e)}",
-                        "node_version": node_version
+                        "node_version": node_version,
+                        "real_hardware": False
                     }
         except Exception as e:
             self._errors[WEBGPU] = f"Unexpected error detecting WebGPU: {str(e)}"
             logger.warning(f"Error detecting WebGPU: {str(e)}")
             
     def _detect_browser_webgpu(self) -> bool:
-        """Detect WebGPU in a browser environment or via simulation
+        """Detect WebGPU in a browser environment
         
         Returns:
-            bool: True if WebGPU is detected in browser or simulated, False otherwise
+            bool: True if WebGPU is detected in browser, False otherwise
         """
         # First check if we're running in a browser environment
         running_in_browser = False
@@ -858,7 +865,8 @@ class HardwareDetector:
                         "environment": "browser",
                         "navigator_gpu": True,
                         "adapter_available": has_adapter,
-                        "mode": "direct_browser_detection"
+                        "mode": "direct_browser_detection",
+                        "real_hardware": True
                     }
                     logger.info("WebGPU API detected in browser environment")
                     return True
@@ -866,32 +874,30 @@ class HardwareDetector:
                     self._details[WEBGPU] = {
                         "environment": "browser",
                         "navigator_gpu": False,
-                        "reason": "WebGPU API not available in browser"
+                        "reason": "WebGPU API not available in browser",
+                        "real_hardware": False
                     }
             except Exception as e:
                 logger.warning(f"Error during browser WebGPU detection: {str(e)}")
         
-        # Check for WebGPU simulation mode
+        # Handle simulation or overrides
+        self._details[WEBGPU] = {
+            "environment": "desktop",
+            "simulation_requested": os.environ.get("WEBGPU_SIMULATION") == "1",
+            "override_requested": os.environ.get("WEBGPU_AVAILABLE") == "1",
+            "simulation_enabled": False,
+            "real_hardware": False,
+            "reason": "WebGPU requires browser environment or explicit simulation configuration"
+        }
+        
+        # Log warnings about environment variables but don't automatically enable
         if os.environ.get("WEBGPU_SIMULATION") == "1":
-            self._hardware_info[WEBGPU] = True
-            self._details[WEBGPU] = {
-                "environment": "simulation",
-                "mode": "simulated_environment",
-                "simulation_enabled": True
-            }
-            logger.info("WebGPU simulation mode enabled")
-            return True
+            logger.warning("WEBGPU_SIMULATION=1 is set but will not automatically enable simulated hardware.")
+            logger.warning("Hardware simulation should be explicitly requested through proper channels.")
             
-        # Check if someone explicitly set WEBGPU_AVAILABLE=1
         if os.environ.get("WEBGPU_AVAILABLE") == "1":
-            self._hardware_info[WEBGPU] = True
-            self._details[WEBGPU] = {
-                "environment": "override",
-                "mode": "environment_variable_override",
-                "simulation_enabled": True
-            }
-            logger.info("WebGPU availability forced by environment variable")
-            return True
+            logger.warning("WEBGPU_AVAILABLE=1 is set but will not automatically enable simulated hardware.")
+            logger.warning("Hardware detection should rely on actual hardware availability.")
         
         # WebGPU not detected in browser context
         return False
@@ -899,6 +905,24 @@ class HardwareDetector:
     def _detect_qualcomm(self):
         """Detect Qualcomm AI capabilities"""
         self._hardware_info[QUALCOMM] = False
+        
+        # Check for simulation mode first
+        is_simulation = os.environ.get("QNN_SIMULATION_MODE", "0").lower() in ("1", "true", "yes")
+        override_requested = os.environ.get("QUALCOMM_AI_AVAILABLE", "0").lower() in ("1", "true", "yes") or os.environ.get("QNN_AVAILABLE", "0").lower() in ("1", "true", "yes")
+        
+        if is_simulation or override_requested:
+            logger.warning("QNN_SIMULATION_MODE or QUALCOMM_AI_AVAILABLE environment variable is set.")
+            logger.warning("This will not automatically enable simulated hardware.")
+            logger.warning("Hardware simulation should be explicitly requested in benchmark settings.")
+            
+            # Record simulation request but don't enable hardware
+            self._details[QUALCOMM] = {
+                "simulation_requested": is_simulation,
+                "override_requested": override_requested,
+                "simulation_enabled": False,
+                "real_hardware": False,
+                "reason": "Hardware simulation should be explicitly configured in benchmark settings"
+            }
         
         # Check for Qualcomm AI Engine Direct
         try:
@@ -913,8 +937,11 @@ class HardwareDetector:
                     self._hardware_info[QUALCOMM] = True
                     self._details[QUALCOMM] = {
                         "qnn_available": True,
-                        "backend": "QNN"
+                        "backend": "QNN",
+                        "real_hardware": True,
+                        "simulation_mode": False
                     }
+                    logger.info("Real QNN hardware detected via qti.aisw modules")
                 else:
                     raise ImportError("qti.aisw.dlc_utils module not found")
             except ImportError:
@@ -925,8 +952,11 @@ class HardwareDetector:
                         self._hardware_info[QUALCOMM] = True
                         self._details[QUALCOMM] = {
                             "snpe_available": True,
-                            "backend": "SNPE"
+                            "backend": "SNPE",
+                            "real_hardware": True,
+                            "simulation_mode": False
                         }
+                        logger.info("Real Qualcomm hardware detected via SNPE module")
                     else:
                         raise ImportError("snpe module not found")
                 except ImportError:
@@ -942,10 +972,36 @@ class HardwareDetector:
                         self._details[QUALCOMM] = {
                             "snpe_cli_available": True,
                             "version": snpe_version,
-                            "backend": "SNPE CLI"
+                            "backend": "SNPE CLI",
+                            "real_hardware": True,
+                            "simulation_mode": False
                         }
+                        logger.info("Real Qualcomm hardware detected via SNPE CLI tools")
                     except (subprocess.SubprocessError, FileNotFoundError):
-                        self._details[QUALCOMM] = {"reason": "Qualcomm AI SDK not found"}
+                        # If we've reached here, no real QNN/SNPE hardware is available
+                        if not self._hardware_info[QUALCOMM]:  # Don't overwrite if already set
+                            self._details[QUALCOMM] = {
+                                "reason": "Qualcomm AI SDK not found",
+                                "real_hardware": False
+                            }
+                        
+                        # If there's a custom QNN wrapper module, try to use that
+                        try:
+                            # Check for a QNN wrapper module which might handle simulation
+                            if importlib.util.find_spec("qnn_wrapper") is not None:
+                                import qnn_wrapper
+                                if hasattr(qnn_wrapper, "is_available") and qnn_wrapper.is_available():
+                                    logger.warning("QNN wrapper module detected, but not enabling hardware by default")
+                                    # We don't enable by default anymore, just record the capability
+                                    if not self._hardware_info[QUALCOMM]:  # Don't overwrite if already set
+                                        self._details[QUALCOMM] = {
+                                            "wrapper_available": True,
+                                            "backend": "QNN Wrapper",
+                                            "real_hardware": False,
+                                            "simulation_mode": hasattr(qnn_wrapper, "is_simulation_mode") and qnn_wrapper.is_simulation_mode()
+                                        }
+                        except ImportError:
+                            pass
         except Exception as e:
             self._errors[QUALCOMM] = f"Unexpected error detecting Qualcomm AI: {str(e)}"
             logger.warning(f"Error detecting Qualcomm AI: {str(e)}")
@@ -967,35 +1023,92 @@ class HardwareDetector:
         return self._hardware_info.get(hardware_type, False)
     
     def get_best_available_hardware(self) -> str:
-        """Get the best available hardware platform for inference"""
+        """
+        Get the best available hardware platform for inference.
+        Only considers real hardware that is not simulated.
+        
+        Returns:
+            String identifier for the best available hardware
+        """
         # Priority order: CUDA > ROCm > MPS > OpenVINO > Qualcomm > CPU
-        if self.is_available(CUDA):
+        
+        # Check CUDA
+        if self.is_available(CUDA) and self._is_real_hardware(CUDA):
             return CUDA
-        elif self.is_available(ROCM):
+            
+        # Check ROCm
+        elif self.is_available(ROCM) and self._is_real_hardware(ROCM):
             return ROCM
-        elif self.is_available(MPS):
+            
+        # Check MPS (Apple Silicon)
+        elif self.is_available(MPS) and self._is_real_hardware(MPS):
             return MPS
-        elif self.is_available(OPENVINO):
+            
+        # Check OpenVINO
+        elif self.is_available(OPENVINO) and self._is_real_hardware(OPENVINO):
             return OPENVINO
-        elif self.is_available(QUALCOMM):
+            
+        # Check Qualcomm
+        elif self.is_available(QUALCOMM) and self._is_real_hardware(QUALCOMM):
             return QUALCOMM
+            
+        # CPU is always available and real
         else:
             return CPU
     
+    def _is_real_hardware(self, hardware_type: str) -> bool:
+        """
+        Check if a hardware platform is real (not simulated).
+        
+        Args:
+            hardware_type: The hardware type to check
+            
+        Returns:
+            True if the hardware is real, False if simulated
+        """
+        # CPU is always real
+        if hardware_type == CPU:
+            return True
+            
+        # For other platforms, check the details
+        details = self._details.get(hardware_type, {})
+        
+        # Explicit simulation flag
+        if details.get("simulation_mode", False):
+            return False
+            
+        # Check real_hardware flag if available
+        if "real_hardware" in details:
+            return details["real_hardware"]
+            
+        # Check environment
+        if details.get("environment") == "simulation":
+            return False
+            
+        # Default to considering it real if it's available and we have no evidence otherwise
+        return self.is_available(hardware_type)
+    
     def get_torch_device(self) -> str:
-        """Get the appropriate torch device string for the best available hardware"""
-        if self.is_available(CUDA):
+        """
+        Get the appropriate torch device string for the best available hardware.
+        Only considers real hardware that is not simulated.
+        
+        Returns:
+            PyTorch device string for the best available hardware
+        """
+        if self.is_available(CUDA) and self._is_real_hardware(CUDA):
             return "cuda"
-        elif self.is_available(ROCM):
+        elif self.is_available(ROCM) and self._is_real_hardware(ROCM):
             return "cuda"  # ROCm uses CUDA API
-        elif self.is_available(MPS):
+        elif self.is_available(MPS) and self._is_real_hardware(MPS):
             return "mps"
         else:
             return "cpu"
             
     def get_device_with_index(self, preferred_index: int = 0) -> str:
         """
-        Get device string with specific index if available
+        Get device string with specific index if available.
+        Only considers real hardware that is not simulated.
         
         Args:
             preferred_index: The preferred GPU index to use (e.g., cuda:0, cuda:1)
@@ -1003,7 +1116,7 @@ class HardwareDetector:
         Returns:
             Device string with index if available, otherwise best available device
         """
-        device = self.get_torch_device()
+        device = self.get_torch_device()  # This now checks for real hardware
         
         # Only add index for CUDA or ROCm devices
         if device == "cuda":
@@ -1021,23 +1134,6 @@ class HardwareDetector:
                     logger.debug(f"Selected CUDA device index {preferred_index} from {device_count} available devices")
             except (ImportError, AttributeError) as e:
                 logger.debug(f"Error selecting CUDA device: {str(e)}")
-                pass
-        
-        # For ROCm devices we also add indices (ROCm uses CUDA API)
-        elif self.is_available(ROCM) and device == "cuda":
-            try:
-                import torch
-                device_count = torch.cuda.device_count()
-                if device_count > 0:
-                    # Ensure index is valid
-                    if preferred_index >= 0 and preferred_index < device_count:
-                        return f"{device}:{preferred_index}"
-                    else:
-                        return f"{device}:0"  # Default to first device
-                        
-                    logger.debug(f"Selected ROCm device index {preferred_index} from {device_count} available devices")
-            except (ImportError, AttributeError) as e:
-                logger.debug(f"Error selecting ROCm device: {str(e)}")
                 pass
                 
         return device
@@ -1086,7 +1182,8 @@ class HardwareDetector:
         
     def get_hardware_by_priority(self, priority_list: Optional[List[str]] = None) -> str:
         """
-        Get the best available hardware based on a priority list
+        Get the best available hardware based on a priority list.
+        Only considers real hardware that is not simulated.
         
         Args:
             priority_list: Optional priority list of hardware types
@@ -1100,20 +1197,37 @@ class HardwareDetector:
         
         logger.debug(f"Selecting hardware using priority list: {priority_list}")
         
-        # Return the first available hardware type from the priority list
+        # Return the first available hardware type from the priority list that is not simulated
         for hw_type in priority_list:
-            if self.is_available(hw_type):
-                logger.info(f"Selected hardware {hw_type} based on priority list: {priority_list}")
+            if self.is_available(hw_type) and self._is_real_hardware(hw_type):
+                logger.info(f"Selected real hardware {hw_type} based on priority list: {priority_list}")
                 return hw_type
         
+        # Log if the unavailable hardware was requested due to simulation
+        for hw_type in priority_list:
+            if self.is_available(hw_type) and not self._is_real_hardware(hw_type):
+                logger.warning(f"Hardware {hw_type} was available but is simulated - not selecting")
+                
+                # Add details about simulation status to help debugging
+                details = self._details.get(hw_type, {})
+                if details:
+                    simulation_info = {
+                        "simulation_mode": details.get("simulation_mode", False),
+                        "real_hardware": details.get("real_hardware", False),
+                        "environment": details.get("environment", "unknown"),
+                        "simulation_requested": details.get("simulation_requested", False)
+                    }
+                    logger.debug(f"Simulation details for {hw_type}: {simulation_info}")
+        
         # Fallback to CPU if nothing from the priority list is available
-        logger.warning(f"No hardware from priority list {priority_list} is available, falling back to CPU")
+        logger.warning(f"No real hardware from priority list {priority_list} is available, falling back to CPU")
         return CPU
         
     def get_torch_device_with_priority(self, priority_list: Optional[List[str]] = None, 
                                        preferred_index: int = 0) -> str:
         """
-        Get torch device string using priority list and preferred device index
+        Get torch device string using priority list and preferred device index.
+        Only considers real hardware that is not simulated.
         
         Args:
             priority_list: Optional priority list of hardware types
@@ -1122,7 +1236,7 @@ class HardwareDetector:
         Returns:
             PyTorch device string with appropriate format
         """
-        # Get best hardware based on priority list
+        # Get best hardware based on priority list (already checks for real hardware)
         best_hardware = self.get_hardware_by_priority(priority_list)
         
         # Convert to torch device string
@@ -1135,30 +1249,63 @@ class HardwareDetector:
                 if device_count > 0:
                     # Ensure index is valid
                     if preferred_index >= 0 and preferred_index < device_count:
+                        logger.info(f"Using real GPU device {device_base}:{preferred_index}")
                         return f"{device_base}:{preferred_index}"
                     else:
+                        logger.info(f"Using real GPU device {device_base}:0 (default)")
                         return f"{device_base}:0"  # Default to first device
             except (ImportError, AttributeError) as e:
                 logger.debug(f"Error selecting GPU device index: {str(e)}")
                 return device_base
         elif best_hardware == MPS:
+            logger.info("Using real MPS (Apple Silicon) device")
             return "mps"
         else:
+            # CPU is always a real device
+            logger.info("Using CPU device")
             return "cpu"
     
     def print_summary(self, detailed: bool = False):
-        """Print a summary of detected hardware capabilities"""
+        """Print a summary of detected hardware capabilities with simulation status"""
         from pprint import pprint
         
         print("\n=== Hardware Detection Summary ===")
-        print(f"Available hardware: {', '.join(hw for hw, available in self._hardware_info.items() if available)}")
+        
+        # Show available hardware with simulation status
+        available_hw = [hw for hw, available in self._hardware_info.items() if available]
+        real_hw = [hw for hw in available_hw if self._is_real_hardware(hw)]
+        simulated_hw = [hw for hw in available_hw if not self._is_real_hardware(hw)]
+        
+        if real_hw:
+            print(f"Real hardware available: {', '.join(real_hw)}")
+        if simulated_hw:
+            print(f"⚠️  SIMULATED hardware: {', '.join(simulated_hw)}")
+            
         print(f"Best available hardware: {self.get_best_available_hardware()}")
         
         if detailed:
             print("\n=== Detailed Hardware Information ===")
-            pprint(self._details)
+            # Print details for each hardware type
+            for hw_type in self._hardware_info:
+                is_available = self._hardware_info[hw_type]
+                is_real = self._is_real_hardware(hw_type)
+                
+                status = "AVAILABLE (REAL)" if is_available and is_real else \
+                         "⚠️  SIMULATED" if is_available and not is_real else \
+                         "NOT AVAILABLE"
+                         
+                print(f"\n--- {hw_type.upper()} Status: {status} ---")
+                
+                # Print details for this hardware
+                if hw_type in self._details:
+                    pprint(self._details[hw_type])
+                    
+                # Print errors for this hardware if any
+                if hw_type in self._errors:
+                    print(f"ERRORS: {self._errors[hw_type]}")
             
-            if self._errors:
+            # Print just a summary of errors if not showing per-hardware details
+            if self._errors and not detailed:
                 print("\n=== Detection Errors ===")
                 pprint(self._errors)
 
@@ -1168,6 +1315,7 @@ def detect_available_hardware(cache_file: Optional[str] = None,
                              preferred_device_index: int = 0) -> Dict[str, Any]:
     """
     Detect available hardware with comprehensive error handling
+    and clear identification of real vs. simulated hardware
     
     Args:
         cache_file: Optional path to cache detection results
@@ -1179,29 +1327,52 @@ def detect_available_hardware(cache_file: Optional[str] = None,
     """
     detector = HardwareDetector(cache_file=cache_file)
     
-    # Get best hardware based on priority list if provided
+    # Get best hardware based on priority list if provided (will only select real hardware)
     if priority_list:
         best_hardware = detector.get_hardware_by_priority(priority_list)
-        # Get torch device with priority and index
+        # Get torch device with priority and index (will only select real hardware)
         torch_device = detector.get_torch_device_with_priority(priority_list, preferred_device_index)
     else:
         best_hardware = detector.get_best_available_hardware()
-        # Get torch device with index
+        # Get torch device with index (will only select real hardware)
         torch_device = detector.get_device_with_index(preferred_device_index)
+    
+    # Get hardware availability
+    hw_availability = detector.get_available_hardware()
+    
+    # Identify which available hardware is real and which is simulated
+    real_hardware = {}
+    simulated_hardware = {}
+    for hw_type, available in hw_availability.items():
+        if available:
+            is_real = detector._is_real_hardware(hw_type)
+            real_hardware[hw_type] = is_real
+            simulated_hardware[hw_type] = not is_real
     
     # Include the custom priority list in the result if provided
     result = {
-        "hardware": detector.get_available_hardware(),
+        "hardware": hw_availability,
         "details": detector.get_hardware_details(),
         "errors": detector.get_errors(),
         "best_available": best_hardware,
-        "torch_device": torch_device
+        "torch_device": torch_device,
+        "real_hardware": real_hardware,
+        "simulated_hardware": simulated_hardware
     }
     
     # Include custom priority settings if provided
     if priority_list:
         result["priority_list"] = priority_list
         result["preferred_device_index"] = preferred_device_index
+    
+    # Log summary of real vs simulated hardware
+    real_hw_list = [hw for hw, is_real in real_hardware.items() if is_real]
+    simulated_hw_list = [hw for hw, is_simulated in simulated_hardware.items() if is_simulated]
+    
+    if real_hw_list:
+        logger.info(f"Real hardware detected: {', '.join(real_hw_list)}")
+    if simulated_hw_list:
+        logger.warning(f"Simulated hardware detected (will not be used by default): {', '.join(simulated_hw_list)}")
     
     return result
 
@@ -1311,10 +1482,130 @@ def detect_browser_features() -> Dict[str, Any]:
     return features
 
 
+def verify_hardware_detection_simulation_handling() -> Dict[str, Dict[str, bool]]:
+    """
+    Verify that the hardware detection system properly handles simulation flags.
+    Tests environment variable overrides and checks that they are properly detected
+    but not automatically enabled.
+    
+    Returns:
+        Dictionary with test results including expected vs actual behavior
+    """
+    results = {
+        "test_environment_vars_not_auto_enabled": {},
+        "test_simulation_flags_properly_detected": {},
+        "test_only_real_hardware_selected": {}
+    }
+    
+    # Save original environment variables
+    original_env = {}
+    sim_vars = [
+        "WEBNN_SIMULATION", "WEBGPU_SIMULATION", "QNN_SIMULATION_MODE",
+        "WEBNN_AVAILABLE", "WEBGPU_AVAILABLE", "QUALCOMM_AI_AVAILABLE",
+        "CUDA_AVAILABLE", "ROCM_AVAILABLE", "MPS_AVAILABLE", "OPENVINO_AVAILABLE"
+    ]
+    
+    for var in sim_vars:
+        original_env[var] = os.environ.get(var)
+    
+    try:
+        # Test 1: Environment variables don't automatically enable hardware
+        # Set some simulation variables
+        os.environ["WEBNN_SIMULATION"] = "1"
+        os.environ["WEBGPU_SIMULATION"] = "1"
+        os.environ["QNN_SIMULATION_MODE"] = "1"
+        
+        # Create detector
+        detector = HardwareDetector()
+        
+        # Check if hardware is marked as available but simulation flags are properly set
+        details = detector._details
+        
+        # Check WEBNN
+        webnn_detected = detector.is_available(WEBNN)
+        webnn_details = details.get(WEBNN, {})
+        webnn_sim_flagged = webnn_details.get("simulation_requested", False)
+        
+        results["test_environment_vars_not_auto_enabled"]["webnn_not_auto_enabled"] = not webnn_detected
+        results["test_simulation_flags_properly_detected"]["webnn_sim_flag_detected"] = webnn_sim_flagged
+        
+        # Check WEBGPU
+        webgpu_detected = detector.is_available(WEBGPU)
+        webgpu_details = details.get(WEBGPU, {})
+        webgpu_sim_flagged = webgpu_details.get("simulation_requested", False)
+        
+        results["test_environment_vars_not_auto_enabled"]["webgpu_not_auto_enabled"] = not webgpu_detected
+        results["test_simulation_flags_properly_detected"]["webgpu_sim_flag_detected"] = webgpu_sim_flagged
+        
+        # Check QNN
+        qnn_detected = detector.is_available(QUALCOMM)
+        qnn_details = details.get(QUALCOMM, {})
+        qnn_sim_flagged = qnn_details.get("simulation_requested", False)
+        
+        results["test_environment_vars_not_auto_enabled"]["qnn_not_auto_enabled"] = not qnn_detected
+        results["test_simulation_flags_properly_detected"]["qnn_sim_flag_detected"] = qnn_sim_flagged
+        
+        # Test 2: Best available hardware only selects real hardware
+        # Get available hardware to check
+        hw_status = detector.get_available_hardware()
+        
+        # Clear environment and set up some "fake available" hardware
+        for var in sim_vars:
+            if var in os.environ:
+                del os.environ[var]
+        
+        # Create a new detector with some hardware set as available but simulated
+        detector = HardwareDetector()
+        
+        # Make all hardware "available" but some simulated
+        detector._hardware_info = {
+            CPU: True,
+            CUDA: True,
+            ROCM: True,
+            MPS: True,
+            OPENVINO: True,
+            QUALCOMM: True,
+            WEBNN: True,
+            WEBGPU: True
+        }
+        
+        # Set some as simulated
+        detector._details = {
+            CPU: {"real_hardware": True},
+            CUDA: {"real_hardware": True},
+            ROCM: {"real_hardware": False, "simulation_mode": True},
+            MPS: {"real_hardware": True},
+            OPENVINO: {"real_hardware": False, "simulation_mode": True},
+            QUALCOMM: {"real_hardware": False, "simulation_mode": True},
+            WEBNN: {"real_hardware": False, "simulation_mode": True},
+            WEBGPU: {"real_hardware": False, "simulation_mode": True}
+        }
+        
+        # Check if only real hardware is selected
+        best_hw = detector.get_best_available_hardware()
+        best_torch = detector.get_torch_device()
+        
+        # Based on our setup, CUDA should be selected as best hardware
+        results["test_only_real_hardware_selected"]["best_hardware_is_real"] = best_hw in [CPU, CUDA, MPS]
+        results["test_only_real_hardware_selected"]["best_torch_device_is_real"] = best_torch in ["cpu", "cuda", "mps"]
+        results["test_only_real_hardware_selected"]["simulated_hardware_not_selected"] = best_hw not in [ROCM, OPENVINO, QUALCOMM, WEBNN, WEBGPU]
+        
+        return results
+        
+    finally:
+        # Restore original environment
+        for var, value in original_env.items():
+            if value is None:
+                if var in os.environ:
+                    del os.environ[var]
+            else:
+                os.environ[var] = value
+
 def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
     """
     Enhanced hardware detection with robust error handling and comprehensive checks.
     Provides detailed capabilities for all hardware types with extensive fallbacks.
+    Also clearly distinguishes between real and simulated hardware.
     
     Returns:
         Dictionary with detailed hardware information and capabilities
@@ -1737,23 +2028,97 @@ def detect_hardware_with_comprehensive_checks() -> Dict[str, Any]:
     return hardware
 
 
+def run_verification_tests():
+    """Run verification tests to ensure simulation handling is working correctly"""
+    # Ensure clear console output
+    print("\n")
+    print("=" * 80)
+    print("HARDWARE DETECTION VERIFICATION TESTS")
+    print("=" * 80)
+    
+    # Run verification
+    results = verify_hardware_detection_simulation_handling()
+    
+    # Check and report results
+    all_passed = True
+    
+    print("\nTest 1: Environment variables do not auto-enable hardware")
+    for test_name, passed in results["test_environment_vars_not_auto_enabled"].items():
+        status = "✅ PASSED" if passed else "❌ FAILED"
+        if not passed:
+            all_passed = False
+        print(f"  {test_name}: {status}")
+    
+    print("\nTest 2: Simulation flags are properly detected")
+    for test_name, passed in results["test_simulation_flags_properly_detected"].items():
+        status = "✅ PASSED" if passed else "❌ FAILED"
+        if not passed:
+            all_passed = False
+        print(f"  {test_name}: {status}")
+    
+    print("\nTest 3: Only real hardware is selected")
+    for test_name, passed in results["test_only_real_hardware_selected"].items():
+        status = "✅ PASSED" if passed else "❌ FAILED"
+        if not passed:
+            all_passed = False
+        print(f"  {test_name}: {status}")
+    
+    # Final summary
+    print("\n" + "=" * 80)
+    if all_passed:
+        print("✅ ALL VERIFICATION TESTS PASSED")
+    else:
+        print("❌ SOME VERIFICATION TESTS FAILED")
+    print("=" * 80 + "\n")
+    
+    return all_passed
+
 if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(level=logging.INFO, 
                       format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
+    # Check for --verify flag
+    if len(sys.argv) > 1 and sys.argv[1] == "--verify":
+        # Run verification tests
+        run_verification_tests()
+        sys.exit(0)
+    
     # Create detector and output results
     detector = HardwareDetector(cache_file="hardware_detection_cache.json")
     detector.print_summary(detailed=True)
     
-    # Create results object
+    # Identify real vs simulated hardware
+    hardware_status = detector.get_available_hardware()
+    real_hardware = {}
+    simulated_hardware = {}
+    
+    for hw_type, available in hardware_status.items():
+        if available:
+            is_real = detector._is_real_hardware(hw_type)
+            real_hardware[hw_type] = is_real
+            simulated_hardware[hw_type] = not is_real
+    
+    # Create results object with simulation status
     results = {
         "hardware": detector.get_available_hardware(),
         "details": detector.get_hardware_details(),
         "errors": detector.get_errors(),
         "best_available": detector.get_best_available_hardware(),
-        "torch_device": detector.get_torch_device()
+        "torch_device": detector.get_torch_device(),
+        "real_hardware": real_hardware,
+        "simulated_hardware": simulated_hardware
     }
+    
+    # Print summary of real vs simulated hardware
+    real_hw_list = [hw for hw, is_real in real_hardware.items() if is_real]
+    simulated_hw_list = [hw for hw, is_simulated in simulated_hardware.items() if is_simulated]
+    
+    if simulated_hw_list:
+        print("\n⚠️  SIMULATION WARNING:")
+        print(f"The following hardware platforms are being simulated and do not reflect real hardware performance:")
+        for hw in simulated_hw_list:
+            print(f"- {hw}: SIMULATED")
     
     # If JSON output is deprecated, try to save to database
     if DEPRECATE_JSON_OUTPUT:
@@ -1764,23 +2129,24 @@ if __name__ == "__main__":
             db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
             conn = duckdb.connect(db_path)
             
-            # Create hardware_detection table if it doesn't exist
+            # Create hardware_detection table if it doesn't exist with simulation flags
             conn.execute("""
             CREATE TABLE IF NOT EXISTS hardware_detection (
                 id INTEGER PRIMARY KEY,
                 timestamp TIMESTAMP,
                 system_info VARCHAR,
-                hardware_data JSON
+                hardware_data JSON,
+                contains_simulated_hardware BOOLEAN DEFAULT FALSE
             )
             """)
             
-            # Insert detection results
+            # Insert detection results with simulation flag
             timestamp = duckdb.sql("SELECT now()").fetchone()[0]
             system_info = f"{platform.system()} {platform.release()} ({platform.machine()})"
             
             conn.execute(
-                "INSERT INTO hardware_detection (timestamp, system_info, hardware_data) VALUES (?, ?, ?)",
-                [timestamp, system_info, json.dumps(results)]
+                "INSERT INTO hardware_detection (timestamp, system_info, hardware_data, contains_simulated_hardware) VALUES (?, ?, ?, ?)",
+                [timestamp, system_info, json.dumps(results), len(simulated_hw_list) > 0]
             )
             
             conn.commit()

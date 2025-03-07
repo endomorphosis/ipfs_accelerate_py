@@ -24,59 +24,161 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Mock QNN SDK import - in a real implementation, this would import the actual SDK
-class MockQNNSDK:
-    def __init__(self, version: str = "2.10"):
+# QNN SDK wrapper class for clear error handling
+class QNNSDKWrapper:
+    """
+    Wrapper for QNN SDK with proper error handling and simulation detection.
+    This replaces the previous MockQNNSDK implementation with a more robust approach.
+    """
+    def __init__(self, version: str = "2.10", simulation_mode: bool = False):
         self.version = version
-        self.available = True
-        self.devices = [
-            {"name": "Snapdragon 8 Gen 3", "compute_units": 16, "cores": 8, "memory": 8192, "dtype_support": ["fp32", "fp16", "int8", "int4"]},
-            {"name": "Snapdragon 8 Gen 2", "compute_units": 12, "cores": 8, "memory": 6144, "dtype_support": ["fp32", "fp16", "int8"]},
-            {"name": "Snapdragon 7+ Gen 2", "compute_units": 8, "cores": 8, "memory": 4096, "dtype_support": ["fp32", "fp16", "int8"]}
-        ]
+        self.available = False
+        self.simulation_mode = simulation_mode
+        self.devices = []
         self.current_device = None
-        logger.info(f"Initialized QNN SDK version {version}")
+        
+        if simulation_mode:
+            logger.warning("QNN SDK running in SIMULATION mode. No real hardware will be used.")
+            self._setup_simulation()
+        else:
+            logger.info(f"Attempting to initialize QNN SDK version {version}")
+    
+    def _setup_simulation(self):
+        """Set up simulation environment with clearly marked simulated data"""
+        self.devices = [
+            {
+                "name": "Snapdragon 8 Gen 3 (SIMULATED)",
+                "compute_units": 16,
+                "cores": 8,
+                "memory": 8192,
+                "dtype_support": ["fp32", "fp16", "int8", "int4"],
+                "simulated": True
+            },
+            {
+                "name": "Snapdragon 8 Gen 2 (SIMULATED)",
+                "compute_units": 12,
+                "cores": 8,
+                "memory": 6144,
+                "dtype_support": ["fp32", "fp16", "int8"],
+                "simulated": True
+            }
+        ]
+        self.available = True
     
     def list_devices(self) -> List[Dict[str, Any]]:
         """List all available QNN devices"""
+        if not self.available:
+            logger.error("QNN SDK not available. Cannot list devices.")
+            return []
+        
+        # Add simulation flag to make it clear these are simulated devices
+        if self.simulation_mode:
+            for device in self.devices:
+                if "simulated" not in device:
+                    device["simulated"] = True
+        
         return self.devices
     
     def select_device(self, device_name: str) -> bool:
         """Select a specific device for operations"""
+        if not self.available:
+            logger.error("QNN SDK not available. Cannot select device.")
+            return False
+        
         for device in self.devices:
             if device["name"] == device_name:
                 self.current_device = device
                 logger.info(f"Selected device: {device_name}")
+                if self.simulation_mode or device.get("simulated", False):
+                    logger.warning(f"WARNING: Selected device {device_name} is SIMULATED.")
                 return True
+        
         logger.error(f"Device not found: {device_name}")
         return False
     
     def get_device_info(self) -> Optional[Dict[str, Any]]:
         """Get information about the currently selected device"""
+        if not self.available:
+            logger.error("QNN SDK not available. Cannot get device info.")
+            return None
+        
         return self.current_device
     
     def test_device(self) -> Dict[str, Any]:
         """Run a basic test on the current device"""
-        if not self.current_device:
-            return {"success": False, "error": "No device selected"}
+        if not self.available:
+            return {
+                "success": False,
+                "error": "QNN SDK not available",
+                "simulated": self.simulation_mode
+            }
         
-        # Simulate a basic test
+        if not self.current_device:
+            return {
+                "success": False,
+                "error": "No device selected",
+                "simulated": self.simulation_mode
+            }
+        
+        # If in simulation mode, clearly mark the results
+        if self.simulation_mode or self.current_device.get("simulated", False):
+            return {
+                "success": True,
+                "device": self.current_device["name"],
+                "test_time_ms": 102.3,
+                "operations_per_second": 5.2e9,
+                "simulated": True,
+                "warning": "These results are SIMULATED and do not reflect real hardware performance."
+            }
+        
+        # In real implementation, this would perform actual device testing
+        # For now, return an error indicating real implementation is required
         return {
-            "success": True,
-            "device": self.current_device["name"],
-            "test_time_ms": 102.3,
-            "operations_per_second": 5.2e9
+            "success": False,
+            "error": "Real QNN SDK implementation required for actual device testing",
+            "simulated": self.simulation_mode
         }
 
-# Use mock for now, will be replaced with actual SDK in production
+# Initialize QNN SDK with correct error handling
+QNN_AVAILABLE = False  # Default to not available
+QNN_SIMULATION_MODE = os.environ.get("QNN_SIMULATION_MODE", "0").lower() in ("1", "true", "yes")
+
 try:
     # Try to import actual QNN SDK if available
-    pass  # In real implementation: from qnn_sdk import QNNSDK
-    qnn_sdk = MockQNNSDK()  # Would be real SDK in production
-    QNN_AVAILABLE = True
-except ImportError:
-    qnn_sdk = MockQNNSDK()  # Use mock for development/testing
-    QNN_AVAILABLE = True  # Mock always available
+    try:
+        # First try the official SDK
+        from qnn_sdk import QNNSDK
+        qnn_sdk = QNNSDK(version="2.10")
+        QNN_AVAILABLE = True
+        logger.info("Successfully loaded official QNN SDK")
+    except ImportError:
+        # Try alternative SDK versions
+        try:
+            from qti.aisw import QNNSDK
+            qnn_sdk = QNNSDK(version="2.10")
+            QNN_AVAILABLE = True
+            logger.info("Successfully loaded QTI AISW SDK")
+        except ImportError:
+            if QNN_SIMULATION_MODE:
+                # Use simulation if explicitly requested and SDKs not available
+                qnn_sdk = QNNSDKWrapper(simulation_mode=True)
+                logger.warning("QNN SDK not found. Using SIMULATION mode as requested by environment variable.")
+                QNN_AVAILABLE = True  # Simulation is "available"
+            else:
+                # Clear error when SDK not found and simulation not requested
+                qnn_sdk = QNNSDKWrapper(simulation_mode=False)
+                logger.warning("QNN SDK not available. Set QNN_SIMULATION_MODE=1 for simulation.")
+                QNN_AVAILABLE = False
+except Exception as e:
+    # Handle any unexpected errors gracefully
+    logger.error(f"Error initializing QNN SDK: {str(e)}")
+    if QNN_SIMULATION_MODE:
+        qnn_sdk = QNNSDKWrapper(simulation_mode=True)
+        logger.warning("QNN SDK initialization failed. Using SIMULATION mode as requested.")
+        QNN_AVAILABLE = True  # Simulation is "available" 
+    else:
+        qnn_sdk = QNNSDKWrapper(simulation_mode=False)
+        QNN_AVAILABLE = False
 
 
 class QNNCapabilityDetector:
@@ -84,24 +186,44 @@ class QNNCapabilityDetector:
     
     def __init__(self):
         self.sdk = qnn_sdk
-        self.devices = self.sdk.list_devices()
+        self.devices = self.sdk.list_devices() if QNN_AVAILABLE else []
         self.selected_device = None
         self.default_model_path = "models/test_model.onnx"
         self.capability_cache = {}
+        self.is_simulation = getattr(self.sdk, 'simulation_mode', False)
         
     def is_available(self) -> bool:
         """Check if QNN SDK and hardware are available"""
         return QNN_AVAILABLE and len(self.devices) > 0
     
+    def is_simulation_mode(self) -> bool:
+        """Check if running in simulation mode"""
+        return self.is_simulation
+        
     def get_devices(self) -> List[Dict[str, Any]]:
         """Get list of available devices"""
-        return self.devices
+        devices = self.devices
+        
+        # Ensure devices are clearly marked if simulated
+        if self.is_simulation:
+            for device in devices:
+                if "simulated" not in device:
+                    device["simulated"] = True
+                    
+        return devices
     
     def select_device(self, device_name: str = None) -> bool:
         """Select a specific device by name, or first available if None"""
+        if not QNN_AVAILABLE:
+            logger.error("QNN SDK not available. Cannot select device.")
+            return False
+            
         if device_name:
             if self.sdk.select_device(device_name):
                 self.selected_device = self.sdk.get_device_info()
+                # Check if device is simulated and warn if needed
+                if self.is_simulation or self.selected_device.get("simulated", False):
+                    logger.warning(f"Selected device {device_name} is SIMULATED.")
                 return True
             return False
         
@@ -109,14 +231,27 @@ class QNNCapabilityDetector:
         if self.devices:
             if self.sdk.select_device(self.devices[0]["name"]):
                 self.selected_device = self.sdk.get_device_info()
+                if self.is_simulation or self.selected_device.get("simulated", False):
+                    logger.warning(f"Selected device {self.devices[0]['name']} is SIMULATED.")
                 return True
         return False
     
     def get_capability_summary(self) -> Dict[str, Any]:
         """Get a summary of capabilities for the selected device"""
+        if not QNN_AVAILABLE:
+            return {
+                "error": "QNN SDK not available",
+                "available": False,
+                "simulation_mode": False
+            }
+            
         if not self.selected_device:
             if not self.select_device():
-                return {"error": "No device available"}
+                return {
+                    "error": "No device available",
+                    "available": False,
+                    "simulation_mode": self.is_simulation
+                }
         
         # Return cached results if available
         if "capability_summary" in self.capability_cache:
@@ -130,8 +265,13 @@ class QNNCapabilityDetector:
             "precision_support": self.selected_device["dtype_support"],
             "sdk_version": self.sdk.version,
             "recommended_models": self._get_recommended_models(),
-            "estimated_performance": self._estimate_performance()
+            "estimated_performance": self._estimate_performance(),
+            "simulation_mode": self.is_simulation or self.selected_device.get("simulated", False)
         }
+        
+        # Add simulation warning if necessary
+        if self.is_simulation or self.selected_device.get("simulated", False):
+            summary["simulation_warning"] = "This is a SIMULATED device. Results do not reflect real hardware performance."
         
         self.capability_cache["capability_summary"] = summary
         return summary
@@ -227,12 +367,26 @@ class QNNCapabilityDetector:
         
     def test_model_compatibility(self, model_path: str) -> Dict[str, Any]:
         """Test if a specific model is compatible with the selected device"""
+        if not QNN_AVAILABLE:
+            return {
+                "compatible": False, 
+                "error": "QNN SDK not available",
+                "simulation_mode": False
+            }
+            
         if not self.selected_device:
             if not self.select_device():
-                return {"compatible": False, "error": "No device available"}
+                return {
+                    "compatible": False, 
+                    "error": "No device available",
+                    "simulation_mode": self.is_simulation
+                }
+        
+        # Check if we're in simulation mode
+        is_simulated = self.is_simulation or self.selected_device.get("simulated", False)
         
         # In real implementation, this would analyze the model file
-        # For now, simulate based on file size if the file exists
+        # For now, analyze based on file size if the file exists
         if os.path.exists(model_path):
             file_size_mb = os.path.getsize(model_path) / (1024 * 1024)
             memory_mb = self.selected_device["memory"]
@@ -240,43 +394,48 @@ class QNNCapabilityDetector:
             # Simple compatibility check based on size
             compatible = file_size_mb * 3 < memory_mb  # Assume 3x size needed for inference
             
-            return {
+            result = {
                 "compatible": compatible,
                 "model_size_mb": round(file_size_mb, 2),
                 "device_memory_mb": memory_mb,
                 "reason": "Sufficient memory" if compatible else "Insufficient memory",
-                "supported_precisions": self.selected_device["dtype_support"]
+                "supported_precisions": self.selected_device["dtype_support"],
+                "simulation_mode": is_simulated
             }
+            
+            # Add simulation warning if necessary
+            if is_simulated:
+                result["simulation_warning"] = "This compatibility assessment is SIMULATED and may not reflect actual hardware compatibility."
+                
+            return result
         else:
             # Simulate compatibility based on model path name
-            if "tiny" in model_path or "mini" in model_path or "small" in model_path:
-                return {
-                    "compatible": True,
-                    "simulated": True,
-                    "reason": "Small model variants are typically compatible",
-                    "supported_precisions": self.selected_device["dtype_support"]
-                }
-            elif "base" in model_path:
-                return {
-                    "compatible": self.selected_device["memory"] >= 4096,
-                    "simulated": True,
-                    "reason": "Base models require at least 4GB memory",
-                    "supported_precisions": self.selected_device["dtype_support"]
-                }
-            elif "large" in model_path:
-                return {
-                    "compatible": self.selected_device["memory"] >= 8192,
-                    "simulated": True,
-                    "reason": "Large models require at least 8GB memory",
-                    "supported_precisions": self.selected_device["dtype_support"]
-                }
+            model_path_lower = model_path.lower()
+            
+            if "tiny" in model_path_lower or "mini" in model_path_lower or "small" in model_path_lower:
+                compatibility = True
+                reason = "Small model variants are typically compatible"
+            elif "base" in model_path_lower:
+                compatibility = self.selected_device["memory"] >= 4096
+                reason = "Base models require at least 4GB memory"
+            elif "large" in model_path_lower:
+                compatibility = self.selected_device["memory"] >= 8192
+                reason = "Large models require at least 8GB memory"
             else:
-                return {
-                    "compatible": True,
-                    "simulated": True,
-                    "reason": "Compatibility assumed; actual test recommended",
-                    "supported_precisions": self.selected_device["dtype_support"]
-                }
+                compatibility = True
+                reason = "Compatibility assessed based on filename pattern; actual testing recommended"
+            
+            result = {
+                "compatible": compatibility,
+                "reason": reason,
+                "supported_precisions": self.selected_device["dtype_support"],
+                "simulation_mode": True  # Always mark filename-based compatibility as simulated
+            }
+            
+            # Add simulation warning
+            result["simulation_warning"] = "This compatibility assessment is based on filename pattern only and should not be used for production decisions."
+            
+            return result
 
 
 class QNNPowerMonitor:
@@ -629,8 +788,28 @@ class QNNModelOptimizer:
     
     def simulate_optimization(self, model_path: str, optimizations: List[str]) -> Dict[str, Any]:
         """Simulate applying optimizations to a model"""
+        # Check if QNN is available
+        if not QNN_AVAILABLE:
+            return {
+                "error": "QNN SDK not available",
+                "success": False,
+                "simulation_mode": False
+            }
+            
+        # Check if we have a selected device
+        if not self.detector.selected_device:
+            if not self.detector.select_device():
+                return {
+                    "error": "No device available",
+                    "success": False,
+                    "simulation_mode": self.detector.is_simulation
+                }
+                
+        # Check if we're in simulation mode
+        is_simulated = self.detector.is_simulation or self.detector.selected_device.get("simulated", False)
+        
         # In a real implementation, this would apply actual optimizations
-        # For now, simulate the results
+        # For now, simulate the results with clear simulation indicators
         
         model_filename = os.path.basename(model_path)
         original_size = os.path.getsize(model_path) if os.path.exists(model_path) else 100 * 1024 * 1024  # 100MB default
@@ -675,11 +854,12 @@ class QNNModelOptimizer:
         # Generate simulated benchmark results
         latency_reduction = 1.0 - (1.0 / effective_speedup)
         base_latency = 20.0  # ms
-        if "large" in model_filename.lower():
+        model_filename_lower = model_filename.lower()
+        if "large" in model_filename_lower:
             base_latency = 100.0
-        elif "base" in model_filename.lower():
+        elif "base" in model_filename_lower:
             base_latency = 50.0
-        elif "small" in model_filename.lower():
+        elif "small" in model_filename_lower:
             base_latency = 25.0
             
         optimized_latency = base_latency * (1.0 - latency_reduction)
@@ -687,7 +867,8 @@ class QNNModelOptimizer:
         # Estimate power efficiency
         power_efficiency = self._estimate_power_efficiency(model_filename, optimizations)
         
-        return {
+        # Create result with simulation indicator
+        result = {
             "model": model_filename,
             "original_size_bytes": original_size,
             "optimized_size_bytes": int(optimized_size),
@@ -697,8 +878,14 @@ class QNNModelOptimizer:
             "speedup_factor": round(effective_speedup, 2),
             "power_efficiency_score": power_efficiency,
             "optimizations_applied": optimizations,
-            "device": self.detector.selected_device["name"] if self.detector.selected_device else "Unknown"
+            "device": self.detector.selected_device["name"] if self.detector.selected_device else "Unknown",
+            "simulation_mode": is_simulated or True  # Always mark optimizations as simulated for now
         }
+        
+        # Add simulation warning
+        result["simulation_warning"] = "These optimization results are SIMULATED and do not reflect actual measurements on real hardware."
+        
+        return result
 
 
 # Main functionality for command-line usage

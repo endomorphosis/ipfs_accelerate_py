@@ -20,24 +20,25 @@ import duckdb
 from pathlib import Path
 
 
-# Database integration
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("benchmark_runner")
+
+# Database integration - use the standard BenchmarkDBAPI
 import os
 try:
-    from integrated_improvements.database_integration import (
-        get_db_connection,
-        store_test_result,
-        store_performance_result,
-        create_test_run,
-        complete_test_run,
-        get_or_create_model,
-        get_or_create_hardware_platform,
-        DEPRECATE_JSON_OUTPUT
-    )
+    from benchmark_db_api import BenchmarkDBAPI
     HAS_DB_INTEGRATION = True
 except ImportError:
-    logger.warning("Database integration not available")
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
     HAS_DB_INTEGRATION = False
-    DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
 
 # Improved hardware detection
 try:
@@ -64,17 +65,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("benchmark_runner")
 
-# Add DuckDB database support
-try:
-    from benchmark_db_api import BenchmarkDBAPI
-    BENCHMARK_DB_AVAILABLE = True
-except ImportError:
-    BENCHMARK_DB_AVAILABLE = False
-    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
-
-
-# Always deprecate JSON output in favor of DuckDB
-DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+# Already imported benchmark_db_api above
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run benchmarks and store results in database")
@@ -114,272 +105,152 @@ def parse_args():
     return parser.parse_args()
 
 def store_benchmark_in_database(result, db_path=None):
-    # Store benchmark results in database
+    """Store benchmark results in database using the BenchmarkDBAPI"""
     if not HAS_DB_INTEGRATION:
         logger.warning("Database integration not available, cannot store benchmark")
         return False
     
     try:
-        # Get database connection
-        conn = get_db_connection(db_path)
-        if conn is None:
-            logger.error("Failed to connect to database")
-            return False
+        # Create API instance with specified database or use default
+        db_api = BenchmarkDBAPI(db_path=db_path)
+        
+        # Prepare metadata
+        metadata = {
+            "benchmark_script": os.path.basename(__file__),
+            "timestamp": datetime.datetime.now().isoformat(),
+            "source": "benchmark_runner"
+        }
+        # Add any additional information from result
+        for key, value in result.items():
+            if key not in ["model_name", "hardware_type", "batch_size", "precision", 
+                          "throughput_items_per_second", "latency_ms", "memory_mb"]:
+                metadata[key] = value
         
         # Create test run
-        run_id = create_test_run(
-            test_name=result.get("model_name", "unknown_model"),
-            test_type="benchmark",
-            metadata={"benchmark_script": os.path.basename(__file__)}
+        run_id = db_api.create_test_run(
+            test_name=f"benchmark_{result.get('model_name', 'unknown_model')}",
+            test_type="performance_benchmark",
+            metadata=metadata
         )
         
-        # Get or create model
-        model_id = get_or_create_model(
-            model_name=result.get("model_name", "unknown_model"),
-            model_family=result.get("model_family"),
-            model_type=result.get("model_type"),
-            metadata=result
-        )
-        
-        # Get or create hardware platform
-        hw_id = get_or_create_hardware_platform(
-            hardware_type=result.get("hardware", "unknown"),
-            metadata={"source": "benchmark"}
-        )
+        # Prepare model data
+        model_name = result.get("model_name", "unknown_model")
+        model_family = result.get("model_family", None)
+        model_metadata = {
+            "parameters": result.get("parameters", None),
+            "source": result.get("source", "huggingface"),
+            "modality": result.get("modality", None)
+        }
         
         # Store performance result
-        store_performance_result(
+        result_id = db_api.store_performance_result(
+            model_name=model_name,
+            hardware_type=result.get("hardware_type", "unknown"),
+            device_name=result.get("device_name", None),
             run_id=run_id,
-            model_id=model_id,
-            hardware_id=hw_id,
+            test_case=result.get("test_case", "default"),
             batch_size=result.get("batch_size", 1),
-            throughput=result.get("throughput_items_per_second"),
-            latency=result.get("latency_ms"),
-            memory=result.get("memory_mb"),
-            metadata=result
+            precision=result.get("precision", "fp32"),
+            throughput=result.get("throughput_items_per_second", 0.0),
+            latency_avg=result.get("latency_ms", 0.0),
+            memory_peak=result.get("memory_mb", 0.0),
+            total_time_seconds=result.get("total_time_seconds", None),
+            iterations=result.get("iterations", None),
+            warmup_iterations=result.get("warmup_iterations", None),
+            metrics=metadata
         )
         
         # Complete test run
-        complete_test_run(run_id)
+        db_api.complete_test_run(run_id)
         
-        logger.info(f"Stored benchmark result in database for {result.get('model_name', 'unknown')}")
+        logger.info(f"Stored benchmark result in database for {model_name} (result_id: {result_id})")
         return True
     except Exception as e:
         logger.error(f"Error storing benchmark in database: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def connect_to_db(db_path):
-    """Connect to the DuckDB database"""
+    """Connect to the DuckDB database using BenchmarkDBAPI.
+    This function is deprecated and should be replaced with direct BenchmarkDBAPI usage.
+    """
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot connect to database")
+        return None
+    
     try:
-        # Create parent directories if they don't exist
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        # Create API instance with specified database path
+        # The API will handle creating directory and initializing schema
+        db_api = BenchmarkDBAPI(db_path=db_path)
         
-        # Try to connect with appropriate parameters - handle different DuckDB versions
-        try:
-            conn = duckdb.connect(db_path)
-        except TypeError:
-            # Fallback if parameters are different
-            conn = duckdb.connect(database=db_path)
+        # Get a connection from the API
+        conn = db_api._get_connection()
         
-        # Check if required tables exist, if not try to create them
-        tables = conn.execute("SHOW TABLES").fetchall()
-        table_names = [t[0].lower() for t in tables]
-        
-        required_tables = ['hardware_platforms', 'models', 'test_runs', 'performance_results']
-        missing_tables = [t for t in required_tables if t.lower() not in table_names]
-        
-        if missing_tables:
-            logger.warning(f"Required tables missing from database: {', '.join(missing_tables)}")
-            
-            # Check multiple possible locations for the schema script
-            schema_script = None
-            possible_paths = [
-                "scripts/create_benchmark_schema.py",
-                "test/scripts/create_benchmark_schema.py",
-                str(Path(__file__).parent / "scripts" / "create_benchmark_schema.py"),
-                str(Path(__file__).parent / "scripts" / "benchmark_db" / "create_benchmark_schema.py"),
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts", "create_benchmark_schema.py")
-            ]
-            
-            for path in possible_paths:
-                if os.path.exists(path):
-                    schema_script = path
-                    logger.info(f"Found schema script at: {path}")
-                    break
-            
-            if schema_script:
-                logger.info(f"Creating schema using script: {schema_script}")
-                try:
-                    conn.close()  # Close connection before running script
-                    import subprocess
-                    subprocess.run([sys.executable, schema_script, "--output", db_path])
-                    conn = duckdb.connect(db_path, read_only=False, access_mode='automatic')
-                except Exception as e:
-                    logger.error(f"Error running schema script: {e}")
-                    logger.error("Please run scripts/create_benchmark_schema.py to initialize the database schema")
-                    sys.exit(1)
-            else:
-                logger.error(f"Schema script not found. Checked paths: {possible_paths}")
-                logger.error("Please run scripts/create_benchmark_schema.py to initialize the database schema")
-                sys.exit(1)
-        
+        logger.info(f"Connected to database at {db_path}")
         return conn
     except Exception as e:
         logger.error(f"Error connecting to database: {e}")
-        sys.exit(1)
+        import traceback
+        traceback.print_exc()
+        return None
 
 def find_or_create_model(conn, model_name):
-    """Find a model in the database or create it if it doesn't exist"""
-    # Check if model exists
-    existing_model = conn.execute("""
-    SELECT model_id, model_family FROM models WHERE model_name = ?
-    """, [model_name]).fetchone()
-    
-    if existing_model:
-        logger.info(f"Found existing model: {model_name} (ID: {existing_model[0]}, Family: {existing_model[1]})")
-        return existing_model[0], existing_model[1]
-    
-    # Try to extract model family from name
-    model_family = None
-    if 'bert' in model_name.lower():
-        model_family = 'bert'
-    elif 't5' in model_name.lower():
-        model_family = 't5'
-    elif 'gpt' in model_name.lower():
-        model_family = 'gpt'
-    elif 'llama' in model_name.lower():
-        model_family = 'llama'
-    elif 'vit' in model_name.lower():
-        model_family = 'vit'
-    elif 'clip' in model_name.lower():
-        model_family = 'clip'
-    elif 'whisper' in model_name.lower():
-        model_family = 'whisper'
-    elif 'wav2vec' in model_name.lower():
-        model_family = 'wav2vec'
-    else:
-        # If we can't determine family, use the first part of the name
-        model_family = model_name.split('-')[0].lower()
-    
-    # Determine modality from family
-    modality = 'text'  # default
-    if model_family in ['vit', 'clip']:
-        modality = 'image'
-    elif model_family in ['whisper', 'wav2vec']:
-        modality = 'audio'
-    elif model_family in ['llava']:
-        modality = 'multimodal'
-    
-    # Create a new model
-    conn.execute("""
-    INSERT INTO models (model_name, model_family, modality, source, metadata)
-    VALUES (?, ?, ?, ?, ?)
-    """, [model_name, model_family, modality, 'huggingface', '{}'])
-    
-    # Get the inserted ID
-    new_model = conn.execute("""
-    SELECT model_id FROM models WHERE model_name = ?
-    """, [model_name]).fetchone()
-    
-    logger.info(f"Created new model entry: {model_name} (ID: {new_model[0]}, Family: {model_family})")
-    
-    return new_model[0], model_family
-
-def find_or_create_hardware(conn, hardware_type, device_name=None):
-    """Find a hardware platform in the database or create it if it doesn't exist"""
-    # Build query based on available parameters
-    query = "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ?"
-    params = [hardware_type]
-    
-    if device_name:
-        query += " AND device_name = ?"
-        params.append(device_name)
-    
-    # Check if hardware exists
-    existing_hardware = conn.execute(query, params).fetchone()
-    
-    if existing_hardware:
-        logger.info(f"Found existing hardware: {hardware_type} {device_name or ''} (ID: {existing_hardware[0]})")
-        return existing_hardware[0]
-    
-    # If we're just checking, get any hardware of this type
-    if not device_name:
-        existing_any = conn.execute(
-            "SELECT hardware_id, device_name FROM hardware_platforms WHERE hardware_type = ? LIMIT 1", 
-            [hardware_type]
-        ).fetchone()
-        
-        if existing_any:
-            logger.info(f"Found existing hardware type: {hardware_type} Device: {existing_any[1]} (ID: {existing_any[0]})")
-            return existing_any[0]
-    
-    # We need to create a new hardware entry
-    # Try to detect hardware details
-    platform = None
-    platform_version = None
-    driver_version = None
-    memory_gb = None
-    compute_units = None
+    """Find a model in the database or create it if it doesn't exist.
+    This function is deprecated and should be replaced with BenchmarkDBAPI._ensure_model_exists
+    """
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot find/create model")
+        return None, None
     
     try:
-        if hardware_type == 'cpu':
-            import platform as plt
-            import psutil
-            platform = plt.system()
-            platform_version = plt.version()
-            memory_gb = psutil.virtual_memory().total / (1024 ** 3)
-            compute_units = psutil.cpu_count(logical=False)
-            device_name = device_name or plt.processor()
+        # Create API instance with default database path
+        db_api = BenchmarkDBAPI()
         
-        elif hardware_type == 'cuda':
-            # Try to detect CUDA details
-            try:
-                import torch
-                if torch.cuda.is_available():
-                    device_name = device_name or torch.cuda.get_device_name(0)
-                    memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
-                    platform = 'CUDA'
-                    platform_version = torch.version.cuda
-                    compute_units = 0  # Not easily available
-            except (ImportError, AttributeError):
-                pass
+        # Use the API to find or create the model
+        model_id = db_api._ensure_model_exists(conn, model_name)
         
-        elif hardware_type == 'rocm':
-            # Try to detect ROCm details
-            try:
-                import torch
-                if torch.cuda.is_available() and 'rocm' in torch.__version__.lower():
-                    device_name = device_name or torch.cuda.get_device_name(0)
-                    memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
-                    platform = 'ROCm'
-                    platform_version = "Unknown"  # Not easily available
-                    compute_units = 0  # Not easily available
-            except (ImportError, AttributeError):
-                pass
+        # Get model family
+        model_info = conn.execute("""
+        SELECT model_family FROM models WHERE model_id = ?
+        """, [model_id]).fetchone()
+        
+        model_family = model_info[0] if model_info else None
+        
+        logger.info(f"Found or created model: {model_name} (ID: {model_id}, Family: {model_family})")
+        return model_id, model_family
     except Exception as e:
-        logger.warning(f"Error detecting hardware details: {e}")
+        logger.error(f"Error finding or creating model {model_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+def find_or_create_hardware(conn, hardware_type, device_name=None):
+    """Find a hardware platform in the database or create it if it doesn't exist.
+    This function is deprecated and should be replaced with BenchmarkDBAPI._ensure_hardware_exists
+    """
+    if not HAS_DB_INTEGRATION:
+        logger.warning("Database integration not available, cannot find/create hardware")
+        return None
     
-    # Use defaults if detection failed
-    device_name = device_name or f"{hardware_type.upper()} Device"
-    platform = platform or hardware_type.upper()
-    platform_version = platform_version or "Unknown"
-    memory_gb = memory_gb or 0
-    compute_units = compute_units or 0
-    
-    # Create a new hardware entry
-    conn.execute("""
-    INSERT INTO hardware_platforms (hardware_type, device_name, platform, platform_version, 
-                                   driver_version, memory_gb, compute_units, metadata)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [hardware_type, device_name, platform, platform_version, 
-         driver_version, memory_gb, compute_units, '{}'])
-    
-    # Get the inserted ID
-    new_hardware_id = conn.execute(query, params).fetchone()[0]
-    
-    logger.info(f"Created new hardware entry: {hardware_type} {device_name} (ID: {new_hardware_id})")
-    
-    return new_hardware_id
+    try:
+        # Create API instance with default database path
+        db_api = BenchmarkDBAPI()
+        
+        # Use the API to find or create the hardware platform
+        hardware_id = db_api._ensure_hardware_exists(
+            conn, 
+            hardware_type, 
+            device_name=device_name
+        )
+        
+        logger.info(f"Found or created hardware: {hardware_type} {device_name or ''} (ID: {hardware_id})")
+        return hardware_id
+    except Exception as e:
+        logger.error(f"Error finding or creating hardware {hardware_type}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 def create_test_run(conn, model_name, hardware_type, args):
     """Create a new test run entry in the database"""

@@ -14,18 +14,25 @@ Usage:
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+# Configure logger
+import logging
+logger = logging.getLogger(__name__)
+
 # Add DuckDB database support
 try:
     from benchmark_db_api import BenchmarkDBAPI
-# Database integration
-import os
-try:
-    from integrated_improvements.database_integration import (
+    BENCHMARK_DB_AVAILABLE = True
+except ImportError:
+    BENCHMARK_DB_AVAILABLE = False
+    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
+
 # Improved hardware detection
 try:
     from integrated_improvements.improved_hardware_detection import (
@@ -44,6 +51,10 @@ except ImportError:
     logger.warning("Improved hardware detection not available")
     HAS_HARDWARE_MODULE = False
 
+# Database integration
+import os
+try:
+    from integrated_improvements.database_integration import (
         get_db_connection,
         store_test_result,
         store_performance_result,
@@ -58,11 +69,6 @@ except ImportError:
     logger.warning("Database integration not available")
     HAS_DB_INTEGRATION = False
     DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1") == "1"
-
-    BENCHMARK_DB_AVAILABLE = True
-except ImportError:
-    BENCHMARK_DB_AVAILABLE = False
-    logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
 
 
 # Always deprecate JSON output in favor of DuckDB
@@ -189,8 +195,8 @@ def get_benchmark_command(
     model_name = KEY_MODELS[model_key]["models"][0].split("/")[-1]
     hw_flag = HARDWARE_PLATFORMS[hardware]["flag"]
     
-    # Basic benchmark command
-    command = f"python test/run_model_benchmarks.py --specific-models {model_name} {hw_flag} --batch-sizes {batch_size} --timeout {timeout}"
+    # Basic benchmark command with correct path (without 'test/' prefix)
+    command = f"python run_model_benchmarks.py --specific-models {model_name} {hw_flag} --batch-sizes {batch_size} --timeout {timeout}"
     
     # Add special flags for certain combinations
     if hardware in ["webnn", "webgpu"]:
@@ -254,18 +260,112 @@ def run_benchmark(
         if verbose:
             print(f"Command: {command}")
         
-        # Here we'd actually run the benchmark and collect results
-        # For now, just simulate some results
-        results["batch_sizes"][batch_size] = {
-            "throughput": batch_size * (100 if hardware == "cuda" else 50 if hardware == "cpu" else 75),
-            "latency_ms": 10 + batch_size * (2 if hardware == "cuda" else 10 if hardware == "cpu" else 5),
-            "memory_usage_mb": 100 + batch_size * (10 if hardware == "cuda" else 15 if hardware == "cpu" else 12),
-            "success": True,
-            "command": command
-        }
-        
-        # Small sleep to simulate benchmark running
-        time.sleep(0.5)
+        # Run the actual benchmark command and collect real results
+        try:
+            if verbose:
+                print(f"Executing benchmark command: {command}")
+            
+            # Run the benchmark command and capture output
+            start_time = time.time()
+            process = subprocess.run(command, shell=True, check=True, 
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    text=True, timeout=BENCHMARK_CONFIG["timeout_seconds"])
+            execution_time = time.time() - start_time
+            
+            # Try to parse the output as JSON
+            try:
+                # First check if the output contains a valid JSON object
+                stdout = process.stdout.strip()
+                if stdout and (stdout.startswith('{') or stdout.startswith('[')):
+                    benchmark_data = json.loads(stdout)
+                    
+                    # Extract performance metrics from the benchmark output
+                    results["batch_sizes"][batch_size] = {
+                        "throughput": benchmark_data.get("throughput_items_per_second", 0),
+                        "latency_ms": benchmark_data.get("average_latency_ms", 0),
+                        "memory_usage_mb": benchmark_data.get("memory_peak_mb", 0),
+                        "success": True,
+                        "execution_time_sec": execution_time,
+                        "command": command,
+                        "raw_output": stdout[:1000] if len(stdout) > 1000 else stdout,  # Truncate long output
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    # If output is not JSON, try to extract metrics with regex or other means
+                    # For now, just store the raw output
+                    results["batch_sizes"][batch_size] = {
+                        "success": True,
+                        "execution_time_sec": execution_time,
+                        "command": command,
+                        "raw_output": stdout[:1000] if len(stdout) > 1000 else stdout,  # Truncate long output
+                        "raw_stderr": process.stderr[:1000] if len(process.stderr) > 1000 else process.stderr,
+                        "timestamp": datetime.now().isoformat(),
+                        "parsed": False,
+                        "note": "Output format not recognized as JSON"
+                    }
+                    
+                    # Attempt to extract numerical values from output with regex
+                    throughput_match = re.search(r'throughput[:\s]+(\d+\.?\d*)', stdout, re.IGNORECASE)
+                    latency_match = re.search(r'latency[:\s]+(\d+\.?\d*)', stdout, re.IGNORECASE)
+                    memory_match = re.search(r'memory[:\s]+(\d+\.?\d*)', stdout, re.IGNORECASE)
+                    
+                    if throughput_match:
+                        results["batch_sizes"][batch_size]["throughput"] = float(throughput_match.group(1))
+                    if latency_match:
+                        results["batch_sizes"][batch_size]["latency_ms"] = float(latency_match.group(1))
+                    if memory_match:
+                        results["batch_sizes"][batch_size]["memory_usage_mb"] = float(memory_match.group(1))
+            
+            except json.JSONDecodeError:
+                # If output is not valid JSON, store raw output
+                results["batch_sizes"][batch_size] = {
+                    "success": True,
+                    "execution_time_sec": execution_time,
+                    "command": command,
+                    "raw_output": process.stdout[:1000] if len(process.stdout) > 1000 else process.stdout,  # Truncate long output
+                    "raw_stderr": process.stderr[:1000] if len(process.stderr) > 1000 else process.stderr,
+                    "timestamp": datetime.now().isoformat(),
+                    "parsed": False,
+                    "note": "Failed to parse output as JSON"
+                }
+                
+        except subprocess.TimeoutExpired as e:
+            if verbose:
+                print(f"Benchmark timed out after {BENCHMARK_CONFIG['timeout_seconds']} seconds")
+            
+            results["batch_sizes"][batch_size] = {
+                "success": False,
+                "error_type": "timeout",
+                "error_message": f"Benchmark timed out after {BENCHMARK_CONFIG['timeout_seconds']} seconds",
+                "command": command,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except subprocess.CalledProcessError as e:
+            if verbose:
+                print(f"Benchmark command failed with exit code {e.returncode}")
+                print(f"Error output: {e.stderr}")
+            
+            results["batch_sizes"][batch_size] = {
+                "success": False,
+                "error_type": "execution_error",
+                "error_message": f"Benchmark command failed with exit code {e.returncode}",
+                "error_output": e.stderr[:1000] if len(e.stderr) > 1000 else e.stderr,  # Truncate long error output
+                "command": command,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            if verbose:
+                print(f"Unexpected error during benchmark: {str(e)}")
+            
+            results["batch_sizes"][batch_size] = {
+                "success": False,
+                "error_type": "unexpected_error",
+                "error_message": str(e),
+                "command": command,
+                "timestamp": datetime.now().isoformat()
+            }
     
     return results
 
@@ -293,12 +393,11 @@ def save_benchmark_results(results: Dict, output_dir: str = None) -> str:
     result_path = os.path.join(output_dir, f"benchmark_{model_key}_{hardware_key}_{timestamp}.json")
     
 # JSON output deprecated in favor of database storage
-if not DEPRECATE_JSON_OUTPUT:
+    if not DEPRECATE_JSON_OUTPUT:
         with open(result_path, "w") as f:
             json.dump(results, f, indent=2)
-else:
-    logger.info("JSON output is deprecated. Results are stored directly in the database.")
-
+    else:
+        logger.info("JSON output is deprecated. Results are stored directly in the database.")
     
     return result_path
 
@@ -385,13 +484,12 @@ def main():
     parser.add_argument("--compare", action="store_true", help="Generate comparison report from benchmark results")
     parser.add_argument("--no-report", action="store_false", dest="generate_report", help="Don't generate a markdown report")
     parser.add_argument("--verbose", action="store_true", help="Print detailed output")
-    
-    
     parser.add_argument("--db-path", type=str, default=None,
                       help="Path to the benchmark database")
     parser.add_argument("--db-only", action="store_true",
                       help="Store results only in the database, not in JSON")
-args = parser.parse_args()
+    
+    args = parser.parse_args()
     
     # Process batch sizes
     batch_sizes = None
