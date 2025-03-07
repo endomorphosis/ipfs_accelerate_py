@@ -138,6 +138,9 @@ The framework includes a comprehensive benchmark timing report generator that pr
 The framework includes full benchmark execution and timing data for all model types across all hardware platforms:
 
 - Comprehensive benchmarks for all 13 model types across 8 hardware platforms
+- Intelligent incremental benchmarking system for efficient resource utilization (NEW - March 6, 2025)
+- Dynamic scheduling based on database queries for missing or outdated benchmarks
+- Prioritization of critical model-hardware combinations
 - Detailed performance metrics including latency, throughput, and memory usage
 - Hardware compatibility matrix with optimization recommendations
 - HTML and Markdown reports with detailed performance comparisons
@@ -153,6 +156,21 @@ The framework includes full benchmark execution and timing data for all model ty
 - Simulation detection and reporting for transparent benchmarking
 
 ```bash
+# Use intelligent incremental benchmark runner (NEW - March 2025)
+python test/run_incremental_benchmarks.py
+
+# Run incremental benchmarks for specific models and hardware
+python test/run_incremental_benchmarks.py --models bert,t5,vit --hardware cpu,cuda
+
+# Only run benchmarks that don't exist in the database
+python test/run_incremental_benchmarks.py --missing-only
+
+# Run benchmarks older than 14 days
+python test/run_incremental_benchmarks.py --refresh-older-than 14
+
+# Run only priority model-hardware combinations
+python test/run_incremental_benchmarks.py --priority-only
+
 # Execute comprehensive benchmarks using the new script (April 2025 Update)
 python test/run_comprehensive_benchmarks.py
 

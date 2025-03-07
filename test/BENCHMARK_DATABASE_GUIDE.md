@@ -1,8 +1,13 @@
 # Benchmark Database System Guide (Updated March 6, 2025)
 
-> **Status Update (March 6, 2025)**: The database implementation is 100% complete with enhanced querying capabilities. A new robust query tool (`fixed_benchmark_db_query.py`) has been implemented to provide improved NULL handling, better error reporting, and comprehensive report generation. See [MARCH_2025_DB_INTEGRATION_UPDATE.md](MARCH_2025_DB_INTEGRATION_UPDATE.md) for details.
+> **Status Update (March 6, 2025)**: The database implementation is 100% complete with enhanced querying capabilities. The system now includes the new incremental benchmark runner (`run_incremental_benchmarks.py`) for intelligently identifying and running missing or outdated benchmarks based on database queries.
+> 
+> The incremental runner replaces the old weekly schedule-based approach with a more efficient approach that only runs benchmarks that:
+> - Don't exist in the database at all
+> - Are older than a specified threshold (default: 30 days)
+> - Are identified as priority model-hardware combinations
 >
-> **Current Implementation Approach**: The system now exclusively uses the DuckDB database for all storage, with JSON output completely deprecated. This approach significantly reduces context window usage and provides much more efficient storage, querying, and analysis capabilities. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts.
+> **Current Implementation Approach**: The system exclusively uses the DuckDB database for all storage, with JSON output completely deprecated. This approach significantly reduces context window usage and provides much more efficient storage, querying, and analysis capabilities. The environment variable `DEPRECATE_JSON_OUTPUT=1` is now set as the default for all scripts.
 
 ## Overview
 
@@ -16,16 +21,23 @@ The database system uses DuckDB as the underlying storage engine, with a Parquet
 
 The Benchmark Database System consists of the following components:
 
-1. **Fixed Benchmark DB Query Tool** (`fixed_benchmark_db_query.py`): Robust command-line tool for querying, reporting, and visualizing benchmark results with improved error handling and NULL value processing (NEW - March 6, 2025)
-2. **Simple Report Generator** (`generate_simple_report.py`): Simplified tool for generating markdown reports from the database (NEW - March 6, 2025)
-3. **Benchmark DB Converter** (`benchmark_db_converter.py`): Converts JSON files to the database format
-4. **Benchmark DB Query** (`benchmark_db_query.py`): Legacy command-line tool for querying and reporting (Being deprecated in favor of the Fixed Query Tool)
-5. **Benchmark DB Maintenance** (`benchmark_db_maintenance.py`): Maintenance tasks like optimization and cleanup
-6. **DB Fix Tool** (`scripts/benchmark_db_fix.py`): Fixes database issues like timestamp errors
-7. **Schema Creator** (`scripts/create_new_database.py`): Creates a clean database with proper schema
-8. **DB Integrated Runner** (`run_benchmark_with_db.py`): Benchmark runner with direct database integration
+1. **Incremental Benchmark Runner** (`run_incremental_benchmarks.py`): Intelligent system for identifying and running only missing or outdated benchmarks (NEW - March 6, 2025)
+2. **Fixed Benchmark DB Query Tool** (`fixed_benchmark_db_query.py`): Robust command-line tool for querying, reporting, and visualizing benchmark results with improved error handling and NULL value processing (NEW - March 6, 2025)
+3. **Simple Report Generator** (`generate_simple_report.py`): Simplified tool for generating markdown reports from the database (NEW - March 6, 2025)
+4. **Benchmark DB Converter** (`benchmark_db_converter.py`): Converts JSON files to the database format
+5. **Benchmark DB Query** (`benchmark_db_query.py`): Legacy command-line tool for querying and reporting (Being deprecated in favor of the Fixed Query Tool)
+6. **Benchmark DB Maintenance** (`benchmark_db_maintenance.py`): Maintenance tasks like optimization and cleanup
+7. **DB Fix Tool** (`scripts/benchmark_db_fix.py`): Fixes database issues like timestamp errors
+8. **Schema Creator** (`scripts/create_new_database.py`): Creates a clean database with proper schema
+9. **DB Integrated Runner** (`run_benchmark_with_db.py`): Benchmark runner with direct database integration
 
-The most significant addition is the Fixed Benchmark DB Query Tool, which addresses various issues with the original query tool and provides comprehensive report generation capabilities. See [BENCHMARK_DB_QUERY_GUIDE.md](BENCHMARK_DB_QUERY_GUIDE.md) for detailed documentation.
+The most significant additions are:
+
+1. **Incremental Benchmark Runner**: Replaces the weekly scheduled approach with a dynamic system that identifies and runs only benchmarks that are missing or outdated, optimizing resource usage and ensuring data freshness.
+
+2. **Fixed Benchmark DB Query Tool**: Addresses various issues with the original query tool and provides comprehensive report generation capabilities.
+
+See [BENCHMARK_DB_QUERY_GUIDE.md](BENCHMARK_DB_QUERY_GUIDE.md) for detailed documentation on the query tool, and check the usage examples below for the incremental benchmark runner.
 
 ## Getting Started
 
@@ -947,6 +959,79 @@ python fixed_benchmark_db_query.py --validate-schema
 - **DB004**: Query execution error
 - **DB005**: Database maintenance error
 
+## Using the Incremental Benchmark Runner
+
+The new Incremental Benchmark Runner (`run_incremental_benchmarks.py`) provides a more efficient approach to benchmarking by only running tests that are missing or outdated. This saves resources and ensures that benchmark data is kept fresh without re-running tests that already have recent results.
+
+### Basic Usage
+
+```bash
+# Run benchmarks for missing or outdated results
+python test/run_incremental_benchmarks.py
+
+# Run with specific hardware platforms
+python test/run_incremental_benchmarks.py --hardware cuda,cpu
+
+# Run with specific models
+python test/run_incremental_benchmarks.py --models bert,t5,vit
+
+# Run for specific model families
+python test/run_incremental_benchmarks.py --model-families text,vision,audio
+
+# Prioritize key model-hardware combinations
+python test/run_incremental_benchmarks.py --priority-only
+
+# Limit the number of benchmarks to run
+python test/run_incremental_benchmarks.py --max-benchmarks 10
+```
+
+### Advanced Options
+
+```bash
+# Only run benchmarks that don't exist at all (skip refresh)
+python test/run_incremental_benchmarks.py --missing-only
+
+# Change the refresh threshold (default is 30 days)
+python test/run_incremental_benchmarks.py --refresh-older-than 14
+
+# Run in simulation mode for unavailable hardware
+python test/run_incremental_benchmarks.py --hardware rocm,qnn --simulate
+
+# Preview benchmarks without running them
+python test/run_incremental_benchmarks.py --dry-run
+
+# Force re-run of benchmarks even if recently completed
+python test/run_incremental_benchmarks.py --force
+```
+
+### Integration with CI/CD
+
+The incremental benchmark runner is ideal for CI/CD pipelines:
+
+```bash
+# Run in CI with specific options
+BENCHMARK_DB_PATH=./benchmark_db.duckdb python test/run_incremental_benchmarks.py --priority-only --max-benchmarks 20
+
+# Track progress in custom file location
+python test/run_incremental_benchmarks.py --progress-file ./ci_benchmark_progress.json
+```
+
+### Benchmark Reports
+
+The incremental benchmark runner generates comprehensive reports after each run:
+
+```bash
+# Generate report manually after a run
+python test/run_incremental_benchmarks.py
+# Report is automatically generated as benchmark_report_YYYYMMDD_HHMMSS.md
+```
+
+The reports include:
+- Total benchmarks completed
+- List of tested models and hardware platforms
+- Database coverage statistics
+- Hardware compatibility matrix
+
 ### Getting Help
 
 For more information, refer to the following resources:
@@ -954,6 +1039,12 @@ For more information, refer to the following resources:
 - [DuckDB Documentation](https://duckdb.org/docs/)
 - [Benchmark DB API Documentation](./API_DOCUMENTATION.md)
 - [Testing Framework Documentation](./TESTING_FRAMEWORK_README.md)
+
+For specific help with the incremental benchmark runner:
+
+```bash
+python test/run_incremental_benchmarks.py --help
+```
 
 ## Comprehensive HuggingFace Model Testing Integration
 
