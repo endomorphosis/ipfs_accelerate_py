@@ -63,12 +63,12 @@ MODEL_FAMILIES = {
 # Priority model-hardware combinations
 PRIORITY_COMBINATIONS = [
     # Key model-hardware pairs
-    ("bert", "cpu"), ("bert", "cuda"), ("bert", "webgpu"),
-    ("t5", "cpu"), ("t5", "cuda"),
-    ("vit", "cpu"), ("vit", "cuda"), ("vit", "webgpu"),
+    ("bert", "cpu"), ("bert", "cuda"), ("bert", "webgpu"), ("bert", "openvino"),
+    ("t5", "cpu"), ("t5", "cuda"), ("t5", "openvino"),
+    ("vit", "cpu"), ("vit", "cuda"), ("vit", "webgpu"), ("vit", "openvino"),
     ("whisper", "cpu"), ("whisper", "cuda"), ("whisper", "webgpu"),
-    ("clip", "cpu"), ("clip", "cuda"), ("clip", "webgpu"),
-    ("wav2vec2", "cpu"), ("wav2vec2", "cuda")
+    ("clip", "cpu"), ("clip", "cuda"), ("clip", "webgpu"), ("clip", "openvino"),
+    ("wav2vec2", "cpu"), ("wav2vec2", "cuda"), ("wav2vec2", "openvino")
 ]
 
 class IncrementalBenchmarkRunner:
@@ -387,7 +387,12 @@ class IncrementalBenchmarkRunner:
                 logger.info(f"Benchmark completed successfully: {benchmark_key}")
                 return True
             else:
-                logger.error(f"Benchmark failed with return code {process.returncode}: {benchmark_key}")
+                # Special case for OpenVINO hardware
+                if hardware == "openvino" and stderr and ("device not found" in stderr or "no such device" in stderr.lower()):
+                    logger.warning(f"OpenVINO device issue for {benchmark_key}. Consider using benchmark_openvino.py with a specific device.")
+                    logger.info(f"Try: python benchmark_openvino.py --model {model} --device CPU --batch-sizes {batch_size}")
+                else:
+                    logger.error(f"Benchmark failed with return code {process.returncode}: {benchmark_key}")
                 return False
             
         except Exception as e:

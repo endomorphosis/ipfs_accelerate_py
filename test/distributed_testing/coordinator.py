@@ -26,6 +26,18 @@ from aiohttp import web
 import duckdb
 import websockets
 
+# Import security module
+from security import SecurityManager, auth_middleware
+
+# Import health monitoring module
+from health_monitor import HealthMonitor
+
+# Import task scheduler module
+from task_scheduler import TaskScheduler
+
+# Import load balancer module
+from load_balancer import AdaptiveLoadBalancer
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +52,9 @@ logger = logging.getLogger(__name__)
 class DistributedTestingCoordinator:
     """Coordinator server for distributed testing framework."""
     
-    def __init__(self, db_path: str, host: str = "0.0.0.0", port: int = 8080):
+    def __init__(self, db_path: str, host: str = "0.0.0.0", port: int = 8080,
+                 security_config: str = None, enable_advanced_scheduler: bool = True,
+                 enable_health_monitor: bool = True, enable_load_balancer: bool = True):
         """
         Initialize the coordinator.
         
@@ -48,11 +62,36 @@ class DistributedTestingCoordinator:
             db_path: Path to the DuckDB database
             host: Host to bind the server to
             port: Port to bind the server to
+            security_config: Path to security configuration file
+            enable_advanced_scheduler: Whether to enable the advanced task scheduler
+            enable_health_monitor: Whether to enable the health monitor
+            enable_load_balancer: Whether to enable the adaptive load balancer
         """
         self.db_path = db_path
         self.host = host
         self.port = port
-        self.app = web.Application()
+        self.app = web.Application(middlewares=[auth_middleware])
+        
+        # Initialize security manager
+        if security_config and os.path.exists(security_config):
+            self.security_manager = SecurityManager.load_config(security_config)
+            logger.info(f"Loaded security configuration from {security_config}")
+        else:
+            self.security_manager = SecurityManager()
+            logger.info("Initialized new security manager")
+            
+            # Generate default API key for testing
+            self.security_manager.generate_api_key("default-admin", ["admin"])
+            logger.info("Generated default admin API key")
+            
+            # Save security configuration if path provided
+            if security_config:
+                self.security_manager.save_config(security_config)
+                logger.info(f"Saved security configuration to {security_config}")
+        
+        # Store security manager in app context
+        self.app["security_manager"] = self.security_manager
+        
         self.setup_routes()
         
         # Worker state
@@ -71,6 +110,30 @@ class DistributedTestingCoordinator:
         
         # Signal handlers
         self._setup_signal_handlers()
+        
+        # Initialize health monitor if enabled
+        self.enable_health_monitor = enable_health_monitor
+        if enable_health_monitor:
+            self.health_monitor = HealthMonitor(self)
+            logger.info("Health monitor initialized")
+        else:
+            self.health_monitor = None
+            
+        # Initialize task scheduler if enabled
+        self.enable_advanced_scheduler = enable_advanced_scheduler
+        if enable_advanced_scheduler:
+            self.task_scheduler = TaskScheduler(self)
+            logger.info("Advanced task scheduler initialized")
+        else:
+            self.task_scheduler = None
+            
+        # Initialize load balancer if enabled
+        self.enable_load_balancer = enable_load_balancer
+        if enable_load_balancer:
+            self.load_balancer = AdaptiveLoadBalancer(self)
+            logger.info("Adaptive load balancer initialized")
+        else:
+            self.load_balancer = None
         
         logger.info(f"Coordinator initialized with database at {db_path}")
     
@@ -206,12 +269,97 @@ class DistributedTestingCoordinator:
         await ws.prepare(request)
         
         worker_id = None
+        authenticated = False
         
         try:
+            # First message must be authentication
+            auth_msg = await ws.receive_json()
+            
+            if auth_msg.get("type") != "auth":
+                logger.warning("First message from worker was not authentication")
+                await ws.send_json({"type": "error", "message": "Authentication required"})
+                return ws
+            
+            # Check authentication type
+            auth_type = auth_msg.get("auth_type")
+            
+            if auth_type == "api_key":
+                # API key authentication
+                api_key = auth_msg.get("api_key")
+                
+                if not api_key:
+                    await ws.send_json({"type": "error", "message": "API key required"})
+                    return ws
+                
+                # Validate API key
+                is_valid, roles = self.security_manager.validate_api_key(api_key)
+                
+                if not is_valid or not self.security_manager.has_required_role(roles):
+                    await ws.send_json({"type": "error", "message": "Invalid API key or insufficient permissions"})
+                    return ws
+                
+                # Generate worker token
+                worker_id = auth_msg.get("worker_id", str(uuid.uuid4()))
+                token = self.security_manager.generate_worker_token(worker_id, api_key)
+                
+                if not token:
+                    await ws.send_json({"type": "error", "message": "Failed to generate worker token"})
+                    return ws
+                
+                # Send token to worker
+                await ws.send_json({
+                    "type": "auth_response",
+                    "status": "success",
+                    "token": token,
+                    "worker_id": worker_id
+                })
+                
+                authenticated = True
+                
+            elif auth_type == "token":
+                # Token authentication
+                token = auth_msg.get("token")
+                
+                if not token:
+                    await ws.send_json({"type": "error", "message": "Token required"})
+                    return ws
+                
+                # Validate token
+                is_valid, token_worker_id, roles = self.security_manager.validate_worker_token(token)
+                
+                if not is_valid:
+                    await ws.send_json({"type": "error", "message": "Invalid token"})
+                    return ws
+                
+                worker_id = token_worker_id
+                
+                # Send success response
+                await ws.send_json({
+                    "type": "auth_response",
+                    "status": "success",
+                    "worker_id": worker_id
+                })
+                
+                authenticated = True
+                
+            else:
+                # Unknown authentication type
+                await ws.send_json({"type": "error", "message": "Invalid authentication type"})
+                return ws
+            
+            if not authenticated:
+                return ws
+            
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     try:
                         data = json.loads(msg.data)
+                        
+                        # Verify message signature
+                        if not self.security_manager.verify_message(data.copy()):
+                            await ws.send_json({"type": "error", "message": "Invalid message signature"})
+                            continue
+                        
                         msg_type = data.get("type")
                         
                         if msg_type == "register":
@@ -219,7 +367,8 @@ class DistributedTestingCoordinator:
                             worker_id = data.get("worker_id")
                             if not worker_id:
                                 worker_id = str(uuid.uuid4())
-                                await ws.send_json({"type": "register_response", "worker_id": worker_id})
+                                response = {"type": "register_response", "worker_id": worker_id}
+                                await ws.send_json(self.security_manager.sign_message(response))
                             
                             # Store worker connection
                             self.worker_connections[worker_id] = ws
@@ -238,12 +387,19 @@ class DistributedTestingCoordinator:
                             # Worker heartbeat
                             worker_id = data.get("worker_id")
                             if not worker_id or worker_id not in self.workers:
-                                await ws.send_json({"type": "error", "message": "Unknown worker"})
+                                await ws.send_json(self.security_manager.sign_message({
+                                    "type": "error", 
+                                    "message": "Unknown worker"
+                                }))
                                 continue
                             
                             # Update worker status
                             self.workers[worker_id]["last_heartbeat"] = datetime.now().isoformat()
                             self.workers[worker_id]["status"] = "active"
+                            
+                            # Store hardware metrics if provided
+                            if "hardware_metrics" in data:
+                                self._update_worker_hardware_metrics(worker_id, data["hardware_metrics"])
                             
                             # Check for task updates
                             if "task_status" in data:
@@ -253,7 +409,18 @@ class DistributedTestingCoordinator:
                                 if task_id and status:
                                     await self._update_task_status(task_id, status, data["task_status"])
                             
-                            await ws.send_json({"type": "heartbeat_response"})
+                            # Check for task cancellation for migration
+                            if "task_cancelled" in data:
+                                task_id = data["task_cancelled"].get("task_id")
+                                reason = data["task_cancelled"].get("reason")
+                                
+                                if task_id and reason == "migration" and self.enable_load_balancer and self.load_balancer:
+                                    # Handle task cancellation for migration
+                                    await self.load_balancer.handle_task_cancelled_for_migration(task_id, worker_id)
+                            
+                            await ws.send_json(self.security_manager.sign_message({
+                                "type": "heartbeat_response"
+                            }))
                             
                         elif msg_type == "task_result":
                             # Task result
@@ -261,27 +428,45 @@ class DistributedTestingCoordinator:
                             task_id = data.get("task_id")
                             
                             if not worker_id or worker_id not in self.workers:
-                                await ws.send_json({"type": "error", "message": "Unknown worker"})
+                                await ws.send_json(self.security_manager.sign_message({
+                                    "type": "error", 
+                                    "message": "Unknown worker"
+                                }))
                                 continue
                             
                             if not task_id or task_id not in self.tasks:
-                                await ws.send_json({"type": "error", "message": "Unknown task"})
+                                await ws.send_json(self.security_manager.sign_message({
+                                    "type": "error", 
+                                    "message": "Unknown task"
+                                }))
                                 continue
                             
                             # Process task result
                             await self._process_task_result(task_id, worker_id, data)
                             
-                            await ws.send_json({"type": "task_result_response", "task_id": task_id})
+                            await ws.send_json(self.security_manager.sign_message({
+                                "type": "task_result_response", 
+                                "task_id": task_id
+                            }))
                             
                         else:
                             # Unknown message type
-                            await ws.send_json({"type": "error", "message": "Unknown message type"})
+                            await ws.send_json(self.security_manager.sign_message({
+                                "type": "error", 
+                                "message": "Unknown message type"
+                            }))
                     
                     except json.JSONDecodeError:
-                        await ws.send_json({"type": "error", "message": "Invalid JSON"})
+                        await ws.send_json(self.security_manager.sign_message({
+                            "type": "error", 
+                            "message": "Invalid JSON"
+                        }))
                     except Exception as e:
                         logger.error(f"Error processing WebSocket message: {str(e)}")
-                        await ws.send_json({"type": "error", "message": f"Error: {str(e)}"})
+                        await ws.send_json(self.security_manager.sign_message({
+                            "type": "error", 
+                            "message": f"Error: {str(e)}"
+                        }))
                 
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     logger.error(f"WebSocket connection closed with exception {ws.exception()}")
@@ -647,10 +832,57 @@ class DistributedTestingCoordinator:
                 "message": str(e)
             }, status=500)
     
+    def _update_worker_hardware_metrics(self, worker_id: str, hardware_metrics: Dict[str, Any]):
+        """
+        Update worker hardware metrics.
+        
+        Args:
+            worker_id: Worker ID
+            hardware_metrics: Hardware metrics
+        """
+        # Skip if worker doesn't exist
+        if worker_id not in self.workers:
+            return
+        
+        # Update hardware metrics in worker record
+        self.workers[worker_id]["hardware_metrics"] = hardware_metrics
+        
+        # Log utilization to help identify performance issues
+        if "cpu_percent" in hardware_metrics or "memory_percent" in hardware_metrics:
+            cpu = hardware_metrics.get("cpu_percent", 0)
+            memory = hardware_metrics.get("memory_percent", 0)
+            
+            # Only log if utilization is high
+            if cpu > 80 or memory > 80:
+                logger.debug(f"Worker {worker_id} high utilization: CPU {cpu}%, Memory {memory}%")
+    
+    async def _task_scheduler_loop(self):
+        """Run the task scheduler in a loop."""
+        while True:
+            try:
+                if self.pending_tasks and self.task_scheduler:
+                    # Use advanced scheduler
+                    tasks_assigned = await self.task_scheduler.schedule_pending_tasks()
+                    if tasks_assigned > 0:
+                        logger.info(f"Advanced scheduler assigned {tasks_assigned} tasks")
+                else:
+                    # Wait for tasks
+                    await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"Error in task scheduler loop: {str(e)}")
+            
+            # Check every 5 seconds
+            await asyncio.sleep(5)
+    
     async def _assign_pending_tasks(self):
         """Attempt to assign pending tasks to available workers."""
+        # If advanced scheduler is enabled, use it
+        if self.enable_advanced_scheduler and self.task_scheduler:
+            return await self.task_scheduler.schedule_pending_tasks()
+        
+        # Otherwise use simple assignment logic
         if not self.pending_tasks:
-            return  # No pending tasks
+            return 0  # No pending tasks
         
         # Get available workers
         available_workers = {
@@ -660,7 +892,7 @@ class DistributedTestingCoordinator:
         }
         
         if not available_workers:
-            return  # No available workers
+            return 0  # No available workers
         
         # Sort pending tasks by priority (higher number = higher priority)
         pending_tasks = sorted(
@@ -668,6 +900,8 @@ class DistributedTestingCoordinator:
             key=lambda t: t.get("priority", 0),
             reverse=True
         )
+        
+        tasks_assigned = 0
         
         for task in pending_tasks:
             task_id = task["task_id"]
@@ -689,6 +923,17 @@ class DistributedTestingCoordinator:
                 available_workers[worker_id]["status"] = "busy"
                 
                 logger.info(f"Task {task_id} assigned to worker {worker_id}")
+                
+                tasks_assigned += 1
+                
+                # Remove worker from available workers
+                del available_workers[worker_id]
+                
+                # Stop if no more workers available
+                if not available_workers:
+                    break
+        
+        return tasks_assigned
     
     async def _find_suitable_worker(self, task: Dict[str, Any], available_workers: Dict[str, Dict[str, Any]]) -> Optional[str]:
         """
@@ -900,6 +1145,25 @@ class DistributedTestingCoordinator:
         except Exception as e:
             logger.error(f"Error storing execution history for task {task_id}: {str(e)}")
         
+        # Update worker performance metrics in task scheduler
+        if self.enable_advanced_scheduler and self.task_scheduler:
+            # Create combined task result for performance tracking
+            task_result = {
+                "task_id": task_id,
+                "type": task.get("type", "unknown"),
+                "status": status,
+                "execution_time_seconds": execution_time,
+                "error": error_message,
+                "hardware_metrics": hardware_metrics
+            }
+            
+            # Update worker performance metrics
+            self.task_scheduler.update_worker_performance(worker_id, task_result)
+            
+            # If health monitor is enabled, update task timeout estimates
+            if self.enable_health_monitor and self.health_monitor and execution_time > 0:
+                self.health_monitor.update_task_timeout_estimate(task.get("type", "unknown"), execution_time)
+        
         # Update task status
         await self._update_task_status(task_id, status, result_data)
     
@@ -913,7 +1177,26 @@ class DistributedTestingCoordinator:
         logger.info(f"Coordinator server started at http://{self.host}:{self.port}")
         
         # Start background tasks
-        asyncio.create_task(self._heartbeat_checker())
+        background_tasks = []
+        
+        # Start legacy heartbeat checker if health monitor is disabled
+        if not self.enable_health_monitor:
+            background_tasks.append(asyncio.create_task(self._heartbeat_checker()))
+        
+        # Start health monitor if enabled
+        if self.enable_health_monitor and self.health_monitor:
+            background_tasks.append(asyncio.create_task(self.health_monitor.start_monitoring()))
+            logger.info("Health monitoring started")
+        
+        # Start task scheduler loop
+        if self.enable_advanced_scheduler and self.task_scheduler:
+            background_tasks.append(asyncio.create_task(self._task_scheduler_loop()))
+            logger.info("Advanced task scheduler started")
+        
+        # Start load balancer loop
+        if self.enable_load_balancer and self.load_balancer:
+            background_tasks.append(asyncio.create_task(self.load_balancer.start_balancing()))
+            logger.info("Adaptive load balancer started")
         
         # Keep server running
         while True:
@@ -975,14 +1258,63 @@ async def main():
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind the server to")
     parser.add_argument("--db-path", default="./benchmark_db.duckdb", help="Path to DuckDB database")
+    parser.add_argument("--security-config", default="./security_config.json", 
+                        help="Path to security configuration file")
+    parser.add_argument("--generate-admin-key", action="store_true", 
+                        help="Generate a new admin API key and display it")
+    parser.add_argument("--generate-worker-key", action="store_true", 
+                        help="Generate a new worker API key and display it")
+    parser.add_argument("--disable-health-monitor", action="store_true",
+                        help="Disable the health monitoring system")
+    parser.add_argument("--disable-advanced-scheduler", action="store_true",
+                        help="Disable the advanced task scheduler")
+    parser.add_argument("--disable-load-balancer", action="store_true",
+                        help="Disable the adaptive load balancer")
+    parser.add_argument("--max-tasks-per-worker", type=int, default=1,
+                        help="Maximum number of tasks that can be assigned to a worker simultaneously")
     
     args = parser.parse_args()
     
+    # Create coordinator
     coordinator = DistributedTestingCoordinator(
         db_path=args.db_path,
         host=args.host,
-        port=args.port
+        port=args.port,
+        security_config=args.security_config,
+        enable_health_monitor=not args.disable_health_monitor,
+        enable_advanced_scheduler=not args.disable_advanced_scheduler,
+        enable_load_balancer=not args.disable_load_balancer
     )
+    
+    # Configure task scheduler if enabled
+    if coordinator.enable_advanced_scheduler and coordinator.task_scheduler:
+        coordinator.task_scheduler.max_tasks_per_worker = args.max_tasks_per_worker
+    
+    # Generate and display API keys if requested
+    if args.generate_admin_key:
+        admin_key = coordinator.security_manager.generate_api_key("admin-user", ["admin"])
+        print(f"\n=== ADMIN API KEY ===\n{admin_key}\n")
+        print("Save this key securely as it will not be displayed again.")
+        print("Use this key for administrative access to the coordinator API.\n")
+        coordinator.security_manager.save_config(args.security_config)
+        
+    if args.generate_worker_key:
+        worker_key = coordinator.security_manager.generate_api_key("worker-node", ["worker"])
+        print(f"\n=== WORKER API KEY ===\n{worker_key}\n")
+        print("Save this key securely as it will not be displayed again.")
+        print("Use this key for worker nodes to connect to the coordinator.\n")
+        coordinator.security_manager.save_config(args.security_config)
+    
+    # Log configuration
+    logger.info(f"Starting coordinator with configuration:")
+    logger.info(f"  - Database path: {args.db_path}")
+    logger.info(f"  - Host: {args.host}")
+    logger.info(f"  - Port: {args.port}")
+    logger.info(f"  - Health monitor: {'Enabled' if not args.disable_health_monitor else 'Disabled'}")
+    logger.info(f"  - Advanced scheduler: {'Enabled' if not args.disable_advanced_scheduler else 'Disabled'}")
+    logger.info(f"  - Adaptive load balancer: {'Enabled' if not args.disable_load_balancer else 'Disabled'}")
+    if not args.disable_advanced_scheduler:
+        logger.info(f"  - Max tasks per worker: {args.max_tasks_per_worker}")
     
     await coordinator.start()
 

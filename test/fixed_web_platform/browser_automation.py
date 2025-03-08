@@ -614,9 +614,12 @@ class BrowserAutomation:
             self.websockets_available = False
             logger.warning("WebSockets not available. Install with: pip install websockets")
     
-    async def launch(self):
+    async def launch(self, allow_simulation: bool = False):
         """Launch browser for testing.
         
+        Args:
+            allow_simulation: Whether to allow simulation mode if real hardware is not available
+            
         Returns:
             True if browser was successfully launched, False otherwise
         """
@@ -676,9 +679,205 @@ class BrowserAutomation:
         if success:
             self.initialized = True
             logger.info(f"Browser {self.browser_name} launched successfully")
+            
+            # Check if hardware acceleration is actually available
+            # For WebGPU, we need to verify the adapter is available
+            # For WebNN, we need to verify the backend is available
+            self.simulation_mode = not await self._verify_hardware_acceleration()
+            
+            if self.simulation_mode and not allow_simulation:
+                logger.warning(f"Real {self.platform.upper()} hardware acceleration not available")
+                logger.warning("Using simulation mode since allow_simulation=True")
+            else:
+                logger.info(f"Using {'REAL' if not self.simulation_mode else 'SIMULATION'} mode for {self.platform.upper()}")
+            
+            # Set appropriate flags for enhanced features
+            if self.compute_shaders and self.browser_name == "firefox" and self.platform == "webgpu":
+                logger.info("Firefox audio optimization enabled with compute shaders")
+                os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
+                os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
+            
+            if self.precompile_shaders and self.platform == "webgpu":
+                logger.info("WebGPU shader precompilation enabled")
+                os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
+            
+            if self.parallel_loading:
+                logger.info("Parallel model loading enabled")
+                os.environ["WEB_PARALLEL_LOADING_ENABLED"] = "1"
+            
             return True
         else:
             logger.error(f"Failed to launch browser {self.browser_name}")
+            return False
+            
+    async def _verify_hardware_acceleration(self):
+        """Verify if real hardware acceleration is available.
+        
+        Returns:
+            True if real hardware acceleration is available, False otherwise
+        """
+        try:
+            # Wait a moment for browser to initialize
+            await asyncio.sleep(1)
+            
+            # If we have Selenium driver, we can check for hardware acceleration
+            if hasattr(self, 'driver') and self.driver:
+                # Execute JavaScript to check platform support
+                result = self.driver.execute_script("""
+                    async function checkHardwareAcceleration() {
+                        try {
+                            if ('""" + self.platform + """' === 'webgpu') {
+                                // Check WebGPU support
+                                if (!navigator.gpu) {
+                                    return { supported: false, reason: 'WebGPU API not available' };
+                                }
+                                
+                                const adapter = await navigator.gpu.requestAdapter();
+                                if (!adapter) {
+                                    return { supported: false, reason: 'No WebGPU adapter found' };
+                                }
+                                
+                                const info = await adapter.requestAdapterInfo();
+                                
+                                // Check if this is a software adapter (Dawn, SwiftShader, etc.)
+                                const isSoftware = info.vendor.toLowerCase().includes('software') || 
+                                                  info.vendor.toLowerCase().includes('swiftshader') ||
+                                                  info.vendor.toLowerCase().includes('dawn') ||
+                                                  info.vendor.toLowerCase().includes('llvm') ||
+                                                  info.architecture.toLowerCase().includes('software');
+                                
+                                return { 
+                                    supported: !isSoftware, 
+                                    adapter: info,
+                                    is_software: isSoftware
+                                };
+                            } else if ('""" + self.platform + """' === 'webnn') {
+                                // Check WebNN support
+                                if (!('ml' in navigator)) {
+                                    return { supported: false, reason: 'WebNN API not available' };
+                                }
+                                
+                                const context = await navigator.ml.createContext();
+                                const device = await context.queryDevice();
+                                
+                                // Check if this is a CPU backend (simulation) or hardware backend
+                                const isCPU = device.backend.toLowerCase().includes('cpu');
+                                
+                                return {
+                                    supported: !isCPU,
+                                    device: device,
+                                    is_software: isCPU
+                                };
+                            }
+                        } catch (error) {
+                            return { supported: false, reason: error.toString() };
+                        }
+                    }
+                    
+                    // Return a promise to allow the async function to complete
+                    return new Promise((resolve) => {
+                        checkHardwareAcceleration().then(result => {
+                            resolve(result);
+                        }).catch(error => {
+                            resolve({ supported: false, reason: error.toString() });
+                        });
+                    });
+                """)
+                
+                if result and isinstance(result, dict):
+                    is_real_hardware = result.get("supported", False) and not result.get("is_software", True)
+                    
+                    if is_real_hardware:
+                        # Store hardware information
+                        self.features = {
+                            f"{self.platform}_adapter": result.get("adapter", {}),
+                            f"{self.platform}_device": result.get("device", {}),
+                            "is_simulation": False
+                        }
+                        
+                        if self.platform == "webgpu":
+                            adapter_info = result.get("adapter", {})
+                            logger.info(f"Real WebGPU adapter detected: {adapter_info.get('vendor', 'Unknown')} - {adapter_info.get('architecture', 'Unknown')}")
+                        elif self.platform == "webnn":
+                            device_info = result.get("device", {})
+                            logger.info(f"Real WebNN backend detected: {device_info.get('backend', 'Unknown')}")
+                            
+                        return True
+                    else:
+                        # Store simulation information
+                        self.features = {
+                            "is_simulation": True,
+                            "simulation_reason": result.get("reason", "Software implementation detected")
+                        }
+                        
+                        if "adapter" in result:
+                            self.features[f"{self.platform}_adapter"] = result["adapter"]
+                        if "device" in result:
+                            self.features[f"{self.platform}_device"] = result["device"]
+                            
+                        logger.warning(f"Software {self.platform.upper()} implementation detected: {result.get('reason', 'Unknown reason')}")
+                        return False
+            
+            # If we have WebSocket bridge, we can check for hardware acceleration
+            if hasattr(self, 'websocket_bridge') and self.websocket_bridge:
+                # Send message to check hardware acceleration
+                response = await self.websocket_bridge.send_and_wait({
+                    "id": f"check_hardware_{int(time.time() * 1000)}",
+                    "type": "check_hardware",
+                    "platform": self.platform
+                })
+                
+                if response and isinstance(response, dict):
+                    is_real_hardware = response.get("is_real_hardware", False)
+                    
+                    if is_real_hardware:
+                        # Store hardware information
+                        self.features = {
+                            f"{self.platform}_adapter": response.get("adapter_info", {}),
+                            f"{self.platform}_device": response.get("device_info", {}),
+                            "is_simulation": False
+                        }
+                        
+                        if self.platform == "webgpu":
+                            adapter_info = response.get("adapter_info", {})
+                            logger.info(f"Real WebGPU adapter detected via WebSocket: {adapter_info.get('vendor', 'Unknown')} - {adapter_info.get('architecture', 'Unknown')}")
+                        elif self.platform == "webnn":
+                            device_info = response.get("device_info", {})
+                            logger.info(f"Real WebNN backend detected via WebSocket: {device_info.get('backend', 'Unknown')}")
+                            
+                        return True
+                    else:
+                        # Store simulation information
+                        self.features = {
+                            "is_simulation": True,
+                            "simulation_reason": response.get("reason", "Software implementation detected")
+                        }
+                        
+                        if "adapter_info" in response:
+                            self.features[f"{self.platform}_adapter"] = response["adapter_info"]
+                        if "device_info" in response:
+                            self.features[f"{self.platform}_device"] = response["device_info"]
+                            
+                        logger.warning(f"Software {self.platform.upper()} implementation detected via WebSocket: {response.get('reason', 'Unknown reason')}")
+                        return False
+            
+            # Default to simulation mode if we can't verify
+            self.features = {
+                "is_simulation": True,
+                "simulation_reason": "Could not verify hardware acceleration status"
+            }
+            logger.warning(f"Could not verify {self.platform.upper()} hardware acceleration status, assuming simulation mode")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error verifying hardware acceleration: {e}")
+            traceback.print_exc()
+            
+            # Default to simulation mode on error
+            self.features = {
+                "is_simulation": True,
+                "simulation_reason": f"Error verifying hardware acceleration: {str(e)}"
+            }
             return False
     
     def _detect_best_browser(self):

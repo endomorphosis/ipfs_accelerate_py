@@ -14,6 +14,11 @@ Usage:
     from benchmark_db_api import BenchmarkDBAPI
     api = BenchmarkDBAPI()
     api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda", ...)
+
+    # WebNN/WebGPU benchmarking - store results directly
+    from benchmark_db_api import BenchmarkDatabase, store_benchmark_result
+    db = BenchmarkDatabase("./benchmark_db.duckdb")
+    store_benchmark_result(db, model_name="bert-base-uncased", hardware_type="webgpu_chrome", ...)
 """
 
 import os
@@ -51,6 +56,359 @@ logger = logging.getLogger(__name__)
 
 # Add parent directory to path for module imports
 sys.path.append(str(Path(__file__).parent))
+
+# BenchmarkDatabase class for direct access to the database
+class BenchmarkDatabase:
+    """
+    Simple database connection class for WebNN/WebGPU benchmarking.
+    This provides a lighter-weight alternative to the full BenchmarkDBAPI.
+    """
+    
+    def __init__(self, db_path: str = None):
+        """
+        Initialize the benchmark database connection.
+        
+        Args:
+            db_path: Path to the DuckDB database. If None, uses the BENCHMARK_DB_PATH 
+                     environment variable or falls back to "./benchmark_db.duckdb"
+        """
+        # Get database path from environment variable if not provided
+        if db_path is None:
+            db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+        
+        self.db_path = db_path
+        self.conn = None
+        
+        # Ensure database directory exists
+        db_dir = os.path.dirname(db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            
+        logger.info(f"Initialized BenchmarkDatabase with path: {db_path}")
+    
+    def connect(self):
+        """Create and return a connection to the database."""
+        try:
+            # Try newer DuckDB versions first
+            try:
+                return duckdb.connect(self.db_path, read_only=False, access_mode='automatic')
+            except TypeError:
+                # Fall back to older DuckDB versions
+                return duckdb.connect(self.db_path, read_only=False)
+        except Exception as e:
+            logger.error(f"Error connecting to database: {e}")
+            raise
+    
+    def get_connection(self):
+        """Get a database connection, creating one if needed."""
+        if self.conn is None:
+            self.conn = self.connect()
+        return self.conn
+    
+    def close(self):
+        """Close the database connection if open."""
+        if self.conn:
+            try:
+                self.conn.close()
+                self.conn = None
+            except Exception as e:
+                logger.error(f"Error closing database connection: {e}")
+
+# Function to store benchmark results from WebNN/WebGPU tests
+def store_benchmark_result(
+    db: BenchmarkDatabase,
+    model_name: str,
+    hardware_type: str,
+    batch_size: int = 1,
+    precision: Optional[str] = None,
+    average_latency_ms: float = 0.0,
+    throughput_items_per_second: float = 0.0,
+    memory_mb: float = 0.0,
+    is_simulation: bool = False,
+    test_case: str = "default",
+    browser: Optional[str] = None,
+    device_name: Optional[str] = None,
+    run_id: Optional[int] = None
+) -> int:
+    """
+    Store a WebNN/WebGPU benchmark result in the database.
+    
+    Args:
+        db: BenchmarkDatabase instance
+        model_name: Name of the model
+        hardware_type: Type of hardware (webnn_chrome, webgpu_firefox, etc.)
+        batch_size: Batch size used for the benchmark
+        precision: Precision used (fp32, int8, etc.)
+        average_latency_ms: Average latency in milliseconds
+        throughput_items_per_second: Throughput in items per second
+        memory_mb: Memory usage in MB
+        is_simulation: Whether this was a simulation or real hardware
+        test_case: Name of the test case
+        browser: Browser used (chrome, firefox, edge)
+        device_name: Name of the device
+        run_id: Optional test run ID
+        
+    Returns:
+        ID of the stored result
+    """
+    # Connect to database
+    conn = None
+    try:
+        conn = db.get_connection()
+        
+        # Create transaction for atomicity
+        conn.execute("BEGIN TRANSACTION")
+        
+        # Append browser to device_name if provided but not already in device_name
+        if browser and (not device_name or browser.lower() not in device_name.lower()):
+            device_name = f"{browser} {device_name or ''}"
+        
+        # Ensure model exists
+        model_id = _ensure_model_exists(conn, model_name)
+        
+        # Ensure hardware exists
+        hardware_id = _ensure_hardware_exists(conn, hardware_type, device_name)
+        
+        # Create test run if run_id not provided
+        if run_id is None:
+            run_id = _create_test_run(
+                conn,
+                f"webnn_webgpu_benchmark_{model_name.replace('/', '_')}",
+                "web_platform_performance",
+                {"browser": browser, "is_simulation": is_simulation}
+            )
+        
+        # Get next result_id
+        max_id = conn.execute("SELECT COALESCE(MAX(result_id), 0) + 1 FROM performance_results").fetchone()[0]
+        result_id = 1 if max_id is None else max_id
+        
+        # Prepare metrics JSON
+        metrics = {
+            "is_simulation": is_simulation,
+            "browser": browser,
+        }
+        
+        # Store performance result
+        conn.execute("""
+        INSERT INTO performance_results (
+            result_id, run_id, model_id, hardware_id, test_case, batch_size, precision,
+            average_latency_ms, throughput_items_per_second,
+            memory_peak_mb, metrics
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            result_id, run_id, model_id, hardware_id, test_case, batch_size,
+            precision, average_latency_ms, throughput_items_per_second,
+            memory_mb, json.dumps(metrics)
+        ])
+        
+        # Also store hardware compatibility result
+        _store_compatibility_result(
+            conn,
+            run_id=run_id,
+            model_id=model_id,
+            hardware_id=hardware_id,
+            is_compatible=True,  # We assume it's compatible if we got a result
+            is_simulation=is_simulation
+        )
+        
+        # Commit the transaction
+        conn.execute("COMMIT")
+        
+        logger.info(f"Stored benchmark result for {model_name} on {hardware_type} (result_id: {result_id})")
+        return result_id
+    
+    except Exception as e:
+        # Rollback transaction on error
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+            except:
+                pass
+        logger.error(f"Error storing benchmark result: {e}")
+        raise
+    
+    # Note: We don't close the connection here as it's managed by the BenchmarkDatabase instance
+
+# Helper functions for store_benchmark_result
+def _ensure_model_exists(conn, model_name: str) -> int:
+    """Ensure a model exists in the database, adding it if not."""
+    # Check if model exists
+    result = conn.execute(
+        "SELECT model_id FROM models WHERE model_name = ?", 
+        [model_name]
+    ).fetchone()
+    
+    if result:
+        return result[0]
+    
+    # Model doesn't exist, try to infer family and modality
+    model_family = None
+    modality = None
+    
+    # Simple inference from model name
+    lower_name = model_name.lower()
+    if 'bert' in lower_name:
+        model_family = 'embedding'
+        modality = 'text'
+    elif 't5' in lower_name:
+        model_family = 'text_generation'
+        modality = 'text'
+    elif 'gpt' in lower_name or 'llama' in lower_name:
+        model_family = 'text_generation'
+        modality = 'text'
+    elif 'clip' in lower_name:
+        model_family = 'multimodal'
+        modality = 'multimodal'
+    elif 'vit' in lower_name:
+        model_family = 'vision'
+        modality = 'vision'
+    elif 'whisper' in lower_name or 'wav2vec' in lower_name:
+        model_family = 'audio'
+        modality = 'audio'
+    elif 'llava' in lower_name:
+        model_family = 'multimodal'
+        modality = 'multimodal'
+    
+    # Get next model_id
+    max_id = conn.execute("SELECT COALESCE(MAX(model_id), 0) + 1 FROM models").fetchone()[0]
+    model_id = 1 if max_id is None else max_id
+    
+    # Add model to database
+    conn.execute(
+        """
+        INSERT INTO models (model_id, model_name, model_family, modality, source, version)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [model_id, model_name, model_family, modality, 'huggingface', '1.0']
+    )
+    
+    logger.info(f"Added new model to database: {model_name} (ID: {model_id})")
+    return model_id
+
+def _ensure_hardware_exists(conn, hardware_type: str, device_name: str = None) -> int:
+    """Ensure a hardware platform exists in the database, adding it if not."""
+    # Use default device name if not provided
+    if device_name is None:
+        if 'webnn' in hardware_type.lower():
+            device_name = 'WebNN Device'
+        elif 'webgpu' in hardware_type.lower():
+            device_name = 'WebGPU Device'
+        elif hardware_type == 'cpu':
+            device_name = 'CPU'
+        elif hardware_type == 'cuda':
+            device_name = 'NVIDIA GPU'
+        elif hardware_type == 'rocm':
+            device_name = 'AMD GPU'
+        elif hardware_type == 'mps':
+            device_name = 'Apple Silicon'
+        elif hardware_type == 'openvino':
+            device_name = 'OpenVINO'
+        else:
+            device_name = hardware_type.upper()
+    
+    # Extract browser if included in hardware_type
+    browser = None
+    if 'chrome' in hardware_type.lower():
+        browser = 'Chrome'
+    elif 'firefox' in hardware_type.lower():
+        browser = 'Firefox'
+    elif 'edge' in hardware_type.lower():
+        browser = 'Edge'
+    elif 'safari' in hardware_type.lower():
+        browser = 'Safari'
+    
+    # Add browser to device name if not already included
+    if browser and browser.lower() not in device_name.lower():
+        device_name = f"{browser} {device_name}"
+    
+    # Check if hardware exists
+    result = conn.execute(
+        "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?",
+        [hardware_type, device_name]
+    ).fetchone()
+    
+    if result:
+        return result[0]
+    
+    # Hardware doesn't exist, add it
+    # Get next hardware_id
+    max_id = conn.execute("SELECT COALESCE(MAX(hardware_id), 0) + 1 FROM hardware_platforms").fetchone()[0]
+    hardware_id = 1 if max_id is None else max_id
+    
+    # Determine platform based on hardware_type
+    platform = None
+    if 'webnn' in hardware_type.lower():
+        platform = 'WebNN'
+    elif 'webgpu' in hardware_type.lower():
+        platform = 'WebGPU'
+    else:
+        platform = hardware_type.upper()
+    
+    conn.execute(
+        """
+        INSERT INTO hardware_platforms (
+            hardware_id, hardware_type, device_name, platform, platform_version, 
+            driver_version, memory_gb, compute_units
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [hardware_id, hardware_type, device_name, platform, 'unknown', 'unknown', 0, 0]
+    )
+    
+    logger.info(f"Added new hardware to database: {hardware_type} - {device_name} (ID: {hardware_id})")
+    return hardware_id
+
+def _create_test_run(conn, test_name: str, test_type: str, metadata: Dict = None) -> int:
+    """Create a new test run entry in the database."""
+    # Get next run_id
+    max_id = conn.execute("SELECT COALESCE(MAX(run_id), 0) + 1 FROM test_runs").fetchone()[0]
+    run_id = 1 if max_id is None else max_id
+    
+    # Current timestamp
+    now = datetime.datetime.now()
+    
+    # Insert test run
+    conn.execute(
+        """
+        INSERT INTO test_runs (
+            run_id, test_name, test_type, started_at, completed_at, 
+            execution_time_seconds, success, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [run_id, test_name, test_type, now, now, 0, True, json.dumps(metadata or {})]
+    )
+    
+    logger.debug(f"Created new test run: {test_name} (ID: {run_id})")
+    return run_id
+
+def _store_compatibility_result(conn, run_id: int, model_id: int, hardware_id: int, 
+                               is_compatible: bool, is_simulation: bool = False) -> int:
+    """Store hardware compatibility result in the database."""
+    # Get next compatibility_id
+    max_id = conn.execute("SELECT COALESCE(MAX(compatibility_id), 0) + 1 FROM hardware_compatibility").fetchone()[0]
+    compatibility_id = 1 if max_id is None else max_id
+    
+    # Prepare metadata
+    metadata = {"is_simulation": is_simulation}
+    
+    # Insert compatibility result
+    conn.execute(
+        """
+        INSERT INTO hardware_compatibility (
+            compatibility_id, run_id, model_id, hardware_id, is_compatible,
+            detection_success, initialization_success, compatibility_score, metadata
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            compatibility_id, run_id, model_id, hardware_id, is_compatible,
+            True, is_compatible, 1.0 if is_compatible else 0.0, json.dumps(metadata)
+        ]
+    )
+    
+    return compatibility_id
 
 # Models for API requests and responses
 class PerformanceResult(BaseModel):

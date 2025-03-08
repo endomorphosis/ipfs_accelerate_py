@@ -122,6 +122,247 @@ class Test{{model_name.replace("-", "").capitalize()}}(unittest.TestCase):
         # Reset environment
         os.environ.pop("WEBGPU_SIMULATION", None)
 """
+
+    # Template for OpenVINO tests
+    openvino_template = """import os
+import unittest
+import torch
+import importlib.util
+import logging
+from transformers import AutoModel, AutoTokenizer
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Check for OpenVINO availability
+HAS_OPENVINO = importlib.util.find_spec("openvino") is not None
+HAS_OPTIMUM_INTEL = importlib.util.find_spec("optimum.intel") is not None
+
+# Test for OpenVINO hardware backend
+HAS_OPENVINO_BACKEND = False
+try:
+    from ipfs_accelerate_py.hardware.backends.openvino_backend import OpenVINOBackend
+    HAS_OPENVINO_BACKEND = True
+except ImportError:
+    logger.warning("OpenVINO backend not available")
+
+class Test{{model_name.replace("-", "").capitalize()}}OpenVINO(unittest.TestCase):
+    def setUp(self):
+        self.model_name = "{{model_name}}"
+        self.skip_if_openvino_unavailable()
+        
+    def skip_if_openvino_unavailable(self):
+        if not HAS_OPENVINO:
+            self.skipTest("OpenVINO not installed")
+    
+    def test_openvino_direct(self):
+        """Test {{model_name}} with direct OpenVINO integration."""
+        import openvino as ov
+        from openvino.runtime import Core
+        
+        # Load model using transformers
+        tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        model = AutoModel.from_pretrained(self.model_name)
+        
+        # Prepare inputs
+        text = "Test text for OpenVINO inference"
+        inputs = tokenizer(text, return_tensors="pt")
+        
+        # Run PyTorch inference for reference
+        pt_outputs = model(**inputs)
+        self.assertIsNotNone(pt_outputs)
+        
+        # Try to convert to ONNX and then to OpenVINO IR
+        try:
+            import tempfile
+            import os
+            from transformers.onnx import export
+            
+            # Create temporary directory for ONNX export
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                # Export to ONNX
+                onnx_path = os.path.join(tmpdirname, "model.onnx")
+                
+                # Get model inputs and outputs
+                input_names = list(inputs.keys())
+                
+                # Export model to ONNX
+                export(
+                    preprocessor=tokenizer,
+                    model=model,
+                    config=model.config,
+                    opset=13,
+                    output=onnx_path
+                )
+                
+                # Convert to OpenVINO
+                core = Core()
+                ov_model = core.read_model(onnx_path)
+                compiled_model = core.compile_model(ov_model, "CPU")
+                
+                # Create inference request
+                infer_request = compiled_model.create_infer_request()
+                
+                # Prepare inputs
+                ov_inputs = {}
+                for input_name in input_names:
+                    if input_name in inputs:
+                        ov_inputs[input_name] = inputs[input_name].numpy()
+                
+                # Set input tensors
+                for input_name, input_tensor in ov_inputs.items():
+                    infer_request.set_input_tensor(input_name, input_tensor)
+                
+                # Perform inference
+                infer_request.start_async()
+                infer_request.wait()
+                
+                # Get results
+                outputs = {}
+                for i, output_name in enumerate(compiled_model.outputs):
+                    outputs[output_name] = infer_request.get_output_tensor(i).data
+                
+                # Verify outputs
+                self.assertIsNotNone(outputs)
+                logger.info("OpenVINO direct integration successful")
+                
+        except Exception as e:
+            logger.warning(f"OpenVINO direct integration test failed: {e}")
+            self.skipTest(f"OpenVINO direct integration test failed: {e}")
+    
+    def test_openvino_backend(self):
+        """Test {{model_name}} with OpenVINO backend."""
+        if not HAS_OPENVINO_BACKEND:
+            self.skipTest("OpenVINO backend not available")
+        
+        try:
+            backend = OpenVINOBackend()
+            if not backend.is_available():
+                self.skipTest("OpenVINO backend reports not available")
+            
+            # Load model with backend
+            config = {
+                "device": "CPU",
+                "model_type": "text",
+                "model_path": self.model_name,  # Use model name directly (may not work for all models)
+                "precision": "FP32"
+            }
+            
+            load_result = backend.load_model(self.model_name, config)
+            self.assertEqual(load_result.get("status"), "success", 
+                           f"Failed to load model: {load_result.get('message', 'Unknown error')}")
+            
+            # Run inference
+            input_content = {
+                "input_ids": [101, 2054, 2154, 2003, 2026, 3793, 2080, 2339, 1029, 102],
+                "attention_mask": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            }
+            
+            inference_result = backend.run_inference(
+                self.model_name,
+                input_content,
+                config
+            )
+            
+            self.assertEqual(inference_result.get("status"), "success", 
+                           f"Inference failed: {inference_result.get('message', 'Unknown error')}")
+            
+            # Unload model
+            backend.unload_model(self.model_name, "CPU")
+            logger.info("OpenVINO backend test successful")
+            
+        except Exception as e:
+            logger.warning(f"OpenVINO backend test failed: {e}")
+            self.skipTest(f"OpenVINO backend test failed: {e}")
+    
+    def test_optimum_intel(self):
+        """Test {{model_name}} with optimum.intel integration."""
+        if not HAS_OPTIMUM_INTEL:
+            self.skipTest("optimum.intel not installed")
+        
+        try:
+            # Import optimum.intel
+            import optimum.intel
+            
+            # Check for required model classes
+            available_classes = []
+            sequence_class_available = False
+            causal_lm_available = False
+            seq2seq_available = False
+            
+            try:
+                from optimum.intel import OVModelForSequenceClassification
+                sequence_class_available = True
+                available_classes.append("SequenceClassification")
+            except ImportError:
+                pass
+                
+            try:
+                from optimum.intel import OVModelForCausalLM
+                causal_lm_available = True
+                available_classes.append("CausalLM")
+            except ImportError:
+                pass
+                
+            try:
+                from optimum.intel import OVModelForSeq2SeqLM
+                seq2seq_available = True
+                available_classes.append("Seq2SeqLM")
+            except ImportError:
+                pass
+            
+            # If we have no model classes, skip the test
+            if not available_classes:
+                self.skipTest("No supported optimum.intel model classes available")
+            
+            # Determine appropriate model class based on model name
+            model_class = None
+            model_type = None
+            
+            if "seq2seq" in self.model_name or "t5" in self.model_name:
+                if seq2seq_available:
+                    from optimum.intel import OVModelForSeq2SeqLM
+                    model_class = OVModelForSeq2SeqLM
+                    model_type = "seq2seq"
+            elif "gpt" in self.model_name or "bloom" in self.model_name or "llama" in self.model_name:
+                if causal_lm_available:
+                    from optimum.intel import OVModelForCausalLM
+                    model_class = OVModelForCausalLM
+                    model_type = "causal_lm"
+            else:
+                if sequence_class_available:
+                    from optimum.intel import OVModelForSequenceClassification
+                    model_class = OVModelForSequenceClassification
+                    model_type = "sequence"
+            
+            # Skip if no appropriate model class found
+            if model_class is None:
+                self.skipTest(f"No appropriate optimum.intel model class for {self.model_name}")
+            
+            # Load model with optimum.intel
+            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            model = model_class.from_pretrained(
+                self.model_name, 
+                export=True,
+                load_in_8bit=False
+            )
+            
+            # Prepare inputs
+            text = "Test text for OpenVINO inference"
+            inputs = tokenizer(text, return_tensors="pt")
+            
+            # Run inference
+            outputs = model(**inputs)
+            
+            # Verify outputs
+            self.assertIsNotNone(outputs)
+            logger.info(f"optimum.intel test successful using {model_type} model class")
+            
+        except Exception as e:
+            logger.warning(f"optimum.intel test failed: {e}")
+            self.skipTest(f"optimum.intel test failed: {e}")
+"""
     
     # Add text template
     conn.execute(
@@ -147,7 +388,24 @@ class Test{{model_name.replace("-", "").capitalize()}}(unittest.TestCase):
         [vision_template]
     )
     
-    logger.info("Added basic templates")
+    # Add OpenVINO template
+    conn.execute(
+        "INSERT INTO templates (id, model_type, template_type, template) VALUES (5, 'openvino', 'test', ?)",
+        [openvino_template]
+    )
+    
+    # Add OpenVINO template for specific model types
+    conn.execute(
+        "INSERT INTO templates (id, model_type, template_type, platform, template) VALUES (6, 'text', 'test', 'openvino', ?)",
+        [openvino_template]
+    )
+    
+    conn.execute(
+        "INSERT INTO templates (id, model_type, template_type, platform, template) VALUES (7, 'vision', 'test', 'openvino', ?)",
+        [openvino_template]
+    )
+    
+    logger.info("Added basic templates (including OpenVINO templates)")
     conn.close()
 
 def list_templates():

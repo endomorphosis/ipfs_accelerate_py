@@ -22,6 +22,18 @@ Install dependencies:
 pip install aiohttp websockets duckdb psutil torch pyjwt
 ```
 
+## Security Features
+
+The framework includes comprehensive security features to ensure secure communication between coordinator and workers:
+
+- **API Key Authentication**: Secure initial registration with API keys
+- **JWT Token Authentication**: Ongoing secure communication with short-lived tokens
+- **Message Signing**: All WebSocket messages are signed with HMAC
+- **Role-Based Access Control**: Different permission levels for workers and admins
+- **Secure Configuration Storage**: Security settings stored in a configuration file
+
+For detailed information, see [SECURITY.md](./SECURITY.md).
+
 ## Usage
 
 ### Running the Coordinator
@@ -29,20 +41,34 @@ pip install aiohttp websockets duckdb psutil torch pyjwt
 The coordinator server manages worker nodes, distributes tasks, and aggregates results.
 
 ```bash
-python coordinator.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb
+# Start coordinator with security enabled
+python coordinator.py --host 0.0.0.0 --port 8080 --db-path ./benchmark_db.duckdb --security-config ./security_config.json
+
+# Generate new API keys for admin and worker nodes
+python coordinator.py --generate-admin-key --generate-worker-key --security-config ./security_config.json
 ```
 
 Options:
 - `--host`: Host to bind the server to (default: 0.0.0.0)
 - `--port`: Port to bind the server to (default: 8080)
 - `--db-path`: Path to the DuckDB database (default: ./benchmark_db.duckdb)
+- `--security-config`: Path to security configuration file (default: ./security_config.json)
+- `--generate-admin-key`: Generate a new admin API key
+- `--generate-worker-key`: Generate a new worker API key
 
 ### Running a Worker
 
 Workers connect to the coordinator, execute tasks, and report results.
 
 ```bash
-python worker.py --coordinator http://localhost:8080 --db-path ./benchmark_db.duckdb
+# Connect to coordinator with API key authentication
+python worker.py --coordinator http://localhost:8080 --api-key YOUR_API_KEY
+
+# Connect to coordinator with token authentication (after obtaining a token)
+python worker.py --coordinator http://localhost:8080 --token YOUR_JWT_TOKEN
+
+# Connect with token stored in a file
+python worker.py --coordinator http://localhost:8080 --token-file /path/to/token.txt
 ```
 
 Options:
@@ -50,20 +76,23 @@ Options:
 - `--hostname`: Hostname of the worker node (default: system hostname)
 - `--db-path`: Path to the DuckDB database (optional)
 - `--worker-id`: Worker ID (default: generated UUID)
+- `--api-key`: API key for authentication with coordinator
+- `--token`: JWT token for authentication (alternative to API key)
+- `--token-file`: Path to file containing JWT token
 
 ### Running the Test Runner
 
 The test runner helps run and test the distributed testing framework components.
 
 ```bash
-# Run both coordinator and workers for testing
-python run_test.py --mode all --db-path ./test_db.duckdb --num-workers 2 --run-time 60
+# Run both coordinator and workers for testing with security
+python run_test.py --mode all --db-path ./test_db.duckdb --security-config ./test_security_config.json
 
-# Run coordinator only
-python run_test.py --mode coordinator --db-path ./test_db.duckdb
+# Run coordinator only with security
+python run_test.py --mode coordinator --security-config ./test_security_config.json --generate-keys
 
-# Run worker only
-python run_test.py --mode worker --coordinator http://localhost:8080
+# Run worker with API key
+python run_test.py --mode worker --coordinator http://localhost:8080 --api-key YOUR_API_KEY
 ```
 
 Options:
@@ -73,8 +102,11 @@ Options:
 - `--port`: Port for coordinator (default: 8080)
 - `--coordinator`: URL of coordinator (for worker mode)
 - `--worker-id`: Worker ID (for worker mode)
+- `--api-key`: API key for worker authentication
+- `--security-config`: Path to security configuration file
 - `--num-workers`: Number of workers to start (for all mode) (default: 2)
 - `--run-time`: How long to run the test in seconds (for all mode) (default: 60)
+- `--generate-keys`: Generate new API keys for testing
 
 ## API Endpoints
 
@@ -220,12 +252,12 @@ The current implementation includes:
   - ✅ Basic task execution
   - ✅ Result reporting
 
-- ⏳ Phase 2: Security and Worker Management (May 15-22, 2025)
+- ✅ Phase 2: Security and Worker Management (May 15-22, 2025)
   - ✅ Security module with API key and JWT token authentication
   - ✅ Message signing and verification
   - ✅ Role-based access control
   - ✅ Security configuration persistence
-  - ⏳ Integration of security module with coordinator and worker
+  - ✅ Integration of security module with coordinator and worker
   - ⏳ Health monitoring and status tracking
   - ⏳ Auto-recovery mechanisms
 
@@ -234,9 +266,48 @@ The current implementation includes:
 - 🔲 Phase 5: Fault Tolerance (June 5-12, 2025)
 - 🔲 Phase 6: Monitoring Dashboard (June 12-19, 2025)
 
+## Security Configuration
+
+The security configuration is stored in a JSON file (`security_config.json`) with the following structure:
+
+```json
+{
+  "secret_key": "random_secret_key_for_signing_tokens",
+  "token_expiry": 3600,
+  "required_roles": ["worker"],
+  "api_keys": {
+    "api_key_1": {
+      "name": "admin-user",
+      "roles": ["admin"],
+      "created": "2025-05-15T10:00:00"
+    },
+    "api_key_2": {
+      "name": "worker-node",
+      "roles": ["worker"],
+      "created": "2025-05-15T10:00:00"
+    }
+  }
+}
+```
+
+## Authentication Flow
+
+1. **Initial Authentication**:
+   - Worker connects to coordinator WebSocket
+   - Worker sends authentication message with API key
+   - Coordinator validates API key and generates JWT token
+   - Coordinator sends token to worker
+
+2. **Ongoing Communication**:
+   - All messages are signed with HMAC for integrity
+   - Messages include timestamps to prevent replay attacks
+   - Worker token is refreshed periodically
+
 ## Next Steps
 
-1. Complete Phase 2 implementation
+1. Complete remaining Phase 2 implementation:
+   - Implement health monitoring and status tracking
+   - Add auto-recovery mechanisms
 2. Add real benchmark and test execution (currently simulated)
 3. Implement advanced task distribution algorithms
 4. Add comprehensive fault tolerance

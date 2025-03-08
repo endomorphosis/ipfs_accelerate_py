@@ -1,275 +1,354 @@
 # IPFS Accelerate Python Framework - Next Steps Implementation
 
-**Date: March 6, 2025**
+**Date: May 15, 2025**
 
-This document provides instructions for implementing the next steps outlined in the roadmap, focusing on the Enhanced Model Registry Integration and Extended Mobile/Edge Support initiatives.
+This document provides instructions for implementing current planned initiatives, focusing on the Distributed Testing Framework, Predictive Performance System, and WebGPU/WebNN Resource Pool Integration.
 
 ## Overview
 
-The IPFS Accelerate Python Framework has successfully completed Phase 16, focusing on test-driven development, hardware compatibility, model optimization, cross-platform support, and data management. The next priorities are:
+The IPFS Accelerate Python Framework has successfully completed Phase 16 and several Q1 2025 initiatives. The current priority initiatives are:
 
-1. **Enhanced Model Registry Integration** - Linking test results to model versions, creating suitability scores, and implementing hardware recommendations
-2. **Extended Mobile/Edge Support** - Expanding Qualcomm support, implementing battery impact analysis, and creating mobile test harnesses
+1. **Distributed Testing Framework** - Creating a scalable system for parallel test execution across multiple nodes
+2. **Predictive Performance System** - Implementing ML-based prediction of performance metrics across hardware platforms
+3. **WebGPU/WebNN Resource Pool Integration** - Enabling efficient resource management for browser-based AI acceleration
 
 This guide explains how to use the implementation tools provided for these initiatives.
 
-## 1. Enhanced Model Registry Integration
+## 1. Distributed Testing Framework
 
-The Model Registry Integration system links test results with a model registry, calculates compatibility and suitability scores for hardware-model pairs, and provides hardware recommendations based on task requirements.
+The Distributed Testing Framework enables parallel test execution across multiple machines, with centralized coordination and result aggregation.
 
 ### Key Components
 
-- **ModelRegistrySchema**: Creates the database schema extensions for model registry integration
-- **ModelRegistryIntegration**: Links test results to model versions and calculates suitability scores
-- **HardwareRecommender**: Recommends optimal hardware based on model and task requirements
-- **VersionControlSystem**: Manages model versions and hardware compatibility over time
+- **Coordinator Service**: Manages job distribution, scheduling, and worker coordination
+- **Worker Agent**: Executes tests, reports results, and manages local resources
+- **Result Pipeline**: Processes, aggregates, and analyzes test results in real-time
+- **Security Manager**: Handles authentication, authorization, and secure communications
 
 ### Getting Started
 
-To set up the model registry integration:
+To set up the distributed testing framework:
 
 ```bash
-# Create the necessary database schema
-python test/test_model_registry_integration.py setup --db-path ./benchmark_db.duckdb
+# Initialize coordinator node
+python test/distributed_testing/coordinator.py --config ./config.toml --db-path ./benchmark_db.duckdb
 
-# Run a complete test of all model registry integration components
-python test/test_model_registry_integration.py test --db-path ./benchmark_db.duckdb
+# Start worker node
+python test/distributed_testing/worker.py --coordinator http://coordinator-host:8080 --worker-id worker1
 
-# Generate a comprehensive model registry report
-python test/test_model_registry_integration.py report --output ./model_registry_report.md
+# Run the test framework
+python test/distributed_testing/run_test.py --mode all --test-suite basic
 ```
 
 ### Example Usage
 
-Here's how to use the Model Registry Integration directly in Python:
+Here's how to use the Distributed Testing Framework directly in Python:
 
 ```python
-from model_registry_integration import (
-    ModelRegistryIntegration,
-    HardwareRecommender,
-    VersionControlSystem
+from distributed_testing.coordinator import Coordinator
+from distributed_testing.worker import Worker
+from distributed_testing.client import DistributedClient
+
+# Initialize coordinator
+coordinator = Coordinator(config_path="./config.toml")
+coordinator.start()
+
+# Connect client to coordinator
+client = DistributedClient(coordinator_url="http://coordinator-host:8080")
+
+# Submit test tasks
+task_ids = client.submit_tasks([
+    {
+        "name": "test_bert_cuda",
+        "test_module": "test_bert",
+        "test_class": "TestBERT",
+        "test_method": "test_inference_cuda",
+        "priority": 1
+    },
+    {
+        "name": "test_bert_cpu",
+        "test_module": "test_bert",
+        "test_class": "TestBERT",
+        "test_method": "test_inference_cpu",
+        "priority": 2
+    }
+])
+
+# Wait for results
+results = client.wait_for_results(task_ids)
+
+# Analyze results
+for result in results:
+    print(f"Task {result['name']} completed with status {result['status']}")
+    if result['status'] == 'success':
+        print(f"Test passed: {result['details']['passed']}")
+        print(f"Execution time: {result['details']['execution_time']}s")
+    else:
+        print(f"Error: {result['details']['error']}")
+```
+
+### Command-Line Interface
+
+The distributed testing framework provides a comprehensive command-line interface:
+
+```bash
+# Start coordinator
+python test/distributed_testing/coordinator.py --port 8080 --db-path ./benchmark_db.duckdb
+
+# Register worker
+python test/distributed_testing/worker.py --coordinator http://coordinator-host:8080 --capabilities '{"hardware":["cuda","cpu"]}'
+
+# Submit test suite
+python test/distributed_testing/client.py submit-suite --suite comprehensive_benchmarks.json --priority high
+
+# Get test results
+python test/distributed_testing/client.py get-results --run-id run_12345
+
+# Monitor worker status
+python test/distributed_testing/client.py worker-status
+
+# Generate test report
+python test/distributed_testing/client.py generate-report --run-id run_12345 --format html --output report.html
+```
+
+## 2. Predictive Performance System
+
+The Predictive Performance System uses machine learning to predict performance metrics for untested hardware-model-configuration combinations, enabling smart hardware selection and optimization.
+
+### Key Components
+
+- **FeatureEngineeringPipeline**: Extracts and transforms hardware and model characteristics into predictive features
+- **ModelTrainingSystem**: Trains and validates specialized prediction models for different performance metrics
+- **UncertaintyQuantificationSystem**: Provides confidence scores and reliability metrics for all predictions
+- **ActiveLearningEngine**: Identifies optimal configurations for real-world testing to improve model accuracy
+
+### Getting Started
+
+To set up the predictive performance system:
+
+```bash
+# Initialize system with training data
+python test/predictive_performance/initialize.py --db-path ./benchmark_db.duckdb --output-dir ./models
+
+# Train prediction models
+python test/predictive_performance/train_models.py --input-dir ./data --output-dir ./models --metrics latency,throughput,memory
+
+# Make predictions
+python test/predictive_performance/predict.py --model-dir ./models --model bert-base-uncased --hardware cuda,cpu,webgpu --batch-sizes 1,2,4,8,16
+```
+
+### Example Usage
+
+Here's how to use the Predictive Performance System directly in Python:
+
+```python
+from predictive_performance import (
+    FeatureEngineering,
+    ModelTrainer,
+    PerformancePredictor,
+    UncertaintyEstimator
 )
 
-# Create schema extensions
-integration = ModelRegistryIntegration()
-integration.schema.create_schema_extensions()
+# Create feature engineering pipeline
+feature_engineering = FeatureEngineering()
+training_features = feature_engineering.prepare_training_data("./benchmark_db.duckdb")
 
-# Add model versions
-version_control = VersionControlSystem()
-version_id = version_control.add_model_version(
+# Train performance prediction models
+trainer = ModelTrainer()
+model_latency = trainer.train_model(
+    features=training_features,
+    target="latency_ms",
+    model_type="gradient_boosting"
+)
+model_throughput = trainer.train_model(
+    features=training_features,
+    target="throughput_items_per_second",
+    model_type="neural_network"
+)
+
+# Save trained models
+trainer.save_models("./models")
+
+# Make predictions
+predictor = PerformancePredictor("./models")
+predictions = predictor.predict_performance(
     model_name="bert-base-uncased",
-    version_tag="v1.0.0",
-    version_hash="abc123",
-    metadata={"author": "user", "description": "Initial version"}
+    hardware_type="cuda",
+    batch_size=16,
+    precision="fp16"
 )
 
-# Calculate suitability scores
-scores = integration.calculate_suitability_scores(model_name="bert-base-uncased")
+# Get prediction confidence
+uncertainty = UncertaintyEstimator()
+confidence = uncertainty.get_confidence_score(predictions, "latency_ms")
+```
+
+### Command-Line Interface
+
+The predictive performance system provides a comprehensive command-line interface:
+
+```bash
+# Extract features from benchmark database
+python test/predictive_performance/feature_engineering.py --db-path ./benchmark_db.duckdb --output features.parquet
+
+# Train models
+python test/predictive_performance/train.py --features features.parquet --target latency_ms --model-type gradient_boosting --output model_latency.pkl
+
+# Make predictions
+python test/predictive_performance/predict.py --model-dir ./models --model bert-base-uncased --hardware cuda --batch-size 16 --precision fp16
 
 # Get hardware recommendations
-recommender = HardwareRecommender()
-recommendations = recommender.recommend_hardware(
-    model_name="bert-base-uncased",
-    task_type="inference",
-    latency_sensitive=True
-)
+python test/predictive_performance/recommend.py --model bert-base-uncased --task inference --latency-sensitive --available-hardware cuda,cpu,webgpu
 
-# Create compatibility snapshot
-version_control.create_compatibility_snapshot("bert-base-uncased", "v1.0.0")
+# Run active learning to identify informative test cases
+python test/predictive_performance/active_learning.py --model-dir ./models --strategy uncertainty_sampling --count 10
 
-# Compare model versions
-changes = version_control.compare_compatibility_versions(
-    model_name="bert-base-uncased",
-    version_tag1="v1.0.0",
-    version_tag2="v1.1.0"
-)
+# Evaluate prediction accuracy
+python test/predictive_performance/evaluate.py --model-dir ./models --test-data test_cases.json --output evaluation_report.json
 ```
 
-### Command-Line Interface
+## 3. WebGPU/WebNN Resource Pool Integration
 
-The model registry integration provides a comprehensive command-line interface:
-
-```bash
-# Create schema extensions
-python test/model_registry_integration.py create-schema --db-path ./benchmark_db.duckdb
-
-# Link test results to model version
-python test/model_registry_integration.py link-tests --model "bert-base-uncased" --version "v1.0.0" --result-ids "1,2,3,4"
-
-# Calculate suitability scores
-python test/model_registry_integration.py calculate-scores --model "bert-base-uncased" --hardware "cuda"
-
-# Recommend hardware for a model
-python test/model_registry_integration.py recommend --model "bert-base-uncased" --task "inference" --latency-sensitive
-
-# Update task recommendations
-python test/model_registry_integration.py update-task --task "training"
-
-# Add a model version
-python test/model_registry_integration.py add-version --model "bert-base-uncased" --version "v1.0.0" --hash "abc123" --metadata '{"author": "user", "description": "Initial version"}'
-
-# Get version history
-python test/model_registry_integration.py version-history --model "bert-base-uncased"
-
-# Create compatibility snapshot
-python test/model_registry_integration.py create-snapshot --model "bert-base-uncased" --version "v1.0.0"
-
-# Compare compatibility versions
-python test/model_registry_integration.py compare-versions --model "bert-base-uncased" --version1 "v1.0.0" --version2 "v1.1.0"
-```
-
-## 2. Extended Mobile/Edge Support
-
-The Mobile/Edge Support Expansion implements battery impact analysis, mobile test harnesses, and a comprehensive benchmark suite for mobile and edge devices, with a focus on Qualcomm AI Engine integration.
+The WebGPU/WebNN Resource Pool Integration enables efficient management of browser-based AI acceleration resources, supporting concurrent model execution across multiple backends.
 
 ### Key Components
 
-- **QualcommCoverageAssessment**: Assesses Qualcomm support coverage in the framework
-- **BatteryImpactAnalysis**: Designs battery impact analysis methodology and test harness specifications
-- **MobileTestHarness**: Implements a test harness for mobile and edge devices (skeleton provided)
+- **BrowserResourcePool**: Manages multiple browser instances with heterogeneous backends
+- **ModelExecutionScheduler**: Allocates models to optimal backends based on characteristics
+- **BackendManager**: Abstracts WebGPU, WebNN, and CPU backends for unified access
+- **ConnectionPool**: Manages Selenium browser connections with health monitoring
 
 ### Getting Started
 
-To start with the mobile/edge support expansion:
+To set up the WebGPU/WebNN resource pool:
 
 ```bash
-# Assess Qualcomm support coverage
-python test/test_mobile_edge_expansion.py assess-coverage --output-json ./qualcomm_coverage.json
+# Initialize resource pool
+python test/web_resource_pool_integration.py initialize --browsers chrome,firefox,edge --pool-size 5
 
-# Generate a comprehensive coverage report
-python test/test_mobile_edge_expansion.py generate-report --output ./qualcomm_coverage_report.md
-
-# Generate a battery impact schema script
-python test/test_mobile_edge_expansion.py generate-schema --output ./battery_impact_schema.sql
-
-# Generate a mobile test harness skeleton
-python test/test_mobile_edge_expansion.py generate-skeleton --output ./mobile_test_harness.py
+# Run model with resource pool
+python test/web_resource_pool_integration.py run-model --model bert-base-uncased --backends webgpu,webnn,cpu --concurrent-models 3
 ```
 
 ### Example Usage
 
-Here's how to use the Mobile/Edge Support Expansion directly in Python:
+Here's how to use the WebGPU/WebNN Resource Pool Integration directly in Python:
 
 ```python
-from mobile_edge_expansion_plan import (
-    QualcommCoverageAssessment,
-    BatteryImpactAnalysis
+from web_resource_pool import (
+    BrowserResourcePool,
+    ModelExecutionScheduler,
+    ConnectionPool
 )
 
-# Assess Qualcomm support coverage
-assessment = QualcommCoverageAssessment()
-model_coverage = assessment.assess_model_coverage()
-quantization_support = assessment.assess_quantization_support()
-optimization_support = assessment.assess_optimization_support()
+# Initialize connection pool
+connection_pool = ConnectionPool(
+    browsers=["chrome", "firefox", "edge"],
+    pool_size=5
+)
 
-# Generate coverage report
-report_path = assessment.generate_coverage_report("qualcomm_coverage_report.md")
+# Create resource pool
+resource_pool = BrowserResourcePool(connection_pool)
 
-# Design battery impact methodology
-analysis = BatteryImpactAnalysis()
-methodology = analysis.design_methodology()
+# Register models
+resource_pool.register_model(
+    model_id="bert-base-uncased",
+    model_type="text",
+    preferred_backends=["webgpu", "webnn", "cpu"],
+    memory_requirements_mb=512
+)
+resource_pool.register_model(
+    model_id="vit-base",
+    model_type="vision",
+    preferred_backends=["webgpu", "cpu"],
+    memory_requirements_mb=768
+)
 
-# Create test harness specification
-test_harness_spec = analysis.create_test_harness_specification()
+# Initialize scheduler
+scheduler = ModelExecutionScheduler(resource_pool)
 
-# Create benchmark suite specification
-benchmark_suite_spec = analysis.create_benchmark_suite_specification()
+# Execute model
+result = scheduler.execute_model(
+    model_id="bert-base-uncased",
+    inputs={"text": "Example input text"},
+    priority="high"
+)
 
-# Generate implementation plan
-plan_path = analysis.generate_implementation_plan("implementation_plan.md")
+# Run multiple models concurrently
+results = scheduler.execute_models_concurrent([
+    {
+        "model_id": "bert-base-uncased",
+        "inputs": {"text": "Example input text"},
+        "priority": "high"
+    },
+    {
+        "model_id": "vit-base",
+        "inputs": {"image": image_data},
+        "priority": "medium"
+    }
+])
 ```
 
 ### Command-Line Interface
 
-The mobile/edge support expansion provides a comprehensive command-line interface:
+The WebGPU/WebNN resource pool integration provides a comprehensive command-line interface:
 
 ```bash
-# Assess Qualcomm support coverage
-python test/mobile_edge_expansion_plan.py assess-coverage --output-json qualcomm_coverage.json
+# Initialize resource pool
+python test/web_resource_pool.py initialize --browsers chrome,firefox,edge --pool-size 5
 
-# Assess model coverage
-python test/mobile_edge_expansion_plan.py model-coverage --output-json model_coverage.json
+# Register model with pool
+python test/web_resource_pool.py register-model --model bert-base-uncased --preferred-backends webgpu,webnn,cpu --memory-mb 512
 
-# Assess quantization support
-python test/mobile_edge_expansion_plan.py quantization-support --output-json quantization_support.json
+# Execute model with pool
+python test/web_resource_pool.py execute-model --model bert-base-uncased --input-file input.json --output-file result.json
 
-# Assess optimization support
-python test/mobile_edge_expansion_plan.py optimization-support --output-json optimization_support.json
+# Execute multiple models
+python test/web_resource_pool.py execute-models --config models_config.json --output-dir ./results
 
-# Design battery impact methodology
-python test/mobile_edge_expansion_plan.py battery-methodology --output-json battery_methodology.json
+# Monitor pool status
+python test/web_resource_pool.py status
 
-# Create test harness specification
-python test/mobile_edge_expansion_plan.py test-harness-spec --output-json test_harness_spec.json
-
-# Generate implementation plan
-python test/mobile_edge_expansion_plan.py implementation-plan --output implementation_plan.md
-```
-
-### Mobile Test Harness Usage
-
-The mobile test harness skeleton provides a framework for testing on mobile and edge devices:
-
-```bash
-# Run a benchmark test
-python mobile_test_harness.py --model-path /path/to/model --iterations 20 --test-type benchmark --output results.json
-
-# Run a battery impact test
-python mobile_test_harness.py --model-path /path/to/model --duration 600 --test-type battery --output battery_results.json
-
-# Run with database integration
-python mobile_test_harness.py --model-path /path/to/model --db-url "duckdb:///path/to/benchmark_db.duckdb" --verbose
-```
-
-To use the mobile test harness in Python:
-
-```python
-from mobile_test_harness import MobileTestHarness
-
-# Initialize test harness
-harness = MobileTestHarness(
-    model_path="/path/to/model",
-    db_url="duckdb:///path/to/benchmark_db.duckdb"
-)
-
-# Set up test harness
-harness.setup()
-
-# Run test
-results = harness.run_test({"input": "Sample input"}, iterations=20)
-
-# Run battery impact test
-battery_results = harness.run_battery_impact_test({"input": "Sample input"}, duration_seconds=600)
-
-# Report results
-harness.report_results(results, "results.json")
+# Run benchmark across pool
+python test/web_resource_pool.py benchmark --models bert-base-uncased,vit-base --iterations 100 --concurrent-models 3 --output benchmark_results.json
 ```
 
 ## Integration with Existing Framework
 
-Both the Model Registry Integration and Mobile/Edge Support Expansion are designed to integrate seamlessly with the existing IPFS Accelerate Python Framework:
+All three initiatives are designed to integrate seamlessly with the existing IPFS Accelerate Python Framework:
 
-1. **Database Integration**: Both systems extend the existing benchmark database schema
-2. **Hardware Selection System**: The hardware recommender integrates with the existing hardware selection system
-3. **CI/CD Integration**: Test results from both systems can be automatically stored in the database via CI/CD
+1. **Database Integration**: All systems extend the existing benchmark database schema
+2. **Hardware Selection System**: The predictive performance system integrates with the existing hardware selection system
+3. **CI/CD Integration**: Test results from all systems can be automatically stored in the database via CI/CD
 4. **Dashboard Integration**: All metrics can be visualized in the existing dashboard
 5. **Documentation System**: All components include detailed documentation
 
-## Next Development Steps
+## Implementation Timeline
 
-After implementing these components, the next development steps include:
+The following timeline outlines the implementation schedule for these initiatives:
 
-1. **Automated Model Version Tagging**: Automatically tag model versions based on git commits
-2. **Continuous Compatibility Monitoring**: Track hardware compatibility over time
-3. **Advanced Hardware Selection Algorithm**: Enhance hardware selection with machine learning
-4. **Real Device Testing Infrastructure**: Set up real device testing for mobile/edge
-5. **Distributed Testing Framework**: Implement distributed testing for comprehensive hardware coverage
+1. **Distributed Testing Framework**
+   - Core components implementation (May 8-20, 2025)
+   - Advanced system features (May 21-June 15, 2025)
+   - Integration and validation (June 16-26, 2025)
+
+2. **Predictive Performance System**
+   - Data collection and preparation (May 10-24, 2025)
+   - Model implementation (May 25-June 8, 2025)
+   - Integration and validation (June 9-30, 2025)
+
+3. **WebGPU/WebNN Resource Pool Integration**
+   - Core implementation (May 12-20, 2025)
+   - Integration with browser backends (May 21-30, 2025)
+   - Testing and validation (June 1-15, 2025)
 
 ## Conclusion
 
-The Enhanced Model Registry Integration and Extended Mobile/Edge Support initiatives build upon the solid foundation established in Phase 16, providing key capabilities for model versioning, hardware recommendation, and mobile/edge testing. These components enable more sophisticated model management and expand the framework's reach to mobile and edge devices, particularly those powered by Qualcomm AI Engine.
+The implementation of these initiatives builds upon the solid foundation established in previous phases, providing key capabilities for distributed testing, performance prediction, and resource management. These components enable more efficient benchmarking, intelligent hardware selection, and optimized resource utilization for browser-based AI acceleration.
 
 For more detailed documentation, refer to:
-- [MODEL_REGISTRY_INTEGRATION.md](MODEL_REGISTRY_INTEGRATION.md)
-- [MOBILE_EDGE_EXPANSION_PLAN.md](MOBILE_EDGE_EXPANSION_PLAN.md)
+- [DISTRIBUTED_TESTING_DESIGN.md](DISTRIBUTED_TESTING_DESIGN.md)
+- [PREDICTIVE_PERFORMANCE_SYSTEM.md](PREDICTIVE_PERFORMANCE_SYSTEM.md)
+- [WEB_RESOURCE_POOL_INTEGRATION.md](WEB_RESOURCE_POOL_INTEGRATION.md)
 - [NEXT_STEPS.md](NEXT_STEPS.md)
+- [NEXT_STEPS_BENCHMARKING_PLAN.md](NEXT_STEPS_BENCHMARKING_PLAN.md)

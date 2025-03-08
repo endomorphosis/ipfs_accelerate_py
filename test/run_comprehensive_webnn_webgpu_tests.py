@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 """
-Comprehensive WebNN/WebGPU Testing Script
+Comprehensive WebNN/WebGPU Testing Script (Enhanced March 2025)
 
 This script tests real browser-based WebNN and WebGPU implementations at different precision levels
-(2-bit, 3-bit, 4-bit, 8-bit, 16-bit, 32-bit) using a Selenium bridge for browser automation.
+(2-bit, 3-bit, 4-bit, 8-bit, 16-bit, 32-bit) using a robust Selenium + WebSocket bridge for browser automation.
 
 It clearly differentiates between real hardware acceleration and simulation, and reports
 detailed performance metrics for each precision level and browser combination.
+
+The March 2025 enhancement includes fixed WebSocket bridge connectivity, improved error handling, 
+and enhanced browser detection for more reliable real hardware acceleration tests.
 
 Usage:
     python run_comprehensive_webnn_webgpu_tests.py --browser chrome --platform webgpu --precision all
@@ -19,6 +22,9 @@ Features:
     - Works with various browsers (Chrome, Firefox, Edge, Safari)
     - Generates detailed reports on performance metrics
     - Updates documentation with real-world performance data
+    - Enhanced WebSocket bridge reliability
+    - Improved browser automation and detection
+    - Robust error handling and recovery
 """
 
 import argparse
@@ -43,6 +49,9 @@ try:
     from implement_real_webnn_webgpu import implement_webnn_webgpu_with_selenium
     from webnn_webgpu_quantization_test import test_webnn_webgpu_quantization
     from fixed_web_platform.webgpu_quantization import create_quantized_model
+    
+    # Import database integration
+    from benchmark_db_api import BenchmarkDatabase, store_benchmark_result
 except ImportError as e:
     print(f"Error importing required modules: {str(e)}")
     print("Make sure you're running from the correct directory and all dependencies are installed.")
@@ -81,6 +90,7 @@ class WebPrecisionTester:
         self.unified_platform = None
         self.is_simulation = False
         self.test_start_time = datetime.now()
+        self.db = None
         
         # Set environment variables to force real implementation
         os.environ["WEBNN_SIMULATION"] = "0"
@@ -100,6 +110,19 @@ class WebPrecisionTester:
             os.environ["USE_FIREFOX_WEBGPU"] = "1"
             if args.compute_shaders:
                 os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
+                
+        # Initialize database connection if enabled
+        if not args.no_db:
+            try:
+                db_path = args.db_path
+                if not db_path:
+                    db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
+                self.db = BenchmarkDatabase(db_path)
+                logger.info(f"Connected to benchmark database: {db_path}")
+            except Exception as e:
+                logger.error(f"Failed to connect to database: {e}")
+                logger.warning("Continuing without database integration")
+                self.db = None
     
     def setup_browsers(self) -> List[str]:
         """Set up the list of browsers to test."""
@@ -237,6 +260,38 @@ class WebPrecisionTester:
                 "status": "success"
             })
             
+            # Store results in database if connected
+            if self.db:
+                try:
+                    # Extract performance metrics
+                    latency = results.get("average_latency_ms", 0.0)
+                    throughput = results.get("throughput_items_per_sec", 0.0)
+                    memory = results.get("memory_mb", 0.0)
+                    
+                    # Create hardware type string that includes platform and browser
+                    hardware_type = f"{platform}_{browser}"
+                    
+                    # Store in database
+                    result_id = store_benchmark_result(
+                        db=self.db,
+                        model_name=model,
+                        hardware_type=hardware_type,
+                        batch_size=1,  # Default for now
+                        precision=f"{precision}bit",
+                        average_latency_ms=latency,
+                        throughput_items_per_second=throughput,
+                        memory_mb=memory,
+                        is_simulation=self.is_simulation,
+                        browser=browser,
+                        test_case=f"precision_{precision}bit"
+                    )
+                    logger.info(f"Stored benchmark result in database (ID: {result_id})")
+                    
+                    # Add database ID to results
+                    results["db_result_id"] = result_id
+                except Exception as e:
+                    logger.error(f"Error storing result in database: {e}")
+            
             logger.info(f"Test completed successfully in {execution_time:.2f} seconds")
             return results
             
@@ -336,6 +391,11 @@ class WebPrecisionTester:
     
     def save_results(self, results: List[Dict]):
         """Save test results to file."""
+        # Skip file output if db-only is set
+        if self.args.db_only and self.db:
+            logger.info("DB-only mode enabled, skipping file output")
+            return
+            
         timestamp = self.test_start_time.strftime("%Y%m%d_%H%M%S")
         filename = f"webnn_webgpu_precision_tests_{timestamp}.json"
         
@@ -943,6 +1003,14 @@ def main():
     parser.add_argument("--output-dir", default=".",
                         help="Directory to save output files")
     
+    # Database options
+    parser.add_argument("--db-path", type=str, default=None,
+                        help="Path to benchmark database (DuckDB)")
+    parser.add_argument("--no-db", action="store_true",
+                        help="Disable database storage")
+    parser.add_argument("--db-only", action="store_true",
+                        help="Store results only in database (no JSON or markdown)")
+    
     args = parser.parse_args()
     
     # Handle all optimizations flag
@@ -973,6 +1041,17 @@ def main():
     print(f"Skipped tests: {len([r for r in results if r.get('status') == 'skipped'])}")
     print(f"Real implementations: {len([r for r in results if r.get('is_real_implementation', False)])}")
     print(f"Simulated implementations: {len([r for r in results if r.get('is_simulation', True)])}")
+    
+    # Database statistics
+    db_results = [r for r in results if r.get("db_result_id") is not None]
+    if db_results:
+        print(f"Results stored in database: {len(db_results)}")
+        if args.db_path:
+            print(f"Database path: {args.db_path}")
+        elif os.environ.get("BENCHMARK_DB_PATH"):
+            print(f"Database path: {os.environ.get('BENCHMARK_DB_PATH')}")
+        else:
+            print("Database path: ./benchmark_db.duckdb (default)")
     print("="*80)
     
     return 0

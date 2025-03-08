@@ -89,8 +89,9 @@ except ImportError:
 try:
     from .webgpu_audio_compute_shaders import (
         optimize_for_firefox,
-        get_optimized_audio_shader,
-        create_audio_compute_pipeline
+        get_optimized_shader_for_firefox,
+        enable_firefox_optimizations,
+        add_firefox_optimizations_to_config
     )
     AUDIO_COMPUTE_SHADERS_AVAILABLE = True
 except ImportError:
@@ -171,8 +172,9 @@ if PROGRESSIVE_LOADING_AVAILABLE:
 if AUDIO_COMPUTE_SHADERS_AVAILABLE:
     __all__.extend([
         'optimize_for_firefox',
-        'get_optimized_audio_shader',
-        'create_audio_compute_pipeline'
+        'get_optimized_shader_for_firefox',
+        'enable_firefox_optimizations',
+        'add_firefox_optimizations_to_config'
     ])
 
 # Add shader precompilation if available (March 2025)
