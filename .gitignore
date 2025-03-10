@@ -37,3 +37,6 @@ benchmarks/*.sqlite
 benchmarks/*.json
 benchmarks/*.log
 benchmarks/*.csv
+test/webnn_webgpu_test_results/*.json
+*/webnn_webgpu_test_results/*.log
+*/webnn_webgpu_test_results/*.log
