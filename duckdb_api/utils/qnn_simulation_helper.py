@@ -36,13 +36,21 @@ def enable_qnn_simulation():
     
     # Import QNN support module and call simulation setup
     try:
-        if os.path.exists('/home/barberb/ipfs_accelerate_py/test/hardware_detection/qnn_support_fixed.py'):
-            # Use fixed implementation if available
-            sys.path.append('/home/barberb/ipfs_accelerate_py/test/hardware_detection')
-            from qnn_support_fixed import setup_qnn_simulation
-        else:
-            # Fall back to original implementation if fixed version not available
+        # First try the new directory structure
+        try:
             from hardware_detection.qnn_support import setup_qnn_simulation
+        except ImportError:
+            # Fall back to the test directory if reorganization is not complete
+            if os.path.exists('/home/barberb/ipfs_accelerate_py/hardware_detection/qnn_support.py'):
+                sys.path.append('/home/barberb/ipfs_accelerate_py')
+                from hardware_detection.qnn_support import setup_qnn_simulation
+            elif os.path.exists('/home/barberb/ipfs_accelerate_py/test/hardware_detection/qnn_support_fixed.py'):
+                # Use fixed implementation if available 
+                sys.path.append('/home/barberb/ipfs_accelerate_py/test/hardware_detection')
+                from qnn_support_fixed import setup_qnn_simulation
+            else:
+                # Last resort - try centralized version
+                from centralized_hardware_detection.qnn_support import setup_qnn_simulation
         
         # Set up simulation with sample devices
         setup_qnn_simulation()

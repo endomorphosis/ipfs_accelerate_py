@@ -69,7 +69,7 @@ def fix_template_syntax_errors():
         
         # 3. Fix template truncation comments
         for template_type in ["text_generation", "vision", "text_embedding", "audio", "video"]:
-            pattern = f'template_database\\["{template_type}"\\] = """.*?""\\"\s+# Truncated for readability'
+            pattern = f'template_database\\["{template_type}"\\] = """.*?"""[ \\t]*# Truncated for readability'
             match = re.search(pattern, content, re.DOTALL)
             if match:
                 logger.info(f"Fixing {template_type} template truncation")
@@ -559,7 +559,7 @@ def init_webgpu(self, model_name=None, model_path=None, model_type=None, device=
                         conditional_block = f'''
     # Add WebNN and WebGPU methods if requested
     if use_web_platform:
-        code += '''{webnn_webgpu_init}'''
+        code += f'''{webnn_webgpu_init}'''
 '''
                         content = content[:insertion_pos] + conditional_block + content[insertion_pos:]
                         logger.info("Added WebNN and WebGPU init methods with conditional block")

@@ -13,33 +13,33 @@ import importlib.util
 
 # Set environment variable to simulate Qualcomm presence for testing
 os.environ["QUALCOMM_SDK"] = "/mock/qualcomm/sdk"
-
-# Mock QNN module if not available
+,
+# Mock QNN module if not available::
 class MockQNN:
     """Mock Qualcomm QNN wrapper."""
     
     @staticmethod
     def convert_model(input_model, output_model, **kwargs):
-        print(f"Mock QNN: Converting {input_model} to {output_model}")
-        return True
+        print(f"\1{output_model}\3")
+    return True
     
     class QnnModel:
         def __init__(self, model_path):
-            print(f"Mock QNN: Loading model from {model_path}")
+            print(f"\1{model_path}\3")
             self.model_path = model_path
         
         def execute(self, inputs):
-            print(f"Mock QNN: Executing with inputs: {list(inputs.keys()) if isinstance(inputs, dict) else len(inputs)}")
+            print(f"\1{list(inputs.keys()) if isinstance(inputs, dict) else len(inputs)}\3")
             # Return mock embeddings
-            import numpy as np
+            import numpy as np:
             return {"pooler_output": np.random.randn(1, 768)}
 
-# Add mock if QNN not available
+# Add mock if QNN not available:
 if "qnn_wrapper" not in sys.modules:
-    sys.modules["qnn_wrapper"] = MockQNN()
+    sys.modules["qnn_wrapper"] = MockQNN(),
     print("Added mock qnn_wrapper module")
 
-# Mock QTI module if not available
+# Mock QTI module if not available::
 class MockQTI:
     """Mock Qualcomm QTI SDK."""
     
@@ -47,24 +47,24 @@ class MockQTI:
         class dlc_utils:
             @staticmethod
             def convert_onnx_to_dlc(input_model, output_model, **kwargs):
-                print(f"Mock QTI: Converting {input_model} to {output_model}")
-                return True
+                print(f"\1{output_model}\3")
+            return True
         
         class dlc_runner:
             class DlcRunner:
                 def __init__(self, model_path):
-                    print(f"Mock QTI: Loading model from {model_path}")
+                    print(f"\1{model_path}\3")
                     self.model_path = model_path
                 
                 def execute(self, inputs):
-                    print(f"Mock QTI: Executing with inputs: {len(inputs)}")
+                    print(f"\1{len(inputs)}\3")
                     # Return mock embeddings (list of tensors)
                     import numpy as np
                     return [np.random.randn(1, 768), np.random.randn(1, 768)]
-
-# Add mock if QTI not available
+                    ,
+# Add mock if QTI not available:
 if "qti" not in sys.modules:
-    sys.modules["qti"] = MockQTI()
+    sys.modules["qti"] = MockQTI(),
     print("Added mock QTI module")
 
 class TestQualcommIntegration(unittest.TestCase):
@@ -74,20 +74,20 @@ class TestQualcommIntegration(unittest.TestCase):
         """Set up test environment."""
         # Set environment variable for Qualcomm detection
         os.environ["QUALCOMM_SDK"] = "/mock/qualcomm/sdk"
-    
+        ,
     def test_hardware_detection(self):
         """Test Qualcomm hardware detection."""
         try:
             # Try to import centralized_hardware_detection
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from centralized_hardware_detection.hardware_detection import get_capabilities
+            from generators.hardware.hardware_detection import get_capabilities
             
             # Get capabilities 
             capabilities = get_capabilities()
             
             # Check if Qualcomm is detected
             self.assertIn("qualcomm", capabilities, "Qualcomm should be in capabilities")
-            self.assertTrue(capabilities["qualcomm"], "Qualcomm should be detected via QUALCOMM_SDK env var")
+            self.assertTrue(capabilities["qualcomm"], "Qualcomm should be detected via QUALCOMM_SDK env var"):,
         except ImportError:
             self.skipTest("centralized_hardware_detection module not available")
     
@@ -116,14 +116,14 @@ class TestQualcommIntegration(unittest.TestCase):
                 
                 def __call__(self, text, **kwargs):
                     return {"embeddings": [0.0] * 768, "implementation_type": "QUALCOMM_TEST"}
+                    ,
+                    handler = SimpleQualcommHandler("bert-base-uncased")
+                    result = handler("Test text")
             
-            handler = SimpleQualcommHandler("bert-base-uncased")
-            result = handler("Test text")
-            
-            self.assertEqual(result["implementation_type"], "QUALCOMM_TEST")
-            self.assertEqual(len(result["embeddings"]), 768)
+                    self.assertEqual(result["implementation_type"], "QUALCOMM_TEST"),
+                    self.assertEqual(len(result["embeddings"]), 768),
         except Exception as e:
-            self.fail(f"Error in test_generator_integration: {e}")
+            self.fail(f"\1{e}\3")
 
 def main():
     """Run the tests."""

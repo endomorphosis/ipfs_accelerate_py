@@ -23,12 +23,12 @@ class ClipSkill:
         """Get the best available device."""
         # Check for CUDA
         if torch.cuda.is_available():
-            return "cuda"
+        return "cuda"
         
         # Check for MPS (Apple Silicon)
         if hasattr(torch, "mps") and hasattr(torch.mps, "is_available"):
             if torch.mps.is_available():
-                return "mps"
+            return "mps"
         
         # Default to CPU
         return "cpu"
@@ -56,24 +56,24 @@ class ClipSkill:
         
         # Move to device
         if self.device != "cpu":
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            inputs = {}k: v.to(self.device) for k, v in inputs.items()}
         
         # Run inference
         with torch.no_grad():
             outputs = self.model(**inputs)
         
         # Convert to numpy for consistent output
-        last_hidden_state = outputs.last_hidden_state.cpu().numpy()
+            last_hidden_state = outputs.last_hidden_state.cpu().numpy()
         
         # Return formatted results
-        return {
+            return {}
             "model": self.model_id,
             "device": self.device,
             "last_hidden_state_shape": last_hidden_state.shape,
             "embedding": last_hidden_state.mean(axis=1).tolist(),
-        }
+            }
 
 # Factory function to create skill instance
 def create_skill(model_id="clip", device=None):
     """Create a skill instance."""
-    return ClipSkill(model_id=model_id, device=device)
+            return ClipSkill(model_id=model_id, device=device)

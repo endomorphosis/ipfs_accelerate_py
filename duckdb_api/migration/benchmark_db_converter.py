@@ -21,6 +21,14 @@ import time
 from typing import Dict, List, Any, Optional, Union, Tuple
 from pathlib import Path
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Always deprecate JSON output in favor of DuckDB
+DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
+
 # Add DuckDB database support
 try:
     from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
@@ -28,11 +36,6 @@ try:
 except ImportError:
     BENCHMARK_DB_AVAILABLE = False
     logger.warning("benchmark_db_api not available. Using deprecated JSON fallback.")
-
-
-# Always deprecate JSON output in favor of DuckDB
-DEPRECATE_JSON_OUTPUT = os.environ.get("DEPRECATE_JSON_OUTPUT", "1").lower() in ("1", "true", "yes")
-
 
 try:
     import duckdb
@@ -43,11 +46,6 @@ except ImportError:
     print("Error: Required packages not installed. Please install with:")
     print("pip install duckdb pandas pyarrow")
     sys.exit(1)
-
-# Configure logging
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 class BenchmarkDBConverter:
     """

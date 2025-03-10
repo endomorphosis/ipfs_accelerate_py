@@ -5,18 +5,18 @@ Test model integration with WebNN and WebGPU platforms.
 This script demonstrates basic usage of the fixed_web_platform module.
 
 Usage:
-  python test_model_integration.py
-"""
+    python test_model_integration.py
+    """
 
-import os
-import sys
-import time
-import logging
-from pathlib import Path
+    import os
+    import sys
+    import time
+    import logging
+    from pathlib import Path
 
 # Add the parent directory to the path for importing
-current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, str(current_dir))
+    current_dir = Path(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, str(current_dir))
 
 # Import web platform handlers
 try:
@@ -30,7 +30,7 @@ def test_webnn_integration():
     """Test WebNN integration with a simple class instance."""
     if not WEB_PLATFORM_SUPPORT:
         print("WebNN support not available")
-        return False
+    return False
     
     # Create a simple class to test WebNN integration
     class SimpleModelTest:
@@ -41,34 +41,34 @@ def test_webnn_integration():
         def _create_mock_processor(self):
             """Create a mock processor for testing."""
             return lambda x: {"input_ids": [[101, 102, 103]], "attention_mask": [[1, 1, 1]]}
-    
+            ,
     # Create an instance
-    model_test = SimpleModelTest()
+            model_test = SimpleModelTest()
     
     # Initialize WebNN
-    init_result = init_webnn(model_test, 
-                           model_name="bert-base-uncased", 
-                           model_type="text", 
-                           web_api_mode="simulation")
+            init_result = init_webnn(model_test,
+            model_name="bert-base-uncased",
+            model_type="text",
+            web_api_mode="simulation")
     
     if init_result and "endpoint" in init_result:
         print("WebNN initialization successful!")
         
         # Test the endpoint
-        endpoint = init_result["endpoint"]
+        endpoint = init_result["endpoint"],,
         processor = init_result["processor"]
-        
+        ,,
         # Process some text
         test_input = "Hello world"
         processed = process_for_web("text", test_input)
-        print(f"Processed input: {processed}")
+        print(f"\1{processed}\3")
         
         # Test the endpoint
         result = endpoint(processed)
-        print(f"Endpoint result: {type(result)}")
+        print(f"\1{type(result)}\3")
         if isinstance(result, dict) and "implementation_type" in result:
-            print(f"Implementation type: {result['implementation_type']}")
-        
+            print(f"\1{result['implementation_type']}\3")
+            ,,
         return True
     else:
         print("WebNN initialization failed")
@@ -78,7 +78,7 @@ def test_webgpu_integration():
     """Test WebGPU integration with a simple class instance."""
     if not WEB_PLATFORM_SUPPORT:
         print("WebGPU support not available")
-        return False
+    return False
     
     # Create a simple class to test WebGPU integration
     class SimpleModelTest:
@@ -89,34 +89,34 @@ def test_webgpu_integration():
         def _create_mock_processor(self):
             """Create a mock processor for testing."""
             return lambda x: {"pixel_values": [[[[0.5]]]]}
-    
+            ,
     # Create an instance
-    model_test = SimpleModelTest()
+            model_test = SimpleModelTest()
     
     # Initialize WebGPU
-    init_result = init_webgpu(model_test, 
-                            model_name="vit-base-patch16-224", 
-                            model_type="vision", 
-                            web_api_mode="simulation")
+            init_result = init_webgpu(model_test,
+            model_name="vit-base-patch16-224",
+            model_type="vision",
+            web_api_mode="simulation")
     
     if init_result and "endpoint" in init_result:
         print("WebGPU initialization successful!")
         
         # Test the endpoint
-        endpoint = init_result["endpoint"]
+        endpoint = init_result["endpoint"],,
         processor = init_result["processor"]
-        
+        ,,
         # Process an image
         test_input = "test.jpg"
         processed = process_for_web("vision", test_input)
-        print(f"Processed input: {processed}")
+        print(f"\1{processed}\3")
         
         # Test the endpoint
         result = endpoint(processed)
-        print(f"Endpoint result: {type(result)}")
+        print(f"\1{type(result)}\3")
         if isinstance(result, dict) and "implementation_type" in result:
-            print(f"Implementation type: {result['implementation_type']}")
-        
+            print(f"\1{result['implementation_type']}\3")
+            ,,
         return True
     else:
         print("WebGPU initialization failed")
@@ -136,11 +136,11 @@ def main():
     
     # Print summary
     print("\n=== Integration Test Summary ===")
-    print(f"WebNN Integration: {'Success' if webnn_success else 'Failed'}")
-    print(f"WebGPU Integration: {'Success' if webgpu_success else 'Failed'}")
+    print(f"\1{'Success' if webnn_success else 'Failed'}\3"):
+        print(f"\1{'Success' if webgpu_success else 'Failed'}\3")
     
     # Return success if both tests pass
     return 0 if webnn_success and webgpu_success else 1
-
+:
 if __name__ == "__main__":
     sys.exit(main())

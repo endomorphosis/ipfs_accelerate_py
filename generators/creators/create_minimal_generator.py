@@ -107,7 +107,7 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-'''
+"""
 
 # Create the file
 file_path = current_dir / "minimal_test_generator.py"

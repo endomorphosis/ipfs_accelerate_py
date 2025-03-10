@@ -9,11 +9,11 @@ class hf_t5:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata    
-        self.create_openvino_text2text-generation_endpoint_handler = self.create_openvino_text2text-generation_endpoint_handler
-        self.create_cuda_text2text-generation_endpoint_handler = self.create_cuda_text2text-generation_endpoint_handler
-        self.create_cpu_text2text-generation_endpoint_handler = self.create_cpu_text2text-generation_endpoint_handler
-        self.create_apple_text2text-generation_endpoint_handler = self.create_apple_text2text-generation_endpoint_handler
-        self.create_qualcomm_text2text-generation_endpoint_handler = self.create_qualcomm_text2text-generation_endpoint_handler
+        self.create_openvino_text2text_generation_endpoint_handler = self.create_openvino_text2text_generation_endpoint_handler
+        self.create_cuda_text2text_generation_endpoint_handler = self.create_cuda_text2text_generation_endpoint_handler
+        self.create_cpu_text2text_generation_endpoint_handler = self.create_cpu_text2text_generation_endpoint_handler
+        self.create_apple_text2text_generation_endpoint_handler = self.create_apple_text2text_generation_endpoint_handler
+        self.create_qualcomm_text2text_generation_endpoint_handler = self.create_qualcomm_text2text_generation_endpoint_handler
         self.init_cpu = self.init_cpu
         self.init_cuda = self.init_cuda
         self.init_openvino = self.init_openvino
@@ -163,7 +163,7 @@ class hf_t5:
                 tokenizer, endpoint = create_test_model()
                 
             # Create the handler function
-            endpoint_handler = self.create_cpu_text2text-generation_endpoint_handler(
+            endpoint_handler = self.create_cpu_text2text_generation_endpoint_handler(
                 tokenizer, 
                 model, 
                 cpu_label, 
@@ -229,7 +229,7 @@ class hf_t5:
                     endpoint = self.snpe_utils.load_model(optimized_path)
             
             # Create endpoint handler
-            endpoint_handler = self.create_qualcomm_text2text-generation_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
+            endpoint_handler = self.create_qualcomm_text2text_generation_endpoint_handler(tokenizer, model, qualcomm_label, endpoint)
             
             return endpoint, tokenizer, endpoint_handler, asyncio.Queue(16), 1
         except Exception as e:
@@ -477,7 +477,7 @@ class hf_t5:
                 tokenizer, endpoint, is_mock = create_mock_model()
             
             # Create the handler function with implementation type information
-            endpoint_handler = self.create_cuda_text2text-generation_endpoint_handler(
+            endpoint_handler = self.create_cuda_text2text_generation_endpoint_handler(
                 tokenizer, 
                 model, 
                 cuda_label, 
@@ -507,7 +507,7 @@ class hf_t5:
         
         Args:
             model: Model name or path
-            model_type: Model task type (e.g. 'text2text-generation-with-past')
+            model_type: Model task type (e.g. 'text2text_generation-with-past')
             device: OpenVINO device ("CPU", "GPU", etc.)
             openvino_label: Label for the device ("openvino:0", etc.)
             get_optimum_openvino_model: Function to get optimum model
@@ -539,11 +539,11 @@ class hf_t5:
         
         try:
             # Verify model_type
-            if model_type != "text2text-generation-with-past":
+            if model_type != "text2text_generation-with-past":
                 # Try to get the correct model type
                 model_type = get_openvino_pipeline_type(model, "t5")
                 if model_type is None:
-                    model_type = "text2text-generation-with-past"
+                    model_type = "text2text_generation-with-past"
                 print(f"Using model_type: {model_type}")
             
             # Load tokenizer
@@ -596,7 +596,7 @@ class hf_t5:
                     return None, None, None, None, 0
             
             # Create handler function
-            endpoint_handler = self.create_openvino_text2text-generation_endpoint_handler(
+            endpoint_handler = self.create_openvino_text2text_generation_endpoint_handler(
                 endpoint, 
                 tokenizer, 
                 model, 
@@ -610,7 +610,7 @@ class hf_t5:
             print(f"Error initializing T5 for OpenVINO: {e}")
             return None, None, None, None, 0
     
-    def create_cuda_text2text-generation_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint, is_mock=False):
+    def create_cuda_text2text_generation_endpoint_handler(self, tokenizer, endpoint_model, cuda_label, endpoint, is_mock=False):
         """Creates a CUDA handler for T5 text generation.
         
         Args:
@@ -932,7 +932,7 @@ class hf_t5:
                     }
         return handler
     
-    def create_cpu_text2text-generation_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint):
+    def create_cpu_text2text_generation_endpoint_handler(self, tokenizer, endpoint_model, cpu_label, endpoint):
         """
         Create a handler for T5 text generation on CPU
         
@@ -1062,7 +1062,7 @@ class hf_t5:
                 
         return handler
         
-    def create_apple_text2text-generation_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint):
+    def create_apple_text2text_generation_endpoint_handler(self, tokenizer, endpoint_model, apple_label, endpoint):
         """Create a handler for Apple Silicon-based T5 inference"""
         
         def handler(text_input, tokenizer=tokenizer, endpoint_model=endpoint_model, apple_label=apple_label, endpoint=endpoint):
@@ -1107,7 +1107,7 @@ class hf_t5:
                 
         return handler
         
-    def create_qualcomm_text2text-generation_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint):
+    def create_qualcomm_text2text_generation_endpoint_handler(self, tokenizer, endpoint_model, qualcomm_label, endpoint):
         """Create a handler for Qualcomm-based T5 inference
         
         Args:
@@ -1315,7 +1315,7 @@ class hf_t5:
                 
         return handler
 
-    def create_openvino_text2text-generation_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
+    def create_openvino_text2text_generation_endpoint_handler(self, openvino_endpoint_handler, openvino_tokenizer, endpoint_model, openvino_label):
         """Creates an OpenVINO handler for T5 text generation.
         
         Args:

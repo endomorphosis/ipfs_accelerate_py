@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import from merged_test_generator
-from merged_test_generator import detect_model_modality, generate_modality_specific_template
+from generators.test_generators.merged_test_generator import detect_model_modality, generate_modality_specific_template
 
 # Define sample models for each modality with known good implementations
 SAMPLE_MODELS = {

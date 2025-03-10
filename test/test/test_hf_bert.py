@@ -17,7 +17,7 @@ class TestBertModels(unittest.TestCase):
         """Set up test."""
         self.model_id = "bert-base-uncased"
         self.test_text = "This is a test sentence."
-        self.test_batch = ["First test sentence.", "Second test sentence."]
+        self.test_batch = ["First test sentence.", "Second test sentence."],
         self.modality = "text"
         
     def run_tests(self):

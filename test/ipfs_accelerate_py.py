@@ -6,16 +6,16 @@ This module initializes the IPFS Accelerate Python package by importing componen
 from the ipfs_accelerate_impl module.
 
 Features:
-- IPFS content acceleration with P2P optimization
-- Hardware acceleration (CPU, GPU, WebNN, WebGPU)
-- Automatic hardware detection and selection
-- Browser-specific optimizations
-- Database integration for storing and analyzing results
-- Cross-platform compatibility
-"""
+    - IPFS content acceleration with P2P optimization
+    - Hardware acceleration ()CPU, GPU, WebNN, WebGPU)
+    - Automatic hardware detection and selection
+    - Browser-specific optimizations
+    - Database integration for storing and analyzing results
+    - Cross-platform compatibility
+    """
 
 # Import all components from the implementation module
-from ipfs_accelerate_impl import (
+    from ipfs_accelerate_impl import ()
     # Core components
     config,
     backends,
@@ -48,13 +48,13 @@ from ipfs_accelerate_impl import (
     # Utility functions
     get_system_info,
     __version__
-)
+    )
 
 # Package version
-__version__ = __version__
+    __version__ = __version__
 
 # Export the module components
-__all__ = [
+    __all__ = [],
     # Core components
     'config',
     'backends',
@@ -87,4 +87,4 @@ __all__ = [
     # Utility functions
     'get_system_info',
     '__version__'
-]
+    ]

@@ -24,6 +24,10 @@ IMPORT_MAPPINGS = {
     "import skill_generator": "import generators.skill_generators.skill_generator as skill_generator",
     "from template_database import": "from generators.templates.template_database import",
     "import template_database": "import generators.templates.template_database as template_database",
+    "from fixed_merged_test_generator_clean import": "from generators.test_generators.fixed_merged_test_generator_clean import",
+    "import fixed_merged_test_generator_clean": "import generators.test_generators.fixed_merged_test_generator_clean as fixed_merged_test_generator_clean",
+    "from test_generator_with_resource_pool import": "from generators.utils.test_generator_with_resource_pool import",
+    "import test_generator_with_resource_pool": "import generators.utils.test_generator_with_resource_pool as test_generator_with_resource_pool",
 }
 
 def update_imports_in_file(file_path: str) -> int:
@@ -36,21 +40,25 @@ def update_imports_in_file(file_path: str) -> int:
     Returns:
         Number of replacements made
     """
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    original_content = content
-    
-    for old_import, new_import in IMPORT_MAPPINGS.items():
-        content = content.replace(old_import, new_import)
-    
-    if content != original_content:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
         
-        return sum(content.count(new_import) for old_import, new_import in IMPORT_MAPPINGS.items())
-    
-    return 0
+        original_content = content
+        
+        for old_import, new_import in IMPORT_MAPPINGS.items():
+            content = content.replace(old_import, new_import)
+        
+        if content != original_content:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            return sum(content.count(new_import) for old_import, new_import in IMPORT_MAPPINGS.items())
+        
+        return 0
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
+        return 0
 
 def process_directory(directory: str) -> int:
     """

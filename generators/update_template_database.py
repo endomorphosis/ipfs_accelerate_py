@@ -166,7 +166,7 @@ def add_base_templates(db_path):
         text_template = '''#!/usr/bin/env python3
 """
 Test for {{model_name}} with cross-platform hardware support
-"""'''
+"""
 
 import os
 import sys
@@ -174,8 +174,9 @@ import unittest
 import importlib.util
 import logging
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer'''
 
+text_template_part2 = '''
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

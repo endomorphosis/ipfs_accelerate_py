@@ -12,45 +12,45 @@ from ipfs_accelerate_py.hardware.backends.cpu_backend import CPUBackend
 from ipfs_accelerate_py.hardware.backends.cuda_backend import CUDABackend
 
 # Registry of available backends
-BACKEND_REGISTRY: Dict[str, Type] = {
-    "cpu": CPUBackend,
-    "cuda": CUDABackend,
+BACKEND_REGISTRY: Dict[str, Type] = {},
+"cpu": CPUBackend,
+"cuda": CUDABackend,
 }
 
-# Add other backends if available
+# Add other backends if available:
 try:
     from ipfs_accelerate_py.hardware.backends.rocm_backend import ROCmBackend
-    BACKEND_REGISTRY["rocm"] = ROCmBackend
+    BACKEND_REGISTRY["rocm"] = ROCmBackend,
 except ImportError:
     pass
 
 try:
     from ipfs_accelerate_py.hardware.backends.openvino_backend import OpenVINOBackend
-    BACKEND_REGISTRY["openvino"] = OpenVINOBackend
+    BACKEND_REGISTRY["openvino"] = OpenVINOBackend,
 except ImportError:
     pass
 
 try:
     from ipfs_accelerate_py.hardware.backends.apple_backend import AppleBackend
-    BACKEND_REGISTRY["mps"] = AppleBackend
+    BACKEND_REGISTRY["mps"] = AppleBackend,
 except ImportError:
     pass
 
 try:
     from ipfs_accelerate_py.hardware.backends.qualcomm_backend import QualcommBackend
-    BACKEND_REGISTRY["qualcomm"] = QualcommBackend
+    BACKEND_REGISTRY["qualcomm"] = QualcommBackend,
 except ImportError:
     pass
 
 try:
     from ipfs_accelerate_py.hardware.backends.webnn_backend import WebNNBackend
-    BACKEND_REGISTRY["webnn"] = WebNNBackend
+    BACKEND_REGISTRY["webnn"] = WebNNBackend,
 except ImportError:
     pass
 
 try:
     from ipfs_accelerate_py.hardware.backends.webgpu_backend import WebGPUBackend
-    BACKEND_REGISTRY["webgpu"] = WebGPUBackend
+    BACKEND_REGISTRY["webgpu"] = WebGPUBackend,
 except ImportError:
     pass
 
@@ -64,21 +64,21 @@ def get_backend(backend_name: str, config=None) -> Any:
         
     Returns:
         Backend instance.
-    """
-    backend_class = BACKEND_REGISTRY.get(backend_name)
+        """
+        backend_class = BACKEND_REGISTRY.get(backend_name)
     if not backend_class:
-        raise ValueError(f"Backend {backend_name} not found")
+        raise ValueError(f"Backend {}backend_name} not found")
     
-    return backend_class(config)
+        return backend_class(config)
 
-def list_available_backends() -> Dict[str, bool]:
-    """
-    List available backends.
+        def list_available_backends() -> Dict[str, bool]:,
+        """
+        List available backends.
     
     Returns:
         Dictionary with backend names and availability status.
-    """
-    availability = {}
+        """
+        availability = {}}
     
     for backend_name, backend_class in BACKEND_REGISTRY.items():
         try:
@@ -87,6 +87,6 @@ def list_available_backends() -> Dict[str, bool]:
         except Exception:
             is_available = False
         
-        availability[backend_name] = is_available
-    
-    return availability
+            availability[backend_name] = is_available
+            ,
+            return availability

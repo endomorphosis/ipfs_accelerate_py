@@ -174,12 +174,12 @@ class BenchmarkVisualizer:
                 for model_dir in (CURRENT_DIR / "skills").glob("test_hf_*.py"):
                     model_name = model_dir.stem.replace("test_hf_", "")
                     models.append({
-                        "model_id": len(models) + 1,
-                        "model_name": model_name,
-                        "model_family": model_name.split("_")[0] if "_" in model_name else model_name,
-                        "description": f"HuggingFace {model_name} model",
-                        "created_at": datetime.datetime.now(),
-                        "updated_at": datetime.datetime.now()
+                    "model_id": len(models) + 1,
+                    "model_name": model_name,
+                    "model_family": model_name.split("_")[0] if "_" in model_name else model_name,
+                    "description": f"HuggingFace {model_name} model",
+                    "created_at": datetime.datetime.now(),
+                    "updated_at": datetime.datetime.now()
                     })
                 return models
             
@@ -263,8 +263,8 @@ class BenchmarkVisualizer:
                 
                 if model_name not in grouped_results:
                     grouped_results[model_name] = {
-                        'model_family': row['model_family'],
-                        'hardware_results': {}
+                    'model_family': row['model_family'],
+                    'hardware_results': {}
                     }
                 
                 if hardware_type not in grouped_results[model_name]['hardware_results']:
@@ -322,10 +322,10 @@ class BenchmarkVisualizer:
                 
                 if hardware_type not in historical_data[model_name]:
                     historical_data[model_name][hardware_type] = {
-                        'timestamps': [],
-                        'latency': [],
-                        'throughput': [],
-                        'memory': []
+                    'timestamps': [],
+                    'latency': [],
+                    'throughput': [],
+                    'memory': []
                     }
                 
                 historical_data[model_name][hardware_type]['timestamps'].append(row['created_at'])
@@ -453,33 +453,33 @@ class BenchmarkVisualizer:
                 "--output-dir", str(RESULTS_DIR)
             ]
             
-            # Execute command
-            logger.info(f"Running benchmark with command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            # Check for success
-            if result.returncode == 0:
-                # Look for results file
-                result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{hardware_platform}*.json"))
+            try:
+                # Execute command
+                logger.info(f"Running benchmark with command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, capture_output=True, text=True)
                 
-                if result_files:
-                    # Get the most recent file
-                    result_file = max(result_files, key=os.path.getmtime)
+                # Check for success
+                if result.returncode == 0:
+                    # Look for results file
+                    result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{hardware_platform}*.json"))
                     
-                    # Load the results
-# JSON output deprecated in favor of database storage
-if not DEPRECATE_JSON_OUTPUT:
-                        with open(result_file, 'r') as f:
-# Try database first, fall back to JSON if necessary
-try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
-    db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
-    benchmark_results = db_api.get_benchmark_results()
-    logger.info("Successfully loaded results from database")
-except Exception as e:
-    logger.warning(f"Error reading from database, falling back to JSON: {e}")
-                                benchmark_results = json.load(f)
-
+                    if result_files:
+                        # Get the most recent file
+                        result_file = max(result_files, key=os.path.getmtime)
+                        
+                        # Load the results
+                        try:
+                            # Try database first, fall back to JSON if necessary
+                            from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+                            db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
+                            benchmark_results = db_api.get_benchmark_results()
+                            logger.info("Successfully loaded results from database")
+                        except Exception as e:
+                            logger.warning(f"Error reading from database, falling back to JSON: {e}")
+                            # JSON output deprecated in favor of database storage
+                            if not DEPRECATE_JSON_OUTPUT:
+                                with open(result_file, 'r') as f:
+                                    benchmark_results = json.load(f)
                         
                         return True, f"Successfully ran benchmark: {result_file}", benchmark_results
                     else:
@@ -489,48 +489,48 @@ except Exception as e:
             except Exception as e:
                 logger.error(f"Error running benchmark: {e}")
                 return False, f"Error running benchmark: {e}", {}
-        
-        def get_hardware_compatibility_matrix(self) -> Dict[str, Dict[str, str]]:
-            """Get hardware compatibility matrix for all models."""
-            try:
-                # Create matrix of model -> hardware -> compatibility status
-                compatibility_matrix = {}
+    
+    def get_hardware_compatibility_matrix(self) -> Dict[str, Dict[str, str]]:
+        """Get hardware compatibility matrix for all models."""
+        try:
+            # Create matrix of model -> hardware -> compatibility status
+            compatibility_matrix = {}
+            
+            # Go through all models
+            for model_name in [m['model_name'] for m in self.models]:
+                compatibility_matrix[model_name] = {}
                 
-                # Go through all models
-                for model_name in [m['model_name'] for m in self.models]:
-                    compatibility_matrix[model_name] = {}
+                # Check for benchmark results for each hardware platform
+                for hw in HARDWARE_PLATFORMS:
+                    status = "Unknown"
                     
-                    # Check for benchmark results for each hardware platform
-                    for hw in HARDWARE_PLATFORMS:
-                        status = "Unknown"
-                        
-                        # Check if we have benchmark results
-                        if model_name in self.latest_results and hw in self.latest_results[model_name]['hardware_results']:
-                            results = self.latest_results[model_name]['hardware_results'][hw]
-                            if results:
-                                # Simple check - if we have throughput > 0, it's compatible
-                                if any(r.get('throughput', 0) > 0 for r in results):
-                                    status = "Compatible"
-                                else:
-                                    # Check for errors
-                                    status = "Issues"
-                        else:
-                            # Check for test file
-                            normalized_name = model_name.lower().replace('-', '_')
-                            test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
-                            
-                            if os.path.exists(test_file_path):
-                                # Check if file mentions this hardware platform
-                                with open(test_file_path, 'r') as f:
-                                    content = f.read()
-                                    if f"init_{hw}" in content:
-                                        status = "Untested"
-                                    else:
-                                        status = "Unsupported"
+                    # Check if we have benchmark results
+                    if model_name in self.latest_results and hw in self.latest_results[model_name]['hardware_results']:
+                        results = self.latest_results[model_name]['hardware_results'][hw]
+                        if results:
+                            # Simple check - if we have throughput > 0, it's compatible
+                            if any(r.get('throughput', 0) > 0 for r in results):
+                                status = "Compatible"
                             else:
-                                status = "No Test"
+                                # Check for errors
+                                status = "Issues"
+                    else:
+                        # Check for test file
+                        normalized_name = model_name.lower().replace('-', '_')
+                        test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
                         
-                        compatibility_matrix[model_name][hw] = status
+                        if os.path.exists(test_file_path):
+                            # Check if file mentions this hardware platform
+                            with open(test_file_path, 'r') as f:
+                                content = f.read()
+                                if f"init_{hw}" in content:
+                                    status = "Untested"
+                                else:
+                                    status = "Unsupported"
+                        else:
+                            status = "No Test"
+                    
+                    compatibility_matrix[model_name][hw] = status
                 
                 return compatibility_matrix
             except Exception as e:
@@ -619,18 +619,18 @@ except Exception as e:
                 # Generate tests for models without them
                 if st.button("Generate Missing Tests"):
                     models_without_tests = [model for model, hw_status in matrix.items() 
-                                          if any(status == "No Test" for status in hw_status.values())]
+                                      if any(status == "No Test" for status in hw_status.values())]
                     
                     if models_without_tests:
-                        st.info(f"Generating tests for {len(models_without_tests)} models...")
-                        
-                        for model in models_without_tests:
-                            success, message = self.generate_test(model)
-                            st.write(f"{model}: {message}")
-                        
-                        st.success("Test generation complete. Refresh page to see updated matrix.")
+                    st.info(f"Generating tests for {len(models_without_tests)} models...")
+                    
+                    for model in models_without_tests:
+                        success, message = self.generate_test(model)
+                        st.write(f"{model}: {message}")
+                    
+                    st.success("Test generation complete. Refresh page to see updated matrix.")
                     else:
-                        st.info("No missing tests found!")
+                    st.info("No missing tests found!")
             
             with col2:
                 # Run benchmarks for untested models
@@ -638,21 +638,21 @@ except Exception as e:
                     untested_configs = []
                     
                     for model, hw_status in matrix.items():
-                        for hw, status in hw_status.items():
-                            if status == "Untested":
-                                untested_configs.append((model, hw))
+                    for hw, status in hw_status.items():
+                        if status == "Untested":
+                            untested_configs.append((model, hw))
                     
                     if untested_configs:
-                        st.info(f"Running benchmarks for {len(untested_configs)} model-hardware combinations...")
-                        
-                        for model, hw in untested_configs:
-                            st.write(f"Benchmarking {model} on {hw}...")
-                            success, message, _ = self.run_benchmark(model, hw)
-                            st.write(f"{model} on {hw}: {'Success' if success else 'Failed'} - {message}")
-                        
-                        st.success("Benchmarking complete. Refresh page to see updated matrix.")
+                    st.info(f"Running benchmarks for {len(untested_configs)} model-hardware combinations...")
+                    
+                    for model, hw in untested_configs:
+                        st.write(f"Benchmarking {model} on {hw}...")
+                        success, message, _ = self.run_benchmark(model, hw)
+                        st.write(f"{model} on {hw}: {'Success' if success else 'Failed'} - {message}")
+                    
+                    st.success("Benchmarking complete. Refresh page to see updated matrix.")
                     else:
-                        st.info("No untested configurations found!")
+                    st.info("No untested configurations found!")
         
         def _show_model_performance(self):
             """Show model performance comparison page."""
@@ -668,7 +668,7 @@ except Exception as e:
             
             # Get metric key
             metric_key = "throughput" if "Throughput" in selected_metric else \
-                        "latency_ms" if "Latency" in selected_metric else "memory_mb"
+                    "latency_ms" if "Latency" in selected_metric else "memory_mb"
             
             # Get filtered results
             filtered_results = {}
@@ -677,13 +677,13 @@ except Exception as e:
                 if selected_hardware in model_data.get('hardware_results', {}):
                     hw_results = model_data['hardware_results'][selected_hardware]
                     if hw_results:
-                        # Calculate average of the metric for this model/hardware
-                        values = [result.get(metric_key, 0) for result in hw_results]
-                        if values:
-                            filtered_results[model_name] = {
-                                'family': model_data.get('model_family', 'Unknown'),
-                                'value': sum(values) / len(values)
-                            }
+                    # Calculate average of the metric for this model/hardware
+                    values = [result.get(metric_key, 0) for result in hw_results]
+                    if values:
+                        filtered_results[model_name] = {
+                            'family': model_data.get('model_family', 'Unknown'),
+                            'value': sum(values) / len(values)
+                        }
             
             if not filtered_results:
                 st.warning(f"No performance data available for {selected_hardware}.")
@@ -759,7 +759,7 @@ except Exception as e:
             
             # Get metric key
             metric_key = "throughput" if "Throughput" in selected_metric else \
-                        "latency_ms" if "Latency" in selected_metric else "memory_mb"
+                    "latency_ms" if "Latency" in selected_metric else "memory_mb"
             
             # Get filtered results
             filtered_results = {}
@@ -769,10 +769,10 @@ except Exception as e:
                 
                 for hw_type, hw_results in model_data.get('hardware_results', {}).items():
                     if hw_results:
-                        # Calculate average of the metric for this hardware
-                        values = [result.get(metric_key, 0) for result in hw_results]
-                        if values:
-                            filtered_results[hw_type] = sum(values) / len(values)
+                    # Calculate average of the metric for this hardware
+                    values = [result.get(metric_key, 0) for result in hw_results]
+                    if values:
+                        filtered_results[hw_type] = sum(values) / len(values)
             
             if not filtered_results:
                 st.warning(f"No performance data available for {selected_model}.")
@@ -838,10 +838,10 @@ except Exception as e:
                     success, message, results = self.run_benchmark(selected_model, selected_missing_hw)
                     
                     if success:
-                        st.success(f"Benchmark completed successfully!")
-                        st.json(results)
+                    st.success(f"Benchmark completed successfully!")
+                    st.json(results)
                     else:
-                        st.error(f"Benchmark failed: {message}")
+                    st.error(f"Benchmark failed: {message}")
         
         def _show_test_generator(self):
             """Show test generator page."""
@@ -879,26 +879,26 @@ except Exception as e:
                     success, message = self.generate_test(selected_model, selected_hardware)
                     
                     if success:
-                        st.success(message)
+                    st.success(message)
+                    
+                    # Show test file path
+                    normalized_name = selected_model.lower().replace('-', '_')
+                    test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
+                    
+                    if os.path.exists(test_file_path):
+                        st.code(f"Test file path: {test_file_path}")
                         
-                        # Show test file path
-                        normalized_name = selected_model.lower().replace('-', '_')
-                        test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
-                        
-                        if os.path.exists(test_file_path):
-                            st.code(f"Test file path: {test_file_path}")
+                        # Show first few lines of the test file
+                        with open(test_file_path, 'r') as f:
+                            content = f.read()
+                            line_count = content.count('\n')
                             
-                            # Show first few lines of the test file
-                            with open(test_file_path, 'r') as f:
-                                content = f.read()
-                                line_count = content.count('\n')
-                                
-                                st.write(f"Test file generated with {line_count} lines of code")
-                                
-                                with st.expander("View Test File"):
-                                    st.code(content[:5000] + "..." if len(content) > 5000 else content)
+                            st.write(f"Test file generated with {line_count} lines of code")
+                            
+                            with st.expander("View Test File"):
+                                st.code(content[:5000] + "..." if len(content) > 5000 else content)
                     else:
-                        st.error(message)
+                    st.error(message)
             
             with tab2:
                 # Input model name
@@ -932,49 +932,49 @@ except Exception as e:
                 # Generate button
                 if st.button("Generate Test", key="generate_new"):
                     if not new_model_name:
-                        st.error("Model name is required")
+                    st.error("Model name is required")
                     elif not selected_tasks:
-                        st.error("At least one task must be selected")
+                    st.error("At least one task must be selected")
                     elif not selected_hardware:
-                        st.error("At least one hardware platform must be selected")
+                    st.error("At least one hardware platform must be selected")
                     else:
-                        st.info(f"Generating test for {new_model_name} with support for: {', '.join(selected_hardware)}")
+                    st.info(f"Generating test for {new_model_name} with support for: {', '.join(selected_hardware)}")
+                    
+                    # Create model info
+                    model_info = {
+                        "model": new_model_name,
+                        "normalized_name": new_model_name.lower().replace('-', '_'),
+                        "pipeline_tasks": selected_tasks,
+                        "priority": "HIGH"
+                    }
+                    
+                    # Get existing tests
+                    existing_tests = self._get_existing_tests()
+                    
+                    # Generate test file
+                    success, message = self._generate_custom_test(model_info, existing_tests, selected_hardware)
+                    
+                    if success:
+                        st.success(message)
                         
-                        # Create model info
-                        model_info = {
-                            "model": new_model_name,
-                            "normalized_name": new_model_name.lower().replace('-', '_'),
-                            "pipeline_tasks": selected_tasks,
-                            "priority": "HIGH"
-                        }
+                        # Show test file path
+                        normalized_name = new_model_name.lower().replace('-', '_')
+                        test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
                         
-                        # Get existing tests
-                        existing_tests = self._get_existing_tests()
-                        
-                        # Generate test file
-                        success, message = self._generate_custom_test(model_info, existing_tests, selected_hardware)
-                        
-                        if success:
-                            st.success(message)
+                        if os.path.exists(test_file_path):
+                            st.code(f"Test file path: {test_file_path}")
                             
-                            # Show test file path
-                            normalized_name = new_model_name.lower().replace('-', '_')
-                            test_file_path = SKILLS_DIR / f"test_hf_{normalized_name}.py"
-                            
-                            if os.path.exists(test_file_path):
-                                st.code(f"Test file path: {test_file_path}")
+                            # Show first few lines of the test file
+                            with open(test_file_path, 'r') as f:
+                                content = f.read()
+                                line_count = content.count('\n')
                                 
-                                # Show first few lines of the test file
-                                with open(test_file_path, 'r') as f:
-                                    content = f.read()
-                                    line_count = content.count('\n')
-                                    
-                                    st.write(f"Test file generated with {line_count} lines of code")
-                                    
-                                    with st.expander("View Test File"):
-                                        st.code(content[:5000] + "..." if len(content) > 5000 else content)
-                        else:
-                            st.error(message)
+                                st.write(f"Test file generated with {line_count} lines of code")
+                                
+                                with st.expander("View Test File"):
+                                    st.code(content[:5000] + "..." if len(content) > 5000 else content)
+                    else:
+                        st.error(message)
         
         def _show_benchmark_runner(self):
             """Show benchmark runner page."""
@@ -997,16 +997,16 @@ except Exception as e:
                     
                     # Create DataFrame for display
                     df = pd.DataFrame([
-                        {
-                            'Batch Size': r.get('batch_size', 'N/A'),
-                            'Precision': r.get('precision', 'N/A'),
-                            'Latency (ms)': r.get('latency_ms', 0),
-                            'Throughput (items/s)': r.get('throughput', 0),
-                            'Memory (MB)': r.get('memory_mb', 0),
-                            'Test Case': r.get('test_case', 'N/A'),
-                            'Timestamp': r.get('timestamp', 'N/A')
-                        }
-                        for r in results
+                    {
+                        'Batch Size': r.get('batch_size', 'N/A'),
+                        'Precision': r.get('precision', 'N/A'),
+                        'Latency (ms)': r.get('latency_ms', 0),
+                        'Throughput (items/s)': r.get('throughput', 0),
+                        'Memory (MB)': r.get('memory_mb', 0),
+                        'Test Case': r.get('test_case', 'N/A'),
+                        'Timestamp': r.get('timestamp', 'N/A')
+                    }
+                    for r in results
                     ])
                     
                     st.dataframe(df)
@@ -1017,43 +1017,43 @@ except Exception as e:
                     
                     # Get metric key
                     metric_key = "throughput" if "Throughput" in selected_metric else \
-                                "latency_ms" if "Latency" in selected_metric else "memory_mb"
+                            "latency_ms" if "Latency" in selected_metric else "memory_mb"
                     
                     # Check if we have batch size variation for visualization
                     batch_sizes = df['Batch Size'].unique()
                     
                     if len(batch_sizes) > 1:
-                        # Create batch size vs. metric plot
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        
-                        # Get data
-                        batch_values = []
-                        metric_values = []
-                        
-                        for r in results:
-                            if metric_key in r:
-                                batch_values.append(r.get('batch_size', 0))
-                                metric_values.append(r.get(metric_key, 0))
-                        
-                        # Create scatter plot with line
-                        ax.plot(batch_values, metric_values, 'o-', color='royalblue')
-                        
-                        # Add data point labels
-                        for x, y in zip(batch_values, metric_values):
-                            ax.text(x, y + (max(metric_values) * 0.02), f'{y:.2f}', ha='center')
-                        
-                        # Set labels and title
-                        ax.set_xlabel("Batch Size")
-                        ax.set_ylabel(selected_metric)
-                        ax.set_title(f"{selected_metric} vs. Batch Size for {selected_model} on {selected_hardware.upper()}")
-                        
-                        # Add grid
-                        ax.grid(linestyle='--', alpha=0.7)
-                        
-                        # Display plot
-                        st.pyplot(fig)
+                    # Create batch size vs. metric plot
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    
+                    # Get data
+                    batch_values = []
+                    metric_values = []
+                    
+                    for r in results:
+                        if metric_key in r:
+                            batch_values.append(r.get('batch_size', 0))
+                            metric_values.append(r.get(metric_key, 0))
+                    
+                    # Create scatter plot with line
+                    ax.plot(batch_values, metric_values, 'o-', color='royalblue')
+                    
+                    # Add data point labels
+                    for x, y in zip(batch_values, metric_values):
+                        ax.text(x, y + (max(metric_values) * 0.02), f'{y:.2f}', ha='center')
+                    
+                    # Set labels and title
+                    ax.set_xlabel("Batch Size")
+                    ax.set_ylabel(selected_metric)
+                    ax.set_title(f"{selected_metric} vs. Batch Size for {selected_model} on {selected_hardware.upper()}")
+                    
+                    # Add grid
+                    ax.grid(linestyle='--', alpha=0.7)
+                    
+                    # Display plot
+                    st.pyplot(fig)
                     else:
-                        st.info("Only one batch size available. Run benchmarks with different batch sizes to see scaling.")
+                    st.info("Only one batch size available. Run benchmarks with different batch sizes to see scaling.")
             
             # Run benchmark button
             st.subheader("Run New Benchmark")
@@ -1071,50 +1071,50 @@ except Exception as e:
                     
                     # Create command
                     cmd = [
-                        "python",
-                        str(CURRENT_DIR / "model_benchmark_runner.py"),
-                        "--model", selected_model.lower().replace('-', '_'),
-                        "--hardware", selected_hardware,
-                        "--batch-sizes", ",".join(map(str, batch_size_list)),
-                        "--output-dir", str(RESULTS_DIR)
+                    "python",
+                    str(CURRENT_DIR / "model_benchmark_runner.py"),
+                    "--model", selected_model.lower().replace('-', '_'),
+                    "--hardware", selected_hardware,
+                    "--batch-sizes", ",".join(map(str, batch_size_list)),
+                    "--output-dir", str(RESULTS_DIR)
                     ]
                     
                     # Execute command
                     with st.spinner("Running benchmark..."):
-                        try:
-                            result = subprocess.run(cmd, capture_output=True, text=True)
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, text=True)
+                        
+                        if result.returncode == 0:
+                            st.success("Benchmark completed successfully!")
                             
-                            if result.returncode == 0:
-                                st.success("Benchmark completed successfully!")
+                            # Look for results file
+                            normalized_name = selected_model.lower().replace('-', '_')
+                            result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{selected_hardware}*.json"))
+                            
+                            if result_files:
+                                # Get the most recent file
+                                result_file = max(result_files, key=os.path.getmtime)
                                 
-                                # Look for results file
-                                normalized_name = selected_model.lower().replace('-', '_')
-                                result_files = list(RESULTS_DIR.glob(f"*{normalized_name}*{selected_hardware}*.json"))
+                                # Load the results
+                                with open(result_file, 'r') as f:
+                                    benchmark_results = json.load(f)
                                 
-                                if result_files:
-                                    # Get the most recent file
-                                    result_file = max(result_files, key=os.path.getmtime)
-                                    
-                                    # Load the results
-                                    with open(result_file, 'r') as f:
-                                        benchmark_results = json.load(f)
-                                    
-                                    st.subheader("Benchmark Results")
-                                    st.json(benchmark_results)
-                                    
-                                    # Add to database
-                                    st.info("Benchmark results will be automatically added to the database.")
-                                    
-                                    # Reload data
-                                    self._load_data()
-                                    
-                                    st.success("Data reloaded. You can now view the results in the visualization sections.")
-                                else:
-                                    st.warning("Benchmark command succeeded but results file not found")
+                                st.subheader("Benchmark Results")
+                                st.json(benchmark_results)
+                                
+                                # Add to database
+                                st.info("Benchmark results will be automatically added to the database.")
+                                
+                                # Reload data
+                                self._load_data()
+                                
+                                st.success("Data reloaded. You can now view the results in the visualization sections.")
                             else:
-                                st.error(f"Benchmark failed: {result.stderr}")
-                        except Exception as e:
-                            st.error(f"Error running benchmark: {e}")
+                                st.warning("Benchmark command succeeded but results file not found")
+                        else:
+                            st.error(f"Benchmark failed: {result.stderr}")
+                    except Exception as e:
+                        st.error(f"Error running benchmark: {e}")
         
         def _show_historical_trends(self):
             """Show historical performance trends page."""
@@ -1134,7 +1134,7 @@ except Exception as e:
             
             # Get metric key
             metric_key = "throughput" if "Throughput" in selected_metric else \
-                        "latency" if "Latency" in selected_metric else "memory"
+                    "latency" if "Latency" in selected_metric else "memory"
             
             # Check if we have historical data
             if selected_model not in self.historical_results:
@@ -1190,14 +1190,14 @@ except Exception as e:
                     hw_data = self.historical_results[selected_model][hw]
                     
                     if not hw_data['timestamps']:
-                        continue
+                    continue
                     
                     st.subheader(f"{hw.upper()} Data")
                     
                     # Create DataFrame
                     df = pd.DataFrame({
-                        'Timestamp': hw_data['timestamps'],
-                        'Value': hw_data[metric_key]
+                    'Timestamp': hw_data['timestamps'],
+                    'Value': hw_data[metric_key]
                     })
                     
                     st.dataframe(df)
@@ -1212,7 +1212,7 @@ except Exception as e:
                 return set()
         
         def _generate_custom_test(self, model_info: Dict[str, Any], existing_tests: Set[str], 
-                                hardware_platforms: List[str]) -> Tuple[bool, str]:
+                            hardware_platforms: List[str]) -> Tuple[bool, str]:
             """Generate a custom test file for a new model."""
             try:
                 # Import merged test generator
@@ -1287,8 +1287,8 @@ except Exception as e:
                     report_content = self._generate_html_report()
                     
                     with open(output, 'w') as f:
-                        f.write(report_content)
-                        
+                    f.write(report_content)
+                    
                     logger.info(f"HTML report saved to {output}")
                     return True
                 elif format == "markdown" or format == "md":
@@ -1296,22 +1296,22 @@ except Exception as e:
                     report_content = self._generate_markdown_report()
                     
                     with open(output, 'w') as f:
-                        f.write(report_content)
-                        
+                    f.write(report_content)
+                    
                     logger.info(f"Markdown report saved to {output}")
                     return True
                 elif format == "json":
                     # Export raw data as JSON
                     report_data = {
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "models": self.models,
-                        "hardware_platforms": self.hardware_platforms,
-                        "latest_results": self.latest_results,
-                        "compatibility_matrix": self.get_hardware_compatibility_matrix()
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "models": self.models,
+                    "hardware_platforms": self.hardware_platforms,
+                    "latest_results": self.latest_results,
+                    "compatibility_matrix": self.get_hardware_compatibility_matrix()
                     }
                     
                     with open(output, 'w') as f:
-                        json.dump(report_data, f, indent=2)
+                    json.dump(report_data, f, indent=2)
 else:
     logger.info("JSON output is deprecated. Results are stored directly in the database.")
 
@@ -1366,10 +1366,10 @@ else:
             for hw in HARDWARE_PLATFORMS:
                 status = hw_status.get(hw, "Unknown")
                 css_class = "compatible" if status == "Compatible" else \
-                          "untested" if status == "Untested" else \
-                          "issues" if status == "Issues" else \
-                          "unsupported" if status == "Unsupported" else \
-                          "notest" if status == "No Test" else ""
+                      "untested" if status == "Untested" else \
+                      "issues" if status == "Issues" else \
+                      "unsupported" if status == "Unsupported" else \
+                      "notest" if status == "No Test" else ""
                 
                 row.append(f"<td class='{css_class}'>{status}</td>")
             
@@ -1386,7 +1386,7 @@ else:
         for hw in HARDWARE_PLATFORMS:
             # Count models with results for this hardware
             models_with_results = sum(1 for model_name, model_data in self.latest_results.items() 
-                                     if hw in model_data.get('hardware_results', {}))
+                                 if hw in model_data.get('hardware_results', {}))
             
             if models_with_results > 0:
                 html.append(f"<h3>{hw.upper()} Performance</h3>")
@@ -1395,14 +1395,14 @@ else:
                 
                 for model_name, model_data in sorted(self.latest_results.items()):
                     if hw in model_data.get('hardware_results', {}):
-                        hw_results = model_data['hardware_results'][hw]
-                        if hw_results:
-                            # Calculate averages
-                            throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
-                            latency = sum(r.get('latency_ms', 0) for r in hw_results) / len(hw_results)
-                            memory = sum(r.get('memory_mb', 0) for r in hw_results) / len(hw_results)
-                            
-                            html.append(f"<tr><td>{model_name}</td><td>{throughput:.2f}</td><td>{latency:.2f}</td><td>{memory:.2f}</td></tr>")
+                    hw_results = model_data['hardware_results'][hw]
+                    if hw_results:
+                        # Calculate averages
+                        throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
+                        latency = sum(r.get('latency_ms', 0) for r in hw_results) / len(hw_results)
+                        memory = sum(r.get('memory_mb', 0) for r in hw_results) / len(hw_results)
+                        
+                        html.append(f"<tr><td>{model_name}</td><td>{throughput:.2f}</td><td>{latency:.2f}</td><td>{memory:.2f}</td></tr>")
                 
                 html.append("</table>")
         
@@ -1428,15 +1428,15 @@ else:
                 
                 for hw in HARDWARE_PLATFORMS:
                     if hw in model_data.get('hardware_results', {}):
-                        hw_results = model_data['hardware_results'][hw]
-                        if hw_results:
-                            # Calculate average throughput
-                            throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
-                            row.append(f"<td>{throughput:.2f}</td>")
-                        else:
-                            row.append("<td>N/A</td>")
+                    hw_results = model_data['hardware_results'][hw]
+                    if hw_results:
+                        # Calculate average throughput
+                        throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
+                        row.append(f"<td>{throughput:.2f}</td>")
                     else:
                         row.append("<td>N/A</td>")
+                    else:
+                    row.append("<td>N/A</td>")
                 
                 row.append("</tr>")
                 html.append("".join(row))
@@ -1488,7 +1488,7 @@ else:
         for hw in HARDWARE_PLATFORMS:
             # Count models with results for this hardware
             models_with_results = sum(1 for model_name, model_data in self.latest_results.items() 
-                                     if hw in model_data.get('hardware_results', {}))
+                                 if hw in model_data.get('hardware_results', {}))
             
             if models_with_results > 0:
                 md.append(f"### {hw.upper()} Performance")
@@ -1498,14 +1498,14 @@ else:
                 
                 for model_name, model_data in sorted(self.latest_results.items()):
                     if hw in model_data.get('hardware_results', {}):
-                        hw_results = model_data['hardware_results'][hw]
-                        if hw_results:
-                            # Calculate averages
-                            throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
-                            latency = sum(r.get('latency_ms', 0) for r in hw_results) / len(hw_results)
-                            memory = sum(r.get('memory_mb', 0) for r in hw_results) / len(hw_results)
-                            
-                            md.append(f"| {model_name} | {throughput:.2f} | {latency:.2f} | {memory:.2f} |")
+                    hw_results = model_data['hardware_results'][hw]
+                    if hw_results:
+                        # Calculate averages
+                        throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
+                        latency = sum(r.get('latency_ms', 0) for r in hw_results) / len(hw_results)
+                        memory = sum(r.get('memory_mb', 0) for r in hw_results) / len(hw_results)
+                        
+                        md.append(f"| {model_name} | {throughput:.2f} | {latency:.2f} | {memory:.2f} |")
                 
                 md.append("")
         
@@ -1529,15 +1529,15 @@ else:
                 
                 for hw in HARDWARE_PLATFORMS:
                     if hw in model_data.get('hardware_results', {}):
-                        hw_results = model_data['hardware_results'][hw]
-                        if hw_results:
-                            # Calculate average throughput
-                            throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
-                            row.append(f" {throughput:.2f}")
-                        else:
-                            row.append(" N/A")
+                    hw_results = model_data['hardware_results'][hw]
+                    if hw_results:
+                        # Calculate average throughput
+                        throughput = sum(r.get('throughput', 0) for r in hw_results) / len(hw_results)
+                        row.append(f" {throughput:.2f}")
                     else:
                         row.append(" N/A")
+                    else:
+                    row.append(" N/A")
                 
                 row.append(" |")
                 md.append("".join(row))

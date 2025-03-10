@@ -11,6 +11,6 @@ try:
     from .active_learning import ActiveLearningSystem
     from .benchmark_integration import BenchmarkScheduler
 except ImportError as e:
-    print(f"Warning: Unable to import some modules - {e}")
+    print(f"\1{e}\3")
 
-__version__ = "1.0.0"
+    __version__ = "1.0.0"

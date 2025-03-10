@@ -123,14 +123,14 @@ class TestBertModels(unittest.TestCase):
             elif platform == "openvino" or platform == "qualcomm" or platform == "webnn" or platform == "webgpu":
                 device = "cpu"  # Using CPU with platform-specific optimizations
                 
-            if device \!= "cpu":
+            if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
             inputs = self.tokenizer("Test input for bert", return_tensors="pt")
             
             # Move inputs to device if not CPU
-            if device \!= "cpu":
+            if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
             # Run inference

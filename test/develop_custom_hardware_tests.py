@@ -19,26 +19,26 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig())))))level=logging.INFO,
+format='%())))))asctime)s - %())))))name)s - %())))))levelname)s - %())))))message)s')
+logger = logging.getLogger())))))__name__)
 
 # Try to import required components with graceful degradation
 try:
     from resource_pool import get_global_resource_pool
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"Resource pool not available: {e}")
+    logger.error())))))f"Resource pool not available: {}}}}}}}}}}}}e}")
     RESOURCE_POOL_AVAILABLE = False
 
 try:
-    from hardware_detection import (
-        HardwareDetector, detect_available_hardware,
-        CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM
+    from generators.hardware.hardware_detection import ())))))
+    HardwareDetector, detect_available_hardware,
+    CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM
     )
     HARDWARE_DETECTION_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"Hardware detection not available: {e}")
+    logger.error())))))f"Hardware detection not available: {}}}}}}}}}}}}e}")
     HARDWARE_DETECTION_AVAILABLE = False
     # Define fallback constants
     CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM = "cpu", "cuda", "rocm", "mps", "openvino", "webnn", "webgpu", "qualcomm"
@@ -47,123 +47,123 @@ try:
     from model_family_classifier import classify_model, ModelFamilyClassifier
     MODEL_CLASSIFIER_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Model family classifier not available: {e}")
+    logger.warning())))))f"Model family classifier not available: {}}}}}}}}}}}}e}")
     MODEL_CLASSIFIER_AVAILABLE = False
 
 # Base directory where test templates and generated tests are stored
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_DIR = os.path.join(SCRIPT_DIR, "hardware_test_templates")
-OUTPUT_DIR = os.path.join(SCRIPT_DIR, "custom_hardware_tests")
+    SCRIPT_DIR = os.path.dirname())))))os.path.abspath())))))__file__))
+    TEMPLATE_DIR = os.path.join())))))SCRIPT_DIR, "hardware_test_templates")
+    OUTPUT_DIR = os.path.join())))))SCRIPT_DIR, "custom_hardware_tests")
 
 # Hardware-specific test templates for each model family
-TEST_TEMPLATES = {
-    "embedding": {
-        CPU: "template_cpu_embedding.py",
-        CUDA: "template_cuda_embedding.py",
-        ROCM: "template_rocm_embedding.py",
-        MPS: "template_mps_embedding.py",
-        OPENVINO: "template_openvino_embedding.py",
-        WEBNN: "template_webnn_embedding.py",
-        WEBGPU: "template_webgpu_embedding.py"
+    TEST_TEMPLATES = {}}}}}}}}}}}}
+    "embedding": {}}}}}}}}}}}}
+    CPU: "template_cpu_embedding.py",
+    CUDA: "template_cuda_embedding.py",
+    ROCM: "template_rocm_embedding.py",
+    MPS: "template_mps_embedding.py",
+    OPENVINO: "template_openvino_embedding.py",
+    WEBNN: "template_webnn_embedding.py",
+    WEBGPU: "template_webgpu_embedding.py"
     },
-    "text_generation": {
-        CPU: "template_cpu_text_generation.py",
-        CUDA: "template_cuda_text_generation.py",
-        ROCM: "template_rocm_text_generation.py",
-        MPS: "template_mps_text_generation.py",
-        OPENVINO: "template_openvino_text_generation.py"
+    "text_generation": {}}}}}}}}}}}}
+    CPU: "template_cpu_text_generation.py",
+    CUDA: "template_cuda_text_generation.py",
+    ROCM: "template_rocm_text_generation.py",
+    MPS: "template_mps_text_generation.py",
+    OPENVINO: "template_openvino_text_generation.py"
     },
-    "vision": {
-        CPU: "template_cpu_vision.py",
-        CUDA: "template_cuda_vision.py",
-        ROCM: "template_rocm_vision.py",
-        MPS: "template_mps_vision.py",
-        OPENVINO: "template_openvino_vision.py",
-        WEBNN: "template_webnn_vision.py",
-        WEBGPU: "template_webgpu_vision.py"
+    "vision": {}}}}}}}}}}}}
+    CPU: "template_cpu_vision.py",
+    CUDA: "template_cuda_vision.py",
+    ROCM: "template_rocm_vision.py",
+    MPS: "template_mps_vision.py",
+    OPENVINO: "template_openvino_vision.py",
+    WEBNN: "template_webnn_vision.py",
+    WEBGPU: "template_webgpu_vision.py"
     },
-    "audio": {
-        CPU: "template_cpu_audio.py",
-        CUDA: "template_cuda_audio.py",
-        ROCM: "template_rocm_audio.py",
-        MPS: "template_mps_audio.py",
-        OPENVINO: "template_openvino_audio.py"
+    "audio": {}}}}}}}}}}}}
+    CPU: "template_cpu_audio.py",
+    CUDA: "template_cuda_audio.py",
+    ROCM: "template_rocm_audio.py",
+    MPS: "template_mps_audio.py",
+    OPENVINO: "template_openvino_audio.py"
     },
-    "multimodal": {
-        CPU: "template_cpu_multimodal.py",
-        CUDA: "template_cuda_multimodal.py",
-        ROCM: "template_rocm_multimodal.py",
-        MPS: "template_mps_multimodal.py",
-        OPENVINO: "template_openvino_multimodal.py"
+    "multimodal": {}}}}}}}}}}}}
+    CPU: "template_cpu_multimodal.py",
+    CUDA: "template_cuda_multimodal.py",
+    ROCM: "template_rocm_multimodal.py",
+    MPS: "template_mps_multimodal.py",
+    OPENVINO: "template_openvino_multimodal.py"
     }
-}
+    }
 
-# Basic template for all platforms (used when platform-specific template not available)
-BASIC_TEST_TEMPLATE = """#!/usr/bin/env python
-'''
-Custom hardware test for {model_name} on {hardware_platform}
-Generated by develop_custom_hardware_tests.py
-'''
+# Basic template for all platforms ())))))used when platform-specific template not available)
+    BASIC_TEST_TEMPLATE = """#!/usr/bin/env python
+    '''
+    Custom hardware test for {}}}}}}}}}}}}model_name} on {}}}}}}}}}}}}hardware_platform}
+    Generated by develop_custom_hardware_tests.py
+    '''
 
-import os
-import sys
-import unittest
-import logging
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+    import os
+    import sys
+    import unittest
+    import logging
+    from pathlib import Path
+    from typing import Dict, List, Any, Optional
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+    logging.basicConfig())))))level=logging.INFO,
+    format='%())))))asctime)s - %())))))name)s - %())))))levelname)s - %())))))message)s')
+    logger = logging.getLogger())))))__name__)
 
 # Import resource pool
-script_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(script_dir)
-sys.path.append(parent_dir)
-from resource_pool import get_global_resource_pool
+    script_dir = os.path.dirname())))))os.path.abspath())))))__file__))
+    parent_dir = os.path.dirname())))))script_dir)
+    sys.path.append())))))parent_dir)
+    from resource_pool import get_global_resource_pool
 
-class Test{model_class}On{platform_class}(unittest.TestCase):
-    '''Custom test for {model_name} on {hardware_platform}'''
+class Test{}}}}}}}}}}}}model_class}On{}}}}}}}}}}}}platform_class}())))))unittest.TestCase):
+    '''Custom test for {}}}}}}}}}}}}model_name} on {}}}}}}}}}}}}hardware_platform}'''
     
     @classmethod
-    def setUpClass(cls):
+    def setUpClass())))))cls):
         '''Set up the test class - load model once for all tests'''
         # Get resource pool
-        pool = get_global_resource_pool()
+        pool = get_global_resource_pool()))))))
         
         # Load required libraries
-        cls.torch = pool.get_resource("torch", constructor=lambda: __import__("torch"))
-        cls.transformers = pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
+        cls.torch = pool.get_resource())))))"torch", constructor=lambda: __import__())))))"torch"))
+        cls.transformers = pool.get_resource())))))"transformers", constructor=lambda: __import__())))))"transformers"))
         
         # Define model constructor
-        def create_model():
-            from transformers import {auto_class}
-            return {auto_class}.from_pretrained("{model_name}")
+        def create_model())))))):
+            from transformers import {}}}}}}}}}}}}auto_class}
+        return {}}}}}}}}}}}}auto_class}.from_pretrained())))))"{}}}}}}}}}}}}model_name}")
         
         # Set hardware preferences
-        hardware_preferences = {{
-            "device": "{hardware_platform}"
+        hardware_preferences = {}}}}}}}}}}}}{}}}}}}}}}}}}
+        "device": "{}}}}}}}}}}}}hardware_platform}"
         }}
         
         # Load model with hardware preferences
-        cls.model = pool.get_model(
-            "{model_family}",
-            "{model_name}",
-            constructor=create_model,
-            hardware_preferences=hardware_preferences
+        cls.model = pool.get_model())))))
+        "{}}}}}}}}}}}}model_family}",
+        "{}}}}}}}}}}}}model_name}",
+        constructor=create_model,
+        hardware_preferences=hardware_preferences
         )
         
         # Define tokenizer/processor constructor
-        def create_tokenizer():
-            from transformers import {tokenizer_class}
-            return {tokenizer_class}.from_pretrained("{model_name}")
+        def create_tokenizer())))))):
+            from transformers import {}}}}}}}}}}}}tokenizer_class}
+        return {}}}}}}}}}}}}tokenizer_class}.from_pretrained())))))"{}}}}}}}}}}}}model_name}")
         
         # Load tokenizer/processor
-        cls.tokenizer = pool.get_tokenizer(
-            "{model_family}",
-            "{model_name}",
-            constructor=create_tokenizer
+        cls.tokenizer = pool.get_tokenizer())))))
+        "{}}}}}}}}}}}}model_family}",
+        "{}}}}}}}}}}}}model_name}",
+        constructor=create_tokenizer
         )
         
         # Verify resources loaded correctly
@@ -171,117 +171,117 @@ class Test{model_class}On{platform_class}(unittest.TestCase):
         assert cls.tokenizer is not None, "Failed to load tokenizer/processor"
         
         # Get model device
-        if hasattr(cls.model, "device"):
+        if hasattr())))))cls.model, "device"):
             cls.device = cls.model.device
         else:
             # Try to get device from model parameters
             try:
-                cls.device = next(cls.model.parameters()).device
+                cls.device = next())))))cls.model.parameters()))))))).device
             except:
                 # Fallback to specified hardware platform
-                cls.device = cls.torch.device("{hardware_platform}")
+                cls.device = cls.torch.device())))))"{}}}}}}}}}}}}hardware_platform}")
         
         # Log model and device information
-        logger.info(f"Model loaded: {{type(cls.model).__name__}}")
-        logger.info(f"Device: {{cls.device}}")
+                logger.info())))))f"Model loaded: {}}}}}}}}}}}}{}}}}}}}}}}}}type())))))cls.model).__name__}}")
+                logger.info())))))f"Device: {}}}}}}}}}}}}{}}}}}}}}}}}}cls.device}}")
     
-    def test_model_on_correct_device(self):
+    def test_model_on_correct_device())))))self):
         '''Test that the model is on the correct device'''
-        # Get device type (strip index if present)
-        device_type = str(self.device).split(':')[0]
-        expected_device_type = "{hardware_platform}"
+        # Get device type ())))))strip index if present:):
+        device_type = str())))))self.device).split())))))':')[0],
+        expected_device_type = "{}}}}}}}}}}}}hardware_platform}"
         
-        self.assertEqual(device_type, expected_device_type,
-                        f"Model should be on {expected_device_type}, but is on {{device_type}}")
+        self.assertEqual())))))device_type, expected_device_type,
+        f"Model should be on {}}}}}}}}}}}}expected_device_type}, but is on {}}}}}}}}}}}}{}}}}}}}}}}}}device_type}}")
     
-    def test_basic_inference(self):
+    def test_basic_inference())))))self):
         '''Test basic inference functionality'''
         # Run appropriate test for model family
-{basic_inference_test}
+        {}}}}}}}}}}}}basic_inference_test}
     
-    def test_model_specific_functionality(self):
+    def test_model_specific_functionality())))))self):
         '''Test model-specific functionality'''
         # Add model-specific tests here
         pass
     
-    @classmethod
-    def tearDownClass(cls):
+        @classmethod
+    def tearDownClass())))))cls):
         '''Clean up resources'''
         # Get resource pool stats
-        pool = get_global_resource_pool()
-        stats = pool.get_stats()
-        logger.info(f"Resource pool stats: {{stats}}")
+        pool = get_global_resource_pool()))))))
+        stats = pool.get_stats()))))))
+        logger.info())))))f"Resource pool stats: {}}}}}}}}}}}}{}}}}}}}}}}}}stats}}")
         
         # Cleanup unused resources
-        pool.cleanup_unused_resources(max_age_minutes=0.1)  # 6 seconds
+        pool.cleanup_unused_resources())))))max_age_minutes=0.1)  # 6 seconds
 
-def main():
+def main())))))):
     '''Run the tests'''
-    unittest.main()
+    unittest.main()))))))
 
 if __name__ == "__main__":
-    main()
-"""
+    main()))))))
+    """
 
 # Family-specific basic inference test patterns
-BASIC_INFERENCE_TESTS = {
+    BASIC_INFERENCE_TESTS = {}}}}}}}}}}}}
     "embedding": '''
         # Create a simple input
-        text = "This is a test"
-        inputs = self.tokenizer(text, return_tensors="pt")
+    text = "This is a test"
+    inputs = self.tokenizer())))))text, return_tensors="pt")
         
         # Move inputs to device
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+    inputs = {}}}}}}}}}}}}k: v.to())))))self.device) for k, v in inputs.items()))))))}
         
         # Run inference
-        with self.torch.no_grad():
-            outputs = self.model(**inputs)
+        with self.torch.no_grad())))))):
+            outputs = self.model())))))**inputs)
         
         # Verify output shape
-        self.assertIsNotNone(outputs, "Model output should not be None")
-        self.assertTrue(hasattr(outputs, "last_hidden_state"), 
-                      "Output should have last_hidden_state attribute")
-        self.assertEqual(outputs.last_hidden_state.shape[0], 1, 
-                       "Batch size should be 1")''',
+            self.assertIsNotNone())))))outputs, "Model output should not be None")
+            self.assertTrue())))))hasattr())))))outputs, "last_hidden_state"),
+            "Output should have last_hidden_state attribute")
+            self.assertEqual())))))outputs.last_hidden_state.shape[0],, 1,
+            "Batch size should be 1")''',
     
-    "text_generation": '''
+            "text_generation": '''
         # Create a simple input
-        text = "Hello, world!"
-        inputs = self.tokenizer(text, return_tensors="pt")
+            text = "Hello, world!"
+            inputs = self.tokenizer())))))text, return_tensors="pt")
         
         # Move inputs to device
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            inputs = {}}}}}}}}}}}}k: v.to())))))self.device) for k, v in inputs.items()))))))}
         
         # Run forward pass
-        with self.torch.no_grad():
-            outputs = self.model(**inputs)
+        with self.torch.no_grad())))))):
+            outputs = self.model())))))**inputs)
         
         # Verify output
-        self.assertIsNotNone(outputs, "Model output should not be None")
-        self.assertTrue(hasattr(outputs, "logits"), 
-                      "Output should have logits attribute")
+            self.assertIsNotNone())))))outputs, "Model output should not be None")
+            self.assertTrue())))))hasattr())))))outputs, "logits"),
+            "Output should have logits attribute")
         
         # Try simple generation
         try:
-            generation_output = self.model.generate(
-                **inputs,
-                max_length=20,
-                pad_token_id=self.tokenizer.eos_token_id
+            generation_output = self.model.generate())))))
+            **inputs,
+            max_length=20,
+            pad_token_id=self.tokenizer.eos_token_id
             )
             
             # Decode generated text
-            generated_text = self.tokenizer.decode(generation_output[0], skip_special_tokens=True)
+            generated_text = self.tokenizer.decode())))))generation_output[0],, skip_special_tokens=True)
             
             # Verify we got some text
-            self.assertIsNotNone(generated_text, "Generated text should not be None")
-            self.assertTrue(len(generated_text) > 0, "Generated text should not be empty")
-            logger.info(f"Generated text: {generated_text}")
+            self.assertIsNotNone())))))generated_text, "Generated text should not be None")
+            self.assertTrue())))))len())))))generated_text) > 0, "Generated text should not be empty")
+            logger.info())))))f"Generated text: {}}}}}}}}}}}}generated_text}")
         except Exception as e:
-            logger.warning(f"Generation test failed: {e}")
+            logger.warning())))))f"Generation test failed: {}}}}}}}}}}}}e}")
             # Not all models support generation, so don't fail the test
             pass''',
     
-    "vision": '''
+            "vision": '''
         try:
             # Create a dummy image input
             import torch
@@ -291,20 +291,20 @@ BASIC_INFERENCE_TESTS = {
             width = 224
             
             # Create random image tensor
-            dummy_image = torch.rand(batch_size, num_channels, height, width, device=self.device)
+            dummy_image = torch.rand())))))batch_size, num_channels, height, width, device=self.device)
             
             # Process the image with the appropriate processor/tokenizer
             # The exact processing depends on the model type
             try:
                 # For vision models using AutoImageProcessor
-                inputs = {"pixel_values": dummy_image}
+                inputs = {}}}}}}}}}}}}"pixel_values": dummy_image}
                 
                 # Run inference
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
+                with torch.no_grad())))))):
+                    outputs = self.model())))))**inputs)
                 
                 # Check outputs
-                self.assertIsNotNone(outputs, "Model outputs should not be None")
+                    self.assertIsNotNone())))))outputs, "Model outputs should not be None")
                 
             except Exception as first_error:
                 # Try alternative approach with tokenizer/processor
@@ -314,26 +314,26 @@ BASIC_INFERENCE_TESTS = {
                     import numpy as np
                     
                     # Create a simple PIL image as fallback
-                    dummy_pil = Image.new('RGB', (width, height), color='white')
+                    dummy_pil = Image.new())))))'RGB', ())))))width, height), color='white')
                     
                     # Process the image
-                    inputs = self.tokenizer(images=dummy_pil, return_tensors="pt")
+                    inputs = self.tokenizer())))))images=dummy_pil, return_tensors="pt")
                     
                     # Move to device
-                    inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                    inputs = {}}}}}}}}}}}}k: v.to())))))self.device) for k, v in inputs.items()))))))}
                     
                     # Run inference
-                    with torch.no_grad():
-                        outputs = self.model(**inputs)
+                    with torch.no_grad())))))):
+                        outputs = self.model())))))**inputs)
                     
-                    self.assertIsNotNone(outputs, "Model outputs should not be None")
+                        self.assertIsNotNone())))))outputs, "Model outputs should not be None")
                     
                 except Exception as second_error:
-                    self.fail(f"Vision inference failed with both approaches: {first_error}, {second_error}")
+                    self.fail())))))f"Vision inference failed with both approaches: {}}}}}}}}}}}}first_error}, {}}}}}}}}}}}}second_error}")
         except ImportError as e:
-            self.skipTest(f"Required libraries for vision tests not available: {e}")''',
+            self.skipTest())))))f"Required libraries for vision tests not available: {}}}}}}}}}}}}e}")''',
     
-    "audio": '''
+            "audio": '''
         try:
             # Create dummy audio input
             import numpy as np
@@ -341,28 +341,28 @@ BASIC_INFERENCE_TESTS = {
             
             # 1 second of audio at 16kHz
             sample_rate = 16000
-            dummy_audio = np.random.randn(sample_rate).astype(np.float32)
+            dummy_audio = np.random.randn())))))sample_rate).astype())))))np.float32)
             
             # Process the audio with the appropriate processor
             try:
-                inputs = self.tokenizer(dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
+                inputs = self.tokenizer())))))dummy_audio, sampling_rate=sample_rate, return_tensors="pt")
                 
                 # Move to device
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                inputs = {}}}}}}}}}}}}k: v.to())))))self.device) for k, v in inputs.items()))))))}
                 
                 # Run inference
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
+                with torch.no_grad())))))):
+                    outputs = self.model())))))**inputs)
                 
-                self.assertIsNotNone(outputs, "Model outputs should not be None")
+                    self.assertIsNotNone())))))outputs, "Model outputs should not be None")
                 
             except Exception as e:
-                self.skipTest(f"Audio processing failed: {e}")
+                self.skipTest())))))f"Audio processing failed: {}}}}}}}}}}}}e}")
                 
         except ImportError as e:
-            self.skipTest(f"Required libraries for audio tests not available: {e}")''',
+            self.skipTest())))))f"Required libraries for audio tests not available: {}}}}}}}}}}}}e}")''',
     
-    "multimodal": '''
+            "multimodal": '''
         try:
             # Create dummy inputs for both modalities
             import torch
@@ -372,161 +372,161 @@ BASIC_INFERENCE_TESTS = {
             # Text input
             text = "This is a test image"
             
-            # Image input (224x224 white image)
-            dummy_image = Image.new('RGB', (224, 224), color='white')
+            # Image input ())))))224x224 white image)
+            dummy_image = Image.new())))))'RGB', ())))))224, 224), color='white')
             
             # Try different input formats
             try:
-                # Try standard format first (CLIP-like)
-                inputs = self.tokenizer(text=text, images=dummy_image, return_tensors="pt")
+                # Try standard format first ())))))CLIP-like)
+                inputs = self.tokenizer())))))text=text, images=dummy_image, return_tensors="pt")
                 
                 # Move to device
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                inputs = {}}}}}}}}}}}}k: v.to())))))self.device) for k, v in inputs.items()))))))}
                 
                 # Run inference
-                with torch.no_grad():
-                    outputs = self.model(**inputs)
+                with torch.no_grad())))))):
+                    outputs = self.model())))))**inputs)
                 
-                self.assertIsNotNone(outputs, "Model outputs should not be None")
+                    self.assertIsNotNone())))))outputs, "Model outputs should not be None")
                 
             except Exception as first_error:
                 # Try alternative formats
                 try:
                     # Try processor with image first, then add text
-                    pixel_values = self.tokenizer(images=dummy_image, return_tensors="pt").pixel_values.to(self.device)
-                    text_inputs = self.tokenizer(text, padding=True, return_tensors="pt")
-                    input_ids = text_inputs.input_ids.to(self.device)
-                    attention_mask = text_inputs.attention_mask.to(self.device)
+                    pixel_values = self.tokenizer())))))images=dummy_image, return_tensors="pt").pixel_values.to())))))self.device)
+                    text_inputs = self.tokenizer())))))text, padding=True, return_tensors="pt")
+                    input_ids = text_inputs.input_ids.to())))))self.device)
+                    attention_mask = text_inputs.attention_mask.to())))))self.device)
                     
                     # Run inference
-                    with torch.no_grad():
-                        outputs = self.model(
-                            input_ids=input_ids,
-                            attention_mask=attention_mask,
-                            pixel_values=pixel_values
+                    with torch.no_grad())))))):
+                        outputs = self.model())))))
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        pixel_values=pixel_values
                         )
                     
-                    self.assertIsNotNone(outputs, "Model outputs should not be None")
+                        self.assertIsNotNone())))))outputs, "Model outputs should not be None")
                     
                 except Exception as second_error:
-                    self.skipTest(f"Multimodal inference failed with multiple approaches: {first_error}, {second_error}")
+                    self.skipTest())))))f"Multimodal inference failed with multiple approaches: {}}}}}}}}}}}}first_error}, {}}}}}}}}}}}}second_error}")
         except ImportError as e:
-            self.skipTest(f"Required libraries for multimodal tests not available: {e}")'''
-}
+            self.skipTest())))))f"Required libraries for multimodal tests not available: {}}}}}}}}}}}}e}")'''
+            }
 
-def parse_args():
+def parse_args())))))):
     """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Develop custom hardware-specific tests")
-    parser.add_argument("--model", type=str, required=True, help="Model name to create tests for")
-    parser.add_argument("--platform", type=str, choices=["all", "cpu", "cuda", "mps", "rocm", "openvino", "webnn", "webgpu"],
-                      default="all", help="Hardware platform to target")
-    parser.add_argument("--family", type=str, choices=["auto", "embedding", "text_generation", "vision", "audio", "multimodal"],
-                      default="auto", help="Model family (auto to detect automatically)")
-    parser.add_argument("--output-dir", type=str, default=OUTPUT_DIR, 
-                      help="Output directory for test files")
-    parser.add_argument("--template-dir", type=str, default=TEMPLATE_DIR,
-                      help="Directory containing test templates")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--run-test", action="store_true", help="Run test after generating it")
-    parser.add_argument("--verify-only", action="store_true", help="Only verify existing tests, don't generate new ones")
-    parser.add_argument("--check-all-platforms", action="store_true", 
-                      help="Check if tests for all platforms are complete")
-    return parser.parse_args()
-
-def ensure_directories(args):
+    parser = argparse.ArgumentParser())))))description="Develop custom hardware-specific tests")
+    parser.add_argument())))))"--model", type=str, required=True, help="Model name to create tests for")
+    parser.add_argument())))))"--platform", type=str, choices=["all", "cpu", "cuda", "mps", "rocm", "openvino", "webnn", "webgpu"],
+    default="all", help="Hardware platform to target")
+    parser.add_argument())))))"--family", type=str, choices=["auto", "embedding", "text_generation", "vision", "audio", "multimodal"],
+    default="auto", help="Model family ())))))auto to detect automatically)")
+    parser.add_argument())))))"--output-dir", type=str, default=OUTPUT_DIR, 
+    help="Output directory for test files")
+    parser.add_argument())))))"--template-dir", type=str, default=TEMPLATE_DIR,
+    help="Directory containing test templates")
+    parser.add_argument())))))"--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument())))))"--run-test", action="store_true", help="Run test after generating it")
+    parser.add_argument())))))"--verify-only", action="store_true", help="Only verify existing tests, don't generate new ones")
+    parser.add_argument())))))"--check-all-platforms", action="store_true", 
+    help="Check if tests for all platforms are complete")
+            return parser.parse_args()))))))
+:
+def ensure_directories())))))args):
     """Ensure all necessary directories exist"""
-    os.makedirs(args.output_dir, exist_ok=True)
-    os.makedirs(args.template_dir, exist_ok=True)
+    os.makedirs())))))args.output_dir, exist_ok=True)
+    os.makedirs())))))args.template_dir, exist_ok=True)
     
     # Create required family/platform subdirectories
     for family in TEST_TEMPLATES:
-        family_dir = os.path.join(args.output_dir, family)
-        os.makedirs(family_dir, exist_ok=True)
+        family_dir = os.path.join())))))args.output_dir, family)
+        os.makedirs())))))family_dir, exist_ok=True)
 
-def detect_model_family(model_name, args):
+def detect_model_family())))))model_name, args):
     """Detect the model family for the given model name"""
     if args.family != "auto":
         # User specified the family
-        logger.info(f"Using user-specified model family: {args.family}")
-        return args.family
+        logger.info())))))f"Using user-specified model family: {}}}}}}}}}}}}args.family}")
+    return args.family
     
-    # Try to use model_family_classifier if available
+    # Try to use model_family_classifier if available:
     if MODEL_CLASSIFIER_AVAILABLE:
         try:
-            classification = classify_model(model_name=model_name)
-            family = classification.get("family")
-            confidence = classification.get("confidence", 0)
+            classification = classify_model())))))model_name=model_name)
+            family = classification.get())))))"family")
+            confidence = classification.get())))))"confidence", 0)
             
             if family:
-                logger.info(f"Classified model as {family} with confidence {confidence:.2f}")
-                return family
+                logger.info())))))f"Classified model as {}}}}}}}}}}}}family} with confidence {}}}}}}}}}}}}confidence:.2f}")
+            return family
             else:
-                logger.warning("Model family classifier returned no family")
+                logger.warning())))))"Model family classifier returned no family")
         except Exception as e:
-            logger.warning(f"Error classifying model: {e}")
+            logger.warning())))))f"Error classifying model: {}}}}}}}}}}}}e}")
     
     # Fallback to basic name-based classification
-    model_lower = model_name.lower()
+            model_lower = model_name.lower()))))))
     
     # Check for known patterns in model name
-    if any(keyword in model_lower for keyword in ["bert", "roberta", "distilbert", "electra", "albert"]):
-        return "embedding"
-    elif any(keyword in model_lower for keyword in ["gpt", "llama", "t5", "bloom", "falcon", "mistral"]):
+            if any())))))keyword in model_lower for keyword in ["bert", "roberta", "distilbert", "electra", "albert"]):,
+                return "embedding"
+    elif any())))))keyword in model_lower for keyword in ["gpt", "llama", "t5", "bloom", "falcon", "mistral"]):,
         return "text_generation"
-    elif any(keyword in model_lower for keyword in ["vit", "resnet", "swin", "yolo", "detr", "deit"]):
+    elif any())))))keyword in model_lower for keyword in ["vit", "resnet", "swin", "yolo", "detr", "deit"]):,
         return "vision"
-    elif any(keyword in model_lower for keyword in ["whisper", "wav2vec", "hubert", "audio"]):
-        return "audio"
-    elif any(keyword in model_lower for keyword in ["clip", "blip", "llava", "pali"]):
-        return "multimodal"
+    elif any())))))keyword in model_lower for keyword in ["whisper", "wav2vec", "hubert", "audio"]):,
+    return "audio"
+    elif any())))))keyword in model_lower for keyword in ["clip", "blip", "llava", "pali"]):,
+                    return "multimodal"
     
     # Default to embedding if no match found
-    logger.warning(f"Could not determine model family for {model_name}, defaulting to embedding")
-    return "embedding"
-
-def detect_available_platforms():
+                    logger.warning())))))f"Could not determine model family for {}}}}}}}}}}}}model_name}, defaulting to embedding")
+                        return "embedding"
+:
+def detect_available_platforms())))))):
     """Detect available hardware platforms"""
     if HARDWARE_DETECTION_AVAILABLE:
         try:
             # Use hardware detection module
-            detector = HardwareDetector()
-            hardware_info = detector.get_available_hardware()
+            detector = HardwareDetector()))))))
+            hardware_info = detector.get_available_hardware()))))))
             
             # Filter to only include key hardware platforms
-            available_platforms = {
-                platform: available for platform, available in hardware_info.items()
-                if platform in [CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM]
+            available_platforms = {}}}}}}}}}}}}
+            platform: available for platform, available in hardware_info.items()))))))
+            if platform in [CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM],
             }
-            
-            logger.info(f"Available hardware platforms: {[p for p, a in available_platforms.items() if a]}")
-            return available_platforms
+            :
+                logger.info())))))f"Available hardware platforms: {}}}}}}}}}}}}[p for p, a in available_platforms.items())))))) if a]}"),,
+            return available_platforms:
         except Exception as e:
-            logger.warning(f"Error using hardware detection: {e}")
+            logger.warning())))))f"Error using hardware detection: {}}}}}}}}}}}}e}")
     
     # Fallback to basic detection using torch
     try:
         import torch
-        cuda_available = torch.cuda.is_available()
-        mps_available = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+        cuda_available = torch.cuda.is_available()))))))
+        mps_available = hasattr())))))torch.backends, "mps") and torch.backends.mps.is_available()))))))
         
-        available_platforms = {
-            CPU: True,
-            CUDA: cuda_available,
-            MPS: mps_available,
-            ROCM: False,
-            OPENVINO: False,
-            WEBNN: False,
-            WEBGPU: False,
-            QUALCOMM: False
+        available_platforms = {}}}}}}}}}}}}
+        CPU: True,
+        CUDA: cuda_available,
+        MPS: mps_available,
+        ROCM: False,
+        OPENVINO: False,
+        WEBNN: False,
+        WEBGPU: False,
+        QUALCOMM: False
         }
         
-        logger.info(f"Available hardware platforms (basic detection): {[p for p, a in available_platforms.items() if a]}")
-        return available_platforms
+        logger.info())))))f"Available hardware platforms ())))))basic detection): {}}}}}}}}}}}}[p for p, a in available_platforms.items())))))) if a]}"),,
+        return available_platforms:
     except ImportError:
-        logger.warning("PyTorch not available. Assuming only CPU is available.")
+        logger.warning())))))"PyTorch not available. Assuming only CPU is available.")
         
         # Default to only CPU available
-        return {
+            return {}}}}}}}}}}}}
             CPU: True,
             CUDA: False,
             MPS: False,
@@ -535,321 +535,320 @@ def detect_available_platforms():
             WEBNN: False,
             WEBGPU: False,
             QUALCOMM: False
-        }
+            }
 
-def get_auto_class_for_family(family):
+def get_auto_class_for_family())))))family):
     """Get the appropriate AutoClass for the model family"""
     if family == "text_generation":
-        return "AutoModelForCausalLM"
+    return "AutoModelForCausalLM"
     elif family == "vision":
-        return "AutoModelForImageClassification"
+    return "AutoModelForImageClassification"
     elif family == "audio":
-        return "AutoModelForAudioClassification"
+    return "AutoModelForAudioClassification"
     elif family == "multimodal":
         # Special case for CLIP
-        if "clip" in model_name.lower():
-            return "CLIPModel"
-        return "AutoModel"
+        if "clip" in model_name.lower())))))):
+        return "CLIPModel"
+    return "AutoModel"
     else:  # embedding or default
         return "AutoModel"
 
-def get_tokenizer_class_for_family(family):
+def get_tokenizer_class_for_family())))))family):
     """Get the appropriate tokenizer/processor class for the model family"""
     if family == "vision":
-        return "AutoImageProcessor"
+    return "AutoImageProcessor"
     elif family == "audio" or family == "multimodal":
-        return "AutoProcessor"
+    return "AutoProcessor"
     else:  # embedding, text_generation, or default
-        return "AutoTokenizer"
+            return "AutoTokenizer"
 
-def platform_to_class_name(platform):
+def platform_to_class_name())))))platform):
     """Convert platform name to a valid Python class name"""
-    platform_upper = platform.upper()
+    platform_upper = platform.upper()))))))
     if platform_upper == "CPU":
-        return "CPU"
+    return "CPU"
     elif platform_upper == "CUDA":
-        return "CUDA"
+    return "CUDA"
     elif platform_upper == "MPS":
-        return "MPS"
+    return "MPS"
     elif platform_upper == "ROCM":
-        return "ROCm"
+    return "ROCm"
     elif platform_upper == "OPENVINO":
-        return "OpenVINO"
+    return "OpenVINO"
     elif platform_upper == "WEBNN":
-        return "WebNN"
+    return "WebNN"
     elif platform_upper == "WEBGPU":
-        return "WebGPU"
+    return "WebGPU"
     else:
-        return platform_upper
+    return platform_upper
 
-def model_to_class_name(model_name):
+def model_to_class_name())))))model_name):
     """Convert model name to a valid Python class name"""
-    # Remove organization prefix if present
+    # Remove organization prefix if present:
     if "/" in model_name:
-        model_name = model_name.split("/")[-1]
-    
+        model_name = model_name.split())))))"/")[-1]
+        ,
     # Replace hyphens and underscores with spaces
-    model_name = model_name.replace("-", " ").replace("_", " ")
+        model_name = model_name.replace())))))"-", " ").replace())))))"_", " ")
     
     # Title case and remove spaces
-    model_class = "".join(word.capitalize() for word in model_name.split())
-    
-    return model_class
+    model_class = "".join())))))word.capitalize())))))) for word in model_name.split()))))))):
+        return model_class
 
-def load_template(model_family, platform, args):
+def load_template())))))model_family, platform, args):
     """Load the appropriate test template for the model family and platform"""
-    # Check if a template exists for this specific family and platform
-    if model_family in TEST_TEMPLATES and platform in TEST_TEMPLATES[model_family]:
-        template_file = TEST_TEMPLATES[model_family][platform]
-        template_path = os.path.join(args.template_dir, template_file)
+    # Check if a template exists for this specific family and platform:
+    if model_family in TEST_TEMPLATES and platform in TEST_TEMPLATES[model_family]:,
+    template_file = TEST_TEMPLATES[model_family][platform],
+    template_path = os.path.join())))))args.template_dir, template_file)
         
         # If the template file exists, use it
-        if os.path.exists(template_path):
-            with open(template_path, 'r') as f:
-                logger.info(f"Using template: {template_path}")
-                return f.read()
+        if os.path.exists())))))template_path):
+            with open())))))template_path, 'r') as f:
+                logger.info())))))f"Using template: {}}}}}}}}}}}}template_path}")
+            return f.read()))))))
     
     # Fall back to the basic template with the appropriate inference test
-    logger.info(f"Using basic template for {model_family} on {platform}")
+            logger.info())))))f"Using basic template for {}}}}}}}}}}}}model_family} on {}}}}}}}}}}}}platform}")
     return BASIC_TEST_TEMPLATE
 
-def generate_test_file(model_name, model_family, platform, args):
+def generate_test_file())))))model_name, model_family, platform, args):
     """Generate a test file for the specified model, family, and platform"""
     # Load the appropriate template
-    template = load_template(model_family, platform, args)
+    template = load_template())))))model_family, platform, args)
     
     # Get auto class and tokenizer class for the model family
-    auto_class = get_auto_class_for_family(model_family)
-    tokenizer_class = get_tokenizer_class_for_family(model_family)
+    auto_class = get_auto_class_for_family())))))model_family)
+    tokenizer_class = get_tokenizer_class_for_family())))))model_family)
     
     # Get class names for model and platform
-    model_class = model_to_class_name(model_name)
-    platform_class = platform_to_class_name(platform)
+    model_class = model_to_class_name())))))model_name)
+    platform_class = platform_to_class_name())))))platform)
     
     # Get the basic inference test for this family
-    basic_inference_test = BASIC_INFERENCE_TESTS.get(model_family, "pass")
+    basic_inference_test = BASIC_INFERENCE_TESTS.get())))))model_family, "pass")
     
     # Fill in the template with model-specific information
-    test_content = template.format(
-        model_name=model_name,
-        model_family=model_family,
-        hardware_platform=platform,
-        model_class=model_class,
-        platform_class=platform_class,
-        auto_class=auto_class,
-        tokenizer_class=tokenizer_class,
-        basic_inference_test=basic_inference_test
+    test_content = template.format())))))
+    model_name=model_name,
+    model_family=model_family,
+    hardware_platform=platform,
+    model_class=model_class,
+    platform_class=platform_class,
+    auto_class=auto_class,
+    tokenizer_class=tokenizer_class,
+    basic_inference_test=basic_inference_test
     )
     
     # Create the output filename
-    output_filename = f"test_{model_family}_{model_class}_on_{platform_class}.py"
-    output_path = os.path.join(args.output_dir, model_family, output_filename)
+    output_filename = f"test_{}}}}}}}}}}}}model_family}_{}}}}}}}}}}}}model_class}_on_{}}}}}}}}}}}}platform_class}.py"
+    output_path = os.path.join())))))args.output_dir, model_family, output_filename)
     
     # Write the test file
-    with open(output_path, 'w') as f:
-        f.write(test_content)
+    with open())))))output_path, 'w') as f:
+        f.write())))))test_content)
     
-    logger.info(f"Generated test file: {output_path}")
+        logger.info())))))f"Generated test file: {}}}}}}}}}}}}output_path}")
     return output_path
 
-def run_test_file(test_path):
+def run_test_file())))))test_path):
     """Run the generated test file"""
-    logger.info(f"Running test: {test_path}")
+    logger.info())))))f"Running test: {}}}}}}}}}}}}test_path}")
     
     try:
         # Run the test file as a subprocess
         import subprocess
-        start_time = time.time()
-        result = subprocess.run([sys.executable, test_path], 
-                               capture_output=True, text=True)
-        end_time = time.time()
+        start_time = time.time()))))))
+        result = subprocess.run())))))[sys.executable, test_path], 
+        capture_output=True, text=True)
+        end_time = time.time()))))))
         
-        # Check if the test passed
+        # Check if the test passed:
         if result.returncode == 0:
-            logger.info(f"✅ Test passed in {end_time - start_time:.2f} seconds")
-            return True
+            logger.info())))))f"✅ Test passed in {}}}}}}}}}}}}end_time - start_time:.2f} seconds")
+        return True
         else:
-            logger.error(f"❌ Test failed with exit code {result.returncode}")
-            logger.error(f"Stdout: {result.stdout}")
-            logger.error(f"Stderr: {result.stderr}")
-            return False
+            logger.error())))))f"❌ Test failed with exit code {}}}}}}}}}}}}result.returncode}")
+            logger.error())))))f"Stdout: {}}}}}}}}}}}}result.stdout}")
+            logger.error())))))f"Stderr: {}}}}}}}}}}}}result.stderr}")
+        return False
     except Exception as e:
-        logger.error(f"Error running test: {e}")
+        logger.error())))))f"Error running test: {}}}}}}}}}}}}e}")
         return False
 
-def verify_existing_tests(model_name, model_family, args):
+def verify_existing_tests())))))model_name, model_family, args):
     """Verify existing tests for the model"""
-    logger.info(f"Verifying existing tests for {model_name} ({model_family})")
+    logger.info())))))f"Verifying existing tests for {}}}}}}}}}}}}model_name} ()))))){}}}}}}}}}}}}model_family})")
     
     # Get model class name
-    model_class = model_to_class_name(model_name)
+    model_class = model_to_class_name())))))model_name)
     
     # Check for existing tests in the model family directory
-    family_dir = os.path.join(args.output_dir, model_family)
-    if not os.path.exists(family_dir):
-        logger.warning(f"Family directory does not exist: {family_dir}")
-        return {}
+    family_dir = os.path.join())))))args.output_dir, model_family)
+    if not os.path.exists())))))family_dir):
+        logger.warning())))))f"Family directory does not exist: {}}}}}}}}}}}}family_dir}")
+    return {}}}}}}}}}}}}}
     
     # Find all test files for this model
-    test_pattern = f"test_{model_family}_{model_class}_on_*.py"
-    test_files = list(Path(family_dir).glob(test_pattern))
+    test_pattern = f"test_{}}}}}}}}}}}}model_family}_{}}}}}}}}}}}}model_class}_on_*.py"
+    test_files = list())))))Path())))))family_dir).glob())))))test_pattern))
     
     if not test_files:
-        logger.warning(f"No tests found for {model_name} ({model_family})")
-        return {}
+        logger.warning())))))f"No tests found for {}}}}}}}}}}}}model_name} ()))))){}}}}}}}}}}}}model_family})")
+    return {}}}}}}}}}}}}}
     
     # Extract platform from each test file and check if it runs
-    test_results = {}
+    test_results = {}}}}}}}}}}}}}:
     for test_file in test_files:
         # Extract platform from filename
         filename = test_file.name
-        platform_part = filename.split("_on_")[1].replace(".py", "")
-        
+        platform_part = filename.split())))))"_on_")[1].replace())))))".py", "")
+        ,
         # Map platform class name back to platform identifier
-        platform = platform_part.lower()
+        platform = platform_part.lower()))))))
         if platform == "rocm":
             platform = ROCM
         
         # Store the test file
-        test_results[platform] = {
-            "file": str(test_file),
+            test_results[platform] = {}}}}}}}}}}}},
+            "file": str())))))test_file),
             "exists": True,
             "runs": None  # To be filled in if args.run_test is True
-        }
+            }
         
-        # Run the test if requested
+        # Run the test if requested::
         if args.run_test:
-            test_results[platform]["runs"] = run_test_file(str(test_file))
-    
-    return test_results
+            test_results[platform]["runs"] = run_test_file())))))str())))))test_file))
+            ,
+            return test_results
 
-def check_platform_coverage(model_name, model_family, args):
+def check_platform_coverage())))))model_name, model_family, args):
     """Check if tests for all platforms are complete"""
-    logger.info(f"Checking platform coverage for {model_name} ({model_family})")
+    logger.info())))))f"Checking platform coverage for {}}}}}}}}}}}}model_name} ()))))){}}}}}}}}}}}}model_family})")
     
     # Get existing tests
-    existing_tests = verify_existing_tests(model_name, model_family, args)
+    existing_tests = verify_existing_tests())))))model_name, model_family, args)
     
     # Check which platforms are supported for this family
-    supported_platforms = set()
+    supported_platforms = set())))))):
     if model_family in TEST_TEMPLATES:
-        supported_platforms = set(TEST_TEMPLATES[model_family].keys())
-    
+        supported_platforms = set())))))TEST_TEMPLATES[model_family].keys())))))))
+        ,
     # Find missing platforms
-    missing_platforms = supported_platforms - set(existing_tests.keys())
+        missing_platforms = supported_platforms - set())))))existing_tests.keys())))))))
     
     # Print coverage summary
-    print(f"\nPlatform Coverage for {model_name} ({model_family}):")
+        print())))))f"\nPlatform Coverage for {}}}}}}}}}}}}model_name} ()))))){}}}}}}}}}}}}model_family}):")
     
     if existing_tests:
-        print("\nExisting tests:")
-        for platform, test_info in existing_tests.items():
-            status = "✅ Runs" if test_info.get("runs") else "❓ Unknown" if test_info.get("runs") is None else "❌ Fails"
-            print(f"  - {platform}: {status} ({os.path.basename(test_info['file'])})")
+        print())))))"\nExisting tests:")
+        for platform, test_info in existing_tests.items())))))):
+            status = "✅ Runs" if test_info.get())))))"runs") else "❓ Unknown" if test_info.get())))))"runs") is None else "❌ Fails":
+                print())))))f"  - {}}}}}}}}}}}}platform}: {}}}}}}}}}}}}status} ()))))){}}}}}}}}}}}}os.path.basename())))))test_info['file'])})"),
     else:
-        print("  No existing tests found")
+        print())))))"  No existing tests found")
     
     if missing_platforms:
-        print("\nMissing tests:")
+        print())))))"\nMissing tests:")
         for platform in missing_platforms:
-            print(f"  - {platform}")
+            print())))))f"  - {}}}}}}}}}}}}platform}")
     else:
-        print("\n✅ Tests for all supported platforms exist")
+        print())))))"\n✅ Tests for all supported platforms exist")
     
     # Return the missing platforms
-    return missing_platforms
+            return missing_platforms
 
-def main():
+def main())))))):
     """Main function"""
     # Parse arguments
-    args = parse_args()
+    args = parse_args()))))))
     
     # Configure logging
     if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logger.setLevel(logging.DEBUG)
+        logging.getLogger())))))).setLevel())))))logging.DEBUG)
+        logger.setLevel())))))logging.DEBUG)
     
     # Ensure directories exist
-    ensure_directories(args)
+        ensure_directories())))))args)
     
     # Get the model name
-    model_name = args.model
+        model_name = args.model
     
     # Detect model family
-    model_family = detect_model_family(model_name, args)
+        model_family = detect_model_family())))))model_name, args)
     
     # If only checking platform coverage
     if args.check_all_platforms:
-        missing_platforms = check_platform_coverage(model_name, model_family, args)
+        missing_platforms = check_platform_coverage())))))model_name, model_family, args)
         
         # Optionally generate missing tests
         if missing_platforms and not args.verify_only:
-            logger.info(f"Generating missing tests for {len(missing_platforms)} platforms")
+            logger.info())))))f"Generating missing tests for {}}}}}}}}}}}}len())))))missing_platforms)} platforms")
             for platform in missing_platforms:
-                generate_test_file(model_name, model_family, platform, args)
+                generate_test_file())))))model_name, model_family, platform, args)
         
-        return 0
+            return 0
     
     # If only verifying existing tests
     if args.verify_only:
-        verify_existing_tests(model_name, model_family, args)
-        return 0
+        verify_existing_tests())))))model_name, model_family, args)
+            return 0
     
     # Detect available platforms
-    available_platforms = detect_available_platforms()
+            available_platforms = detect_available_platforms()))))))
     
     # Filter platforms based on user selection
     if args.platform != "all":
         # User specified a specific platform
-        target_platforms = [args.platform]
+        target_platforms = [args.platform],
     else:
         # Use available platforms
-        target_platforms = [p for p, available in available_platforms.items() 
-                           if available and p in TEST_TEMPLATES.get(model_family, {})]
+        target_platforms = [p for p, available in available_platforms.items())))))) ,
+        if available: and p in TEST_TEMPLATES.get())))))model_family, {}}}}}}}}}}}}})]
         
         # Always include CPU
         if CPU not in target_platforms:
-            target_platforms.append(CPU)
+            target_platforms.append())))))CPU)
     
-    logger.info(f"Generating tests for platforms: {target_platforms}")
+            logger.info())))))f"Generating tests for platforms: {}}}}}}}}}}}}target_platforms}")
     
     # Generate and run tests for each platform
-    successes = []
-    failures = []
+            successes = [],
+            failures = [],
     
     for platform in target_platforms:
         try:
             # Generate test file
-            test_path = generate_test_file(model_name, model_family, platform, args)
+            test_path = generate_test_file())))))model_name, model_family, platform, args)
             
-            # Run test if requested
+            # Run test if requested:
             if args.run_test:
-                if run_test_file(test_path):
-                    successes.append(platform)
+                if run_test_file())))))test_path):
+                    successes.append())))))platform)
                 else:
-                    failures.append(platform)
+                    failures.append())))))platform)
             else:
-                successes.append(platform)
+                successes.append())))))platform)
         except Exception as e:
-            logger.error(f"Error generating test for {platform}: {e}")
-            failures.append(platform)
+            logger.error())))))f"Error generating test for {}}}}}}}}}}}}platform}: {}}}}}}}}}}}}e}")
+            failures.append())))))platform)
     
     # Print summary
-    print("\nTest Generation Summary:")
-    print(f"Model: {model_name}")
-    print(f"Family: {model_family}")
+            print())))))"\nTest Generation Summary:")
+            print())))))f"Model: {}}}}}}}}}}}}model_name}")
+            print())))))f"Family: {}}}}}}}}}}}}model_family}")
     
     if successes:
-        print("\nSuccessful platforms:")
+        print())))))"\nSuccessful platforms:")
         for platform in successes:
-            print(f"  - {platform}")
+            print())))))f"  - {}}}}}}}}}}}}platform}")
     
     if failures:
-        print("\nFailed platforms:")
+        print())))))"\nFailed platforms:")
         for platform in failures:
-            print(f"  - {platform}")
+            print())))))f"  - {}}}}}}}}}}}}platform}")
     
-    return 0 if not failures else 1
-
+        return 0 if not failures else 1
+:
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit())))))main())))))))

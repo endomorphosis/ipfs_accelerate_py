@@ -28,7 +28,7 @@ HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE
 
 # Try to import centralized hardware detection
 try:
-    from centralized_hardware_detection import hardware_detection
+    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
     HAS_CENTRALIZED_DETECTION = True
 except ImportError:
     HAS_CENTRALIZED_DETECTION = False
@@ -49,7 +49,7 @@ class TestBertbaseuncasedModels(unittest.TestCase):
 
     def test_cpu(self):
         """Test bert-base-uncased with cpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::
         if not HAS_CPU: self.skipTest('CPU not available')
         
         # Set up device
@@ -79,7 +79,7 @@ class TestBertbaseuncasedModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -104,7 +104,7 @@ class TestBertbaseuncasedModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for bert-base-uncased", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -113,34 +113,34 @@ class TestBertbaseuncasedModels(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'text' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'text' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,
+            elif 'text' in ['audio', 'vision', 'video']:,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,
             elif 'text' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cpu")
+                logger.info(f"Successfully tested {self.model_id} on cpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cpu: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_cuda(self):
         """Test bert-base-uncased with cuda."""
-        # Skip if hardware not available
+        # Skip if hardware not available::
         if not HAS_CUDA: self.skipTest('CUDA not available')
         
         # Set up device
@@ -170,7 +170,7 @@ class TestBertbaseuncasedModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -195,7 +195,7 @@ class TestBertbaseuncasedModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for bert-base-uncased", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -204,30 +204,30 @@ class TestBertbaseuncasedModels(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'text' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'text' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,
+            elif 'text' in ['audio', 'vision', 'video']:,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,
             elif 'text' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cuda")
+                logger.info(f"Successfully tested {self.model_id} on cuda")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cuda: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
 if __name__ == "__main__":
     unittest.main()

@@ -28,7 +28,7 @@ HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE
 
 # Try to import centralized hardware detection
 try:
-    from centralized_hardware_detection import hardware_detection
+    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
     HAS_CENTRALIZED_DETECTION = True
 except ImportError:
     HAS_CENTRALIZED_DETECTION = False
@@ -44,18 +44,18 @@ class TestClapModels(unittest.TestCase):
         self.processor = None
         self.modality = "audio"
         
-        # Detect hardware capabilities if available
+        # Detect hardware capabilities if available::
         if HAS_CENTRALIZED_DETECTION:
             self.hardware_capabilities = hardware_detection.detect_hardware_capabilities()
         else:
-            self.hardware_capabilities = {
-                "cuda": HAS_CUDA,
-                "rocm": HAS_ROCM,
-                "mps": HAS_MPS,
-                "openvino": HAS_OPENVINO,
-                "qnn": HAS_QNN,
-                "webnn": HAS_WEBNN,
-                "webgpu": HAS_WEBGPU
+            self.hardware_capabilities = {}
+            "cuda": HAS_CUDA,
+            "rocm": HAS_ROCM,
+            "mps": HAS_MPS,
+            "openvino": HAS_OPENVINO,
+            "qnn": HAS_QNN,
+            "webnn": HAS_WEBNN,
+            "webgpu": HAS_WEBGPU
             }
         
     def run_tests(self):
@@ -64,7 +64,7 @@ class TestClapModels(unittest.TestCase):
 
     def test_cpu(self):
         """Test clap with cpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_CPU: self.skipTest('CPU not available')
         
         # Set up device
@@ -94,7 +94,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -119,43 +119,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cpu")
+                logger.info(f"Successfully tested {}self.model_id} on cpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cpu: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on cpu: {}str(e)}")
+                raise
 
     def test_cuda(self):
         """Test clap with cuda."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_CUDA: self.skipTest('CUDA not available')
         
         # Set up device
@@ -185,7 +185,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -210,43 +210,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cuda")
+                logger.info(f"Successfully tested {}self.model_id} on cuda")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cuda: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on cuda: {}str(e)}")
+                raise
 
     def test_rocm(self):
         """Test clap with rocm."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_ROCM: self.skipTest('ROCM not available')
         
         # Set up device
@@ -276,7 +276,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -301,43 +301,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on rocm")
+                logger.info(f"Successfully tested {}self.model_id} on rocm")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on rocm: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on rocm: {}str(e)}")
+                raise
 
     def test_mps(self):
         """Test clap with mps."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_MPS: self.skipTest('MPS not available')
         
         # Set up device
@@ -367,7 +367,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -392,55 +392,55 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on mps")
+                logger.info(f"Successfully tested {}self.model_id} on mps")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on mps: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on mps: {}str(e)}")
+                raise
 
     def test_openvino(self):
         """Test clap with openvino."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_OPENVINO: self.skipTest('OPENVINO not available')
         
         # Set up device
         device = "cpu"
-        # Initialize OpenVINO if available
+        # Initialize OpenVINO if available::
         if HAS_OPENVINO:
             try:
                 import openvino as ov
                 self.ov_core = ov.Core()
                 self.openvino_label = "openvino"
             except Exception as e:
-                logger.warning(f"Error initializing OpenVINO: {{e}}")
+                logger.warning(f"Error initializing OpenVINO: {}{}e}}}}")
         
         try:
             # Initialize tokenizer and model based on modality
@@ -465,7 +465,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -490,43 +490,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on openvino")
+                logger.info(f"Successfully tested {}self.model_id} on openvino")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on openvino: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on openvino: {}str(e)}")
+                raise
 
     def test_qualcomm(self):
         """Test clap with qualcomm."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_QUALCOMM: self.skipTest('QUALCOMM not available')
         
         # Set up device
@@ -556,7 +556,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -581,43 +581,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on qualcomm")
+                logger.info(f"Successfully tested {}self.model_id} on qualcomm")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on qualcomm: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on qualcomm: {}str(e)}")
+                raise
 
     def test_webnn(self):
         """Test clap with webnn."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_WEBNN: self.skipTest('WEBNN not available')
         
         # Set up device
@@ -647,7 +647,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -672,43 +672,43 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on webnn")
+                logger.info(f"Successfully tested {}self.model_id} on webnn")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on webnn: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on webnn: {}str(e)}")
+                raise
 
     def test_webgpu(self):
         """Test clap with webgpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_WEBGPU: self.skipTest('WEBGPU not available')
         
         # Set up device
@@ -738,7 +738,7 @@ class TestClapModels(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -763,39 +763,39 @@ class TestClapModels(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for clap", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'audio' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'audio' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,,,,,,,
+            elif 'audio' in ['audio', 'vision', 'video']:,,,,,,,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,,,,,,,
             elif 'audio' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,,,,,,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on webgpu")
+                logger.info(f"Successfully tested {}self.model_id} on webgpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on webgpu: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on webgpu: {}str(e)}")
+                raise
 
 if __name__ == "__main__":
     unittest.main()

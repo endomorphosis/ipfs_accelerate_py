@@ -38,7 +38,7 @@ class TestBert(unittest.TestCase):
 
     def test_cpu(self):
         """Test bert with cpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available:
         if not HAS_CPU: self.skipTest('CPU not available')
         
         # Set up device
@@ -52,14 +52,14 @@ class TestBert(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for bert", return_tensors="pt")
+                inputs = self.tokenizer("Test input for bert", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -68,15 +68,15 @@ class TestBert(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cpu")
+                logger.info(f"Successfully tested {self.model_id} on cpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cpu: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
 if __name__ == "__main__":
     unittest.main()

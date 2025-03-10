@@ -13,66 +13,66 @@ from pathlib import Path
 
 def find_generator_files(directory):
     """Find generator-related files in the directory."""
-    patterns = [
-        r'.*generator.*\.py$',
-        r'.*template.*\.py$',
-        r'.*skill.*\.py$',
-        r'run_.*test.*\.py$',
-        r'create_.*\.py$',
+    patterns = []],,
+    r'.*generator.*\.py$',
+    r'.*template.*\.py$',
+    r'.*skill.*\.py$',
+    r'run_.*test.*\.py$',
+    r'create_.*\.py$',
     ]
     
-    generator_files = []
+    generator_files = []],,]
     for root, _, files in os.walk(directory):
         for file in files:
             if file.endswith('.py'):
                 for pattern in patterns:
                     if re.match(pattern, file) and not re.match(r'.*database.*\.py$', file):
                         generator_files.append(os.path.join(root, file))
-                        break
+                    break
     
-    return generator_files
+                return generator_files
 
 def find_db_files(directory):
     """Find database-related files in the directory."""
-    patterns = [
-        r'.*db_.*\.py$',
-        r'.*database.*\.py$',
-        r'.*duckdb.*\.py$',
-        r'view_benchmark.*\.py$',
-        r'.*cleanup.*reports.*\.py$',
-        r'.*simulation.*\.py$',
+    patterns = []],,
+    r'.*db_.*\.py$',
+    r'.*database.*\.py$',
+    r'.*duckdb.*\.py$',
+    r'view_benchmark.*\.py$',
+    r'.*cleanup.*reports.*\.py$',
+    r'.*simulation.*\.py$',
     ]
     
-    db_files = []
+    db_files = []],,]
     for root, _, files in os.walk(directory):
         for file in files:
             if file.endswith('.py'):
                 for pattern in patterns:
                     if re.match(pattern, file):
                         db_files.append(os.path.join(root, file))
-                        break
+                    break
     
-    return db_files
+                return db_files
 
 def check_migrated_files(source_files, target_dir):
     """Check which files have been migrated."""
-    migrated = []
-    not_migrated = []
+    migrated = []],,]
+    not_migrated = []],,]
     
     for src_file in source_files:
         filename = os.path.basename(src_file)
         # Check if file exists anywhere in the target directory
-        found = False
+        found = False:
         for root, _, files in os.walk(target_dir):
             if filename in files:
                 migrated.append((src_file, os.path.join(root, filename)))
                 found = True
-                break
+            break
         
         if not found:
             not_migrated.append(src_file)
     
-    return migrated, not_migrated
+            return migrated, not_migrated
 
 def main():
     parser = argparse.ArgumentParser(description="Helper script for code migration")
@@ -98,7 +98,7 @@ def main():
         if not_migrated:
             print("Files that need migration to generators/:")
             for file in not_migrated:
-                print(f"  - {os.path.basename(file)}")
+                print(f"\1{os.path.basename(file)}\3")
     
     if args.db or args.all:
         db_files = find_db_files(source_dir)
@@ -113,7 +113,7 @@ def main():
         if not_migrated:
             print("Files that need migration to duckdb_api/:")
             for file in not_migrated:
-                print(f"  - {os.path.basename(file)}")
+                print(f"\1{os.path.basename(file)}\3")
 
 if __name__ == "__main__":
     main()

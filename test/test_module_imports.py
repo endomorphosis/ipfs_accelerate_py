@@ -27,34 +27,34 @@ def test_generator_imports():
         from generators.templates.model_templates import template_bert
         print("✅ Successfully imported generators.templates.model_templates.template_bert")
         
-        return True
+    return True
     except Exception as e:
-        print(f"❌ Error importing generators modules: {e}")
+        print(f"\1{e}\3")
         traceback.print_exc()
-        return False
+    return False
 
 def test_duckdb_api_imports():
     """Test imports from duckdb_api package"""
     print("\nTesting duckdb_api imports...")
     try:
         # Test importing from duckdb_api
-        from duckdb_api import benchmark_db_api
+        from duckdb_api import duckdb_api.core.benchmark_db_api as benchmark_db_api
         print("✅ Successfully imported duckdb_api.benchmark_db_api")
         
         from duckdb_api.schema import check_database_schema
         print("✅ Successfully imported duckdb_api.schema.check_database_schema")
         
-        from duckdb_api.core import benchmark_db_query
+        from duckdb_api.core import duckdb_api.core.benchmark_db_query as benchmark_db_query
         print("✅ Successfully imported duckdb_api.core.benchmark_db_query")
         
         from duckdb_api.utils import cleanup_stale_reports
         print("✅ Successfully imported duckdb_api.utils.cleanup_stale_reports")
         
-        return True
+    return True
     except Exception as e:
-        print(f"❌ Error importing duckdb_api modules: {e}")
+        print(f"\1{e}\3")
         traceback.print_exc()
-        return False
+    return False
 
 if __name__ == "__main__":
     print("Testing module imports for reorganized structure...")

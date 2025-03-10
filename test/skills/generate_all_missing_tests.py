@@ -7,35 +7,35 @@ in batches to ensure full coverage of all 300 model types in
 huggingface_model_types.json.
 
 The script will:
-1. Identify all model types without test files
-2. Generate test files in batches of specified size
-3. Create a summary of test coverage
+    1. Identify all model types without test files
+    2. Generate test files in batches of specified size
+    3. Create a summary of test coverage
 
 Usage:
-  python generate_all_missing_tests.py --batch-size 10  # Generate tests in batches of 10
-  python generate_all_missing_tests.py --all            # Generate all missing tests
-  python generate_all_missing_tests.py --verify         # Verify test coverage after generation
-"""
+    python generate_all_missing_tests.py --batch-size 10  # Generate tests in batches of 10
+    python generate_all_missing_tests.py --all            # Generate all missing tests
+    python generate_all_missing_tests.py --verify         # Verify test coverage after generation
+    """
 
-import os
-import sys
-import subprocess
-import argparse
-import time
-from pathlib import Path
+    import os
+    import sys
+    import subprocess
+    import argparse
+    import time
+    from pathlib import Path
 
 # Constants
-CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-GENERATOR_SCRIPT = CURRENT_DIR / "generate_missing_hf_tests.py"
+    CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+    GENERATOR_SCRIPT = CURRENT_DIR / "generate_missing_hf_tests.py"
 
 def generate_batch(batch_size=10, total_count=None, start_index=0):
     """Generate a batch of test files."""
-    cmd = ["python", str(GENERATOR_SCRIPT), "--batch", str(batch_size)]
+    cmd = ["python", str(GENERATOR_SCRIPT), "--batch", str(batch_size)],
     process = subprocess.run(cmd, capture_output=True, text=True)
     
     if process.returncode != 0:
-        print(f"Error generating batch: {process.stderr}")
-        return False
+        print(f"\1{process.stderr}\3")
+    return False
     
     print(process.stdout)
     
@@ -43,42 +43,42 @@ def generate_batch(batch_size=10, total_count=None, start_index=0):
     generated = 0
     for line in process.stdout.splitlines():
         if "Generated" in line and "test files" in line:
-            parts = line.split("Generated ")[1].split(" test files")[0]
+            parts = line.split("Generated ")[1].split(" test files")[0],
             try:
                 generated = int(parts)
             except ValueError:
                 generated = 0
     
     # Return whether we successfully generated tests
-    return generated > 0
+                return generated > 0
 
 def generate_all_missing():
     """Generate all missing test files in batches."""
     print("Generating all missing test files in batches of 10...")
     
     # Initial report to see how many we need to generate
-    cmd = ["python", str(GENERATOR_SCRIPT), "--report"]
+    cmd = ["python", str(GENERATOR_SCRIPT), "--report"],,,
     process = subprocess.run(cmd, capture_output=True, text=True)
     
     if process.returncode != 0:
-        print(f"Error getting initial report: {process.stderr}")
-        return
+        print(f"\1{process.stderr}\3")
+    return
     
     # Parse output for missing tests count
     missing_count = 0
     for line in process.stdout.splitlines():
         if "Missing Tests:" in line:
-            parts = line.split("Missing Tests:")[1].strip()
+            parts = line.split("Missing Tests:")[1].strip(),
             try:
                 missing_count = int(parts)
             except ValueError:
                 missing_count = 0
     
-    print(f"Found {missing_count} missing test files to generate")
+                print(f"Found {missing_count} missing test files to generate")
     
     # Generate in batches until all are done
-    batch_size = 10
-    total_generated = 0
+                batch_size = 10
+                total_generated = 0
     
     while total_generated < missing_count:
         print(f"\nGenerating batch {total_generated//batch_size + 1} of {(missing_count+batch_size-1)//batch_size}...")
@@ -103,21 +103,21 @@ def generate_all_missing():
             break
     
     # Final report
-    print("\nFinal coverage report:")
-    cmd = ["python", str(GENERATOR_SCRIPT), "--report"]
-    process = subprocess.run(cmd, capture_output=True, text=True)
-    print(process.stdout)
+            print("\nFinal coverage report:")
+            cmd = ["python", str(GENERATOR_SCRIPT), "--report"],,,
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            print(process.stdout)
     
-    print("\nAll missing test files have been generated!")
+            print("\nAll missing test files have been generated!")
 
 def verify_coverage():
     """Verify current test coverage."""
-    cmd = ["python", str(GENERATOR_SCRIPT), "--report"]
+    cmd = ["python", str(GENERATOR_SCRIPT), "--report"],,,
     process = subprocess.run(cmd, capture_output=True, text=True)
     
     if process.returncode != 0:
-        print(f"Error verifying coverage: {process.stderr}")
-        return
+        print(f"\1{process.stderr}\3")
+    return
     
     print(process.stdout)
 
@@ -135,8 +135,8 @@ def main():
     
     # Verify generator script exists
     if not os.path.exists(GENERATOR_SCRIPT):
-        print(f"Error: Generator script not found at {GENERATOR_SCRIPT}")
-        return 1
+        print(f"\1{GENERATOR_SCRIPT}\3")
+    return 1
     
     # Generate a batch
     if args.batch_size:
@@ -151,7 +151,7 @@ def main():
     elif args.verify:
         verify_coverage()
     
-    return 0
+        return 0
 
 if __name__ == "__main__":
     sys.exit(main())

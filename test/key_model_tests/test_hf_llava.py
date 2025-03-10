@@ -38,7 +38,7 @@ class TestLlava(unittest.TestCase):
 
     def test_cpu(self):
         """Test llava with cpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_CPU: self.skipTest('CPU not available')
         
         # Set up device
@@ -52,14 +52,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -68,19 +68,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cpu")
+                logger.info(f"Successfully tested {self.model_id} on cpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cpu: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_cuda(self):
         """Test llava with cuda."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_CUDA: self.skipTest('CUDA not available')
         
         # Set up device
@@ -94,14 +94,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -110,19 +110,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cuda")
+                logger.info(f"Successfully tested {self.model_id} on cuda")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cuda: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_rocm(self):
         """Test llava with rocm."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_ROCM: self.skipTest('ROCM not available')
         
         # Set up device
@@ -136,14 +136,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -152,19 +152,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on rocm")
+                logger.info(f"Successfully tested {self.model_id} on rocm")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on rocm: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_mps(self):
         """Test llava with mps."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_MPS: self.skipTest('MPS not available')
         
         # Set up device
@@ -178,14 +178,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -194,19 +194,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on mps")
+                logger.info(f"Successfully tested {self.model_id} on mps")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on mps: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_openvino(self):
         """Test llava with openvino."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_OPENVINO: self.skipTest('OPENVINO not available')
         
         # Set up device
@@ -220,14 +220,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -236,19 +236,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on openvino")
+                logger.info(f"Successfully tested {self.model_id} on openvino")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on openvino: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_qualcomm(self):
         """Test llava with qualcomm."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_QUALCOMM: self.skipTest('QUALCOMM not available')
         
         # Set up device
@@ -262,14 +262,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -278,19 +278,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on qualcomm")
+                logger.info(f"Successfully tested {self.model_id} on qualcomm")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on qualcomm: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_webnn(self):
         """Test llava with webnn."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_WEBNN: self.skipTest('WEBNN not available')
         
         # Set up device
@@ -304,14 +304,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -320,19 +320,19 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on webnn")
+                logger.info(f"Successfully tested {self.model_id} on webnn")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on webnn: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
     def test_webgpu(self):
         """Test llava with webgpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::::::::
         if not HAS_WEBGPU: self.skipTest('WEBGPU not available')
         
         # Set up device
@@ -346,14 +346,14 @@ class TestLlava(unittest.TestCase):
             # Initialize model
             self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::::::::::::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
             # Prepare input
-            inputs = self.tokenizer("Test input for llava", return_tensors="pt")
+                inputs = self.tokenizer("Test input for llava", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::::::::::::::
             if device != "cpu":
                 inputs = {k: v.to(device) for k, v in inputs.items()}
             
@@ -362,15 +362,15 @@ class TestLlava(unittest.TestCase):
                 outputs = self.model(**inputs)
             
             # Verify outputs
-            self.assertIsNotNone(outputs)
-            self.assertIn("last_hidden_state", outputs)
+                self.assertIsNotNone(outputs)
+                self.assertIn("last_hidden_state", outputs)
             
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on webgpu")
+                logger.info(f"Successfully tested {self.model_id} on webgpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on webgpu: {str(e)}")
-            raise
+            logger.error(f"\1{str(e)}\3")
+                raise
 
 if __name__ == "__main__":
     unittest.main()

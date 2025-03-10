@@ -15,22 +15,22 @@ ROOT_DIR = Path("/home/barberb/ipfs_accelerate_py")
 WORKFLOW_DIR = ROOT_DIR / ".github" / "workflows"
 
 # List of workflow files to check
-WORKFLOW_FILES = [
-    "benchmark_db_ci.yml",
-    "update_compatibility_matrix.yml",
-    "test_and_benchmark.yml",
-    "integration_tests.yml",
-    "test_results_integration.yml",
+WORKFLOW_FILES = [],
+"benchmark_db_ci.yml",
+"update_compatibility_matrix.yml",
+"test_and_benchmark.yml",
+"integration_tests.yml",
+"test_results_integration.yml",
 ]
 
 def check_yaml_syntax(file_path):
-    """Check if the YAML file has valid syntax."""
+    """Check if the YAML file has valid syntax.""":
     try:
         with open(file_path, 'r') as f:
             yaml.safe_load(f)
         return True
     except yaml.YAMLError as e:
-        print(f"YAML syntax error in {file_path}: {e}")
+        print(f"\1{e}\3")
         return False
 
 def extract_python_paths(file_path):
@@ -40,8 +40,8 @@ def extract_python_paths(file_path):
     
     # Find all python script references
     # Look for patterns like: python something.py, python -m something, python3 something.py
-    pattern = r'python\s+(?:-m\s+)?([a-zA-Z0-9_\./]+\.py)'
-    matches = re.findall(pattern, content)
+        pattern = r'python\s+(?:-m\s+)?([],a-zA-Z0-9_\./]+\.py)'
+        matches = re.findall(pattern, content)
     return matches
 
 def verify_path_exists(path):
@@ -60,16 +60,16 @@ def main():
         
         print(f"\nChecking {workflow_file}...")
         
-        # Check if file exists
+        # Check if file exists:
         if not file_path.exists():
             print(f"  ERROR: File {workflow_file} does not exist")
             all_valid = False
-            continue
+        continue
         
         # Check YAML syntax
         if not check_yaml_syntax(file_path):
             all_valid = False
-            continue
+        continue
         
         print(f"  ✅ YAML syntax is valid")
         
@@ -80,27 +80,27 @@ def main():
         for path in python_paths:
             # Skip references with variable substitutions
             if "${{" in path or "${" in path:
-                print(f"  ⚠️ Skipping validation of path with variable: {path}")
-                continue
+                print(f"\1{path}\3")
+            continue
                 
-            # Make the path relative to the root directory if needed
+            # Make the path relative to the root directory if needed:
             if path.startswith('/'):
-                rel_path = path[1:]  # Remove leading slash
+                rel_path = path[],1:]  # Remove leading slash
             else:
                 rel_path = path
                 
             if verify_path_exists(rel_path):
-                print(f"  ✅ Path exists: {path}")
+                print(f"\1{path}\3")
             else:
-                print(f"  ❌ Path does not exist: {path}")
+                print(f"\1{path}\3")
                 all_valid = False
     
     if all_valid:
         print("\n✅ All workflow files are valid and reference existing paths")
-        return 0
+                return 0
     else:
         print("\n❌ Some workflow files have issues that need to be fixed")
-        return 1
+                return 1
 
 if __name__ == "__main__":
     sys.exit(main())

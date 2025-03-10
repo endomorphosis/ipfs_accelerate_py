@@ -840,7 +840,7 @@ def main():
                       help="Path to the benchmark database")
     parser.add_argument("--db-only", action="store_true",
                       help="Store results only in the database, not in JSON")
-args = parser.parse_args()
+    args = parser.parse_args()
     
     # Run benchmark
     results = run_benchmark(args)
@@ -869,10 +869,9 @@ args = parser.parse_args()
 if not DEPRECATE_JSON_OUTPUT:
             with open(args.output, 'w') as f:
                 json.dump(results, f, indent=2)
+            print(f"Results saved to {args.output}")
 else:
     logger.info("JSON output is deprecated. Results are stored directly in the database.")
-
-        print(f"Results saved to {args.output}")
 
 if __name__ == "__main__":
     main()

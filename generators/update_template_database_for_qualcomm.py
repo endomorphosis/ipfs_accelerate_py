@@ -133,7 +133,7 @@ def update_template_files(template_dir):
             # Find the last hardware handler pattern
             last_handler = handlers[-1]
             pattern = f"def get_{last_handler}_handler"
-            last_handler_match = re.search(f"{pattern}.*?(?=def|\Z)", content, re.DOTALL)
+            last_handler_match = re.search(f"{pattern}.*?(?=def|$)", content, re.DOTALL)
             
             if last_handler_match:
                 # Create Qualcomm handler template based on the pattern of the last handler
@@ -279,7 +279,7 @@ def create_qualcomm_template_example(template_dir):
     # Add complete Qualcomm handler to BERT template
     qualcomm_handler = """
 def get_qualcomm_handler(model_path):
-    """
+    \"\"\"
     Initialize BERT model on Qualcomm AI Engine.
     
     Args:
@@ -485,7 +485,7 @@ def get_qualcomm_handler(model_path):
     return True
 
 def main():
-    """Main function to update template database for Qualcomm support."""
+    """Main function to update template database for Qualcomm support"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Template database paths

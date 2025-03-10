@@ -10,7 +10,7 @@ import torch
 import numpy as np
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 
-class TestLlavav1.57BModels(unittest.TestCase):
+class TestLlavav157BModels(unittest.TestCase):
     """Test llava-v1.5-7b model across hardware platforms."""
     
     def setUp(self):

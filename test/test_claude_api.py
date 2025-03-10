@@ -11,7 +11,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("test_claude_api")
 
 # Add project root to Python path
@@ -24,7 +24,7 @@ def test_claude_api():
         module = importlib.import_module("ipfs_accelerate_py.api_backends.claude")
         logger.info("✅ Successfully imported claude module")
     except ImportError as e:
-        logger.error(f"❌ Failed to import claude module: {e}")
+        logger.error(f"\1{e}\3")
         return False
     
     # Look for the class
@@ -38,10 +38,10 @@ def test_claude_api():
                 return False
         else:
             logger.error("❌ Could not find 'claude' class in module")
-            return False
+                return False
     except Exception as e:
-        logger.error(f"❌ Error checking for claude class: {e}")
-        return False
+        logger.error(f"\1{e}\3")
+                return False
     
     # Try to instantiate the class with minimal arguments
     try:
@@ -55,13 +55,13 @@ def test_claude_api():
         # Restore original method
         cls._get_api_key = original_get_api_key
     except Exception as e:
-        logger.error(f"❌ Failed to instantiate claude class: {e}")
+        logger.error(f"\1{e}\3")
         # Print the trace
         import traceback
         traceback.print_exc()
         return False
     
-    return True
+                return True
 
 if __name__ == "__main__":
     if test_claude_api():

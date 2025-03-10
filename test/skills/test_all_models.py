@@ -1,2790 +1,2790 @@
 #!/usr/bin/env python3
 
-# Import hardware detection capabilities if available
+# Import hardware detection capabilities if available:
 try:
-    from hardware_detection import (
-        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
-        detect_all_hardware
+    from generators.hardware.hardware_detection import ())))
+    HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
+    detect_all_hardware
     )
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     HAS_HARDWARE_DETECTION = False
     # We'll detect hardware manually as fallback
-"""
-Unified test runner for all Hugging Face model families.
+    """
+    Unified test runner for all Hugging Face model families.
 
-This script provides a centralized interface for testing different model families,
-generating reports, and summarizing results across model architectures.
-"""
+    This script provides a centralized interface for testing different model families,
+    generating reports, and summarizing results across model architectures.
+    """
 
-import os
-import sys
-import json
-import time
-import datetime
-import argparse
-import logging
-import importlib
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
+    import os
+    import sys
+    import json
+    import time
+    import datetime
+    import argparse
+    import logging
+    import importlib
+    from pathlib import Path
+    from typing import Dict, List, Any, Optional, Union
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+    logging.basicConfig())))level=logging.INFO, format='%())))asctime)s - %())))levelname)s - %())))message)s')
+    logger = logging.getLogger())))__name__)
 
 # Constants
-CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
-RESULTS_DIR = CURRENT_DIR / "collected_results"
-SUMMARY_FILE = CURRENT_DIR / "test_summary.json"
-REPORT_FILE = CURRENT_DIR / "test_report.md"
+    CURRENT_DIR = Path())))os.path.dirname())))os.path.abspath())))__file__)))
+    RESULTS_DIR = CURRENT_DIR / "collected_results"
+    SUMMARY_FILE = CURRENT_DIR / "test_summary.json"
+    REPORT_FILE = CURRENT_DIR / "test_report.md"
 
 # Map of model categories to test modules
-MODEL_FAMILIES = {
-    "bert": {
-        "module": "test_hf_bert",
-        "description": "BERT-family masked language models",
-        "default_model": "bert-base-uncased",
-        "class": "TestBertModels",
-        "status": "complete"
-    },
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-    "mamba": {
-        "module": "test_hf_mamba",
-        "description": "Mamba state space models for language modeling",
-        "default_model": "state-spaces/mamba-2.8b",
-        "class": "TestMambaModels",
-        "status": "complete"
-    },
-    "phi3": {
-        "module": "test_hf_phi3",
-        "description": "Phi-3 language models from Microsoft",
-        "default_model": "microsoft/phi-3-mini-4k-instruct",
-        "class": "TestPhi3Models",
-        "status": "complete"
-    },
-    "paligemma": {
-        "module": "test_hf_paligemma",
-        "description": "PaLI-GEMMA vision-language models from Google",
-        "default_model": "google/paligemma-3b-mix-224",
-        "class": "TestPaliGemmaModels",
-        "status": "complete"
-    },
-    "mixtral": {
-        "module": "test_hf_mixtral",
-        "description": "Mixtral mixture-of-experts language models",
-        "default_model": "mistralai/Mixtral-8x7B-v0.1",
-        "class": "TestMixtralModels",
-        "status": "complete"
-    },
-    "deberta_v2": {
-        "module": "test_hf_deberta_v2",
-        "description": "DeBERTa-V2 models with enhanced disentangled attention",
-        "default_model": "microsoft/deberta-v2-xlarge",
-        "class": "TestDebertaV2Models",
-        "status": "complete"
-    },
-    "video_llava": {
-        "module": "test_hf_video_llava",
-        "description": "Video-LLaVA video understanding models",
-        "default_model": "LanguageBind/Video-LLaVA-7B",
-        "class": "TestVideoLlavaModels",
-        "status": "complete"
-    },
-    "blip2": {
-        "module": "test_hf_blip_2",
-        "description": "BLIP-2 vision-language models",
-        "default_model": "Salesforce/blip2-opt-2.7b",
-        "class": "TestBlip2Models",
-        "status": "complete"
-    },
-    "instructblip": {
-        "module": "test_hf_instructblip",
-        "description": "InstructBLIP vision-language instruction-tuned models",
-        "default_model": "Salesforce/instructblip-flan-t5-xl",
-        "class": "TestInstructBlipModels",
-        "status": "complete"
-    },
-    "swin": {
-        "module": "test_hf_swin",
-        "description": "Swin Transformer vision models",
-        "default_model": "microsoft/swin-base-patch4-window7-224",
-        "class": "TestSwinModels",
-        "status": "complete"
-    },
-    "convnext": {
-        "module": "test_hf_convnext",
-        "description": "ConvNeXT vision models",
-        "default_model": "facebook/convnext-base-224",
-        "class": "TestConvNextModels",
-        "status": "complete"
-    },
-    "seamless_m4t": {
-        "module": "test_hf_seamless_m4t",
-        "description": "Seamless multilingual and multimodal translation models",
-        "default_model": "facebook/seamless-m4t-large",
-        "class": "TestSeamlessM4TModels",
-        "status": "complete"
-    },
-    "wavlm": {
-        "module": "test_hf_wavlm",
-        "description": "WavLM speech processing models",
-        "default_model": "microsoft/wavlm-base",
-        "class": "TestWavLMModels",
-        "status": "complete"
-    },
-    "codellama": {
-        "module": "test_hf_codellama",
-        "description": "CodeLlama for code generation",
-        "default_model": "codellama/CodeLlama-7b-hf",
-        "class": "TestCodeLlamaModels",
-        "status": "complete"
-    },
-    "starcoder2": {
-        "module": "test_hf_starcoder2",
-        "description": "StarCoder2 for code generation",
-        "default_model": "bigcode/starcoder2-3b",
-        "class": "TestStarcoder2Models",
-        "status": "complete"
-    },
-    "qwen2": {
-        "module": "test_hf_qwen2",
-        "description": "Qwen2 models from Alibaba",
-        "default_model": "Qwen/Qwen2-7B-Instruct",
-        "class": "TestQwen2Models",
-        "status": "complete"
-    },
-    "bart": {
-        "module": "test_hf_bart",
-        "description": "BART sequence-to-sequence models",
-        "default_model": "facebook/bart-large-cnn",
-        "class": "TestBartModels",
-        "status": "complete"
-    },
-    "segformer": {
-        "module": "test_hf_segformer",
-        "description": "SegFormer models for image segmentation",
-        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
-        "class": "TestSegformerModels",
-        "status": "complete"
-    },
-    "dinov2": {
-        "module": "test_hf_dinov2",
-        "description": "DINOv2 self-supervised vision models",
-        "default_model": "facebook/dinov2-base",
-        "class": "TestDinov2Models",
-        "status": "complete"
-    },
-    "mamba2": {
-        "module": "test_hf_mamba2",
-        "description": "Mamba2 state space models",
-        "default_model": "state-spaces/mamba2-2.8b",
-        "class": "TestMamba2Models",
-        "status": "complete"
-    },
-    "phi4": {
-        "module": "test_hf_phi4",
-        "description": "Phi-4 language models from Microsoft",
-        "default_model": "microsoft/phi-4-mini-instruct",
-        "class": "TestPhi4Models",
-        "status": "complete"
-    },
-    "rwkv": {
-        "module": "test_hf_rwkv",
-        "description": "RWKV Receptance Weighted Key Value models",
-        "default_model": "RWKV/rwkv-4-pile-430m",
-        "class": "TestRwkvModels",
-        "status": "complete"
-    },
-    "depth_anything": {
-        "module": "test_hf_depth_anything",
-        "description": "Depth Anything models for universal depth estimation",
-        "default_model": "LiheYoung/depth-anything-small",
-        "class": "TestDepthAnythingModels",
-        "status": "complete"
-    },
-    "qwen2_audio": {
-        "module": "test_hf_qwen2_audio",
-        "description": "Qwen2 Audio models for speech understanding",
-        "default_model": "Qwen/Qwen2-Audio-7B",
-        "class": "TestQwen2AudioModels",
-        "status": "complete"
-    },
-    "kosmos_2": {
-        "module": "test_hf_kosmos_2",
-        "description": "KOSMOS-2 multimodal language models with reference grounding",
-        "default_model": "microsoft/kosmos-2-patch14-224",
-        "class": "TestKosmos2Models",
-        "status": "complete"
-    },
-    "grounding_dino": {
-        "module": "test_hf_grounding_dino",
-        "description": "Grounding DINO models for open-set object detection",
-        "default_model": "IDEA-Research/grounding-dino-base",
-        "class": "TestGroundingDinoModels",
-        "status": "complete"
-    },
-    "wav2vec2_bert": {
-        "module": "test_hf_wav2vec2_bert",
-        "description": "Wav2Vec2-BERT for speech and language understanding",
-        "default_model": "facebook/wav2vec2-bert-base",
-        "class": "TestWav2Vec2BertModels",
-        "status": "complete"
-    },
-    "idefics3": {
-        "module": "test_hf_idefics3",
-        "description": "IDEFICS3 vision-language models",
-        "default_model": "HuggingFaceM4/idefics3-8b",
-        "class": "TestIdefics3Models",
-        "status": "complete"
-    },
-    "deepseek": {
-        "module": "test_hf_deepseek",
-        "description": "DeepSeek language models",
-        "default_model": "deepseek-ai/deepseek-llm-7b-base",
-        "class": "TestDeepSeekModels",
-        "status": "complete"
-    },
-    "siglip": {
-        "module": "test_hf_siglip",
-        "description": "SigLIP vision-language models with sigmoid loss",
-        "default_model": "google/siglip-base-patch16-224",
-        "class": "TestSiglipModels",
-        "status": "complete"
-    },
-    "qwen2_vl": {
-        "module": "test_hf_qwen2_vl",
-        "description": "Qwen2 vision-language models",
-        "default_model": "Qwen/Qwen2-VL-7B",
-        "class": "TestQwen2VLModels",
-        "status": "complete"
-    },
-    "qwen2_audio_encoder": {
-        "module": "test_hf_qwen2_audio_encoder",
-        "description": "Qwen2 Audio Encoder models",
-        "default_model": "Qwen/Qwen2-Audio-Encoder",
-        "class": "TestQwen2AudioEncoderModels",
-        "status": "complete"
-    },
-    "xclip": {
-        "module": "test_hf_xclip",
-        "description": "X-CLIP extended CLIP models with additional capabilities",
-        "default_model": "microsoft/xclip-base-patch32",
-        "class": "TestXCLIPModels",
-        "status": "complete"
-    },
-    "vilt": {
-        "module": "test_hf_vilt",
-        "description": "Vision-and-Language Transformer models",
-        "default_model": "dandelin/vilt-b32-mlm",
-        "class": "TestViltModels",
-        "status": "complete"
-    },
-    "encodec": {
-        "module": "test_hf_encodec",
-        "description": "EnCodec neural audio codec models",
-        "default_model": "facebook/encodec_24khz",
-        "class": "TestEncodecModels",
-        "status": "complete"
-    },
-    "bark": {
-        "module": "test_hf_bark",
-        "description": "Bark text-to-audio generation models",
-        "default_model": "suno/bark-small",
-        "class": "TestBarkModels",
-        "status": "complete"
-    },
-    "biogpt": {
-        "module": "test_hf_biogpt",
-        "description": "BioGPT models for biomedical text generation",
-        "default_model": "microsoft/biogpt",
-        "class": "TestBioGptModels",
-        "status": "complete"
-    },
-    "esm": {
-        "module": "test_hf_esm",
-        "description": "ESM protein language models",
-        "default_model": "facebook/esm2_t33_650M_UR50D",
-        "class": "TestEsmModels",
-        "status": "complete"
-    },
-    "audioldm2": {
-        "module": "test_hf_audioldm2",
-        "description": "AudioLDM2 text-to-audio diffusion models",
-        "default_model": "cvssp/audioldm2",
-        "class": "TestAudioLdm2Models",
-        "status": "complete"
-    },
-    "tinyllama": {
-        "module": "test_hf_tinyllama",
-        "description": "TinyLlama efficient small form-factor LLM",
-        "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        "class": "TestTinyLlamaModels",
-        "status": "complete"
-    },
-    "vqgan": {
-        "module": "test_hf_vqgan",
-        "description": "Vector Quantized Generative Adversarial Network",
-        "default_model": "CompVis/vqgan-f16-16384",
-        "class": "TestVQGANModels",
-        "status": "complete"
-    },
-    "command_r": {
-        "module": "test_hf_command_r",
-        "description": "Command-R advanced instruction-following models",
-        "default_model": "CohereForAI/c4ai-command-r-v01",
-        "class": "TestCommandRModels",
-        "status": "complete"
-    },
-    "cm3": {
-        "module": "test_hf_cm3",
-        "description": "CM3 multimodal model with text, image and audio capabilities",
-        "default_model": "facebook/cm3leon-7b",
-        "class": "TestCm3Models",
-        "status": "complete"
-    },
-    "llava_next_video": {
-        "module": "test_hf_llava_next_video",
-        "description": "LLaVA-NeXT-Video for multimodal video understanding",
-        "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
-        "class": "TestLlavaNextVideoModels",
-        "status": "complete"
-    },
-    "orca3": {
-        "module": "test_hf_orca3",
-        "description": "Orca3 instruction-following LLM from Microsoft",
-        "default_model": "microsoft/Orca-3-7B",
-        "class": "TestOrca3Models",
-        "status": "complete"
-    },
-    "imagebind": {
-        "module": "test_hf_imagebind",
-        "description": "ImageBind models binding multiple modalities",
-        "default_model": "facebook/imagebind-huge",
-        "class": "TestImageBindModels",
-        "status": "complete"
-    },
-    "cogvlm2": {
-        "module": "test_hf_cogvlm2",
-        "description": "CogVLM2 vision-language model with cognitive capabilities",
-        "default_model": "THUDM/cogvlm2-llama3-8b",
-        "class": "TestCogVlm2Models",
-        "status": "complete"
-    },
-    "graphsage": {
-        "module": "test_hf_graphsage",
-        "description": "GraphSAGE inductive framework for graph embeddings",
-        "default_model": "deepgnn/graphsage-base",
-        "class": "TestGraphSageModels",
-        "status": "complete"
-    },
-    "ulip": {
-        "module": "test_hf_ulip",
-        "description": "Unified Language-Image Pre-training for point cloud understanding",
-        "default_model": "salesforce/ulip-pointbert-base",
-        "class": "TestUlipModels",
-        "status": "complete"
-    },
-    "claude3_haiku": {
-        "module": "test_hf_claude3_haiku",
-        "description": "Claude 3 Haiku family large language models via Hugging Face API",
-        "default_model": "anthropic/claude-3-haiku-20240307",
-        "class": "TestClaude3Models",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-    "mamba": {
-        "module": "test_hf_mamba",
-        "description": "Mamba state space models for language modeling",
-        "default_model": "state-spaces/mamba-2.8b",
-        "class": "TestMambaModels",
-        "status": "complete"
-    },
-    "phi3": {
-        "module": "test_hf_phi3",
-        "description": "Phi-3 language models from Microsoft",
-        "default_model": "microsoft/phi-3-mini-4k-instruct",
-        "class": "TestPhi3Models",
-        "status": "complete"
-    },
-    "paligemma": {
-        "module": "test_hf_paligemma",
-        "description": "PaLI-GEMMA vision-language models from Google",
-        "default_model": "google/paligemma-3b-mix-224",
-        "class": "TestPaliGemmaModels",
-        "status": "complete"
-    },
-    "mixtral": {
-        "module": "test_hf_mixtral",
-        "description": "Mixtral mixture-of-experts language models",
-        "default_model": "mistralai/Mixtral-8x7B-v0.1",
-        "class": "TestMixtralModels",
-        "status": "complete"
-    },
-    "deberta_v2": {
-        "module": "test_hf_deberta_v2",
-        "description": "DeBERTa-V2 models with enhanced disentangled attention",
-        "default_model": "microsoft/deberta-v2-xlarge",
-        "class": "TestDebertaV2Models",
-        "status": "complete"
-    },
-    "video_llava": {
-        "module": "test_hf_video_llava",
-        "description": "Video-LLaVA video understanding models",
-        "default_model": "LanguageBind/Video-LLaVA-7B",
-        "class": "TestVideoLlavaModels",
-        "status": "complete"
-    },
-    "blip2": {
-        "module": "test_hf_blip_2",
-        "description": "BLIP-2 vision-language models",
-        "default_model": "Salesforce/blip2-opt-2.7b",
-        "class": "TestBlip2Models",
-        "status": "complete"
-    },
-    "instructblip": {
-        "module": "test_hf_instructblip",
-        "description": "InstructBLIP vision-language instruction-tuned models",
-        "default_model": "Salesforce/instructblip-flan-t5-xl",
-        "class": "TestInstructBlipModels",
-        "status": "complete"
-    },
-    "swin": {
-        "module": "test_hf_swin",
-        "description": "Swin Transformer vision models",
-        "default_model": "microsoft/swin-base-patch4-window7-224",
-        "class": "TestSwinModels",
-        "status": "complete"
-    },
-    "convnext": {
-        "module": "test_hf_convnext",
-        "description": "ConvNeXT vision models",
-        "default_model": "facebook/convnext-base-224",
-        "class": "TestConvNextModels",
-        "status": "complete"
-    },
-    "seamless_m4t": {
-        "module": "test_hf_seamless_m4t",
-        "description": "Seamless multilingual and multimodal translation models",
-        "default_model": "facebook/seamless-m4t-large",
-        "class": "TestSeamlessM4TModels",
-        "status": "complete"
-    },
-    "wavlm": {
-        "module": "test_hf_wavlm",
-        "description": "WavLM speech processing models",
-        "default_model": "microsoft/wavlm-base",
-        "class": "TestWavLMModels",
-        "status": "complete"
-    },
-    "codellama": {
-        "module": "test_hf_codellama",
-        "description": "CodeLlama for code generation",
-        "default_model": "codellama/CodeLlama-7b-hf",
-        "class": "TestCodeLlamaModels",
-        "status": "complete"
-    },
-    "starcoder2": {
-        "module": "test_hf_starcoder2",
-        "description": "StarCoder2 for code generation",
-        "default_model": "bigcode/starcoder2-3b",
-        "class": "TestStarcoder2Models",
-        "status": "complete"
-    },
-    "qwen2": {
-        "module": "test_hf_qwen2",
-        "description": "Qwen2 models from Alibaba",
-        "default_model": "Qwen/Qwen2-7B-Instruct",
-        "class": "TestQwen2Models",
-        "status": "complete"
-    },
-    "bart": {
-        "module": "test_hf_bart",
-        "description": "BART sequence-to-sequence models",
-        "default_model": "facebook/bart-large-cnn",
-        "class": "TestBartModels",
-        "status": "complete"
-    },
-    "segformer": {
-        "module": "test_hf_segformer",
-        "description": "SegFormer models for image segmentation",
-        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
-        "class": "TestSegformerModels",
-        "status": "complete"
-    },
-    "dinov2": {
-        "module": "test_hf_dinov2",
-        "description": "DINOv2 self-supervised vision models",
-        "default_model": "facebook/dinov2-base",
-        "class": "TestDinov2Models",
-        "status": "complete"
-    },
-    "mamba2": {
-        "module": "test_hf_mamba2",
-        "description": "Mamba2 state space models",
-        "default_model": "state-spaces/mamba2-2.8b",
-        "class": "TestMamba2Models",
-        "status": "complete"
-    },
-    "phi4": {
-        "module": "test_hf_phi4",
-        "description": "Phi-4 language models from Microsoft",
-        "default_model": "microsoft/phi-4-mini-instruct",
-        "class": "TestPhi4Models",
-        "status": "complete"
-    },
-    "rwkv": {
-        "module": "test_hf_rwkv",
-        "description": "RWKV Receptance Weighted Key Value models",
-        "default_model": "RWKV/rwkv-4-pile-430m",
-        "class": "TestRwkvModels",
-        "status": "complete"
-    },
-    "depth_anything": {
-        "module": "test_hf_depth_anything",
-        "description": "Depth Anything models for universal depth estimation",
-        "default_model": "LiheYoung/depth-anything-small",
-        "class": "TestDepthAnythingModels",
-        "status": "complete"
-    },
-    "qwen2_audio": {
-        "module": "test_hf_qwen2_audio",
-        "description": "Qwen2 Audio models for speech understanding",
-        "default_model": "Qwen/Qwen2-Audio-7B",
-        "class": "TestQwen2AudioModels",
-        "status": "complete"
-    },
-    "kosmos_2": {
-        "module": "test_hf_kosmos_2",
-        "description": "KOSMOS-2 multimodal language models with reference grounding",
-        "default_model": "microsoft/kosmos-2-patch14-224",
-        "class": "TestKosmos2Models",
-        "status": "complete"
-    },
-    "grounding_dino": {
-        "module": "test_hf_grounding_dino",
-        "description": "Grounding DINO models for open-set object detection",
-        "default_model": "IDEA-Research/grounding-dino-base",
-        "class": "TestGroundingDinoModels",
-        "status": "complete"
-    },
-    "wav2vec2_bert": {
-        "module": "test_hf_wav2vec2_bert",
-        "description": "Wav2Vec2-BERT for speech and language understanding",
-        "default_model": "facebook/wav2vec2-bert-base",
-        "class": "TestWav2Vec2BertModels",
-        "status": "complete"
-    },
-    "idefics3": {
-        "module": "test_hf_idefics3",
-        "description": "IDEFICS3 vision-language models",
-        "default_model": "HuggingFaceM4/idefics3-8b",
-        "class": "TestIdefics3Models",
-        "status": "complete"
-    },
-    "deepseek": {
-        "module": "test_hf_deepseek",
-        "description": "DeepSeek language models",
-        "default_model": "deepseek-ai/deepseek-llm-7b-base",
-        "class": "TestDeepSeekModels",
-        "status": "complete"
-    },
-    "siglip": {
-        "module": "test_hf_siglip",
-        "description": "SigLIP vision-language models with sigmoid loss",
-        "default_model": "google/siglip-base-patch16-224",
-        "class": "TestSiglipModels",
-        "status": "complete"
-    },
-    "qwen2_vl": {
-        "module": "test_hf_qwen2_vl",
-        "description": "Qwen2 vision-language models",
-        "default_model": "Qwen/Qwen2-VL-7B",
-        "class": "TestQwen2VLModels",
-        "status": "complete"
-    },
-    "qwen2_audio_encoder": {
-        "module": "test_hf_qwen2_audio_encoder",
-        "description": "Qwen2 Audio Encoder models",
-        "default_model": "Qwen/Qwen2-Audio-Encoder",
-        "class": "TestQwen2AudioEncoderModels",
-        "status": "complete"
-    },
-    "xclip": {
-        "module": "test_hf_xclip",
-        "description": "X-CLIP extended CLIP models with additional capabilities",
-        "default_model": "microsoft/xclip-base-patch32",
-        "class": "TestXCLIPModels",
-        "status": "complete"
-    },
-    "vilt": {
-        "module": "test_hf_vilt",
-        "description": "Vision-and-Language Transformer models",
-        "default_model": "dandelin/vilt-b32-mlm",
-        "class": "TestViltModels",
-        "status": "complete"
-    },
-    "encodec": {
-        "module": "test_hf_encodec",
-        "description": "EnCodec neural audio codec models",
-        "default_model": "facebook/encodec_24khz",
-        "class": "TestEncodecModels",
-        "status": "complete"
-    },
-    "bark": {
-        "module": "test_hf_bark",
-        "description": "Bark text-to-audio generation models",
-        "default_model": "suno/bark-small",
-        "class": "TestBarkModels",
-        "status": "complete"
-    },
-    "biogpt": {
-        "module": "test_hf_biogpt",
-        "description": "BioGPT models for biomedical text generation",
-        "default_model": "microsoft/biogpt",
-        "class": "TestBioGptModels",
-        "status": "complete"
-    },
-    "esm": {
-        "module": "test_hf_esm",
-        "description": "ESM protein language models",
-        "default_model": "facebook/esm2_t33_650M_UR50D",
-        "class": "TestEsmModels",
-        "status": "complete"
-    },
-    "audioldm2": {
-        "module": "test_hf_audioldm2",
-        "description": "AudioLDM2 text-to-audio diffusion models",
-        "default_model": "cvssp/audioldm2",
-        "class": "TestAudioLdm2Models",
-        "status": "complete"
-    },
-    "tinyllama": {
-        "module": "test_hf_tinyllama",
-        "description": "TinyLlama efficient small form-factor LLM",
-        "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        "class": "TestTinyLlamaModels",
-        "status": "complete"
-    },
-    "vqgan": {
-        "module": "test_hf_vqgan",
-        "description": "Vector Quantized Generative Adversarial Network",
-        "default_model": "CompVis/vqgan-f16-16384",
-        "class": "TestVQGANModels",
-        "status": "complete"
-    },
-    "command_r": {
-        "module": "test_hf_command_r",
-        "description": "Command-R advanced instruction-following models",
-        "default_model": "CohereForAI/c4ai-command-r-v01",
-        "class": "TestCommandRModels",
-        "status": "complete"
-    },
-    "cm3": {
-        "module": "test_hf_cm3",
-        "description": "CM3 multimodal model with text, image and audio capabilities",
-        "default_model": "facebook/cm3leon-7b",
-        "class": "TestCm3Models",
-        "status": "complete"
-    },
-    "llava_next_video": {
-        "module": "test_hf_llava_next_video",
-        "description": "LLaVA-NeXT-Video for multimodal video understanding",
-        "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
-        "class": "TestLlavaNextVideoModels",
-        "status": "complete"
-    },
-    "orca3": {
-        "module": "test_hf_orca3",
-        "description": "Orca3 instruction-following LLM from Microsoft",
-        "default_model": "microsoft/Orca-3-7B",
-        "class": "TestOrca3Models",
-        "status": "complete"
-    },
-    "imagebind": {
-        "module": "test_hf_imagebind",
-        "description": "ImageBind models binding multiple modalities",
-        "default_model": "facebook/imagebind-huge",
-        "class": "TestImageBindModels",
-        "status": "complete"
-    },
-    "cogvlm2": {
-        "module": "test_hf_cogvlm2",
-        "description": "CogVLM2 vision-language model with cognitive capabilities",
-        "default_model": "THUDM/cogvlm2-llama3-8b",
-        "class": "TestCogVlm2Models",
-        "status": "complete"
-    },
-    "graphsage": {
-        "module": "test_hf_graphsage",
-        "description": "GraphSAGE inductive framework for graph embeddings",
-        "default_model": "deepgnn/graphsage-base",
-        "class": "TestGraphSageModels",
-        "status": "complete"
-    },
-    "ulip": {
-        "module": "test_hf_ulip",
-        "description": "Unified Language-Image Pre-training for point cloud understanding",
-        "default_model": "salesforce/ulip-pointbert-base",
-        "class": "TestUlipModels",
-        "status": "complete"
-    },
-    "claude3_haiku": {
-        "module": "test_hf_claude3_haiku",
-        "description": "Claude 3 Haiku family large language models via Hugging Face API",
-        "default_model": "anthropic/claude-3-haiku-20240307",
-        "class": "TestClaude3Models",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-    "mamba": {
-        "module": "test_hf_mamba",
-        "description": "Mamba state space models for language modeling",
-        "default_model": "state-spaces/mamba-2.8b",
-        "class": "TestMambaModels",
-        "status": "complete"
-    },
-    "phi3": {
-        "module": "test_hf_phi3",
-        "description": "Phi-3 language models from Microsoft",
-        "default_model": "microsoft/phi-3-mini-4k-instruct",
-        "class": "TestPhi3Models",
-        "status": "complete"
-    },
-    "paligemma": {
-        "module": "test_hf_paligemma",
-        "description": "PaLI-GEMMA vision-language models from Google",
-        "default_model": "google/paligemma-3b-mix-224",
-        "class": "TestPaliGemmaModels",
-        "status": "complete"
-    },
-    "mixtral": {
-        "module": "test_hf_mixtral",
-        "description": "Mixtral mixture-of-experts language models",
-        "default_model": "mistralai/Mixtral-8x7B-v0.1",
-        "class": "TestMixtralModels",
-        "status": "complete"
-    },
-    "deberta_v2": {
-        "module": "test_hf_deberta_v2",
-        "description": "DeBERTa-V2 models with enhanced disentangled attention",
-        "default_model": "microsoft/deberta-v2-xlarge",
-        "class": "TestDebertaV2Models",
-        "status": "complete"
-    },
-    "video_llava": {
-        "module": "test_hf_video_llava",
-        "description": "Video-LLaVA video understanding models",
-        "default_model": "LanguageBind/Video-LLaVA-7B",
-        "class": "TestVideoLlavaModels",
-        "status": "complete"
-    },
-    "blip2": {
-        "module": "test_hf_blip_2",
-        "description": "BLIP-2 vision-language models",
-        "default_model": "Salesforce/blip2-opt-2.7b",
-        "class": "TestBlip2Models",
-        "status": "complete"
-    },
-    "instructblip": {
-        "module": "test_hf_instructblip",
-        "description": "InstructBLIP vision-language instruction-tuned models",
-        "default_model": "Salesforce/instructblip-flan-t5-xl",
-        "class": "TestInstructBlipModels",
-        "status": "complete"
-    },
-    "swin": {
-        "module": "test_hf_swin",
-        "description": "Swin Transformer vision models",
-        "default_model": "microsoft/swin-base-patch4-window7-224",
-        "class": "TestSwinModels",
-        "status": "complete"
-    },
-    "convnext": {
-        "module": "test_hf_convnext",
-        "description": "ConvNeXT vision models",
-        "default_model": "facebook/convnext-base-224",
-        "class": "TestConvNextModels",
-        "status": "complete"
-    },
-    "seamless_m4t": {
-        "module": "test_hf_seamless_m4t",
-        "description": "Seamless multilingual and multimodal translation models",
-        "default_model": "facebook/seamless-m4t-large",
-        "class": "TestSeamlessM4TModels",
-        "status": "complete"
-    },
-    "wavlm": {
-        "module": "test_hf_wavlm",
-        "description": "WavLM speech processing models",
-        "default_model": "microsoft/wavlm-base",
-        "class": "TestWavLMModels",
-        "status": "complete"
-    },
-    "codellama": {
-        "module": "test_hf_codellama",
-        "description": "CodeLlama for code generation",
-        "default_model": "codellama/CodeLlama-7b-hf",
-        "class": "TestCodeLlamaModels",
-        "status": "complete"
-    },
-    "starcoder2": {
-        "module": "test_hf_starcoder2",
-        "description": "StarCoder2 for code generation",
-        "default_model": "bigcode/starcoder2-3b",
-        "class": "TestStarcoder2Models",
-        "status": "complete"
-    },
-    "qwen2": {
-        "module": "test_hf_qwen2",
-        "description": "Qwen2 models from Alibaba",
-        "default_model": "Qwen/Qwen2-7B-Instruct",
-        "class": "TestQwen2Models",
-        "status": "complete"
-    },
-    "bart": {
-        "module": "test_hf_bart",
-        "description": "BART sequence-to-sequence models",
-        "default_model": "facebook/bart-large-cnn",
-        "class": "TestBartModels",
-        "status": "complete"
-    },
-    "segformer": {
-        "module": "test_hf_segformer",
-        "description": "SegFormer models for image segmentation",
-        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
-        "class": "TestSegformerModels",
-        "status": "complete"
-    },
-    "dinov2": {
-        "module": "test_hf_dinov2",
-        "description": "DINOv2 self-supervised vision models",
-        "default_model": "facebook/dinov2-base",
-        "class": "TestDinov2Models",
-        "status": "complete"
-    },
-    "mamba2": {
-        "module": "test_hf_mamba2",
-        "description": "Mamba2 state space models",
-        "default_model": "state-spaces/mamba2-2.8b",
-        "class": "TestMamba2Models",
-        "status": "complete"
-    },
-    "phi4": {
-        "module": "test_hf_phi4",
-        "description": "Phi-4 language models from Microsoft",
-        "default_model": "microsoft/phi-4-mini-instruct",
-        "class": "TestPhi4Models",
-        "status": "complete"
-    },
-    "rwkv": {
-        "module": "test_hf_rwkv",
-        "description": "RWKV Receptance Weighted Key Value models",
-        "default_model": "RWKV/rwkv-4-pile-430m",
-        "class": "TestRwkvModels",
-        "status": "complete"
-    },
-    "depth_anything": {
-        "module": "test_hf_depth_anything",
-        "description": "Depth Anything models for universal depth estimation",
-        "default_model": "LiheYoung/depth-anything-small",
-        "class": "TestDepthAnythingModels",
-        "status": "complete"
-    },
-    "qwen2_audio": {
-        "module": "test_hf_qwen2_audio",
-        "description": "Qwen2 Audio models for speech understanding",
-        "default_model": "Qwen/Qwen2-Audio-7B",
-        "class": "TestQwen2AudioModels",
-        "status": "complete"
-    },
-    "kosmos_2": {
-        "module": "test_hf_kosmos_2",
-        "description": "KOSMOS-2 multimodal language models with reference grounding",
-        "default_model": "microsoft/kosmos-2-patch14-224",
-        "class": "TestKosmos2Models",
-        "status": "complete"
-    },
-    "grounding_dino": {
-        "module": "test_hf_grounding_dino",
-        "description": "Grounding DINO models for open-set object detection",
-        "default_model": "IDEA-Research/grounding-dino-base",
-        "class": "TestGroundingDinoModels",
-        "status": "complete"
-    },
-    "wav2vec2_bert": {
-        "module": "test_hf_wav2vec2_bert",
-        "description": "Wav2Vec2-BERT for speech and language understanding",
-        "default_model": "facebook/wav2vec2-bert-base",
-        "class": "TestWav2Vec2BertModels",
-        "status": "complete"
-    },
-    "idefics3": {
-        "module": "test_hf_idefics3",
-        "description": "IDEFICS3 vision-language models",
-        "default_model": "HuggingFaceM4/idefics3-8b",
-        "class": "TestIdefics3Models",
-        "status": "complete"
-    },
-    "deepseek": {
-        "module": "test_hf_deepseek",
-        "description": "DeepSeek language models",
-        "default_model": "deepseek-ai/deepseek-llm-7b-base",
-        "class": "TestDeepSeekModels",
-        "status": "complete"
-    },
-    "siglip": {
-        "module": "test_hf_siglip",
-        "description": "SigLIP vision-language models with sigmoid loss",
-        "default_model": "google/siglip-base-patch16-224",
-        "class": "TestSiglipModels",
-        "status": "complete"
-    },
-    "qwen2_vl": {
-        "module": "test_hf_qwen2_vl",
-        "description": "Qwen2 vision-language models",
-        "default_model": "Qwen/Qwen2-VL-7B",
-        "class": "TestQwen2VLModels",
-        "status": "complete"
-    },
-    "qwen2_audio_encoder": {
-        "module": "test_hf_qwen2_audio_encoder",
-        "description": "Qwen2 Audio Encoder models",
-        "default_model": "Qwen/Qwen2-Audio-Encoder",
-        "class": "TestQwen2AudioEncoderModels",
-        "status": "complete"
-    },
-    "xclip": {
-        "module": "test_hf_xclip",
-        "description": "X-CLIP extended CLIP models with additional capabilities",
-        "default_model": "microsoft/xclip-base-patch32",
-        "class": "TestXCLIPModels",
-        "status": "complete"
-    },
-    "vilt": {
-        "module": "test_hf_vilt",
-        "description": "Vision-and-Language Transformer models",
-        "default_model": "dandelin/vilt-b32-mlm",
-        "class": "TestViltModels",
-        "status": "complete"
-    },
-    "encodec": {
-        "module": "test_hf_encodec",
-        "description": "EnCodec neural audio codec models",
-        "default_model": "facebook/encodec_24khz",
-        "class": "TestEncodecModels",
-        "status": "complete"
-    },
-    "bark": {
-        "module": "test_hf_bark",
-        "description": "Bark text-to-audio generation models",
-        "default_model": "suno/bark-small",
-        "class": "TestBarkModels",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-    "mamba": {
-        "module": "test_hf_mamba",
-        "description": "Mamba state space models for language modeling",
-        "default_model": "state-spaces/mamba-2.8b",
-        "class": "TestMambaModels",
-        "status": "complete"
-    },
-    "phi3": {
-        "module": "test_hf_phi3",
-        "description": "Phi-3 language models from Microsoft",
-        "default_model": "microsoft/phi-3-mini-4k-instruct",
-        "class": "TestPhi3Models",
-        "status": "complete"
-    },
-    "paligemma": {
-        "module": "test_hf_paligemma",
-        "description": "PaLI-GEMMA vision-language models from Google",
-        "default_model": "google/paligemma-3b-mix-224",
-        "class": "TestPaliGemmaModels",
-        "status": "complete"
-    },
-    "mixtral": {
-        "module": "test_hf_mixtral",
-        "description": "Mixtral mixture-of-experts language models",
-        "default_model": "mistralai/Mixtral-8x7B-v0.1",
-        "class": "TestMixtralModels",
-        "status": "complete"
-    },
-    "deberta_v2": {
-        "module": "test_hf_deberta_v2",
-        "description": "DeBERTa-V2 models with enhanced disentangled attention",
-        "default_model": "microsoft/deberta-v2-xlarge",
-        "class": "TestDebertaV2Models",
-        "status": "complete"
-    },
-    "video_llava": {
-        "module": "test_hf_video_llava",
-        "description": "Video-LLaVA video understanding models",
-        "default_model": "LanguageBind/Video-LLaVA-7B",
-        "class": "TestVideoLlavaModels",
-        "status": "complete"
-    },
-    "blip2": {
-        "module": "test_hf_blip_2",
-        "description": "BLIP-2 vision-language models",
-        "default_model": "Salesforce/blip2-opt-2.7b",
-        "class": "TestBlip2Models",
-        "status": "complete"
-    },
-    "instructblip": {
-        "module": "test_hf_instructblip",
-        "description": "InstructBLIP vision-language instruction-tuned models",
-        "default_model": "Salesforce/instructblip-flan-t5-xl",
-        "class": "TestInstructBlipModels",
-        "status": "complete"
-    },
-    "swin": {
-        "module": "test_hf_swin",
-        "description": "Swin Transformer vision models",
-        "default_model": "microsoft/swin-base-patch4-window7-224",
-        "class": "TestSwinModels",
-        "status": "complete"
-    },
-    "convnext": {
-        "module": "test_hf_convnext",
-        "description": "ConvNeXT vision models",
-        "default_model": "facebook/convnext-base-224",
-        "class": "TestConvNextModels",
-        "status": "complete"
-    },
-    "seamless_m4t": {
-        "module": "test_hf_seamless_m4t",
-        "description": "Seamless multilingual and multimodal translation models",
-        "default_model": "facebook/seamless-m4t-large",
-        "class": "TestSeamlessM4TModels",
-        "status": "complete"
-    },
-    "wavlm": {
-        "module": "test_hf_wavlm",
-        "description": "WavLM speech processing models",
-        "default_model": "microsoft/wavlm-base",
-        "class": "TestWavLMModels",
-        "status": "complete"
-    },
-    "codellama": {
-        "module": "test_hf_codellama",
-        "description": "CodeLlama for code generation",
-        "default_model": "codellama/CodeLlama-7b-hf",
-        "class": "TestCodeLlamaModels",
-        "status": "complete"
-    },
-    "starcoder2": {
-        "module": "test_hf_starcoder2",
-        "description": "StarCoder2 for code generation",
-        "default_model": "bigcode/starcoder2-3b",
-        "class": "TestStarcoder2Models",
-        "status": "complete"
-    },
-    "qwen2": {
-        "module": "test_hf_qwen2",
-        "description": "Qwen2 models from Alibaba",
-        "default_model": "Qwen/Qwen2-7B-Instruct",
-        "class": "TestQwen2Models",
-        "status": "complete"
-    },
-    "bart": {
-        "module": "test_hf_bart",
-        "description": "BART sequence-to-sequence models",
-        "default_model": "facebook/bart-large-cnn",
-        "class": "TestBartModels",
-        "status": "complete"
-    },
-    "segformer": {
-        "module": "test_hf_segformer",
-        "description": "SegFormer models for image segmentation",
-        "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
-        "class": "TestSegformerModels",
-        "status": "complete"
-    },
-    "dinov2": {
-        "module": "test_hf_dinov2",
-        "description": "DINOv2 self-supervised vision models",
-        "default_model": "facebook/dinov2-base",
-        "class": "TestDinov2Models",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-    "mamba": {
-        "module": "test_hf_mamba",
-        "description": "Mamba state space models for language modeling",
-        "default_model": "state-spaces/mamba-2.8b",
-        "class": "TestMambaModels",
-        "status": "complete"
-    },
-    "phi3": {
-        "module": "test_hf_phi3",
-        "description": "Phi-3 language models from Microsoft",
-        "default_model": "microsoft/phi-3-mini-4k-instruct",
-        "class": "TestPhi3Models",
-        "status": "complete"
-    },
-    "paligemma": {
-        "module": "test_hf_paligemma",
-        "description": "PaLI-GEMMA vision-language models from Google",
-        "default_model": "google/paligemma-3b-mix-224",
-        "class": "TestPaliGemmaModels",
-        "status": "complete"
-    },
-    "mixtral": {
-        "module": "test_hf_mixtral",
-        "description": "Mixtral mixture-of-experts language models",
-        "default_model": "mistralai/Mixtral-8x7B-v0.1",
-        "class": "TestMixtralModels",
-        "status": "complete"
-    },
-    "deberta_v2": {
-        "module": "test_hf_deberta_v2",
-        "description": "DeBERTa-V2 models with enhanced disentangled attention",
-        "default_model": "microsoft/deberta-v2-xlarge",
-        "class": "TestDebertaV2Models",
-        "status": "complete"
-    },
-    "video_llava": {
-        "module": "test_hf_video_llava",
-        "description": "Video-LLaVA video understanding models",
-        "default_model": "LanguageBind/Video-LLaVA-7B",
-        "class": "TestVideoLlavaModels",
-        "status": "complete"
-    },
-    "blip2": {
-        "module": "test_hf_blip_2",
-        "description": "BLIP-2 vision-language models",
-        "default_model": "Salesforce/blip2-opt-2.7b",
-        "class": "TestBlip2Models",
-        "status": "complete"
-    },
-    "instructblip": {
-        "module": "test_hf_instructblip",
-        "description": "InstructBLIP vision-language instruction-tuned models",
-        "default_model": "Salesforce/instructblip-flan-t5-xl",
-        "class": "TestInstructBlipModels",
-        "status": "complete"
-    },
-    "swin": {
-        "module": "test_hf_swin",
-        "description": "Swin Transformer vision models",
-        "default_model": "microsoft/swin-base-patch4-window7-224",
-        "class": "TestSwinModels",
-        "status": "complete"
-    },
-    "convnext": {
-        "module": "test_hf_convnext",
-        "description": "ConvNeXT vision models",
-        "default_model": "facebook/convnext-base-224",
-        "class": "TestConvNextModels",
-        "status": "complete"
-    },
-    "seamless_m4t": {
-        "module": "test_hf_seamless_m4t",
-        "description": "Seamless multilingual and multimodal translation models",
-        "default_model": "facebook/seamless-m4t-large",
-        "class": "TestSeamlessM4TModels",
-        "status": "complete"
-    },
-    "wavlm": {
-        "module": "test_hf_wavlm",
-        "description": "WavLM speech processing models",
-        "default_model": "microsoft/wavlm-base",
-        "class": "TestWavLMModels",
-        "status": "complete"
-    },
-    "codellama": {
-        "module": "test_hf_codellama",
-        "description": "CodeLlama for code generation",
-        "default_model": "codellama/CodeLlama-7b-hf",
-        "class": "TestCodeLlamaModels",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-    "donut": {
-        "module": "test_hf_donut",
-        "description": "Donut document understanding transformer",
-        "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
-        "class": "TestDonutModels",
-        "status": "complete"
-    },
-    "layoutlmv3": {
-        "module": "test_hf_layoutlmv3",
-        "description": "LayoutLMv3 models for document understanding",
-        "default_model": "microsoft/layoutlmv3-base",
-        "class": "TestLayoutLMv3Models",
-        "status": "complete"
-    },
-    "markuplm": {
-        "module": "test_hf_markuplm",
-        "description": "MarkupLM models for markup language understanding",
-        "default_model": "microsoft/markuplm-base",
-        "class": "TestMarkupLMModels",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_hf_gpt2",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestGpt2Models",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_hf_t5",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestT5Models",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_hf_clip",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestClipModels",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_hf_llama",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestLlamaModels",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_hf_whisper",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestWhisperModels",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_hf_wav2vec2",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestWav2Vec2Models",
-        "status": "complete"
-    },
-    "vit": {
-        "module": "test_hf_vit",
-        "description": "Vision Transformer models",
-        "default_model": "google/vit-base-patch16-224",
-        "class": "TestVitModels",
-        "status": "complete"
-    },
-    "detr": {
-        "module": "test_hf_detr",
-        "description": "Detection Transformer models for object detection",
-        "default_model": "facebook/detr-resnet-50",
-        "class": "TestDetrModels",
-        "status": "complete"
-    },
-    "layoutlmv2": {
-        "module": "test_hf_layoutlmv2",
-        "description": "LayoutLMv2 models for document understanding",
-        "default_model": "microsoft/layoutlmv2-base-uncased",
-        "class": "TestLayoutLMv2Models",
-        "status": "complete"
-    },
-    "time_series_transformer": {
-        "module": "test_hf_time_series_transformer",
-        "description": "Time Series Transformer models for forecasting",
-        "default_model": "huggingface/time-series-transformer-tourism-monthly",
-        "class": "TestTimeSeriesTransformerModels",
-        "status": "complete"
-    },
-    "llava": {
-        "module": "test_hf_llava",
-        "description": "Large Language-and-Vision Assistant models",
-        "default_model": "llava-hf/llava-1.5-7b-hf",
-        "class": "TestLlavaModels",
-        "status": "complete"
-    },
-    "roberta": {
-        "module": "test_hf_roberta",
-        "description": "RoBERTa masked language models",
-        "default_model": "roberta-base",
-        "class": "TestRobertaModels",
-        "status": "complete"
-    },
-    "phi": {
-        "module": "test_hf_phi",
-        "description": "Phi language models from Microsoft",
-        "default_model": "microsoft/phi-2",
-        "class": "TestPhiModels",
-        "status": "complete"
-    },
-    "distilbert": {
-        "module": "test_hf_distilbert",
-        "description": "DistilBERT masked language models",
-        "default_model": "distilbert-base-uncased",
-        "class": "TestDistilBertModels",
-        "status": "complete"
-    },
-    "visual_bert": {
-        "module": "test_hf_visual_bert",
-        "description": "VisualBERT for vision-language tasks",
-        "default_model": "uclanlp/visualbert-vqa-coco-pre",
-        "class": "TestVisualBertModels",
-        "status": "complete"
-    },
-    "zoedepth": {
-        "module": "test_hf_zoedepth",
-        "description": "ZoeDepth monocular depth estimation models",
-        "default_model": "isl-org/ZoeDepth",
-        "class": "TestZoeDepthModels",
-        "status": "complete"
-    },
-    "mistral": {
-        "module": "test_hf_mistral",
-        "description": "Mistral causal language models",
-        "default_model": "mistralai/Mistral-7B-v0.1",
-        "class": "TestMistralModels",
-        "status": "complete"
-    },
-    "blip": {
-        "module": "test_hf_blip",
-        "description": "BLIP vision-language models",
-        "default_model": "Salesforce/blip-image-captioning-base",
-        "class": "TestBlipModels",
-        "status": "complete"
-    },
-    "sam": {
-        "module": "test_hf_sam",
-        "description": "Segment Anything Model for image segmentation",
-        "default_model": "facebook/sam-vit-base",
-        "class": "TestSamModels",
-        "status": "complete"
-    },
-    "owlvit": {
-        "module": "test_hf_owlvit",
-        "description": "Open-vocabulary object detection with Vision Transformers",
-        "default_model": "google/owlvit-base-patch32",
-        "class": "TestOwlvitModels",
-        "status": "complete"
-    },
-    "gemma": {
-        "module": "test_hf_gemma",
-        "description": "Gemma language models from Google",
-        "default_model": "google/gemma-2b",
-        "class": "TestGemmaModels",
-        "status": "complete"
-    },
-    "musicgen": {
-        "module": "test_hf_musicgen",
-        "description": "MusicGen music generation models from AudioCraft",
-        "default_model": "facebook/musicgen-small",
-        "class": "TestMusicgenModels",
-        "status": "complete"
-    },
-    "hubert": {
-        "module": "test_hf_hubert",
-        "description": "HuBERT speech representation models",
-        "default_model": "facebook/hubert-base-ls960",
-        "class": "TestHubertModels",
-        "status": "complete"
-    },
-},
-    "gpt2": {
-        "module": "test_simplified",
-        "description": "GPT-2 causal language models",
-        "default_model": "gpt2",
-        "class": "TestSimpleModel",
-        "status": "complete"
-    },
-    "t5": {
-        "module": "test_simplified",
-        "description": "T5 encoder-decoder models",
-        "default_model": "t5-small",
-        "class": "TestSimpleModel",
-        "status": "complete"
-    },
-    "clip": {
-        "module": "test_simplified",
-        "description": "CLIP vision-language models",
-        "default_model": "openai/clip-vit-base-patch32",
-        "class": "TestSimpleModel",
-        "status": "complete"
-    },
-    "llama": {
-        "module": "test_simplified",
-        "description": "LLaMA causal language models",
-        "default_model": "meta-llama/Llama-2-7b-hf",
-        "class": "TestSimpleModel",
-        "status": "complete"
-    },
-    "whisper": {
-        "module": "test_simplified",
-        "description": "Whisper speech recognition models",
-        "default_model": "openai/whisper-tiny",
-        "class": "TestSimpleModel",
-        "status": "complete"
-    },
-    "wav2vec2": {
-        "module": "test_simplified",
-        "description": "Wav2Vec2 speech models",
-        "default_model": "facebook/wav2vec2-base",
-        "class": "TestSimpleModel",
-        "status": "complete"
+    MODEL_FAMILIES = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bert",
+    "description": "BERT-family masked language models",
+    "default_model": "bert-base-uncased",
+    "class": "TestBertModels",
+    "status": "complete"
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    "mamba": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba",
+    "description": "Mamba state space models for language modeling",
+    "default_model": "state-spaces/mamba-2.8b",
+    "class": "TestMambaModels",
+    "status": "complete"
+    },
+    "phi3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi3",
+    "description": "Phi-3 language models from Microsoft",
+    "default_model": "microsoft/phi-3-mini-4k-instruct",
+    "class": "TestPhi3Models",
+    "status": "complete"
+    },
+    "paligemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_paligemma",
+    "description": "PaLI-GEMMA vision-language models from Google",
+    "default_model": "google/paligemma-3b-mix-224",
+    "class": "TestPaliGemmaModels",
+    "status": "complete"
+    },
+    "mixtral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mixtral",
+    "description": "Mixtral mixture-of-experts language models",
+    "default_model": "mistralai/Mixtral-8x7B-v0.1",
+    "class": "TestMixtralModels",
+    "status": "complete"
+    },
+    "deberta_v2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deberta_v2",
+    "description": "DeBERTa-V2 models with enhanced disentangled attention",
+    "default_model": "microsoft/deberta-v2-xlarge",
+    "class": "TestDebertaV2Models",
+    "status": "complete"
+    },
+    "video_llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_video_llava",
+    "description": "Video-LLaVA video understanding models",
+    "default_model": "LanguageBind/Video-LLaVA-7B",
+    "class": "TestVideoLlavaModels",
+    "status": "complete"
+    },
+    "blip2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip_2",
+    "description": "BLIP-2 vision-language models",
+    "default_model": "Salesforce/blip2-opt-2.7b",
+    "class": "TestBlip2Models",
+    "status": "complete"
+    },
+    "instructblip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_instructblip",
+    "description": "InstructBLIP vision-language instruction-tuned models",
+    "default_model": "Salesforce/instructblip-flan-t5-xl",
+    "class": "TestInstructBlipModels",
+    "status": "complete"
+    },
+    "swin": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_swin",
+    "description": "Swin Transformer vision models",
+    "default_model": "microsoft/swin-base-patch4-window7-224",
+    "class": "TestSwinModels",
+    "status": "complete"
+    },
+    "convnext": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_convnext",
+    "description": "ConvNeXT vision models",
+    "default_model": "facebook/convnext-base-224",
+    "class": "TestConvNextModels",
+    "status": "complete"
+    },
+    "seamless_m4t": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_seamless_m4t",
+    "description": "Seamless multilingual and multimodal translation models",
+    "default_model": "facebook/seamless-m4t-large",
+    "class": "TestSeamlessM4TModels",
+    "status": "complete"
+    },
+    "wavlm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wavlm",
+    "description": "WavLM speech processing models",
+    "default_model": "microsoft/wavlm-base",
+    "class": "TestWavLMModels",
+    "status": "complete"
+    },
+    "codellama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_codellama",
+    "description": "CodeLlama for code generation",
+    "default_model": "codellama/CodeLlama-7b-hf",
+    "class": "TestCodeLlamaModels",
+    "status": "complete"
+    },
+    "starcoder2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_starcoder2",
+    "description": "StarCoder2 for code generation",
+    "default_model": "bigcode/starcoder2-3b",
+    "class": "TestStarcoder2Models",
+    "status": "complete"
+    },
+    "qwen2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2",
+    "description": "Qwen2 models from Alibaba",
+    "default_model": "Qwen/Qwen2-7B-Instruct",
+    "class": "TestQwen2Models",
+    "status": "complete"
+    },
+    "bart": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bart",
+    "description": "BART sequence-to-sequence models",
+    "default_model": "facebook/bart-large-cnn",
+    "class": "TestBartModels",
+    "status": "complete"
+    },
+    "segformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_segformer",
+    "description": "SegFormer models for image segmentation",
+    "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+    "class": "TestSegformerModels",
+    "status": "complete"
+    },
+    "dinov2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_dinov2",
+    "description": "DINOv2 self-supervised vision models",
+    "default_model": "facebook/dinov2-base",
+    "class": "TestDinov2Models",
+    "status": "complete"
+    },
+    "mamba2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba2",
+    "description": "Mamba2 state space models",
+    "default_model": "state-spaces/mamba2-2.8b",
+    "class": "TestMamba2Models",
+    "status": "complete"
+    },
+    "phi4": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi4",
+    "description": "Phi-4 language models from Microsoft",
+    "default_model": "microsoft/phi-4-mini-instruct",
+    "class": "TestPhi4Models",
+    "status": "complete"
+    },
+    "rwkv": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_rwkv",
+    "description": "RWKV Receptance Weighted Key Value models",
+    "default_model": "RWKV/rwkv-4-pile-430m",
+    "class": "TestRwkvModels",
+    "status": "complete"
+    },
+    "depth_anything": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_depth_anything",
+    "description": "Depth Anything models for universal depth estimation",
+    "default_model": "LiheYoung/depth-anything-small",
+    "class": "TestDepthAnythingModels",
+    "status": "complete"
+    },
+    "qwen2_audio": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio",
+    "description": "Qwen2 Audio models for speech understanding",
+    "default_model": "Qwen/Qwen2-Audio-7B",
+    "class": "TestQwen2AudioModels",
+    "status": "complete"
+    },
+    "kosmos_2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_kosmos_2",
+    "description": "KOSMOS-2 multimodal language models with reference grounding",
+    "default_model": "microsoft/kosmos-2-patch14-224",
+    "class": "TestKosmos2Models",
+    "status": "complete"
+    },
+    "grounding_dino": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_grounding_dino",
+    "description": "Grounding DINO models for open-set object detection",
+    "default_model": "IDEA-Research/grounding-dino-base",
+    "class": "TestGroundingDinoModels",
+    "status": "complete"
+    },
+    "wav2vec2_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2_bert",
+    "description": "Wav2Vec2-BERT for speech and language understanding",
+    "default_model": "facebook/wav2vec2-bert-base",
+    "class": "TestWav2Vec2BertModels",
+    "status": "complete"
+    },
+    "idefics3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_idefics3",
+    "description": "IDEFICS3 vision-language models",
+    "default_model": "HuggingFaceM4/idefics3-8b",
+    "class": "TestIdefics3Models",
+    "status": "complete"
+    },
+    "deepseek": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deepseek",
+    "description": "DeepSeek language models",
+    "default_model": "deepseek-ai/deepseek-llm-7b-base",
+    "class": "TestDeepSeekModels",
+    "status": "complete"
+    },
+    "siglip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_siglip",
+    "description": "SigLIP vision-language models with sigmoid loss",
+    "default_model": "google/siglip-base-patch16-224",
+    "class": "TestSiglipModels",
+    "status": "complete"
+    },
+    "qwen2_vl": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_vl",
+    "description": "Qwen2 vision-language models",
+    "default_model": "Qwen/Qwen2-VL-7B",
+    "class": "TestQwen2VLModels",
+    "status": "complete"
+    },
+    "qwen2_audio_encoder": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio_encoder",
+    "description": "Qwen2 Audio Encoder models",
+    "default_model": "Qwen/Qwen2-Audio-Encoder",
+    "class": "TestQwen2AudioEncoderModels",
+    "status": "complete"
+    },
+    "xclip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_xclip",
+    "description": "X-CLIP extended CLIP models with additional capabilities",
+    "default_model": "microsoft/xclip-base-patch32",
+    "class": "TestXCLIPModels",
+    "status": "complete"
+    },
+    "vilt": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vilt",
+    "description": "Vision-and-Language Transformer models",
+    "default_model": "dandelin/vilt-b32-mlm",
+    "class": "TestViltModels",
+    "status": "complete"
+    },
+    "encodec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_encodec",
+    "description": "EnCodec neural audio codec models",
+    "default_model": "facebook/encodec_24khz",
+    "class": "TestEncodecModels",
+    "status": "complete"
+    },
+    "bark": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bark",
+    "description": "Bark text-to-audio generation models",
+    "default_model": "suno/bark-small",
+    "class": "TestBarkModels",
+    "status": "complete"
+    },
+    "biogpt": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_biogpt",
+    "description": "BioGPT models for biomedical text generation",
+    "default_model": "microsoft/biogpt",
+    "class": "TestBioGptModels",
+    "status": "complete"
+    },
+    "esm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_esm",
+    "description": "ESM protein language models",
+    "default_model": "facebook/esm2_t33_650M_UR50D",
+    "class": "TestEsmModels",
+    "status": "complete"
+    },
+    "audioldm2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_audioldm2",
+    "description": "AudioLDM2 text-to-audio diffusion models",
+    "default_model": "cvssp/audioldm2",
+    "class": "TestAudioLdm2Models",
+    "status": "complete"
+    },
+    "tinyllama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_tinyllama",
+    "description": "TinyLlama efficient small form-factor LLM",
+    "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "class": "TestTinyLlamaModels",
+    "status": "complete"
+    },
+    "vqgan": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vqgan",
+    "description": "Vector Quantized Generative Adversarial Network",
+    "default_model": "CompVis/vqgan-f16-16384",
+    "class": "TestVQGANModels",
+    "status": "complete"
+    },
+    "command_r": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_command_r",
+    "description": "Command-R advanced instruction-following models",
+    "default_model": "CohereForAI/c4ai-command-r-v01",
+    "class": "TestCommandRModels",
+    "status": "complete"
+    },
+    "cm3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_cm3",
+    "description": "CM3 multimodal model with text, image and audio capabilities",
+    "default_model": "facebook/cm3leon-7b",
+    "class": "TestCm3Models",
+    "status": "complete"
+    },
+    "llava_next_video": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava_next_video",
+    "description": "LLaVA-NeXT-Video for multimodal video understanding",
+    "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
+    "class": "TestLlavaNextVideoModels",
+    "status": "complete"
+    },
+    "orca3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_orca3",
+    "description": "Orca3 instruction-following LLM from Microsoft",
+    "default_model": "microsoft/Orca-3-7B",
+    "class": "TestOrca3Models",
+    "status": "complete"
+    },
+    "imagebind": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_imagebind",
+    "description": "ImageBind models binding multiple modalities",
+    "default_model": "facebook/imagebind-huge",
+    "class": "TestImageBindModels",
+    "status": "complete"
+    },
+    "cogvlm2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_cogvlm2",
+    "description": "CogVLM2 vision-language model with cognitive capabilities",
+    "default_model": "THUDM/cogvlm2-llama3-8b",
+    "class": "TestCogVlm2Models",
+    "status": "complete"
+    },
+    "graphsage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_graphsage",
+    "description": "GraphSAGE inductive framework for graph embeddings",
+    "default_model": "deepgnn/graphsage-base",
+    "class": "TestGraphSageModels",
+    "status": "complete"
+    },
+    "ulip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_ulip",
+    "description": "Unified Language-Image Pre-training for point cloud understanding",
+    "default_model": "salesforce/ulip-pointbert-base",
+    "class": "TestUlipModels",
+    "status": "complete"
+    },
+    "claude3_haiku": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_claude3_haiku",
+    "description": "Claude 3 Haiku family large language models via Hugging Face API",
+    "default_model": "anthropic/claude-3-haiku-20240307",
+    "class": "TestClaude3Models",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    "mamba": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba",
+    "description": "Mamba state space models for language modeling",
+    "default_model": "state-spaces/mamba-2.8b",
+    "class": "TestMambaModels",
+    "status": "complete"
+    },
+    "phi3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi3",
+    "description": "Phi-3 language models from Microsoft",
+    "default_model": "microsoft/phi-3-mini-4k-instruct",
+    "class": "TestPhi3Models",
+    "status": "complete"
+    },
+    "paligemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_paligemma",
+    "description": "PaLI-GEMMA vision-language models from Google",
+    "default_model": "google/paligemma-3b-mix-224",
+    "class": "TestPaliGemmaModels",
+    "status": "complete"
+    },
+    "mixtral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mixtral",
+    "description": "Mixtral mixture-of-experts language models",
+    "default_model": "mistralai/Mixtral-8x7B-v0.1",
+    "class": "TestMixtralModels",
+    "status": "complete"
+    },
+    "deberta_v2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deberta_v2",
+    "description": "DeBERTa-V2 models with enhanced disentangled attention",
+    "default_model": "microsoft/deberta-v2-xlarge",
+    "class": "TestDebertaV2Models",
+    "status": "complete"
+    },
+    "video_llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_video_llava",
+    "description": "Video-LLaVA video understanding models",
+    "default_model": "LanguageBind/Video-LLaVA-7B",
+    "class": "TestVideoLlavaModels",
+    "status": "complete"
+    },
+    "blip2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip_2",
+    "description": "BLIP-2 vision-language models",
+    "default_model": "Salesforce/blip2-opt-2.7b",
+    "class": "TestBlip2Models",
+    "status": "complete"
+    },
+    "instructblip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_instructblip",
+    "description": "InstructBLIP vision-language instruction-tuned models",
+    "default_model": "Salesforce/instructblip-flan-t5-xl",
+    "class": "TestInstructBlipModels",
+    "status": "complete"
+    },
+    "swin": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_swin",
+    "description": "Swin Transformer vision models",
+    "default_model": "microsoft/swin-base-patch4-window7-224",
+    "class": "TestSwinModels",
+    "status": "complete"
+    },
+    "convnext": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_convnext",
+    "description": "ConvNeXT vision models",
+    "default_model": "facebook/convnext-base-224",
+    "class": "TestConvNextModels",
+    "status": "complete"
+    },
+    "seamless_m4t": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_seamless_m4t",
+    "description": "Seamless multilingual and multimodal translation models",
+    "default_model": "facebook/seamless-m4t-large",
+    "class": "TestSeamlessM4TModels",
+    "status": "complete"
+    },
+    "wavlm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wavlm",
+    "description": "WavLM speech processing models",
+    "default_model": "microsoft/wavlm-base",
+    "class": "TestWavLMModels",
+    "status": "complete"
+    },
+    "codellama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_codellama",
+    "description": "CodeLlama for code generation",
+    "default_model": "codellama/CodeLlama-7b-hf",
+    "class": "TestCodeLlamaModels",
+    "status": "complete"
+    },
+    "starcoder2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_starcoder2",
+    "description": "StarCoder2 for code generation",
+    "default_model": "bigcode/starcoder2-3b",
+    "class": "TestStarcoder2Models",
+    "status": "complete"
+    },
+    "qwen2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2",
+    "description": "Qwen2 models from Alibaba",
+    "default_model": "Qwen/Qwen2-7B-Instruct",
+    "class": "TestQwen2Models",
+    "status": "complete"
+    },
+    "bart": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bart",
+    "description": "BART sequence-to-sequence models",
+    "default_model": "facebook/bart-large-cnn",
+    "class": "TestBartModels",
+    "status": "complete"
+    },
+    "segformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_segformer",
+    "description": "SegFormer models for image segmentation",
+    "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+    "class": "TestSegformerModels",
+    "status": "complete"
+    },
+    "dinov2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_dinov2",
+    "description": "DINOv2 self-supervised vision models",
+    "default_model": "facebook/dinov2-base",
+    "class": "TestDinov2Models",
+    "status": "complete"
+    },
+    "mamba2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba2",
+    "description": "Mamba2 state space models",
+    "default_model": "state-spaces/mamba2-2.8b",
+    "class": "TestMamba2Models",
+    "status": "complete"
+    },
+    "phi4": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi4",
+    "description": "Phi-4 language models from Microsoft",
+    "default_model": "microsoft/phi-4-mini-instruct",
+    "class": "TestPhi4Models",
+    "status": "complete"
+    },
+    "rwkv": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_rwkv",
+    "description": "RWKV Receptance Weighted Key Value models",
+    "default_model": "RWKV/rwkv-4-pile-430m",
+    "class": "TestRwkvModels",
+    "status": "complete"
+    },
+    "depth_anything": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_depth_anything",
+    "description": "Depth Anything models for universal depth estimation",
+    "default_model": "LiheYoung/depth-anything-small",
+    "class": "TestDepthAnythingModels",
+    "status": "complete"
+    },
+    "qwen2_audio": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio",
+    "description": "Qwen2 Audio models for speech understanding",
+    "default_model": "Qwen/Qwen2-Audio-7B",
+    "class": "TestQwen2AudioModels",
+    "status": "complete"
+    },
+    "kosmos_2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_kosmos_2",
+    "description": "KOSMOS-2 multimodal language models with reference grounding",
+    "default_model": "microsoft/kosmos-2-patch14-224",
+    "class": "TestKosmos2Models",
+    "status": "complete"
+    },
+    "grounding_dino": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_grounding_dino",
+    "description": "Grounding DINO models for open-set object detection",
+    "default_model": "IDEA-Research/grounding-dino-base",
+    "class": "TestGroundingDinoModels",
+    "status": "complete"
+    },
+    "wav2vec2_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2_bert",
+    "description": "Wav2Vec2-BERT for speech and language understanding",
+    "default_model": "facebook/wav2vec2-bert-base",
+    "class": "TestWav2Vec2BertModels",
+    "status": "complete"
+    },
+    "idefics3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_idefics3",
+    "description": "IDEFICS3 vision-language models",
+    "default_model": "HuggingFaceM4/idefics3-8b",
+    "class": "TestIdefics3Models",
+    "status": "complete"
+    },
+    "deepseek": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deepseek",
+    "description": "DeepSeek language models",
+    "default_model": "deepseek-ai/deepseek-llm-7b-base",
+    "class": "TestDeepSeekModels",
+    "status": "complete"
+    },
+    "siglip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_siglip",
+    "description": "SigLIP vision-language models with sigmoid loss",
+    "default_model": "google/siglip-base-patch16-224",
+    "class": "TestSiglipModels",
+    "status": "complete"
+    },
+    "qwen2_vl": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_vl",
+    "description": "Qwen2 vision-language models",
+    "default_model": "Qwen/Qwen2-VL-7B",
+    "class": "TestQwen2VLModels",
+    "status": "complete"
+    },
+    "qwen2_audio_encoder": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio_encoder",
+    "description": "Qwen2 Audio Encoder models",
+    "default_model": "Qwen/Qwen2-Audio-Encoder",
+    "class": "TestQwen2AudioEncoderModels",
+    "status": "complete"
+    },
+    "xclip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_xclip",
+    "description": "X-CLIP extended CLIP models with additional capabilities",
+    "default_model": "microsoft/xclip-base-patch32",
+    "class": "TestXCLIPModels",
+    "status": "complete"
+    },
+    "vilt": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vilt",
+    "description": "Vision-and-Language Transformer models",
+    "default_model": "dandelin/vilt-b32-mlm",
+    "class": "TestViltModels",
+    "status": "complete"
+    },
+    "encodec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_encodec",
+    "description": "EnCodec neural audio codec models",
+    "default_model": "facebook/encodec_24khz",
+    "class": "TestEncodecModels",
+    "status": "complete"
+    },
+    "bark": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bark",
+    "description": "Bark text-to-audio generation models",
+    "default_model": "suno/bark-small",
+    "class": "TestBarkModels",
+    "status": "complete"
+    },
+    "biogpt": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_biogpt",
+    "description": "BioGPT models for biomedical text generation",
+    "default_model": "microsoft/biogpt",
+    "class": "TestBioGptModels",
+    "status": "complete"
+    },
+    "esm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_esm",
+    "description": "ESM protein language models",
+    "default_model": "facebook/esm2_t33_650M_UR50D",
+    "class": "TestEsmModels",
+    "status": "complete"
+    },
+    "audioldm2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_audioldm2",
+    "description": "AudioLDM2 text-to-audio diffusion models",
+    "default_model": "cvssp/audioldm2",
+    "class": "TestAudioLdm2Models",
+    "status": "complete"
+    },
+    "tinyllama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_tinyllama",
+    "description": "TinyLlama efficient small form-factor LLM",
+    "default_model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    "class": "TestTinyLlamaModels",
+    "status": "complete"
+    },
+    "vqgan": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vqgan",
+    "description": "Vector Quantized Generative Adversarial Network",
+    "default_model": "CompVis/vqgan-f16-16384",
+    "class": "TestVQGANModels",
+    "status": "complete"
+    },
+    "command_r": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_command_r",
+    "description": "Command-R advanced instruction-following models",
+    "default_model": "CohereForAI/c4ai-command-r-v01",
+    "class": "TestCommandRModels",
+    "status": "complete"
+    },
+    "cm3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_cm3",
+    "description": "CM3 multimodal model with text, image and audio capabilities",
+    "default_model": "facebook/cm3leon-7b",
+    "class": "TestCm3Models",
+    "status": "complete"
+    },
+    "llava_next_video": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava_next_video",
+    "description": "LLaVA-NeXT-Video for multimodal video understanding",
+    "default_model": "llava-hf/llava-v1.6-vicuna-7b-video",
+    "class": "TestLlavaNextVideoModels",
+    "status": "complete"
+    },
+    "orca3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_orca3",
+    "description": "Orca3 instruction-following LLM from Microsoft",
+    "default_model": "microsoft/Orca-3-7B",
+    "class": "TestOrca3Models",
+    "status": "complete"
+    },
+    "imagebind": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_imagebind",
+    "description": "ImageBind models binding multiple modalities",
+    "default_model": "facebook/imagebind-huge",
+    "class": "TestImageBindModels",
+    "status": "complete"
+    },
+    "cogvlm2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_cogvlm2",
+    "description": "CogVLM2 vision-language model with cognitive capabilities",
+    "default_model": "THUDM/cogvlm2-llama3-8b",
+    "class": "TestCogVlm2Models",
+    "status": "complete"
+    },
+    "graphsage": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_graphsage",
+    "description": "GraphSAGE inductive framework for graph embeddings",
+    "default_model": "deepgnn/graphsage-base",
+    "class": "TestGraphSageModels",
+    "status": "complete"
+    },
+    "ulip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_ulip",
+    "description": "Unified Language-Image Pre-training for point cloud understanding",
+    "default_model": "salesforce/ulip-pointbert-base",
+    "class": "TestUlipModels",
+    "status": "complete"
+    },
+    "claude3_haiku": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_claude3_haiku",
+    "description": "Claude 3 Haiku family large language models via Hugging Face API",
+    "default_model": "anthropic/claude-3-haiku-20240307",
+    "class": "TestClaude3Models",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    "mamba": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba",
+    "description": "Mamba state space models for language modeling",
+    "default_model": "state-spaces/mamba-2.8b",
+    "class": "TestMambaModels",
+    "status": "complete"
+    },
+    "phi3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi3",
+    "description": "Phi-3 language models from Microsoft",
+    "default_model": "microsoft/phi-3-mini-4k-instruct",
+    "class": "TestPhi3Models",
+    "status": "complete"
+    },
+    "paligemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_paligemma",
+    "description": "PaLI-GEMMA vision-language models from Google",
+    "default_model": "google/paligemma-3b-mix-224",
+    "class": "TestPaliGemmaModels",
+    "status": "complete"
+    },
+    "mixtral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mixtral",
+    "description": "Mixtral mixture-of-experts language models",
+    "default_model": "mistralai/Mixtral-8x7B-v0.1",
+    "class": "TestMixtralModels",
+    "status": "complete"
+    },
+    "deberta_v2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deberta_v2",
+    "description": "DeBERTa-V2 models with enhanced disentangled attention",
+    "default_model": "microsoft/deberta-v2-xlarge",
+    "class": "TestDebertaV2Models",
+    "status": "complete"
+    },
+    "video_llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_video_llava",
+    "description": "Video-LLaVA video understanding models",
+    "default_model": "LanguageBind/Video-LLaVA-7B",
+    "class": "TestVideoLlavaModels",
+    "status": "complete"
+    },
+    "blip2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip_2",
+    "description": "BLIP-2 vision-language models",
+    "default_model": "Salesforce/blip2-opt-2.7b",
+    "class": "TestBlip2Models",
+    "status": "complete"
+    },
+    "instructblip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_instructblip",
+    "description": "InstructBLIP vision-language instruction-tuned models",
+    "default_model": "Salesforce/instructblip-flan-t5-xl",
+    "class": "TestInstructBlipModels",
+    "status": "complete"
+    },
+    "swin": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_swin",
+    "description": "Swin Transformer vision models",
+    "default_model": "microsoft/swin-base-patch4-window7-224",
+    "class": "TestSwinModels",
+    "status": "complete"
+    },
+    "convnext": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_convnext",
+    "description": "ConvNeXT vision models",
+    "default_model": "facebook/convnext-base-224",
+    "class": "TestConvNextModels",
+    "status": "complete"
+    },
+    "seamless_m4t": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_seamless_m4t",
+    "description": "Seamless multilingual and multimodal translation models",
+    "default_model": "facebook/seamless-m4t-large",
+    "class": "TestSeamlessM4TModels",
+    "status": "complete"
+    },
+    "wavlm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wavlm",
+    "description": "WavLM speech processing models",
+    "default_model": "microsoft/wavlm-base",
+    "class": "TestWavLMModels",
+    "status": "complete"
+    },
+    "codellama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_codellama",
+    "description": "CodeLlama for code generation",
+    "default_model": "codellama/CodeLlama-7b-hf",
+    "class": "TestCodeLlamaModels",
+    "status": "complete"
+    },
+    "starcoder2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_starcoder2",
+    "description": "StarCoder2 for code generation",
+    "default_model": "bigcode/starcoder2-3b",
+    "class": "TestStarcoder2Models",
+    "status": "complete"
+    },
+    "qwen2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2",
+    "description": "Qwen2 models from Alibaba",
+    "default_model": "Qwen/Qwen2-7B-Instruct",
+    "class": "TestQwen2Models",
+    "status": "complete"
+    },
+    "bart": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bart",
+    "description": "BART sequence-to-sequence models",
+    "default_model": "facebook/bart-large-cnn",
+    "class": "TestBartModels",
+    "status": "complete"
+    },
+    "segformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_segformer",
+    "description": "SegFormer models for image segmentation",
+    "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+    "class": "TestSegformerModels",
+    "status": "complete"
+    },
+    "dinov2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_dinov2",
+    "description": "DINOv2 self-supervised vision models",
+    "default_model": "facebook/dinov2-base",
+    "class": "TestDinov2Models",
+    "status": "complete"
+    },
+    "mamba2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba2",
+    "description": "Mamba2 state space models",
+    "default_model": "state-spaces/mamba2-2.8b",
+    "class": "TestMamba2Models",
+    "status": "complete"
+    },
+    "phi4": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi4",
+    "description": "Phi-4 language models from Microsoft",
+    "default_model": "microsoft/phi-4-mini-instruct",
+    "class": "TestPhi4Models",
+    "status": "complete"
+    },
+    "rwkv": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_rwkv",
+    "description": "RWKV Receptance Weighted Key Value models",
+    "default_model": "RWKV/rwkv-4-pile-430m",
+    "class": "TestRwkvModels",
+    "status": "complete"
+    },
+    "depth_anything": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_depth_anything",
+    "description": "Depth Anything models for universal depth estimation",
+    "default_model": "LiheYoung/depth-anything-small",
+    "class": "TestDepthAnythingModels",
+    "status": "complete"
+    },
+    "qwen2_audio": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio",
+    "description": "Qwen2 Audio models for speech understanding",
+    "default_model": "Qwen/Qwen2-Audio-7B",
+    "class": "TestQwen2AudioModels",
+    "status": "complete"
+    },
+    "kosmos_2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_kosmos_2",
+    "description": "KOSMOS-2 multimodal language models with reference grounding",
+    "default_model": "microsoft/kosmos-2-patch14-224",
+    "class": "TestKosmos2Models",
+    "status": "complete"
+    },
+    "grounding_dino": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_grounding_dino",
+    "description": "Grounding DINO models for open-set object detection",
+    "default_model": "IDEA-Research/grounding-dino-base",
+    "class": "TestGroundingDinoModels",
+    "status": "complete"
+    },
+    "wav2vec2_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2_bert",
+    "description": "Wav2Vec2-BERT for speech and language understanding",
+    "default_model": "facebook/wav2vec2-bert-base",
+    "class": "TestWav2Vec2BertModels",
+    "status": "complete"
+    },
+    "idefics3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_idefics3",
+    "description": "IDEFICS3 vision-language models",
+    "default_model": "HuggingFaceM4/idefics3-8b",
+    "class": "TestIdefics3Models",
+    "status": "complete"
+    },
+    "deepseek": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deepseek",
+    "description": "DeepSeek language models",
+    "default_model": "deepseek-ai/deepseek-llm-7b-base",
+    "class": "TestDeepSeekModels",
+    "status": "complete"
+    },
+    "siglip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_siglip",
+    "description": "SigLIP vision-language models with sigmoid loss",
+    "default_model": "google/siglip-base-patch16-224",
+    "class": "TestSiglipModels",
+    "status": "complete"
+    },
+    "qwen2_vl": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_vl",
+    "description": "Qwen2 vision-language models",
+    "default_model": "Qwen/Qwen2-VL-7B",
+    "class": "TestQwen2VLModels",
+    "status": "complete"
+    },
+    "qwen2_audio_encoder": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2_audio_encoder",
+    "description": "Qwen2 Audio Encoder models",
+    "default_model": "Qwen/Qwen2-Audio-Encoder",
+    "class": "TestQwen2AudioEncoderModels",
+    "status": "complete"
+    },
+    "xclip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_xclip",
+    "description": "X-CLIP extended CLIP models with additional capabilities",
+    "default_model": "microsoft/xclip-base-patch32",
+    "class": "TestXCLIPModels",
+    "status": "complete"
+    },
+    "vilt": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vilt",
+    "description": "Vision-and-Language Transformer models",
+    "default_model": "dandelin/vilt-b32-mlm",
+    "class": "TestViltModels",
+    "status": "complete"
+    },
+    "encodec": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_encodec",
+    "description": "EnCodec neural audio codec models",
+    "default_model": "facebook/encodec_24khz",
+    "class": "TestEncodecModels",
+    "status": "complete"
+    },
+    "bark": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bark",
+    "description": "Bark text-to-audio generation models",
+    "default_model": "suno/bark-small",
+    "class": "TestBarkModels",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    "mamba": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba",
+    "description": "Mamba state space models for language modeling",
+    "default_model": "state-spaces/mamba-2.8b",
+    "class": "TestMambaModels",
+    "status": "complete"
+    },
+    "phi3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi3",
+    "description": "Phi-3 language models from Microsoft",
+    "default_model": "microsoft/phi-3-mini-4k-instruct",
+    "class": "TestPhi3Models",
+    "status": "complete"
+    },
+    "paligemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_paligemma",
+    "description": "PaLI-GEMMA vision-language models from Google",
+    "default_model": "google/paligemma-3b-mix-224",
+    "class": "TestPaliGemmaModels",
+    "status": "complete"
+    },
+    "mixtral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mixtral",
+    "description": "Mixtral mixture-of-experts language models",
+    "default_model": "mistralai/Mixtral-8x7B-v0.1",
+    "class": "TestMixtralModels",
+    "status": "complete"
+    },
+    "deberta_v2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deberta_v2",
+    "description": "DeBERTa-V2 models with enhanced disentangled attention",
+    "default_model": "microsoft/deberta-v2-xlarge",
+    "class": "TestDebertaV2Models",
+    "status": "complete"
+    },
+    "video_llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_video_llava",
+    "description": "Video-LLaVA video understanding models",
+    "default_model": "LanguageBind/Video-LLaVA-7B",
+    "class": "TestVideoLlavaModels",
+    "status": "complete"
+    },
+    "blip2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip_2",
+    "description": "BLIP-2 vision-language models",
+    "default_model": "Salesforce/blip2-opt-2.7b",
+    "class": "TestBlip2Models",
+    "status": "complete"
+    },
+    "instructblip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_instructblip",
+    "description": "InstructBLIP vision-language instruction-tuned models",
+    "default_model": "Salesforce/instructblip-flan-t5-xl",
+    "class": "TestInstructBlipModels",
+    "status": "complete"
+    },
+    "swin": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_swin",
+    "description": "Swin Transformer vision models",
+    "default_model": "microsoft/swin-base-patch4-window7-224",
+    "class": "TestSwinModels",
+    "status": "complete"
+    },
+    "convnext": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_convnext",
+    "description": "ConvNeXT vision models",
+    "default_model": "facebook/convnext-base-224",
+    "class": "TestConvNextModels",
+    "status": "complete"
+    },
+    "seamless_m4t": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_seamless_m4t",
+    "description": "Seamless multilingual and multimodal translation models",
+    "default_model": "facebook/seamless-m4t-large",
+    "class": "TestSeamlessM4TModels",
+    "status": "complete"
+    },
+    "wavlm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wavlm",
+    "description": "WavLM speech processing models",
+    "default_model": "microsoft/wavlm-base",
+    "class": "TestWavLMModels",
+    "status": "complete"
+    },
+    "codellama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_codellama",
+    "description": "CodeLlama for code generation",
+    "default_model": "codellama/CodeLlama-7b-hf",
+    "class": "TestCodeLlamaModels",
+    "status": "complete"
+    },
+    "starcoder2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_starcoder2",
+    "description": "StarCoder2 for code generation",
+    "default_model": "bigcode/starcoder2-3b",
+    "class": "TestStarcoder2Models",
+    "status": "complete"
+    },
+    "qwen2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_qwen2",
+    "description": "Qwen2 models from Alibaba",
+    "default_model": "Qwen/Qwen2-7B-Instruct",
+    "class": "TestQwen2Models",
+    "status": "complete"
+    },
+    "bart": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_bart",
+    "description": "BART sequence-to-sequence models",
+    "default_model": "facebook/bart-large-cnn",
+    "class": "TestBartModels",
+    "status": "complete"
+    },
+    "segformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_segformer",
+    "description": "SegFormer models for image segmentation",
+    "default_model": "nvidia/segformer-b0-finetuned-ade-512-512",
+    "class": "TestSegformerModels",
+    "status": "complete"
+    },
+    "dinov2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_dinov2",
+    "description": "DINOv2 self-supervised vision models",
+    "default_model": "facebook/dinov2-base",
+    "class": "TestDinov2Models",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    "mamba": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mamba",
+    "description": "Mamba state space models for language modeling",
+    "default_model": "state-spaces/mamba-2.8b",
+    "class": "TestMambaModels",
+    "status": "complete"
+    },
+    "phi3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi3",
+    "description": "Phi-3 language models from Microsoft",
+    "default_model": "microsoft/phi-3-mini-4k-instruct",
+    "class": "TestPhi3Models",
+    "status": "complete"
+    },
+    "paligemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_paligemma",
+    "description": "PaLI-GEMMA vision-language models from Google",
+    "default_model": "google/paligemma-3b-mix-224",
+    "class": "TestPaliGemmaModels",
+    "status": "complete"
+    },
+    "mixtral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mixtral",
+    "description": "Mixtral mixture-of-experts language models",
+    "default_model": "mistralai/Mixtral-8x7B-v0.1",
+    "class": "TestMixtralModels",
+    "status": "complete"
+    },
+    "deberta_v2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_deberta_v2",
+    "description": "DeBERTa-V2 models with enhanced disentangled attention",
+    "default_model": "microsoft/deberta-v2-xlarge",
+    "class": "TestDebertaV2Models",
+    "status": "complete"
+    },
+    "video_llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_video_llava",
+    "description": "Video-LLaVA video understanding models",
+    "default_model": "LanguageBind/Video-LLaVA-7B",
+    "class": "TestVideoLlavaModels",
+    "status": "complete"
+    },
+    "blip2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip_2",
+    "description": "BLIP-2 vision-language models",
+    "default_model": "Salesforce/blip2-opt-2.7b",
+    "class": "TestBlip2Models",
+    "status": "complete"
+    },
+    "instructblip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_instructblip",
+    "description": "InstructBLIP vision-language instruction-tuned models",
+    "default_model": "Salesforce/instructblip-flan-t5-xl",
+    "class": "TestInstructBlipModels",
+    "status": "complete"
+    },
+    "swin": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_swin",
+    "description": "Swin Transformer vision models",
+    "default_model": "microsoft/swin-base-patch4-window7-224",
+    "class": "TestSwinModels",
+    "status": "complete"
+    },
+    "convnext": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_convnext",
+    "description": "ConvNeXT vision models",
+    "default_model": "facebook/convnext-base-224",
+    "class": "TestConvNextModels",
+    "status": "complete"
+    },
+    "seamless_m4t": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_seamless_m4t",
+    "description": "Seamless multilingual and multimodal translation models",
+    "default_model": "facebook/seamless-m4t-large",
+    "class": "TestSeamlessM4TModels",
+    "status": "complete"
+    },
+    "wavlm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wavlm",
+    "description": "WavLM speech processing models",
+    "default_model": "microsoft/wavlm-base",
+    "class": "TestWavLMModels",
+    "status": "complete"
+    },
+    "codellama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_codellama",
+    "description": "CodeLlama for code generation",
+    "default_model": "codellama/CodeLlama-7b-hf",
+    "class": "TestCodeLlamaModels",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    "donut": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_donut",
+    "description": "Donut document understanding transformer",
+    "default_model": "naver-clova-ix/donut-base-finetuned-docvqa",
+    "class": "TestDonutModels",
+    "status": "complete"
+    },
+    "layoutlmv3": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv3",
+    "description": "LayoutLMv3 models for document understanding",
+    "default_model": "microsoft/layoutlmv3-base",
+    "class": "TestLayoutLMv3Models",
+    "status": "complete"
+    },
+    "markuplm": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_markuplm",
+    "description": "MarkupLM models for markup language understanding",
+    "default_model": "microsoft/markuplm-base",
+    "class": "TestMarkupLMModels",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gpt2",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestGpt2Models",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_t5",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestT5Models",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_clip",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestClipModels",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llama",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestLlamaModels",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_whisper",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestWhisperModels",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_wav2vec2",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestWav2Vec2Models",
+    "status": "complete"
+    },
+    "vit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_vit",
+    "description": "Vision Transformer models",
+    "default_model": "google/vit-base-patch16-224",
+    "class": "TestVitModels",
+    "status": "complete"
+    },
+    "detr": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_detr",
+    "description": "Detection Transformer models for object detection",
+    "default_model": "facebook/detr-resnet-50",
+    "class": "TestDetrModels",
+    "status": "complete"
+    },
+    "layoutlmv2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_layoutlmv2",
+    "description": "LayoutLMv2 models for document understanding",
+    "default_model": "microsoft/layoutlmv2-base-uncased",
+    "class": "TestLayoutLMv2Models",
+    "status": "complete"
+    },
+    "time_series_transformer": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_time_series_transformer",
+    "description": "Time Series Transformer models for forecasting",
+    "default_model": "huggingface/time-series-transformer-tourism-monthly",
+    "class": "TestTimeSeriesTransformerModels",
+    "status": "complete"
+    },
+    "llava": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_llava",
+    "description": "Large Language-and-Vision Assistant models",
+    "default_model": "llava-hf/llava-1.5-7b-hf",
+    "class": "TestLlavaModels",
+    "status": "complete"
+    },
+    "roberta": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_roberta",
+    "description": "RoBERTa masked language models",
+    "default_model": "roberta-base",
+    "class": "TestRobertaModels",
+    "status": "complete"
+    },
+    "phi": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_phi",
+    "description": "Phi language models from Microsoft",
+    "default_model": "microsoft/phi-2",
+    "class": "TestPhiModels",
+    "status": "complete"
+    },
+    "distilbert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_distilbert",
+    "description": "DistilBERT masked language models",
+    "default_model": "distilbert-base-uncased",
+    "class": "TestDistilBertModels",
+    "status": "complete"
+    },
+    "visual_bert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_visual_bert",
+    "description": "VisualBERT for vision-language tasks",
+    "default_model": "uclanlp/visualbert-vqa-coco-pre",
+    "class": "TestVisualBertModels",
+    "status": "complete"
+    },
+    "zoedepth": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_zoedepth",
+    "description": "ZoeDepth monocular depth estimation models",
+    "default_model": "isl-org/ZoeDepth",
+    "class": "TestZoeDepthModels",
+    "status": "complete"
+    },
+    "mistral": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_mistral",
+    "description": "Mistral causal language models",
+    "default_model": "mistralai/Mistral-7B-v0.1",
+    "class": "TestMistralModels",
+    "status": "complete"
+    },
+    "blip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_blip",
+    "description": "BLIP vision-language models",
+    "default_model": "Salesforce/blip-image-captioning-base",
+    "class": "TestBlipModels",
+    "status": "complete"
+    },
+    "sam": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_sam",
+    "description": "Segment Anything Model for image segmentation",
+    "default_model": "facebook/sam-vit-base",
+    "class": "TestSamModels",
+    "status": "complete"
+    },
+    "owlvit": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_owlvit",
+    "description": "Open-vocabulary object detection with Vision Transformers",
+    "default_model": "google/owlvit-base-patch32",
+    "class": "TestOwlvitModels",
+    "status": "complete"
+    },
+    "gemma": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_gemma",
+    "description": "Gemma language models from Google",
+    "default_model": "google/gemma-2b",
+    "class": "TestGemmaModels",
+    "status": "complete"
+    },
+    "musicgen": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_musicgen",
+    "description": "MusicGen music generation models from AudioCraft",
+    "default_model": "facebook/musicgen-small",
+    "class": "TestMusicgenModels",
+    "status": "complete"
+    },
+    "hubert": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_hf_hubert",
+    "description": "HuBERT speech representation models",
+    "default_model": "facebook/hubert-base-ls960",
+    "class": "TestHubertModels",
+    "status": "complete"
+    },
+    },
+    "gpt2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "GPT-2 causal language models",
+    "default_model": "gpt2",
+    "class": "TestSimpleModel",
+    "status": "complete"
+    },
+    "t5": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "T5 encoder-decoder models",
+    "default_model": "t5-small",
+    "class": "TestSimpleModel",
+    "status": "complete"
+    },
+    "clip": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "CLIP vision-language models",
+    "default_model": "openai/clip-vit-base-patch32",
+    "class": "TestSimpleModel",
+    "status": "complete"
+    },
+    "llama": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "LLaMA causal language models",
+    "default_model": "meta-llama/Llama-2-7b-hf",
+    "class": "TestSimpleModel",
+    "status": "complete"
+    },
+    "whisper": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "Whisper speech recognition models",
+    "default_model": "openai/whisper-tiny",
+    "class": "TestSimpleModel",
+    "status": "complete"
+    },
+    "wav2vec2": {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+    "module": "test_simplified",
+    "description": "Wav2Vec2 speech models",
+    "default_model": "facebook/wav2vec2-base",
+    "class": "TestSimpleModel",
+    "status": "complete"
     }
-}
+    }
 
-def get_available_model_families():
+def get_available_model_families())))):
     """Get list of available model families that have implemented test modules."""
-    available_families = {}
+    available_families = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
     
-    for family_id, family_info in MODEL_FAMILIES.items():
-        module_path = CURRENT_DIR / f"{family_info['module']}.py"
-        if module_path.exists():
+    for family_id, family_info in MODEL_FAMILIES.items())))):
+        module_path = CURRENT_DIR / f"{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['module']}.py",
+        if module_path.exists())))):
             available_families[family_id] = family_info
-    
-    return available_families
+            ,
+        return available_families
 
-def import_model_tester(family_id):
+def import_model_tester())))family_id):
     """Import the testing module for a specific model family."""
-    family_info = MODEL_FAMILIES.get(family_id)
+    family_info = MODEL_FAMILIES.get())))family_id)
     if not family_info:
-        raise ValueError(f"Unknown model family: {family_id}")
+    raise ValueError())))f"Unknown model family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
     
     try:
         # Add CWD to Python path to ensure local imports work
-        sys.path.insert(0, str(CURRENT_DIR))
+        sys.path.insert())))0, str())))CURRENT_DIR))
         
-        module_name = family_info["module"]
-        logger.info(f"Importing module: {module_name}")
+        module_name = family_info["module"],
+        logger.info())))f"Importing module: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}module_name}")
         
-        module = importlib.import_module(module_name)
+        module = importlib.import_module())))module_name)
         
-        # Check if the module has necessary functions
-        if not hasattr(module, "get_available_models"):
-            logger.warning(f"Module {module_name} doesn't have get_available_models function")
+        # Check if the module has necessary functions:
+        if not hasattr())))module, "get_available_models"):
+            logger.warning())))f"Module {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}module_name} doesn't have get_available_models function")
         
-        if not hasattr(module, family_info["class"]):
-            logger.warning(f"Module {module_name} doesn't have {family_info['class']} class")
-            
+            if not hasattr())))module, family_info["class"]),,:,
+            logger.warning())))f"Module {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}module_name} doesn't have {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['class']} class")
+            ,
         # Check if the class has run_tests method
-        class_obj = getattr(module, family_info["class"])
-        instance = class_obj()
-        if not hasattr(instance, "run_tests"):
-            logger.warning(f"Class {family_info['class']} doesn't have run_tests method")
-        
-        return module
+            class_obj = getattr())))module, family_info["class"]),,
+        instance = class_obj())))):
+        if not hasattr())))instance, "run_tests"):
+            logger.warning())))f"Class {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['class']} doesn't have run_tests method")
+            ,
+            return module
     except ImportError as e:
-        logger.error(f"Failed to import module {family_info['module']}: {e}")
-        return None
+        logger.error())))f"Failed to import module {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['module']}: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}e}"),
+            return None
     except Exception as e:
-        logger.error(f"Error in import_model_tester: {e}")
-        return None
+        logger.error())))f"Error in import_model_tester: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}e}")
+            return None
 
-def run_model_test(family_id, model_id=None, all_models=False, all_hardware=False, save=True):
+def run_model_test())))family_id, model_id=None, all_models=False, all_hardware=False, save=True):
     """Run tests for a specific model or all models in a family."""
-    family_info = MODEL_FAMILIES.get(family_id)
+    family_info = MODEL_FAMILIES.get())))family_id)
     if not family_info:
-        logger.error(f"Unknown model family: {family_id}")
-        return None
+        logger.error())))f"Unknown model family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
+    return None
     
     # Import the module
-    module = import_model_tester(family_id)
+    module = import_model_tester())))family_id)
     if not module:
-        return None
+    return None
     
-    results = {}
+    results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
     
     # Test a specific model
     if model_id and not all_models:
-        logger.info(f"Testing model {model_id} from family {family_id}")
+        logger.info())))f"Testing model {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_id} from family {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
         
         # Get the test class
-        tester_class = getattr(module, family_info["class"])
-        tester = tester_class(model_id)
+        tester_class = getattr())))module, family_info["class"]),,
+        tester = tester_class())))model_id)
         
         # Run tests
-        model_results = tester.run_tests(all_hardware=all_hardware)
+        model_results = tester.run_tests())))all_hardware=all_hardware)
         
         # Save results
         if save:
-            output_path = module.save_results(model_id, model_results, output_dir=RESULTS_DIR)
-            logger.info(f"Saved results to {output_path}")
+            output_path = module.save_results())))model_id, model_results, output_dir=RESULTS_DIR)
+            logger.info())))f"Saved results to {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}output_path}")
         
-        results[model_id] = {
-            "success": any(r.get("pipeline_success", False) for r in model_results["results"].values() 
-                          if r.get("pipeline_success") is not False)
-        }
+            results[model_id] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}},
+            "success": any())))r.get())))"pipeline_success", False) for r in model_results["results"].values())))):,
+            if r.get())))"pipeline_success") is not False)
+            }
     
-    # Test all models in the family
+    # Test all models in the family:
     elif all_models:
-        if hasattr(module, "test_all_models"):
-            logger.info(f"Testing all models in family {family_id}")
-            results = module.test_all_models(output_dir=RESULTS_DIR, all_hardware=all_hardware)
+        if hasattr())))module, "test_all_models"):
+            logger.info())))f"Testing all models in family {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
+            results = module.test_all_models())))output_dir=RESULTS_DIR, all_hardware=all_hardware)
         else:
-            logger.error(f"Module {family_info['module']} doesn't support testing all models")
-    
-    return results
+            logger.error())))f"Module {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['module']} doesn't support testing all models")
+            ,
+            return results
 
-def generate_summary_report(results_by_family):
+def generate_summary_report())))results_by_family):
     """Generate a summary report of test results across all families."""
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.datetime.now())))).strftime())))"%Y-%m-%d %H:%M:%S")
     
     # Calculate success rates
     total_models = 0
     successful_models = 0
-    family_stats = {}
+    family_stats = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
     
-    for family_id, family_results in results_by_family.items():
-        family_total = len(family_results)
-        family_success = sum(1 for r in family_results.values() if r.get("success", False))
+    for family_id, family_results in results_by_family.items())))):
+        family_total = len())))family_results)
+        family_success = sum())))1 for r in family_results.values())))) if r.get())))"success", False))
         
         total_models += family_total
         successful_models += family_success
         
-        family_stats[family_id] = {
-            "total": family_total,
-            "successful": family_success,
-            "success_rate": (family_success / family_total) * 100 if family_total > 0 else 0
+        family_stats[family_id] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}:,
+        "total": family_total,
+        "successful": family_success,
+        "success_rate": ())))family_success / family_total) * 100 if family_total > 0 else 0
         }
     
     # Create summary data
-    summary = {
+    summary = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}:
         "timestamp": timestamp,
         "total_models": total_models,
         "successful_models": successful_models,
-        "success_rate": (successful_models / total_models) * 100 if total_models > 0 else 0,
-        "by_family": family_stats
-    }
+        "success_rate": ())))successful_models / total_models) * 100 if total_models > 0 else 0,:
+            "by_family": family_stats
+            }
     
     # Save JSON summary
-    with open(SUMMARY_FILE, "w") as f:
-        json.dump(summary, f, indent=2)
+    with open())))SUMMARY_FILE, "w") as f:
+        json.dump())))summary, f, indent=2)
     
     # Generate markdown report
-    with open(REPORT_FILE, "w") as f:
-        f.write("# Hugging Face Model Test Report\n\n")
-        f.write(f"*Generated: {timestamp}*\n\n")
+    with open())))REPORT_FILE, "w") as f:
+        f.write())))"# Hugging Face Model Test Report\n\n")
+        f.write())))f"*Generated: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}timestamp}*\n\n")
         
-        f.write("## Overall Results\n\n")
-        f.write(f"- **Total Models Tested**: {total_models}\n")
-        f.write(f"- **Successfully Tested**: {successful_models}\n")
-        f.write(f"- **Success Rate**: {summary['success_rate']:.1f}%\n\n")
+        f.write())))"## Overall Results\n\n")
+        f.write())))f"- **Total Models Tested**: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}total_models}\n")
+        f.write())))f"- **Successfully Tested**: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}successful_models}\n")
+        f.write())))f"- **Success Rate**: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}summary['success_rate']:.1f}%\n\n")
+        ,
+        f.write())))"## Results by Model Family\n\n")
+        f.write())))"| Family | Description | Models Tested | Success Rate |\n")
+        f.write())))"|--------|-------------|---------------|-------------|\n")
         
-        f.write("## Results by Model Family\n\n")
-        f.write("| Family | Description | Models Tested | Success Rate |\n")
-        f.write("|--------|-------------|---------------|-------------|\n")
-        
-        for family_id, stats in family_stats.items():
-            family_info = MODEL_FAMILIES.get(family_id, {})
-            description = family_info.get("description", "Unknown")
-            f.write(f"| {family_id} | {description} | {stats['total']} | {stats['success_rate']:.1f}% |\n")
-        
-        f.write("\n## Detailed Results\n\n")
-        for family_id, family_results in results_by_family.items():
-            f.write(f"### {family_id.upper()} Models\n\n")
+        for family_id, stats in family_stats.items())))):
+            family_info = MODEL_FAMILIES.get())))family_id, {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}})
+            description = family_info.get())))"description", "Unknown")
+            f.write())))f"| {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id} | {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}description} | {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}stats['total']} | {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}stats['success_rate']:.1f}% |\n")
+            ,
+            f.write())))"\n## Detailed Results\n\n")
+        for family_id, family_results in results_by_family.items())))):
+            f.write())))f"### {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id.upper()))))} Models\n\n")
             
-            f.write("| Model | Success | Notes |\n")
-            f.write("|-------|---------|-------|\n")
+            f.write())))"| Model | Success | Notes |\n")
+            f.write())))"|-------|---------|-------|\n")
             
-            for model_id, result in family_results.items():
-                success = "✅" if result.get("success", False) else "❌"
-                notes = result.get("notes", "")
-                f.write(f"| {model_id} | {success} | {notes} |\n")
+            for model_id, result in family_results.items())))):
+                success = "✅" if result.get())))"success", False) else "❌"
+                notes = result.get())))"notes", "")
+                f.write())))f"| {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_id} | {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}success} | {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}notes} |\n")
             
-            f.write("\n")
-    
-    logger.info(f"Generated summary report: {REPORT_FILE}")
-    return summary
+                f.write())))"\n")
+    :
+        logger.info())))f"Generated summary report: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}REPORT_FILE}")
+                return summary
 
-def main():
+def main())))):
     """Command-line entry point."""
     global RESULTS_DIR
     
-    parser = argparse.ArgumentParser(description="Test Hugging Face models")
+    parser = argparse.ArgumentParser())))description="Test Hugging Face models")
     
     # Model family selection
-    family_group = parser.add_mutually_exclusive_group()
-    family_group.add_argument("--family", type=str, help="Model family to test")
-    family_group.add_argument("--all-families", action="store_true", help="Test all model families")
+    family_group = parser.add_mutually_exclusive_group()))))
+    family_group.add_argument())))"--family", type=str, help="Model family to test")
+    family_group.add_argument())))"--all-families", action="store_true", help="Test all model families")
     
     # Model selection
-    model_group = parser.add_mutually_exclusive_group()
-    model_group.add_argument("--model", type=str, help="Specific model to test")
-    model_group.add_argument("--all-models", action="store_true", help="Test all models in the family")
+    model_group = parser.add_mutually_exclusive_group()))))
+    model_group.add_argument())))"--model", type=str, help="Specific model to test")
+    model_group.add_argument())))"--all-models", action="store_true", help="Test all models in the family")
     
     # Testing options
-    parser.add_argument("--all-hardware", action="store_true", help="Test on all available hardware")
-    parser.add_argument("--cpu-only", action="store_true", help="Test only on CPU")
+    parser.add_argument())))"--all-hardware", action="store_true", help="Test on all available hardware")
+    parser.add_argument())))"--cpu-only", action="store_true", help="Test only on CPU")
     
     # Output options
-    parser.add_argument("--no-save", action="store_true", help="Don't save results to file")
-    parser.add_argument("--output-dir", type=str, default=str(RESULTS_DIR), help="Directory for output files")
+    parser.add_argument())))"--no-save", action="store_true", help="Don't save results to file")
+    parser.add_argument())))"--output-dir", type=str, default=str())))RESULTS_DIR), help="Directory for output files")
     
     # List options
-    parser.add_argument("--list-families", action="store_true", help="List all available model families")
-    parser.add_argument("--list-models", type=str, help="List all available models in a family")
+    parser.add_argument())))"--list-families", action="store_true", help="List all available model families")
+    parser.add_argument())))"--list-models", type=str, help="List all available models in a family")
     
-    args = parser.parse_args()
+    args = parser.parse_args()))))
     
     # Update output directory
-    RESULTS_DIR = Path(args.output_dir)
-    os.makedirs(RESULTS_DIR, exist_ok=True)
+    RESULTS_DIR = Path())))args.output_dir)
+    os.makedirs())))RESULTS_DIR, exist_ok=True)
     
-    # List model families if requested
+    # List model families if requested::
     if args.list_families:
-        available_families = get_available_model_families()
+        available_families = get_available_model_families()))))
         
-        print("\nAvailable Model Families:")
-        for family_id, family_info in MODEL_FAMILIES.items():
-            status = "✅ Available" if family_id in available_families else "⏳ Planned"
-            print(f"  - {family_id}: {family_info['description']} [{status}]")
-        return
+        print())))"\nAvailable Model Families:")
+        for family_id, family_info in MODEL_FAMILIES.items())))):
+            status = "✅ Available" if family_id in available_families else "⏳ Planned":
+                print())))f"  - {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['description']} [{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}status}]"),
+            return
     
-    # List models in a family if requested
+    # List models in a family if requested::
     if args.list_models:
         family_id = args.list_models
         
         if family_id not in MODEL_FAMILIES:
-            print(f"Unknown model family: {family_id}")
-            return
+            print())))f"Unknown model family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
+        return
         
-        module = import_model_tester(family_id)
-        if not module or not hasattr(module, "get_available_models"):
-            print(f"Cannot list models for family: {family_id}")
-            return
+        module = import_model_tester())))family_id)
+        if not module or not hasattr())))module, "get_available_models"):
+            print())))f"Cannot list models for family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
+        return
         
-        models = module.get_available_models()
+        models = module.get_available_models()))))
         family_info = MODEL_FAMILIES[family_id]
-        
-        print(f"\nAvailable Models in {family_id.upper()} Family:")
-        print(f"Description: {family_info['description']}")
-        print(f"Models ({len(models)}):")
+        ,
+        print())))f"\nAvailable Models in {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id.upper()))))} Family:")
+        print())))f"Description: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_info['description']}"),
+        print())))f"Models ()))){}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}len())))models)}):")
         
         for model_id in models:
-            print(f"  - {model_id}")
+            print())))f"  - {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}model_id}")
         return
     
-    # Override hardware if CPU only
+    # Override hardware if CPU only:
     if args.cpu_only:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    
+        ,
     # Test a specific family
     if args.family:
         family_id = args.family
         
         if family_id not in MODEL_FAMILIES:
-            print(f"Unknown model family: {family_id}")
-            return
+            print())))f"Unknown model family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
+        return
         
-        model_id = args.model or MODEL_FAMILIES[family_id]["default_model"]
-        results = {family_id: run_model_test(
-            family_id=family_id,
-            model_id=model_id,
-            all_models=args.all_models,
-            all_hardware=args.all_hardware,
-            save=not args.no_save
+        model_id = args.model or MODEL_FAMILIES[family_id]["default_model"],
+        results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id: run_model_test())))
+        family_id=family_id,
+        model_id=model_id,
+        all_models=args.all_models,
+        all_hardware=args.all_hardware,
+        save=not args.no_save
         )}
     
     # Test all families
     elif args.all_families:
-        available_families = get_available_model_families()
-        results = {}
+        available_families = get_available_model_families()))))
+        results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
         
         for family_id in available_families:
-            logger.info(f"Testing family: {family_id}")
+            logger.info())))f"Testing family: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}family_id}")
             
-            family_results = run_model_test(
-                family_id=family_id,
-                all_models=args.all_models,
-                all_hardware=args.all_hardware,
-                save=not args.no_save
+            family_results = run_model_test())))
+            family_id=family_id,
+            all_models=args.all_models,
+            all_hardware=args.all_hardware,
+            save=not args.no_save
             )
             
             if family_results:
                 results[family_id] = family_results
-    
+                ,
     # Default: test BERT with default model
     else:
         default_family = "bert"
         default_model = MODEL_FAMILIES[default_family]["default_model"]
-        
-        print(f"No specific family requested, testing default model: {default_model}")
-        results = {default_family: run_model_test(
-            family_id=default_family,
-            model_id=default_model,
-            all_hardware=args.all_hardware,
-            save=not args.no_save
+        ,
+        print())))f"No specific family requested, testing default model: {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}default_model}")
+        results = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}default_family: run_model_test())))
+        family_id=default_family,
+        model_id=default_model,
+        all_hardware=args.all_hardware,
+        save=not args.no_save
         )}
     
-    # Generate summary if we ran multiple tests
+    # Generate summary if we ran multiple tests:
     if args.all_models or args.all_families:
-        generate_summary_report(results)
+        generate_summary_report())))results)
 
 if __name__ == "__main__":
-    main()
+    main()))))

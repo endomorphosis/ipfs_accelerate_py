@@ -14,11 +14,11 @@ def generate_test_file(model_name, platform=None, output_dir=None):
     """Generate a test file for the specified model and platform."""
     # Default to all platforms if none specified
     platforms = ["cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "webnn", "webgpu"]
-    if platform and platform \!= "all":
+    if platform and platform != "all":
         platforms = [p.strip() for p in platform.split(",")]
     
     # Create file name and path
-    file_name = f"test_hf_{model_name.replace(\"-\", \"_\")}.py"
+    file_name = f"test_hf_{model_name.replace('-', '_')}.py"
     
     # Use output_dir if specified, otherwise use current directory
     if output_dir:
@@ -30,7 +30,7 @@ def generate_test_file(model_name, platform=None, output_dir=None):
     # Generate file content
     with open(output_path, "w") as f:
         content = [
-            "#\!/usr/bin/env python3",
+            "#!/usr/bin/env python3",
             "\"\"\"",
             f"Test for {model_name} model with hardware platform support",
             "\"\"\"",
@@ -42,7 +42,7 @@ def generate_test_file(model_name, platform=None, output_dir=None):
             "import numpy as np",
             "from transformers import AutoModel, AutoTokenizer, AutoConfig",
             "",
-            f"class Test{model_name.replace(\"-\", \"\").title()}Models(unittest.TestCase):",
+            f"class Test{model_name.replace('-', '').title()}Models(unittest.TestCase):",
             f"    \"\"\"Test {model_name} model across hardware platforms.\"\"\"",
             "    ",
             "    def setUp(self):",

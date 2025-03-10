@@ -28,7 +28,7 @@ HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE
 
 # Try to import centralized hardware detection
 try:
-    from centralized_hardware_detection import hardware_detection
+    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
     HAS_CENTRALIZED_DETECTION = True
 except ImportError:
     HAS_CENTRALIZED_DETECTION = False
@@ -44,18 +44,18 @@ class TestVitbasepatch16224Models(unittest.TestCase):
         self.processor = None
         self.modality = "vision"
         
-        # Detect hardware capabilities if available
+        # Detect hardware capabilities if available:
         if HAS_CENTRALIZED_DETECTION:
             self.hardware_capabilities = hardware_detection.detect_hardware_capabilities()
         else:
-            self.hardware_capabilities = {
-                "cuda": HAS_CUDA,
-                "rocm": HAS_ROCM,
-                "mps": HAS_MPS,
-                "openvino": HAS_OPENVINO,
-                "qualcomm": HAS_QUALCOMM,
-                "webnn": HAS_WEBNN,
-                "webgpu": HAS_WEBGPU
+            self.hardware_capabilities = {}
+            "cuda": HAS_CUDA,
+            "rocm": HAS_ROCM,
+            "mps": HAS_MPS,
+            "openvino": HAS_OPENVINO,
+            "qualcomm": HAS_QUALCOMM,
+            "webnn": HAS_WEBNN,
+            "webgpu": HAS_WEBGPU
             }
         
     def run_tests(self):
@@ -64,7 +64,7 @@ class TestVitbasepatch16224Models(unittest.TestCase):
 
     def test_cpu(self):
         """Test vit-base-patch16-224 with cpu."""
-        # Skip if hardware not available
+        # Skip if hardware not available::
         if not HAS_CPU: self.skipTest('CPU not available')
         
         # Set up device
@@ -94,7 +94,7 @@ class TestVitbasepatch16224Models(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -119,43 +119,43 @@ class TestVitbasepatch16224Models(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for vit-base-patch16-224", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'vision' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'vision' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,
+            elif 'vision' in ['audio', 'vision', 'video']:,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,
             elif 'vision' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cpu")
+                logger.info(f"Successfully tested {}self.model_id} on cpu")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cpu: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on cpu: {}str(e)}")
+                raise
 
     def test_cuda(self):
         """Test vit-base-patch16-224 with cuda."""
-        # Skip if hardware not available
+        # Skip if hardware not available::
         if not HAS_CUDA: self.skipTest('CUDA not available')
         
         # Set up device
@@ -185,7 +185,7 @@ class TestVitbasepatch16224Models(unittest.TestCase):
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
                 self.model = AutoModel.from_pretrained(self.model_id)
             
-            # Move model to device if not CPU
+            # Move model to device if not CPU::::
             if device != "cpu":
                 self.model = self.model.to(device)
             
@@ -210,39 +210,39 @@ class TestVitbasepatch16224Models(unittest.TestCase):
             else:
                 inputs = self.tokenizer("Test input for vit-base-patch16-224", return_tensors="pt")
             
-            # Move inputs to device if not CPU
+            # Move inputs to device if not CPU::::
             if device != "cpu":
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+                inputs = {}k: v.to(device) for k, v in inputs.items()}
             
             # Run inference
             with torch.no_grad():
                 outputs = self.model(**inputs)
             
             # Verify outputs based on model type
-            self.assertIsNotNone(outputs)
+                self.assertIsNotNone(outputs)
             # Different models return different output structures
             if 'vision' == 'text':
                 if hasattr(outputs, 'last_hidden_state'):
                     self.assertIsNotNone(outputs.last_hidden_state)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits']))
-            elif 'vision' in ['audio', 'vision', 'video']:
+                    self.assertTrue(any(key in outputs for key in ['last_hidden_state', 'hidden_states', 'logits'])),,
+            elif 'vision' in ['audio', 'vision', 'video']:,,
                 if hasattr(outputs, 'logits'):
                     self.assertIsNotNone(outputs.logits)
                 else:
                     # Some models might have alternative output structures
-                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state']))
+                    self.assertTrue(any(key in outputs for key in ['logits', 'embedding', 'last_hidden_state'])),,
             elif 'vision' == 'multimodal':
                 # CLIP, LLAVA, etc. might have different output structures
                 self.assertTrue(any(hasattr(outputs, attr) for attr in ['text_embeds', 'image_embeds', 'last_hidden_state', 'logits']))
-            
+                ,,
             # Log success
-            logger.info(f"Successfully tested {self.model_id} on cuda")
+                logger.info(f"Successfully tested {}self.model_id} on cuda")
 
         except Exception as e:
-            logger.error(f"Error testing {self.model_id} on cuda: {str(e)}")
-            raise
+            logger.error(f"Error testing {}self.model_id} on cuda: {}str(e)}")
+                raise
 
 if __name__ == "__main__":
     unittest.main()

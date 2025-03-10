@@ -13,16 +13,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import torch normally
 try:
     import torch
-    print(f"torch imported normally: {torch.__version__}")
-    print(f"cuda available (torch.cuda.is_available()): {torch.cuda.is_available()}")
+    print(f"\1{torch.__version__}\3")
+    print(f"\1{torch.cuda.is_available()}\3")
     if torch.cuda.is_available():
-        print(f"torch.cuda.device_count(): {torch.cuda.device_count()}")
-        print(f"torch.cuda.get_device_name(0): {torch.cuda.get_device_name(0)}")
+        print(f"\1{torch.cuda.device_count()}\3")
+        print(f"\1{torch.cuda.get_device_name(0)}\3")
 except Exception as e:
-    print(f"Error importing torch: {e}")
+    print(f"\1{e}\3")
 
 # Try importing specifically the way test_hf_llama.py does it
-print("\n==== IMPORT LIKE IN TEST_HF_LLAMA.PY ====")
+    print("\n==== IMPORT LIKE IN TEST_HF_LLAMA.PY ====")
 try:
     from unittest.mock import MagicMock, patch
     import numpy as np
@@ -39,31 +39,31 @@ try:
         llama_transformers = MagicMock()
         print("Warning: transformers not available, using mock implementation")
     
-    print(f"llama_torch type: {type(llama_torch)}")
-    print(f"Is llama_torch a MagicMock? {isinstance(llama_torch, MagicMock)}")
+        print(f"\1{type(llama_torch)}\3")
+        print(f"\1{isinstance(llama_torch, MagicMock)}\3")
     
     if not isinstance(llama_torch, MagicMock):
-        print(f"llama_torch version: {llama_torch.__version__}")
-        print(f"cuda available via llama_torch: {llama_torch.cuda.is_available()}")
+        print(f"\1{llama_torch.__version__}\3")
+        print(f"\1{llama_torch.cuda.is_available()}\3")
         if llama_torch.cuda.is_available():
-            print(f"llama_torch.cuda.device_count(): {llama_torch.cuda.device_count()}")
-            print(f"llama_torch.cuda.get_device_name(0): {llama_torch.cuda.get_device_name(0)}")
+            print(f"\1{llama_torch.cuda.device_count()}\3")
+            print(f"\1{llama_torch.cuda.get_device_name(0)}\3")
 except Exception as e:
-    print(f"Error in llama import test: {e}")
+    print(f"\1{e}\3")
 
-print("\n==== TESTING TORCH OPERATIONS ====")
+    print("\n==== TESTING TORCH OPERATIONS ====")
 try:
     if not isinstance(llama_torch, MagicMock) and llama_torch.cuda.is_available():
         # Create a tensor and move it to CUDA
-        x = llama_torch.tensor([1.0, 2.0, 3.0])
-        print(f"x.device before: {x.device}")
+        x = llama_torch.tensor([1.0, 2.0, 3.0]),
+        print(f"\1{x.device}\3")
         x = x.cuda()
-        print(f"x.device after: {x.device}")
+        print(f"\1{x.device}\3")
         
         # Test some CUDA operations
         y = x * 2
-        print(f"y = x * 2: {y}")
+        print(f"\1{y}\3")
     else:
         print("Skipping tensor operations - torch not available or CUDA not available")
 except Exception as e:
-    print(f"Error in tensor operations: {e}")
+    print(f"\1{e}\3")

@@ -370,7 +370,7 @@ def main():
     parser = argparse.ArgumentParser(description="Database-Integrated Benchmark Runner")
     
     # Database options
-    parser.add_argument("--db-path", type=str, default="./benchmark_db.duckdb",
+    parser.add_argument("--db-path", type=str, default=None,
                       help="Path to the DuckDB database")
     
     # Benchmark options
@@ -391,12 +391,10 @@ def main():
     parser.add_argument("--debug", action="store_true",
                       help="Enable debug logging")
     
-    
-    parser.add_argument("--db-path", type=str, default=None,
-                      help="Path to the benchmark database")
     parser.add_argument("--db-only", action="store_true",
                       help="Store results only in the database, not in JSON")
-args = parser.parse_args()
+    
+    args = parser.parse_args()
     
     # Configure logging
     if args.debug:
@@ -404,11 +402,13 @@ args = parser.parse_args()
         logger.setLevel(logging.DEBUG)
     
     # Create and run the integrated runner
-    runner = DatabaseIntegratedRunner(
-        db_path = args.db_path
+    db_path = args.db_path
     if db_path is None:
         db_path = os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb")
-        logger.info(f"Using database path from environment: {db_path}"),
+        logger.info(f"Using database path from environment: {db_path}")
+        
+    runner = DatabaseIntegratedRunner(
+        db_path=db_path,
         models_set=args.models_set,
         hardware_types=args.hardware,
         batch_sizes=args.batch_sizes,

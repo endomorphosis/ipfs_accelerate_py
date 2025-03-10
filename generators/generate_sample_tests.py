@@ -6,7 +6,7 @@ Generate sample modality-specific tests for evaluation
 import os
 import sys
 import argparse
-from merged_test_generator import generate_modality_specific_template, detect_model_modality
+from generators.test_generators.merged_test_generator import generate_modality_specific_template, detect_model_modality
 
 # Define sample models for each modality
 SAMPLE_MODELS = {

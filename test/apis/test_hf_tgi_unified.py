@@ -16,15 +16,15 @@ class TestHuggingFaceTGI(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment"""
-        self.metadata = {
-            "hf_api_key": os.environ.get("HF_API_KEY", ""),
-            "hf_container_url": os.environ.get("HF_CONTAINER_URL", "http://localhost:8080"),
-            "docker_registry": os.environ.get("DOCKER_REGISTRY", "huggingface/text-generation-inference"),
-            "container_tag": os.environ.get("CONTAINER_TAG", "latest"),
-            "gpu_device": os.environ.get("GPU_DEVICE", "0"),
-            "model_id": os.environ.get("HF_MODEL_ID", "google/t5-efficient-tiny")
+        self.metadata = {}}
+        "hf_api_key": os.environ.get("HF_API_KEY", ""),
+        "hf_container_url": os.environ.get("HF_CONTAINER_URL", "http://localhost:8080"),
+        "docker_registry": os.environ.get("DOCKER_REGISTRY", "huggingface/text-generation-inference"),
+        "container_tag": os.environ.get("CONTAINER_TAG", "latest"),
+        "gpu_device": os.environ.get("GPU_DEVICE", "0"),
+        "model_id": os.environ.get("HF_MODEL_ID", "google/t5-efficient-tiny")
         }
-        self.resources = {}
+        self.resources = {}}}
     
     def test_standard_api(self):
         """Test the standard HuggingFace TGI API"""
@@ -42,7 +42,7 @@ class TestHuggingFaceTGI(unittest.TestCase):
     
     def test_container_api(self):
         """Test the container-based HuggingFace TGI API"""
-        # Skip if explicitly disabled
+        # Skip if explicitly disabled:
         if os.environ.get("SKIP_CONTAINER_TESTS", "").lower() in ("true", "1", "yes"):
             self.skipTest("Container tests disabled by environment variable")
         
@@ -54,31 +54,31 @@ class TestHuggingFaceTGI(unittest.TestCase):
                  patch.object(requests, 'post') as mock_post:
                 
                 # Mock successful API responses
-                mock_get_response = MagicMock()
-                mock_get_response.status_code = 200
-                mock_get_response.json.return_value = {
-                    "model_id": self.metadata.get("model_id"),
-                    "status": "ok"
-                }
-                mock_get.return_value = mock_get_response
+                     mock_get_response = MagicMock()
+                     mock_get_response.status_code = 200
+                     mock_get_response.json.return_value = {}}
+                     "model_id": self.metadata.get("model_id"),
+                     "status": "ok"
+                     }
+                     mock_get.return_value = mock_get_response
                 
-                mock_post_response = MagicMock()
-                mock_post_response.status_code = 200
-                mock_post_response.json.return_value = {"generated_text": "This is a test response"}
-                mock_post.return_value = mock_post_response
+                     mock_post_response = MagicMock()
+                     mock_post_response.status_code = 200
+                     mock_post_response.json.return_value = {}}"generated_text": "This is a test response"}
+                     mock_post.return_value = mock_post_response
                 
                 # Run container tests
-                tester = test_hf_tgi_container(self.resources, self.metadata)
-                results = tester.test()
+                     tester = test_hf_tgi_container(self.resources, self.metadata)
+                     results = tester.test()
                 
                 # Verify critical tests passed
-                self.assertEqual(results.get("container_deployment"), "Success")
-                self.assertEqual(results.get("container_connectivity"), "Success")
-                self.assertEqual(results.get("text_generation"), "Success")
-                self.assertEqual(results.get("container_shutdown"), "Success")
+                     self.assertEqual(results.get("container_deployment"), "Success")
+                     self.assertEqual(results.get("container_connectivity"), "Success")
+                     self.assertEqual(results.get("text_generation"), "Success")
+                     self.assertEqual(results.get("container_shutdown"), "Success")
                 
                 # Save test results
-                self._save_test_results(results, "hf_tgi_container_test_results.json")
+                     self._save_test_results(results, "hf_tgi_container_test_results.json")
     
     def _save_test_results(self, results, filename):
         """Save test results to file"""
@@ -88,7 +88,7 @@ class TestHuggingFaceTGI(unittest.TestCase):
         os.makedirs(collected_dir, exist_ok=True)
         
         # Save results
-        results_file = os.path.join(collected_dir, filename)
+        results_file = os.path.join(collected_dir, filename):
         with open(results_file, 'w') as f:
             json.dump(results, f, indent=2)
 
@@ -105,14 +105,14 @@ def run_tests():
     
     # Set environment variables from arguments
     if args.model:
-        os.environ["HF_MODEL_ID"] = args.model
+        os.environ["HF_MODEL_ID"] = args.model,
     if args.container_url:
-        os.environ["HF_CONTAINER_URL"] = args.container_url
+        os.environ["HF_CONTAINER_URL"] = args.container_url,
     if args.api_key:
         os.environ["HF_API_KEY"] = args.api_key
-    
+        ,
     # Create test suite
-    suite = unittest.TestSuite()
+        suite = unittest.TestSuite()
     
     if args.standard or (not args.standard and not args.container):
         suite.addTest(TestHuggingFaceTGI('test_standard_api'))
@@ -121,11 +121,11 @@ def run_tests():
         suite.addTest(TestHuggingFaceTGI('test_container_api'))
     
     # Run tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(suite)
     
-    return 0 if result.wasSuccessful() else 1
-
+        return 0 if result.wasSuccessful() else 1
+:
 if __name__ == "__main__":
     # Make sure imports are available
     import requests

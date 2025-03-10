@@ -18,32 +18,32 @@ def test_file_paths():
         test_translation_audio_path = os.path.join(test_dir, 'trans_test.mp3') 
         test_image_path = os.path.join(test_dir, 'test.jpg')
 
-        print(f"Looking for test files in: {test_dir}")
-        print(f"Audio file path: {test_audio_path}")
-        print(f"Translation audio path: {test_translation_audio_path}")
-        print(f"Image file path: {test_image_path}")
+        print(f"\1{test_dir}\3")
+        print(f"\1{test_audio_path}\3")
+        print(f"\1{test_translation_audio_path}\3")
+        print(f"\1{test_image_path}\3")
         
-        # Create temporary test files if they don't exist
+        # Create temporary test files if they don't exist:
         if not os.path.exists(test_audio_path):
-            print(f"Creating mock audio file at {test_audio_path}")
+            print(f"\1{test_audio_path}\3")
             with open(test_audio_path, 'wb') as f:
                 f.write(b'test audio data')
         else:
-            print(f"Audio file already exists at {test_audio_path}")
+            print(f"\1{test_audio_path}\3")
         
         if not os.path.exists(test_translation_audio_path):
-            print(f"Creating mock translation audio file at {test_translation_audio_path}")
+            print(f"\1{test_translation_audio_path}\3")
             with open(test_translation_audio_path, 'wb') as f:
                 f.write(b'test translation audio data')
         else:
-            print(f"Translation audio file already exists at {test_translation_audio_path}")
+            print(f"\1{test_translation_audio_path}\3")
                 
         if not os.path.exists(test_image_path):
-            print(f"Creating mock image file at {test_image_path}")
+            print(f"\1{test_image_path}\3")
             with open(test_image_path, 'wb') as f:
                 f.write(b'test image data')
         else:
-            print(f"Image file already exists at {test_image_path}")
+            print(f"\1{test_image_path}\3")
         
         # Try reading the files
         with open(test_audio_path, 'rb') as f:
@@ -58,14 +58,14 @@ def test_file_paths():
             image_data = f.read()
             print(f"Successfully read image file, size: {len(image_data)} bytes")
             
-        return {"status": "success"}
+            return {"status": "success"}
     
     except Exception as e:
-        print(f"Error in file path test: {e}")
+        print(f"\1{e}\3")
         import traceback
         traceback.print_exc()
-        return {"status": "error", "error": str(e)}
+            return {"status": "error", "error": str(e)}
 
 if __name__ == "__main__":
     results = test_file_paths()
-    print(f"File path test results: {json.dumps(results, indent=2)}")
+    print(f"\1{json.dumps(results, indent=2)}\3")

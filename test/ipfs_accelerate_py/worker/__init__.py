@@ -7,4 +7,4 @@ using different hardware backends.
 
 from ipfs_accelerate_py.worker.worker import Worker
 
-__all__ = ['Worker']
+__all__ = ['Worker'],
